@@ -29,6 +29,7 @@
 
 #include <core/config/config.hpp>
 #include <core/registry/connection.hpp>
+#include <core/registry/extension.hpp>
 #include <core/registry/handler.hpp>
 #include <core/registry/transport.hpp>
 
@@ -90,6 +91,7 @@ public:
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] TransportRegistry&   transports()  noexcept { return transports_; }
+    [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
 
     /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
@@ -123,6 +125,7 @@ private:
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
     TransportRegistry    transports_;
+    ExtensionRegistry    extensions_;
     Router               router_{identities_, handlers_};
 
     std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
