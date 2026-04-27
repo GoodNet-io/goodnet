@@ -39,9 +39,25 @@ the kernel. Adding a node costs one binary and a keypair.
   connection. Automatic failover under 50 ms. Each path adds a digit of
   availability — four paths reach 99.987%.
 - **Directed relay → direct.** Connections start through relay, upgrade to
-  direct P2P in roughly seven seconds once paths are discovered.
-- **DHT.** Around 4.6 hops at one million nodes; 400 entries per routing
-  table.
+  a direct connection in roughly seven seconds once paths are discovered.
+- **Address-based routing.** Around 4.6 hops at one million nodes;
+  400 entries per routing table.
+
+## Where it fits
+
+Built for systems where peers need **durable addresses and direct
+paths** without a central broker — when a cloud round-trip is too
+slow, when the broker is a trust boundary, or when there is no
+operator to keep it running.
+
+- **Self-hosted team services.** One binary per member, membership
+  by public key, no DNS or VPN to administer.
+- **Real-time mesh sessions.** Voice, multiplayer, sensors,
+  collaborative tools where region-hopping is the bottleneck.
+- **Embedded device fabrics.** Small fleets talking to each other
+  and to a phone or laptop without opening ports.
+
+The kernel does not pick a use case; the SDK and plugins do.
 
 ## Status
 

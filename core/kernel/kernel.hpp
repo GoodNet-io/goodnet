@@ -27,6 +27,7 @@
 #include "phase.hpp"
 #include "router.hpp"
 
+#include <core/config/config.hpp>
 #include <core/registry/connection.hpp>
 #include <core/registry/handler.hpp>
 #include <core/registry/transport.hpp>
@@ -101,6 +102,11 @@ public:
     void set_limits(const gn_limits_t& limits) noexcept;
     [[nodiscard]] const gn_limits_t& limits() const noexcept { return limits_; }
 
+    /// Kernel-owned Config instance per `host-api.md` §2
+    /// (`config_get_*`). Plugins reach it through the host_api thunks.
+    [[nodiscard]] Config& config() noexcept { return config_; }
+    [[nodiscard]] const Config& config() const noexcept { return config_; }
+
 private:
     void                      fire(Phase prev, Phase next);
 
@@ -121,6 +127,7 @@ private:
 
     std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
     gn_limits_t                           limits_{};
+    Config                                config_;
 };
 
 } // namespace gn::core
