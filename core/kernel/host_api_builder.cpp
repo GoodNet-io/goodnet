@@ -76,6 +76,25 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     return trans->vtable->disconnect(trans->self, conn);
 }
 
+gn_result_t thunk_query_extension_checked(void* host_ctx,
+                                          const char* name,
+                                          uint32_t version,
+                                          const void** out_vtable) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->extensions().query_extension_checked(
+        name, version, out_vtable);
+}
+
+gn_result_t thunk_register_extension(void* host_ctx,
+                                     const char* name,
+                                     uint32_t version,
+                                     const void* vtable) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->extensions().register_extension(name, version, vtable);
+}
+
 gn_result_t thunk_register_transport(void* host_ctx,
                                      const char* scheme,
                                      const gn_transport_vtable_t* vtable,
@@ -258,6 +277,9 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.register_transport    = &thunk_register_transport;
     a.unregister_transport  = &thunk_unregister_transport;
+
+    a.query_extension_checked = &thunk_query_extension_checked;
+    a.register_extension      = &thunk_register_extension;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;
