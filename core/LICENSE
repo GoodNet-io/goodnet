@@ -1,3 +1,50 @@
+GoodNet Kernel — GPL-2.0 with Linking Exception
+================================================
+
+This kernel is licensed under the GNU General Public License v2.0 with
+the following Linking Exception. The exception is part of the licence
+under which the kernel is distributed; the GPL-2.0 text follows below.
+
+Copyright (c) 2026 GoodNet Contributors.
+
+
+GoodNet Kernel Linking Exception
+--------------------------------
+
+Linking this kernel statically or dynamically with a plugin module that
+interfaces with the kernel solely through the stable C ABI defined in
+the SDK — that is, through the `gn_plugin_descriptor` symbol, the entry
+points (`gn_plugin_sdk_version`, `gn_plugin_init`, `gn_plugin_register`,
+`gn_plugin_unregister`, `gn_plugin_shutdown`), and the vtable types
+declared in public `sdk/` headers — does not by itself cause the
+resulting executable to be a derivative work of this kernel.
+
+As a special exception, the copyright holders grant you permission to
+link a plugin module with this kernel — irrespective of the plugin's
+own license, statically or dynamically — and to copy and distribute the
+resulting executable under terms of your choice, provided that:
+
+  (a) the plugin interfaces with the kernel only through the stable C
+      ABI described above and does not directly reference internal
+      kernel symbols, headers under `core/`, or implementation details
+      of the SDK;
+
+  (b) you satisfy, for the plugin and for every other component
+      linked into the executable, the license terms of that component;
+
+  (c) any modifications to the kernel itself (sources under `core/`,
+      and the mandatory mesh-framing implementation under
+      `plugins/protocols/gnet/`) remain governed by the GNU General
+      Public License v2.0.
+
+This exception does NOT apply to derived works of the kernel itself.
+A modified kernel must be redistributed under GPL-2.0; the exception
+releases only the plugin boundary from copyleft propagation.
+
+
+GNU General Public License v2.0
+-------------------------------
+
                     GNU GENERAL PUBLIC LICENSE
                        Version 2, June 1991
 

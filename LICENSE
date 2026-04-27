@@ -1,56 +1,81 @@
 GoodNet — Licensing
 ====================
 
-The platform consists of the kernel and the SDK. They live under a split
-license model so that the kernel stays free in the strong sense while the
-SDK — the boundary plugin authors compile against — remains permissive.
-Plugins are independent builds and carry their own licenses; each plugin
-directory has its own LICENSE file.
+The platform consists of the kernel and the SDK. The kernel is GPL-2.0
+with a Linking Exception that releases the plugin boundary from
+copyleft propagation; the SDK is MIT. Plugins are independent builds
+and may carry any license — including proprietary — provided they
+interface with the kernel only through the stable C ABI defined in the
+SDK.
 
 
 Platform Components
 -------------------
 
-  Kernel  (core/)                    GNU General Public License v2.0 (GPL-2.0)
+  Kernel  (core/, plugins/protocols/gnet/)
+                                     GNU GPL-2.0 with Linking Exception
                                      →  core/LICENSE
+                                     →  plugins/protocols/gnet/LICENSE
 
   SDK     (sdk/, public headers)     MIT License
                                      →  sdk/LICENSE
 
 
+Linking Exception (summary)
+---------------------------
+
+The full text lives in `core/LICENSE` and is part of the kernel's
+license. In one sentence:
+
+  Plugins that interface with the kernel only through `gn_plugin_descriptor`,
+  the five plugin entry points, and the vtable types declared in public
+  `sdk/` headers are not derivative works of the kernel — they may be
+  licensed under any terms (MIT, BSD, Apache 2.0, proprietary, …) and
+  linked statically or dynamically.
+
+What the exception does NOT cover:
+
+  - Modifications to the kernel itself (sources under `core/` and the
+    mandatory mesh-framing under `plugins/protocols/gnet/`). A modified
+    kernel must be redistributed under GPL-2.0.
+  - Plugins that reach past the SDK and reference internal kernel
+    symbols or `core/` headers directly. Such code is a derivative
+    work of the kernel and inherits GPL-2.0.
+
+The rationale: the kernel itself stays free in the strong sense, while
+the plugin layer is open to any business model — open-source ecosystem,
+commercial dual-license, embedded proprietary differentiation. This is
+the OpenJDK GPL-with-Classpath-Exception model, written explicitly so
+the legal status that Linux has lived with as a "gray area" for thirty
+years is unambiguous here.
+
+
 Plugins
 -------
 
-Plugins are independent builds. Each is licensed at the discretion of its
-authors. Two distribution modes exist:
+Plugins are independent builds. Each carries its own LICENSE file in
+its directory. The Linking Exception above means any license is
+permitted, statically or dynamically linked.
 
-  - Dynamic plugins load through the stable C ABI at runtime. The boundary
-    is the SDK (MIT), not GPL kernel internals. Such plugins may carry any
-    license — MIT, BSD, Apache 2.0, proprietary — without triggering the
-    kernel's copyleft.
-
-  - Static plugins (currently: plugins/protocols/gnet, the mandatory
-    mesh-framing protocol) are compiled into the kernel binary. Their
-    source must be GPL-compatible — MIT and BSD qualify; Apache 2.0 is
-    NOT compatible with GPL-2.0 and must not be used here.
-
-In-tree convention for bundled plugins:
+In-tree convention for the bundled plugins shipped in this repository:
 
   - Reference / template / debug providers
     (null, raw, ...)               .. MIT License
   - Common transports
     (tcp, udp)                     .. MIT License
-  - Mandatory mesh framing
-    (gnet, statically linked)      .. MIT License (GPL-compatible)
   - Real implementations with
     original work and no obvious
     upstream analogues
     (noise, ipc, heartbeat, ...)   .. Apache 2.0 License
 
 These are conventions for the bundled tree. Out-of-tree plugins choose
-freely within the constraints above.
+freely.
 
-To discover the license of a specific plugin, consult its own LICENSE file.
+The mandatory mesh-framing plugin under `plugins/protocols/gnet/` is
+GPL-2.0 with the same Linking Exception as the kernel: it is
+structurally part of the kernel binary and shares the kernel's
+copyleft, while still permitting independent plugins to link
+statically through the SDK.
 
 
 Copyright (c) 2026 GoodNet Contributors (kernel + SDK).
