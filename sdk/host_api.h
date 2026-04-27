@@ -173,6 +173,54 @@ typedef struct host_api_s {
                 gn_log_level_t level,
                 const char* fmt, ...);
 
+    /* ── Transport-side notifications ──────────────────────────────────── */
+
+    /**
+     * @brief Transport announces a fully-established connection.
+     *
+     * Allocates a fresh `gn_conn_id_t` inside the kernel and returns
+     * it through @p out_conn. The transport stores the id and uses
+     * it on every subsequent send / receive / disconnect call.
+     *
+     * @param remote_pk Peer's Ed25519 public key (post-Noise) or
+     *                  all-zero before security completes.
+     * @param uri       Connection URI as parsed by the transport.
+     *                  Borrowed for the call.
+     * @param scheme    Transport scheme (`"tcp"`, `"udp"`, …).
+     * @param trust     TrustClass computed from observable connection
+     *                  properties per `transport.md` §3.
+     * @param out_conn  Kernel-allocated connection id on success.
+     */
+    gn_result_t (*notify_connect)(void* host_ctx,
+                                  const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
+                                  const char* uri,
+                                  const char* scheme,
+                                  gn_trust_class_t trust,
+                                  gn_conn_id_t* out_conn);
+
+    /**
+     * @brief Transport pushes received bytes for kernel processing.
+     *
+     * The kernel runs the bytes through security decrypt → protocol
+     * deframe → router dispatch. `bytes` is `@borrowed` for the
+     * duration of the call; the kernel copies before returning if
+     * it needs to retain anything.
+     */
+    gn_result_t (*notify_inbound_bytes)(void* host_ctx,
+                                        gn_conn_id_t conn,
+                                        const uint8_t* bytes,
+                                        size_t size);
+
+    /**
+     * @brief Transport announces a connection close.
+     *
+     * @param reason `GN_OK` for a clean close; otherwise the
+     *               `gn_result_t` value that triggered teardown.
+     */
+    gn_result_t (*notify_disconnect)(void* host_ctx,
+                                     gn_conn_id_t conn,
+                                     gn_result_t reason);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];
