@@ -16,9 +16,9 @@ and rekey semantics. Three Noise patterns are declared:
 
 | Pattern | When used | Identity |
 |---|---|---|
-| `Noise_XX_25519_ChaChaPoly_BLAKE2s` | unknown peer, mutual auth | both sides Ed25519 keys |
-| `Noise_IK_25519_ChaChaPoly_BLAKE2s` | initiator knows responder pk | both sides Ed25519, initiator preshared responder pk |
-| `Noise_NK_25519_ChaChaPoly_BLAKE2s` | initiator anonymous | responder Ed25519 key only |
+| `Noise_XX_25519_ChaChaPoly_BLAKE2b` | unknown peer, mutual auth | both sides Ed25519 keys |
+| `Noise_IK_25519_ChaChaPoly_BLAKE2b` | initiator knows responder pk | both sides Ed25519, initiator preshared responder pk |
+| `Noise_NK_25519_ChaChaPoly_BLAKE2b` | initiator anonymous | responder Ed25519 key only |
 
 The protocol name string is the **on-wire** name; the implementation
 **must** match it exactly. A name string that disagrees with the
@@ -29,19 +29,30 @@ Noise stack will interoperate.
 
 ## 2. Hash function
 
-`BLAKE2s` (256-bit output) is mandatory across all three patterns.
-The implementation **must**:
+`BLAKE2b` (512-bit output, `HASHLEN = 64`) is mandatory across all three
+patterns. The implementation **must**:
 
 1. Match the protocol-name string (§1).
-2. Produce 32-byte digests (`HASHLEN = 32`).
+2. Produce 64-byte digests (`HASHLEN = 64`).
 3. Pass the Noise reference test vectors for
-   `Noise_XX_25519_ChaChaPoly_BLAKE2s` — both included in the
-   property-test suite.
+   `Noise_XX_25519_ChaChaPoly_BLAKE2b` and
+   `Noise_IK_25519_ChaChaPoly_BLAKE2b` — included in the property-test
+   suite.
 
-`HASHLEN = 32` is asserted at compile time. If a future protocol
-switches to BLAKE2b-512, that creates a new suffix string (`_BLAKE2b`)
-and a new plugin variant (e.g. `noise-blake2b-v1`); existing peers
-continue on the BLAKE2s suite during the transition.
+The choice of BLAKE2b over BLAKE2s comes from libsodium availability:
+`crypto_generichash_blake2b` is the canonical primitive in our
+dependency stack, BLAKE2s is not exposed. BLAKE2b is faster than BLAKE2s
+on 64-bit platforms and provides a strictly larger security margin.
+
+`HASHLEN = 64` is asserted at compile time. The cipher key size for the
+ChaCha20-Poly1305 cipher is fixed at 32 bytes (`GN_CIPHER_KEY_BYTES`);
+when the symmetric state derives a cipher key from a 64-byte chaining
+material via `MixKey`, the first 32 bytes are taken per Noise spec §5.2.
+
+The exposed `gn_handshake_keys_t::handshake_hash` field carries 32 bytes
+for channel binding — the SDK ABI uses `GN_HASH_BYTES = 32` here, and
+the plugin truncates the 64-byte `h` to its first 32 bytes on export.
+Channel binding security is preserved (256-bit collision-resistance).
 
 ---
 

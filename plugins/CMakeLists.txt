@@ -26,3 +26,7 @@
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/null/CMakeLists.txt")
     add_subdirectory(security/null)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/noise/CMakeLists.txt")
+    add_subdirectory(security/noise)
+endif()
