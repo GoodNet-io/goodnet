@@ -32,6 +32,7 @@
 #include <core/registry/extension.hpp>
 #include <core/registry/handler.hpp>
 #include <core/registry/transport.hpp>
+#include <core/signal/signal_channel.hpp>
 
 namespace gn::core {
 
@@ -109,6 +110,13 @@ public:
     [[nodiscard]] Config& config() noexcept { return config_; }
     [[nodiscard]] const Config& config() const noexcept { return config_; }
 
+    /// Pub/sub channel that fires after every successful
+    /// `Config::load_json` so plugins refresh their cached values.
+    /// Wired by the surrounding orchestrator at config-reload time.
+    [[nodiscard]] signal::SignalChannel<signal::Empty>& on_config_reload() noexcept {
+        return on_config_reload_;
+    }
+
 private:
     void                      fire(Phase prev, Phase next);
 
@@ -131,6 +139,8 @@ private:
     std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
     gn_limits_t                           limits_{};
     Config                                config_;
+
+    signal::SignalChannel<signal::Empty>  on_config_reload_;
 };
 
 } // namespace gn::core
