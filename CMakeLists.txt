@@ -22,6 +22,9 @@ add_compile_options(
     -Wno-unused-parameter
 )
 
+# Plugin-author build helper. Defines `add_plugin(NAME sources...)`.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
+
 # ── Options ──────────────────────────────────────────────────────────────────
 # This build covers the platform — kernel + SDK + the mandatory mesh-framing
 # protocol (GNET). Other plugins are independent projects that depend on the

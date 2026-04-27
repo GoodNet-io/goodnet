@@ -2,18 +2,28 @@
 # its own license, and — in production — its own Nix derivation. The
 # kernel binary loads them at runtime through the stable C ABI.
 #
-# This file is iterated only when the root option GOODNET_BUILD_BUNDLED_PLUGINS
-# is ON, as a development convenience. Outside that flag, plugins build
-# standalone via:
+# Bundled in-tree plugins under this directory use the `add_plugin()`
+# macro from `cmake/AddPlugin.cmake` (auto-included from the root
+# CMakeLists). A typical bundled plugin's CMakeLists is one line:
+#
+#     add_plugin(my_handler my_handler.cpp helpers.cpp)
+#
+# The macro covers SHARED-by-default with PREFIX/visibility/warnings/
+# size-flags/SDK link, and switches to OBJECT under
+# `-DGOODNET_STATIC_PLUGINS=ON` for embedded or test builds.
+#
+# This file is iterated only when the root option
+# `GOODNET_BUILD_BUNDLED_PLUGINS` is ON, as a development convenience.
+# Outside that flag, plugins build standalone via:
 #
 #     find_package(GoodNet REQUIRED)
-#     # ... implements ITransport / IHandler / ISecurityProvider / etc.
+#     # ... include plugins/helper.cmake or define the target manually
 #
 # The mandatory mesh-framing plugin (plugins/protocols/gnet) is added
-# directly from the root CMakeLists because the kernel statically links
-# it and ships it as part of the platform binary.
+# directly from the root CMakeLists; it links statically into the
+# kernel binary and is not a `dlopen`-able plugin.
 
-# Subdirectories are registered as bundled plugins land:
+# Subdirectories registered as bundled plugins land:
 #
 #   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/tcp/CMakeLists.txt")
 #       add_subdirectory(transports/tcp)
