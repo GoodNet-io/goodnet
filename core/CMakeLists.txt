@@ -11,6 +11,7 @@ add_library(goodnet_kernel STATIC
     kernel/kernel.cpp
     kernel/connection_context.cpp
     kernel/host_api_builder.cpp
+    kernel/service_resolver.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 
