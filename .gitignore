@@ -1,0 +1,74 @@
+# Inverted gitignore: ignore everything, whitelist what we need.
+# Directories must be un-ignored for git to traverse into them.
+*
+!*/
+
+# Top-level project files
+!.gitignore
+!.envrc
+!flake.nix
+!flake.lock
+!CMakeLists.txt
+!LICENSE
+!README.md
+
+# Build / output dirs (re-block after top-level rules)
+build/
+build-*/
+result
+result-*
+.direnv/
+.cache/
+
+# CMake helpers
+!cmake/*.cmake
+!cmake/*.cmake.in
+
+# Nix helpers (per-plugin Nix derivations)
+!nix/*.nix
+!nix/*.sh
+
+# Docs
+!docs/**/*.md
+!docs/Doxyfile
+
+# CI
+!.github/**/*.yml
+!.github/**/*.yaml
+
+# SDK (header-only)
+!sdk/**/*.h
+!sdk/**/*.hpp
+!sdk/**/CMakeLists.txt
+!sdk/LICENSE
+
+# Kernel
+!core/**/*.cpp
+!core/**/*.hpp
+!core/**/*.h
+!core/**/*.in
+!core/**/CMakeLists.txt
+!core/LICENSE
+
+# Plugins (in-tree development convenience)
+!plugins/**/*.cpp
+!plugins/**/*.hpp
+!plugins/**/*.h
+!plugins/**/*.json
+!plugins/**/CMakeLists.txt
+!plugins/**/default.nix
+!plugins/**/LICENSE
+!plugins/**/README.md
+
+# Tests
+!tests/**/*.cpp
+!tests/**/*.hpp
+!tests/**/*.conf
+!tests/**/CMakeLists.txt
+
+# Examples
+!examples/**/*.cpp
+!examples/**/*.hpp
+!examples/**/*.md
+!examples/**/CMakeLists.txt
+!examples/**/LICENSE

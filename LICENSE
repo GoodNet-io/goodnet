@@ -1,0 +1,38 @@
+GoodNet — Licensing
+====================
+
+The platform consists of the kernel and the SDK. They live under a single
+license model. Plugins are independent builds against the SDK and carry
+their own licenses; each plugin directory has its own LICENSE file.
+
+
+Platform Components
+-------------------
+
+  Kernel  (core/)                    GNU General Public License v2.0 (GPL-2.0)
+                                     →  core/LICENSE
+
+  SDK     (sdk/, public headers)     MIT License
+                                     →  sdk/LICENSE
+
+
+Plugins
+-------
+
+Plugins are independent builds. Each is licensed at the discretion of its
+authors. Common cases:
+
+  - Open MIT plugins ship with the upstream tree under plugins/ as a
+    convenience for development; they remain independently licensed.
+  - Closed-source or commercial plugins live in their own repositories
+    and link against the installed SDK.
+
+Loading a plugin at runtime through the stable C ABI does NOT trigger
+GPL copyleft on the kernel side: the boundary between kernel and plugin
+is the SDK, which is MIT and explicitly intended for cross-license use.
+
+To discover the license of a specific plugin, consult its own LICENSE file.
+
+
+Copyright (c) 2026 GoodNet contributors (kernel + SDK).
+Plugins copyright their respective authors.
