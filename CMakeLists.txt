@@ -22,6 +22,16 @@ add_compile_options(
     -Wno-unused-parameter
 )
 
+# spdlog compile-time level ceiling. Release strips TRACE and DEBUG
+# call sites entirely; Debug compiles every level. The ceiling is
+# read by the SPDLOG_LOGGER_* macros at the call site, so the
+# stripped levels do not even produce dead branches in the binary.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_definitions(SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_INFO)
+else()
+    add_compile_definitions(SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE)
+endif()
+
 # Plugin-author build helper. Defines `add_plugin(NAME sources...)`.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
 
