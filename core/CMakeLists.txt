@@ -7,6 +7,7 @@ add_library(goodnet_kernel STATIC
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/connection_context.cpp
+    kernel/host_api_builder.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 

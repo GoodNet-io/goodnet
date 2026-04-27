@@ -20,7 +20,15 @@
 #include <mutex>
 #include <vector>
 
+#include <sdk/cpp/protocol_layer.hpp>
+#include <sdk/limits.h>
+
+#include "identity_set.hpp"
 #include "phase.hpp"
+#include "router.hpp"
+
+#include <core/registry/connection.hpp>
+#include <core/registry/handler.hpp>
 
 namespace gn::core {
 
@@ -74,6 +82,23 @@ public:
     /// Number of currently live observers; useful for tests.
     [[nodiscard]] std::size_t observer_count() const;
 
+    /* ── Data-path components (owned by the kernel) ────────────────── */
+
+    [[nodiscard]] LocalIdentitySet&    identities()  noexcept { return identities_; }
+    [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
+    [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
+    [[nodiscard]] Router&              router()      noexcept { return router_; }
+
+    /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
+    /// Set once before `Wire` phase; cannot be replaced afterwards.
+    void set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept;
+    [[nodiscard]] ::gn::IProtocolLayer* protocol_layer() noexcept { return protocol_layer_.get(); }
+
+    /// Read-only resource bounds per `limits.md` §2. Loaded once at
+    /// startup; subsequent reload requires kernel restart.
+    void set_limits(const gn_limits_t& limits) noexcept;
+    [[nodiscard]] const gn_limits_t& limits() const noexcept { return limits_; }
+
 private:
     void                      fire(Phase prev, Phase next);
 
@@ -82,6 +107,17 @@ private:
 
     mutable std::mutex                            observers_mu_;
     std::vector<std::weak_ptr<IPhaseObserver>>    observers_;
+
+    /// Data-path components live for the kernel's lifetime. Order of
+    /// declaration matches construction order — Router depends on
+    /// identities_ and handlers_, so they precede it.
+    LocalIdentitySet     identities_;
+    HandlerRegistry      handlers_;
+    ConnectionRegistry   connections_;
+    Router               router_{identities_, handlers_};
+
+    std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
+    gn_limits_t                           limits_{};
 };
 
 } // namespace gn::core
