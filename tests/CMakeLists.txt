@@ -6,3 +6,4 @@
 
 # Subdirectories registered as suites land.
 add_subdirectory(unit)
+add_subdirectory(integration)
