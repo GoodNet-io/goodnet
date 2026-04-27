@@ -43,9 +43,24 @@ target_link_libraries(goodnet_unit_tests
         GTest::gtest_main
         rapidcheck
         rapidcheck_gtest
+        ${CMAKE_DL_LIBS}
 )
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
+
+# The NullProvider plugin test resolves entry symbols via dlopen at
+# runtime — the .so must exist in the build tree before ctest runs.
+# Adding the plugin target as a build dependency forces ninja to
+# produce it before linking the test executable, and the path is
+# threaded through a compile-time define so the test file knows where
+# to look.
+if(TARGET goodnet_security_null)
+    add_dependencies(goodnet_unit_tests goodnet_security_null)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_NULL_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_null>\""
+    )
+endif()
 
 gtest_discover_tests(goodnet_unit_tests
     DISCOVERY_TIMEOUT 30
