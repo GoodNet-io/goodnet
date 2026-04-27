@@ -147,7 +147,13 @@ RC_GTEST_PROP(GnetProtocolProperty,
     RC_ASSERT(std::memcmp(got.sender_pk,   alice_pk.data(), GN_PUBLIC_KEY_BYTES) == 0);
     RC_ASSERT(std::memcmp(got.receiver_pk, bob_pk.data(),   GN_PUBLIC_KEY_BYTES) == 0);
     RC_ASSERT(got.payload_size == payload.size());
-    RC_ASSERT(std::memcmp(got.payload, payload.data(), payload.size()) == 0);
+    /// memcmp demands non-null pointers regardless of count; an empty
+    /// payload may come back with a null `payload` pointer. Skip the
+    /// byte-compare when there are no bytes to compare.
+    if (!payload.empty()) {
+        RC_ASSERT(std::memcmp(got.payload, payload.data(),
+                                payload.size()) == 0);
+    }
 }
 
 /* ── Round-trip property: broadcast mode ─────────────────────────────────── */
@@ -182,7 +188,13 @@ RC_GTEST_PROP(GnetProtocolProperty,
     RC_ASSERT(std::memcmp(got.sender_pk, alice_pk.data(), GN_PUBLIC_KEY_BYTES) == 0);
     RC_ASSERT(gn_pk_is_zero(got.receiver_pk) == 1);
     RC_ASSERT(got.payload_size == payload.size());
-    RC_ASSERT(std::memcmp(got.payload, payload.data(), payload.size()) == 0);
+    /// memcmp demands non-null pointers regardless of count; an empty
+    /// payload may come back with a null `payload` pointer. Skip the
+    /// byte-compare when there are no bytes to compare.
+    if (!payload.empty()) {
+        RC_ASSERT(std::memcmp(got.payload, payload.data(),
+                                payload.size()) == 0);
+    }
 }
 
 /* ── Round-trip property: relay-transit mode ─────────────────────────────── */
@@ -222,7 +234,13 @@ RC_GTEST_PROP(GnetProtocolProperty,
     RC_ASSERT(std::memcmp(got.sender_pk,   origin_pk.data(), GN_PUBLIC_KEY_BYTES) == 0);
     RC_ASSERT(std::memcmp(got.receiver_pk, bob_pk.data(),    GN_PUBLIC_KEY_BYTES) == 0);
     RC_ASSERT(got.payload_size == payload.size());
-    RC_ASSERT(std::memcmp(got.payload, payload.data(), payload.size()) == 0);
+    /// memcmp demands non-null pointers regardless of count; an empty
+    /// payload may come back with a null `payload` pointer. Skip the
+    /// byte-compare when there are no bytes to compare.
+    if (!payload.empty()) {
+        RC_ASSERT(std::memcmp(got.payload, payload.data(),
+                                payload.size()) == 0);
+    }
 }
 
 /* ── Wire shape: direct framing has no PK fields ─────────────────────────── */

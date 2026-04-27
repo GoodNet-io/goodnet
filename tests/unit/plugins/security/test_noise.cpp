@@ -100,10 +100,10 @@ TEST(NoiseHmac, KeyChangeChangesOutput) {
     const auto key1 = bytes_of("key-one");
     const auto key2 = bytes_of("key-two");
     const auto msg  = bytes_of("same message");
-    EXPECT_NE(std::vector<std::uint8_t>(hmac_blake2b(key1, msg).begin(),
-                                          hmac_blake2b(key1, msg).end()),
-              std::vector<std::uint8_t>(hmac_blake2b(key2, msg).begin(),
-                                          hmac_blake2b(key2, msg).end()));
+    auto h1 = hmac_blake2b(key1, msg);
+    auto h2 = hmac_blake2b(key2, msg);
+    EXPECT_NE(std::vector<std::uint8_t>(h1.begin(), h1.end()),
+              std::vector<std::uint8_t>(h2.begin(), h2.end()));
 }
 
 TEST(NoiseHmac, SplitInputMatchesSingle) {
