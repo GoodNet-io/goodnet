@@ -42,7 +42,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
 # development convenience; production builds package each plugin separately.
 option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               ON)
-option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" OFF)
+option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
 option(GOODNET_USE_LTO                "Link-time optimization (Release)" OFF)
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
