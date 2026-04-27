@@ -3,6 +3,10 @@
 add_library(goodnet_kernel STATIC
     util/placeholder.cpp
     config/config.cpp
+    identity/keypair.cpp
+    identity/derive.cpp
+    identity/attestation.cpp
+    identity/node_identity.cpp
     registry/connection.cpp
     registry/extension.cpp
     registry/handler.cpp
