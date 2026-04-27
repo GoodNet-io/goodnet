@@ -5,3 +5,4 @@
 #   property/      — rapidcheck-driven invariants
 
 # Subdirectories registered as suites land.
+add_subdirectory(unit)
