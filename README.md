@@ -115,10 +115,12 @@ Code follows contracts; contracts move first.
 
 ## License
 
-Kernel (`core/`) is GPL-2.0; SDK (`sdk/`) is MIT. Plugins are independent
-builds — each carries its own LICENSE in its directory. Bundled-tree
-convention: reference/template/debug plugins and common transports are
-MIT; original real implementations with no upstream analogue are Apache
-2.0; statically-linked plugins (the mandatory mesh-framing layer) stay
-GPL-compatible.
-See `LICENSE` for the full breakdown.
+Kernel (`core/` and `plugins/protocols/gnet/`) is GPL-2.0 with a
+**Linking Exception** that releases the plugin boundary from copyleft
+propagation: a plugin that interfaces with the kernel only through the
+stable C ABI in `sdk/` may carry any license — MIT, BSD, Apache 2.0,
+proprietary — and link statically or dynamically. SDK (`sdk/`) is MIT.
+Plugins are independent builds; each carries its own LICENSE file.
+Bundled-tree convention: templates and common transports are MIT,
+original implementations with no upstream analogue are Apache 2.0.
+See `LICENSE` for the full text and rationale.
