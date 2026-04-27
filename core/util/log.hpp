@@ -24,12 +24,42 @@
 
 namespace gn::log {
 
+/// Build-aware default pattern.
+///
+/// Release builds emit a tight one-line format — timestamp, level,
+/// message — because the source-location field is noise for INFO and
+/// above on production stderr. Debug builds tack the source-location
+/// `[file:line]` after the level so the call site is visible during
+/// diagnosis.
+///
+/// The choice is fixed at compile time via `NDEBUG`. Operators who
+/// want a different shape call `set_pattern` after `init()`.
+#if defined(NDEBUG)
+inline constexpr const char* kDefaultPattern =
+    "%Y-%m-%dT%H:%M:%S.%e %^%l%$ %v";
+#else
+inline constexpr const char* kDefaultPattern =
+    "%Y-%m-%dT%H:%M:%S.%e %^%l%$ [%s:%#] %v";
+#endif
+
+/// Build-aware default runtime level. Release defaults to INFO so
+/// the binary does not emit DEBUG even if compile-time filtering
+/// kept the call site (e.g. when a plugin compiled in Debug links
+/// against a Release kernel).
+#if defined(NDEBUG)
+inline constexpr ::spdlog::level::level_enum kDefaultLevel = ::spdlog::level::info;
+#else
+inline constexpr ::spdlog::level::level_enum kDefaultLevel = ::spdlog::level::debug;
+#endif
+
 /// Returns the kernel's structured logger. First call constructs a
-/// default stderr logger; subsequent calls reuse the same instance.
+/// default stderr logger with the build-aware pattern and runtime
+/// level; subsequent calls reuse the same instance.
 inline ::spdlog::logger& kernel() {
     static auto logger = []{
         auto l = ::spdlog::default_logger();
-        l->set_pattern("%Y-%m-%dT%H:%M:%S.%e %^%l%$ [%s:%#] %v");
+        l->set_pattern(kDefaultPattern);
+        l->set_level(kDefaultLevel);
         return l;
     }();
     return *logger;
