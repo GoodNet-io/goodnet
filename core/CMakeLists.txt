@@ -2,6 +2,8 @@
 
 add_library(goodnet_kernel STATIC
     util/placeholder.cpp
+    registry/connection.cpp
+    registry/handler.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 
