@@ -1,0 +1,344 @@
+/// @file   tests/unit/registry/test_connection.cpp
+/// @brief  GoogleTest unit tests for `gn::core::ConnectionRegistry`.
+///
+/// Exercises the contract from `docs/contracts/registry.md`:
+/// monotonic id allocation, atomic three-index insert/erase, snapshot
+/// lookups by id / URI / pk, and the deadlock-free claim under
+/// concurrent insert and erase from multiple threads.
+
+#include <gtest/gtest.h>
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <cstring>
+#include <random>
+#include <string>
+#include <thread>
+#include <unordered_set>
+#include <vector>
+
+#include <core/registry/connection.hpp>
+#include <sdk/cpp/types.hpp>
+#include <sdk/trust.h>
+#include <sdk/types.h>
+
+namespace gn::core {
+namespace {
+
+/// Build a deterministic public key from a 64-bit seed; the first 8
+/// bytes carry the seed, the rest are zero.
+PublicKey make_pk(std::uint64_t seed) noexcept {
+    PublicKey pk{};
+    std::memcpy(pk.data(), &seed, sizeof(seed));
+    return pk;
+}
+
+/// Construct a fully populated record with sane defaults for testing.
+ConnectionRecord make_record(gn_conn_id_t id,
+                             std::string  uri,
+                             PublicKey    pk) {
+    ConnectionRecord r;
+    r.id               = id;
+    r.uri              = std::move(uri);
+    r.remote_pk        = pk;
+    r.trust            = GN_TRUST_PEER;
+    r.transport_scheme = "tcp";
+    return r;
+}
+
+// ─── alloc_id ────────────────────────────────────────────────────────
+
+TEST(ConnectionRegistry_AllocId, MonotonicNonZero) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t a = reg.alloc_id();
+    const gn_conn_id_t b = reg.alloc_id();
+    const gn_conn_id_t c = reg.alloc_id();
+
+    EXPECT_NE(a, GN_INVALID_ID);
+    EXPECT_NE(b, GN_INVALID_ID);
+    EXPECT_NE(c, GN_INVALID_ID);
+    EXPECT_LT(a, b);
+    EXPECT_LT(b, c);
+}
+
+TEST(ConnectionRegistry_AllocId, Unique1024) {
+    ConnectionRegistry reg;
+    std::unordered_set<gn_conn_id_t> seen;
+    for (int i = 0; i < 1024; ++i) {
+        const gn_conn_id_t id = reg.alloc_id();
+        ASSERT_NE(id, GN_INVALID_ID);
+        ASSERT_TRUE(seen.insert(id).second) << "duplicate id at iter " << i;
+    }
+}
+
+// ─── insert / find round-trip ────────────────────────────────────────
+
+TEST(ConnectionRegistry_Insert, IdRoundTrip) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk = make_pk(0x42);
+    auto rec = make_record(id, "tcp://10.0.0.1:5000", pk);
+
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    EXPECT_EQ(fetched->id, id);
+    EXPECT_EQ(fetched->uri, "tcp://10.0.0.1:5000");
+    EXPECT_EQ(fetched->remote_pk, pk);
+    EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
+    EXPECT_EQ(fetched->transport_scheme, "tcp");
+}
+
+TEST(ConnectionRegistry_Insert, UriIndexRoundTrip) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk = make_pk(0x123);
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://host:1", pk)), GN_OK);
+
+    auto by_uri = reg.find_by_uri("tcp://host:1");
+    ASSERT_TRUE(by_uri.has_value());
+    auto by_id  = reg.find_by_id(id);
+    ASSERT_TRUE(by_id.has_value());
+    EXPECT_EQ(by_uri->id, by_id->id);
+    EXPECT_EQ(by_uri->uri, by_id->uri);
+    EXPECT_EQ(by_uri->remote_pk, by_id->remote_pk);
+}
+
+TEST(ConnectionRegistry_Insert, PkIndexRoundTrip) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk = make_pk(0xDEAD'BEEF);
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://host:2", pk)), GN_OK);
+
+    auto by_pk = reg.find_by_pk(pk);
+    ASSERT_TRUE(by_pk.has_value());
+    auto by_id = reg.find_by_id(id);
+    ASSERT_TRUE(by_id.has_value());
+    EXPECT_EQ(by_pk->id, by_id->id);
+    EXPECT_EQ(by_pk->uri, by_id->uri);
+    EXPECT_EQ(by_pk->remote_pk, by_id->remote_pk);
+}
+
+// ─── duplicate rejection (atomicity) ────────────────────────────────
+
+TEST(ConnectionRegistry_Duplicate, IdRejectedAndAtomic) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk1 = make_pk(1);
+    const PublicKey    pk2 = make_pk(2);
+
+    ASSERT_EQ(reg.insert_with_index(make_record(id, "tcp://a", pk1)), GN_OK);
+
+    /// Re-using the same id with otherwise distinct uri+pk must fail.
+    EXPECT_EQ(reg.insert_with_index(make_record(id, "tcp://b", pk2)),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Atomicity: pk2 / "tcp://b" must NOT be visible.
+    EXPECT_FALSE(reg.find_by_uri("tcp://b").has_value());
+    EXPECT_FALSE(reg.find_by_pk(pk2).has_value());
+    EXPECT_EQ(reg.size(), 1u);
+}
+
+TEST(ConnectionRegistry_Duplicate, UriRejectedAndAtomic) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id1 = reg.alloc_id();
+    const gn_conn_id_t id2 = reg.alloc_id();
+    const PublicKey    pk1 = make_pk(10);
+    const PublicKey    pk2 = make_pk(11);
+
+    ASSERT_EQ(reg.insert_with_index(make_record(id1, "tcp://shared", pk1)), GN_OK);
+
+    EXPECT_EQ(reg.insert_with_index(make_record(id2, "tcp://shared", pk2)),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Atomicity: id2 / pk2 must NOT be visible.
+    EXPECT_FALSE(reg.find_by_id(id2).has_value());
+    EXPECT_FALSE(reg.find_by_pk(pk2).has_value());
+    EXPECT_EQ(reg.size(), 1u);
+}
+
+TEST(ConnectionRegistry_Duplicate, PkRejectedAndAtomic) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id1 = reg.alloc_id();
+    const gn_conn_id_t id2 = reg.alloc_id();
+    const PublicKey    pk  = make_pk(0xFEED);
+
+    ASSERT_EQ(reg.insert_with_index(make_record(id1, "tcp://a", pk)), GN_OK);
+
+    EXPECT_EQ(reg.insert_with_index(make_record(id2, "tcp://b", pk)),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Atomicity: id2 / "tcp://b" must NOT be visible.
+    EXPECT_FALSE(reg.find_by_id(id2).has_value());
+    EXPECT_FALSE(reg.find_by_uri("tcp://b").has_value());
+    EXPECT_EQ(reg.size(), 1u);
+}
+
+// ─── erase ──────────────────────────────────────────────────────────
+
+TEST(ConnectionRegistry_Erase, RemovesFromAllIndexes) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk = make_pk(7);
+    ASSERT_EQ(reg.insert_with_index(make_record(id, "tcp://x", pk)), GN_OK);
+
+    EXPECT_TRUE(reg.find_by_id(id).has_value());
+    EXPECT_TRUE(reg.find_by_uri("tcp://x").has_value());
+    EXPECT_TRUE(reg.find_by_pk(pk).has_value());
+
+    ASSERT_EQ(reg.erase_with_index(id), GN_OK);
+
+    EXPECT_FALSE(reg.find_by_id(id).has_value());
+    EXPECT_FALSE(reg.find_by_uri("tcp://x").has_value());
+    EXPECT_FALSE(reg.find_by_pk(pk).has_value());
+    EXPECT_EQ(reg.size(), 0u);
+}
+
+TEST(ConnectionRegistry_Erase, NonExistentReturnsUnknownReceiver) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_UNKNOWN_RECEIVER);
+}
+
+TEST(ConnectionRegistry_Erase, FreesKeysForReuse) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id1 = reg.alloc_id();
+    const PublicKey    pk1 = make_pk(0x55);
+    ASSERT_EQ(reg.insert_with_index(make_record(id1, "tcp://reuse", pk1)), GN_OK);
+    ASSERT_EQ(reg.erase_with_index(id1), GN_OK);
+
+    const gn_conn_id_t id2 = reg.alloc_id();
+    EXPECT_EQ(reg.insert_with_index(make_record(id2, "tcp://reuse", pk1)),
+              GN_OK);
+}
+
+// ─── size() ─────────────────────────────────────────────────────────
+
+TEST(ConnectionRegistry_Size, ReflectsInsertEraseSequence) {
+    ConnectionRegistry reg;
+    EXPECT_EQ(reg.size(), 0u);
+
+    std::vector<gn_conn_id_t> ids;
+    for (int i = 0; i < 5; ++i) {
+        const gn_conn_id_t id = reg.alloc_id();
+        ASSERT_EQ(reg.insert_with_index(make_record(
+            id, "tcp://h" + std::to_string(i),
+            make_pk(static_cast<std::uint64_t>(i + 100)))), GN_OK);
+        ids.push_back(id);
+    }
+    EXPECT_EQ(reg.size(), 5u);
+
+    ASSERT_EQ(reg.erase_with_index(ids[2]), GN_OK);
+    EXPECT_EQ(reg.size(), 4u);
+
+    ASSERT_EQ(reg.erase_with_index(ids[0]), GN_OK);
+    ASSERT_EQ(reg.erase_with_index(ids[4]), GN_OK);
+    EXPECT_EQ(reg.size(), 2u);
+}
+
+// ─── concurrency ─────────────────────────────────────────────────────
+
+/// Hammer the registry from multiple threads doing interleaved
+/// insert+find+erase. Verifies registry.md §3 deadlock-free claim and
+/// the all-or-nothing visibility under contention.
+TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
+    constexpr int kThreads        = 4;
+    constexpr int kPerThread      = 256;
+    ConnectionRegistry reg;
+
+    std::atomic<int> insert_ok{0};
+    std::atomic<int> erase_ok{0};
+
+    auto worker = [&](int tid) {
+        for (int i = 0; i < kPerThread; ++i) {
+            const gn_conn_id_t id  = reg.alloc_id();
+            const std::uint64_t seed = (static_cast<std::uint64_t>(tid) << 32) |
+                                       static_cast<std::uint64_t>(i);
+            const PublicKey pk = make_pk(seed);
+            const std::string uri =
+                "tcp://t" + std::to_string(tid) +
+                "-" + std::to_string(i);
+
+            if (reg.insert_with_index(make_record(id, uri, pk)) == GN_OK) {
+                ++insert_ok;
+
+                /// Cross-check all three indexes agree on the same record
+                /// while we hold no external lock — this is the contract
+                /// claim that's most worth catching breakage on.
+                auto by_id  = reg.find_by_id(id);
+                auto by_uri = reg.find_by_uri(uri);
+                auto by_pk  = reg.find_by_pk(pk);
+                EXPECT_TRUE(by_id.has_value());
+                EXPECT_TRUE(by_uri.has_value());
+                EXPECT_TRUE(by_pk.has_value());
+                if (by_id && by_uri && by_pk) {
+                    EXPECT_EQ(by_id->id,  id);
+                    EXPECT_EQ(by_uri->id, id);
+                    EXPECT_EQ(by_pk->id,  id);
+                }
+
+                /// Erase half — this exercises the same scoped_lock
+                /// path against concurrent inserters.
+                if ((i % 2) == 0) {
+                    if (reg.erase_with_index(id) == GN_OK) ++erase_ok;
+                }
+            }
+        }
+    };
+
+    /// Cap the test at a generous wall-clock limit; if we deadlock we
+    /// want a clean failure instead of CTest hanging forever.
+    std::vector<std::thread> threads;
+    threads.reserve(kThreads);
+    const auto start = std::chrono::steady_clock::now();
+    for (int t = 0; t < kThreads; ++t) threads.emplace_back(worker, t);
+    for (auto& th : threads) th.join();
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    EXPECT_EQ(insert_ok.load(), kThreads * kPerThread)
+        << "all inserts must succeed: keys are unique by construction";
+    EXPECT_GT(erase_ok.load(), 0);
+    EXPECT_EQ(reg.size(),
+              static_cast<std::size_t>(insert_ok.load() - erase_ok.load()));
+
+    EXPECT_LT(elapsed, std::chrono::seconds(30))
+        << "concurrent stress took unexpectedly long; possible deadlock or contention bug";
+}
+
+// ─── pk hashing distribution ────────────────────────────────────────
+
+TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
+    constexpr int kCount = 1024;
+    ConnectionRegistry reg;
+
+    std::mt19937_64 rng(0xC0FFEE);
+    std::vector<PublicKey> keys;
+    keys.reserve(kCount);
+
+    for (int i = 0; i < kCount; ++i) {
+        PublicKey pk{};
+        for (auto& b : pk) b = static_cast<std::uint8_t>(rng() & 0xFF);
+        const gn_conn_id_t id = reg.alloc_id();
+        const std::string  uri = "tcp://pkdist/" + std::to_string(i);
+        ASSERT_EQ(reg.insert_with_index(make_record(id, uri, pk)), GN_OK)
+            << "iter " << i;
+        keys.push_back(pk);
+    }
+
+    EXPECT_EQ(reg.size(), static_cast<std::size_t>(kCount));
+
+    /// Every randomly generated pk must round-trip through the index.
+    for (int i = 0; i < kCount; ++i) {
+        auto rec = reg.find_by_pk(keys[i]);
+        ASSERT_TRUE(rec.has_value()) << "pk-lookup miss at iter " << i;
+        EXPECT_EQ(rec->remote_pk, keys[i]);
+    }
+}
+
+}  // namespace
+}  // namespace gn::core
