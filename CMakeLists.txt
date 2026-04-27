@@ -12,6 +12,12 @@ set(CMAKE_CXX_EXTENSIONS         OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
 
+# Skip C++ module scanning. CMake 3.28+ probes every translation unit
+# for `import` / `module` directives by default; we use only headers
+# and the resulting `-fmodules-ts` / `-fdeps-format=p1689r5` GCC flags
+# trip clang-tidy when it parses `compile_commands.json`.
+set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()

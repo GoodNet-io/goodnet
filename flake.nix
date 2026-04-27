@@ -65,10 +65,14 @@
               ctest --test-dir build --output-on-failure "$@"
             '';
           };
+
+          sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
         in
         {
-          build = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          test  = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          build     = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          test      = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          test-asan = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
+          test-tsan = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
         });
 
       devShells = forAllSystems (system: pkgs:
