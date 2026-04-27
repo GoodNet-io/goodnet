@@ -15,7 +15,6 @@ target_include_directories(goodnet_kernel PUBLIC
 target_link_libraries(goodnet_kernel
     PUBLIC
         GoodNet::sdk
-        Boost::system
         Boost::thread
         spdlog::spdlog
         fmt::fmt
