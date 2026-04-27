@@ -10,6 +10,7 @@ Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
   cert-*,
+  -cert-dcl50-cpp,
   -cert-err58-cpp,
   clang-analyzer-*,
   performance-*,

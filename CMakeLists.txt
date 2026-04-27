@@ -53,10 +53,10 @@ option(GOODNET_USE_LTO                "Link-time optimization (Release)" OFF)
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 # Boost.System is header-only since Boost 1.69; we only need a real
-# library link for Boost.Thread. The CMake-config split in newer Boost
-# packagings can omit the system shim, so request only what we link.
-set(Boost_NO_BOOST_CMAKE ON)
-find_package(Boost REQUIRED COMPONENTS thread)
+# library link for Boost.Thread. CMake 4.1 dropped the bundled
+# FindBoost.cmake module, so we use the upstream BoostConfig.cmake
+# package config instead — `CONFIG` mode bypasses the legacy module.
+find_package(Boost REQUIRED CONFIG COMPONENTS thread)
 find_package(spdlog REQUIRED)
 find_package(fmt    REQUIRED)
 find_package(nlohmann_json REQUIRED)

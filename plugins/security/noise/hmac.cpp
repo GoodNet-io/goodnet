@@ -16,7 +16,11 @@ KeyBlock prepare_key(std::span<const std::uint8_t> key) {
     KeyBlock out;
     out.fill(0);
     if (key.size() <= BLOCKLEN) {
-        std::memcpy(out.data(), key.data(), key.size());
+        // memcpy demands non-null pointers regardless of count. An empty
+        // span may carry a null data() pointer; skip the call entirely.
+        if (!key.empty()) {
+            std::memcpy(out.data(), key.data(), key.size());
+        }
     } else {
         Digest h = blake2b(key);
         std::memcpy(out.data(), h.data(), HASHLEN);

@@ -192,7 +192,7 @@ void thunk_log(void* host_ctx, gn_log_level_t level, const char* fmt, ...) {
     char buf[4096];
     va_list ap;
     va_start(ap, fmt);
-    std::vsnprintf(buf, sizeof(buf), fmt, ap);
+    (void)std::vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
 
     ::gn::log::kernel().log(sp_lvl, "[{}] {}", pc->plugin_name, buf);
@@ -209,7 +209,8 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
 
     ConnectionRecord rec;
-    rec.id = pc->kernel->connections().alloc_id();
+    const gn_conn_id_t new_id = pc->kernel->connections().alloc_id();
+    rec.id = new_id;
     rec.uri = uri;
     rec.transport_scheme = scheme;
     rec.trust = trust;
@@ -220,7 +221,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         pc->kernel->connections().insert_with_index(std::move(rec));
     if (rc != GN_OK) return rc;
 
-    *out_conn = rec.id;
+    *out_conn = new_id;
     return GN_OK;
 }
 
