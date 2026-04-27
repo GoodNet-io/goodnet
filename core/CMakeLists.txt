@@ -2,6 +2,7 @@
 
 add_library(goodnet_kernel STATIC
     util/placeholder.cpp
+    config/config.cpp
     registry/connection.cpp
     registry/handler.cpp
     registry/transport.cpp

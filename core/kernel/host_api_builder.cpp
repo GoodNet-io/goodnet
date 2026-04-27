@@ -5,6 +5,7 @@
 
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 #include <core/util/log.hpp>
@@ -117,6 +118,40 @@ const gn_limits_t* thunk_limits(void* host_ctx) {
     return &pc->kernel->limits();
 }
 
+gn_result_t thunk_config_get_string(void* host_ctx,
+                                    const char* key,
+                                    char** out_str,
+                                    void (**out_free)(char*)) {
+    if (!host_ctx || !key || !out_str || !out_free) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    std::string buf;
+    const auto rc = pc->kernel->config().get_string(key, buf);
+    if (rc != GN_OK) return rc;
+
+    /// Plain malloc'd C string the caller frees through *out_free.
+    auto* heap = static_cast<char*>(std::malloc(buf.size() + 1));
+    if (!heap) return GN_ERR_OUT_OF_MEMORY;
+    std::memcpy(heap, buf.data(), buf.size());
+    heap[buf.size()] = '\0';
+
+    *out_str  = heap;
+    *out_free = +[](char* p) { std::free(p); };
+    return GN_OK;
+}
+
+gn_result_t thunk_config_get_int64(void* host_ctx,
+                                   const char* key,
+                                   int64_t* out_value) {
+    if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    std::int64_t v = 0;
+    const auto rc = pc->kernel->config().get_int64(key, v);
+    if (rc != GN_OK) return rc;
+    *out_value = v;
+    return GN_OK;
+}
+
 void thunk_log(void* host_ctx, gn_log_level_t level, const char* fmt, ...) {
     if (!host_ctx || !fmt) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
@@ -226,6 +261,9 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;
+
+    a.config_get_string     = &thunk_config_get_string;
+    a.config_get_int64      = &thunk_config_get_int64;
 
     a.notify_connect        = &thunk_notify_connect;
     a.notify_inbound_bytes  = &thunk_notify_inbound_bytes;
