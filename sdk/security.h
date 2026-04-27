@@ -1,0 +1,157 @@
+/**
+ * @file   sdk/security.h
+ * @brief  C ABI for security-provider plugins.
+ *
+ * Security providers terminate the handshake, derive transport keys,
+ * and perform per-message encryption/decryption. The canonical
+ * implementation is the Noise provider (`noise-handshake.md`).
+ *
+ * See `docs/contracts/security-trust.md` for trust-class policy.
+ */
+#ifndef GOODNET_SDK_SECURITY_H
+#define GOODNET_SDK_SECURITY_H
+
+#include <stdint.h>
+#include <stddef.h>
+
+#include <sdk/types.h>
+#include <sdk/trust.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Sizes of cryptographic material for the canonical suite. */
+#define GN_CIPHER_KEY_BYTES     32   /**< ChaCha20 key */
+#define GN_CIPHER_NONCE_BYTES   12   /**< AEAD nonce */
+#define GN_AEAD_TAG_BYTES       16   /**< Poly1305 tag */
+#define GN_HASH_BYTES           32   /**< BLAKE2s digest */
+
+/**
+ * @brief Transport-phase symmetric keys produced by a successful handshake.
+ *
+ * The provider exports these once. After export the source session
+ * zeroises its own copies and refuses further encrypt/decrypt calls.
+ */
+typedef struct gn_handshake_keys_s {
+    uint8_t  send_cipher_key[GN_CIPHER_KEY_BYTES];
+    uint8_t  recv_cipher_key[GN_CIPHER_KEY_BYTES];
+    uint64_t initial_send_nonce;
+    uint64_t initial_recv_nonce;
+    uint8_t  handshake_hash[GN_HASH_BYTES];   /**< channel binding */
+    uint8_t  peer_static_pk[GN_PUBLIC_KEY_BYTES];
+
+    void*    _reserved[4];
+} gn_handshake_keys_t;
+
+/**
+ * @brief Output buffer for variable-length security messages.
+ *
+ * The plugin allocates `bytes` and pairs it with @ref free_fn so the
+ * kernel can release it once the bytes have been handed to the transport.
+ */
+typedef struct gn_secure_buffer_s {
+    uint8_t* bytes;
+    size_t   size;
+    void  (*free_fn)(uint8_t* bytes);
+} gn_secure_buffer_t;
+
+/**
+ * @brief Vtable for an `ISecurityProvider` implementation.
+ *
+ * Per `security-trust.md`, every entry that creates or routes a
+ * connection takes @ref gn_trust_class_t explicitly.
+ */
+typedef struct gn_security_provider_vtable_s {
+    uint32_t api_size;
+
+    /**
+     * @brief Stable identifier. Examples: `"noise-xx"`, `"noise-ik"`,
+     *        `"null"`. Returned pointer outlives the plugin.
+     */
+    const char* (*provider_id)(void* self);
+
+    /**
+     * @brief Open a new handshake state for a connection.
+     *
+     * @param trust  declared trust class of the connection
+     * @param out    handshake-state handle returned to the caller
+     */
+    gn_result_t (*handshake_open)(void* self,
+                                  gn_conn_id_t conn,
+                                  gn_trust_class_t trust,
+                                  void** out_state);
+
+    /**
+     * @brief Drive one step of the handshake.
+     *
+     * @param incoming   bytes received from peer; @borrowed for the call
+     * @param incoming_size length of @p incoming, may be 0 on initial step
+     * @param out_message plugin-allocated outgoing handshake bytes; the
+     *                    caller calls `out_message->free_fn` when done.
+     *                    @ref gn_secure_buffer_s::bytes is NULL when no
+     *                    output is produced this step.
+     */
+    gn_result_t (*handshake_step)(void* self,
+                                  void* state,
+                                  const uint8_t* incoming, size_t incoming_size,
+                                  gn_secure_buffer_t* out_message);
+
+    /**
+     * @brief Test whether the handshake has reached the transport phase.
+     */
+    int (*handshake_complete)(void* self, void* state);
+
+    /**
+     * @brief Export transport keys after `handshake_complete` returns true.
+     *
+     * The plugin zeroises its own copy of the keys after this call. Any
+     * subsequent encrypt/decrypt on @p state returns
+     * @ref GN_ERR_INVALID_STATE.
+     */
+    gn_result_t (*export_transport_keys)(void* self,
+                                         void* state,
+                                         gn_handshake_keys_t* out_keys);
+
+    /**
+     * @brief Encrypt a plaintext payload.
+     *
+     * @param plaintext @borrowed; copied internally if needed.
+     * @param out       plugin-allocated ciphertext buffer.
+     */
+    gn_result_t (*encrypt)(void* self,
+                           void* state,
+                           const uint8_t* plaintext, size_t plaintext_size,
+                           gn_secure_buffer_t* out);
+
+    /**
+     * @brief Decrypt a ciphertext payload.
+     */
+    gn_result_t (*decrypt)(void* self,
+                           void* state,
+                           const uint8_t* ciphertext, size_t ciphertext_size,
+                           gn_secure_buffer_t* out);
+
+    /**
+     * @brief Rekey both ciphers atomically.
+     *
+     * Resets the nonce on both send and receive cipher state.
+     */
+    gn_result_t (*rekey)(void* self, void* state);
+
+    /**
+     * @brief Tear down a handshake state. Zeroises remaining key material.
+     */
+    void (*handshake_close)(void* self, void* state);
+
+    /** Plugin destruction. */
+    void (*destroy)(void* self);
+
+    void* _reserved[4];
+} gn_security_provider_vtable_t;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* GOODNET_SDK_SECURITY_H */
