@@ -5,6 +5,7 @@
 
 add_library(goodnet_protocol_gnet STATIC
     wire.cpp
+    protocol.cpp
 )
 add_library(GoodNet::protocol_gnet ALIAS goodnet_protocol_gnet)
 
