@@ -25,7 +25,10 @@ extern "C" {
 #define GN_CIPHER_KEY_BYTES     32   /**< ChaCha20 key */
 #define GN_CIPHER_NONCE_BYTES   12   /**< AEAD nonce */
 #define GN_AEAD_TAG_BYTES       16   /**< Poly1305 tag */
-#define GN_HASH_BYTES           32   /**< BLAKE2s digest */
+#define GN_HASH_BYTES           32   /**< channel-binding hash exposed via gn_handshake_keys_t */
+
+/* `gn_handshake_role_t` lives in `sdk/trust.h` so that both `host_api.h`
+ * and `security.h` see the type without circular includes. */
 
 /**
  * @brief Transport-phase symmetric keys produced by a successful handshake.
@@ -74,12 +77,25 @@ typedef struct gn_security_provider_vtable_s {
     /**
      * @brief Open a new handshake state for a connection.
      *
-     * @param trust  declared trust class of the connection
-     * @param out    handshake-state handle returned to the caller
+     * @param trust            declared trust class of the connection
+     * @param role             initiator or responder per `notify_connect`
+     * @param local_static_sk  local Ed25519 secret key (libsodium layout,
+     *                         64 bytes). Borrowed for the call; the plugin
+     *                         derives X25519 / sign material as needed.
+     * @param local_static_pk  matching Ed25519 public key (32 bytes).
+     * @param remote_static_pk peer's Ed25519 public key when the pattern
+     *                         knows it up-front (IK initiator side); NULL
+     *                         when the pattern learns it during the
+     *                         handshake (XX, NK).
+     * @param out_state        handshake-state handle returned to the caller
      */
     gn_result_t (*handshake_open)(void* self,
                                   gn_conn_id_t conn,
                                   gn_trust_class_t trust,
+                                  gn_handshake_role_t role,
+                                  const uint8_t local_static_sk[GN_PRIVATE_KEY_BYTES],
+                                  const uint8_t local_static_pk[GN_PUBLIC_KEY_BYTES],
+                                  const uint8_t* remote_static_pk,
                                   void** out_state);
 
     /**

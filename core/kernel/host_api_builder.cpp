@@ -203,6 +203,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
                                  const char* uri,
                                  const char* scheme,
                                  gn_trust_class_t trust,
+                                 gn_handshake_role_t role,
                                  gn_conn_id_t* out_conn) {
     if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
@@ -212,6 +213,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     rec.uri = uri;
     rec.transport_scheme = scheme;
     rec.trust = trust;
+    rec.role  = role;
     std::memcpy(rec.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
 
     const gn_result_t rc =

@@ -183,13 +183,18 @@ typedef struct host_api_s {
      * it through @p out_conn. The transport stores the id and uses
      * it on every subsequent send / receive / disconnect call.
      *
-     * @param remote_pk Peer's Ed25519 public key (post-Noise) or
-     *                  all-zero before security completes.
+     * @param remote_pk Peer's Ed25519 public key. Set for outbound
+     *                  initiator-side connections that target a known
+     *                  pk; all-zero for inbound responder-side
+     *                  connections, where the pk is learned from the
+     *                  handshake.
      * @param uri       Connection URI as parsed by the transport.
      *                  Borrowed for the call.
      * @param scheme    Transport scheme (`"tcp"`, `"udp"`, …).
      * @param trust     TrustClass computed from observable connection
      *                  properties per `transport.md` §3.
+     * @param role      Handshake role: initiator for outbound, responder
+     *                  for inbound.
      * @param out_conn  Kernel-allocated connection id on success.
      */
     gn_result_t (*notify_connect)(void* host_ctx,
@@ -197,6 +202,7 @@ typedef struct host_api_s {
                                   const char* uri,
                                   const char* scheme,
                                   gn_trust_class_t trust,
+                                  gn_handshake_role_t role,
                                   gn_conn_id_t* out_conn);
 
     /**

@@ -155,13 +155,19 @@ typedef struct host_api_s {
      * @brief Transport announces a fully-established connection.
      *        Allocates a kernel-side `gn_conn_id_t`, returned via @p out_conn.
      *        Per `transport.md` §3 the transport computes `trust` from
-     *        observable connection properties.
+     *        observable connection properties; per `transport.md` §3a it
+     *        also reports `role` — `GN_ROLE_INITIATOR` for outbound
+     *        (`connect(uri)`) and `GN_ROLE_RESPONDER` for inbound
+     *        (accepted on `listen`). The kernel forwards `role` to
+     *        `security_provider->handshake_open` so the handshake state
+     *        machine drives the correct side of the pattern.
      */
     gn_result_t (*notify_connect)(void* host_ctx,
                                   const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                                   const char* uri,
                                   const char* scheme,
                                   gn_trust_class_t trust,
+                                  gn_handshake_role_t role,
                                   gn_conn_id_t* out_conn);
 
     /**

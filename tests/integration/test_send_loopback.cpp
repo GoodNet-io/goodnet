@@ -146,12 +146,14 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
                                        "loopback://bob",
                                        "loopback",
                                        GN_TRUST_PEER,
+                                       GN_ROLE_INITIATOR,
                                        &alice_conn), GN_OK);
     ASSERT_EQ(bob.api.notify_connect(bob.api.host_ctx,
                                      alice.pk.data(),
                                      "loopback://alice",
                                      "loopback",
                                      GN_TRUST_PEER,
+                                     GN_ROLE_RESPONDER,
                                      &bob_conn), GN_OK);
 
     alice.loop.peer_api  = &bob.api;
@@ -214,6 +216,7 @@ TEST(SendLoopback, DisconnectThroughTransport) {
                                        "loopback://peer",
                                        "loopback",
                                        GN_TRUST_PEER,
+                                       GN_ROLE_INITIATOR,
                                        &conn), GN_OK);
 
     /// disconnect routes through the transport vtable; loopback's

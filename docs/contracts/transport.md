@@ -62,6 +62,22 @@ A transport on a loopback path **must** declare `Loopback` regardless of
 any `--allow-null-untrusted` configuration; this hint is what lets the
 kernel permit `null+raw` stacks per `security-trust.md` §4.
 
+## 3a. Handshake role declaration
+
+The transport **must** declare a `gn_handshake_role_t` on every
+`notify_connect`:
+
+| Origin | Declared role |
+|---|---|
+| Outbound — transport's `connect(uri)` returned successfully | `GN_ROLE_INITIATOR` |
+| Inbound — accepted on the listen socket | `GN_ROLE_RESPONDER` |
+
+The kernel propagates this to `security_provider->handshake_open` so
+the asymmetric handshake state machine drives the correct side of the
+pattern. Misreporting the role is a contract violation: a Noise XX
+initiator that thinks it is the responder will fail every handshake
+silently and produce no actionable diagnostic.
+
 ---
 
 ## 4. Single-writer invariant on send
