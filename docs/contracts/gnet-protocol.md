@@ -170,18 +170,21 @@ complete frame is buffered. Kernel re-feeds with concatenated bytes.
 
 ---
 
-## 5. What was simplified vs legacy
+## 5. Design notes
 
-| Legacy (rolled-back GoodNet pre-RC) | v1 canonical | Why removed |
-|---|---|---|
-| `proto_ver` 1 byte separate from magic | folded into `ver` byte after magic | one version byte, one bump policy |
-| `packet_id` 4 bytes (replay window) | **removed** | Noise AEAD nonce already provides replay protection at security layer; double-counter was redundant |
-| `reserved` 4 bytes | **removed** | evolution via `ver` bump, not silent reserved fields |
-| `msg_type` 16-bit | `msg_id` 32-bit | host_api `send` path was already 32-bit; legacy header was the inconsistency |
-| `header_t` exposed in `handler.h` as `const header_t*` | not exposed beyond plugin | wire format is plugin-private |
-| Always-present implicit identity (single peer per connection) | conditional PK fields by flags | enables relay/broadcast as first-class without wire hack |
+A few choices in the layout above are worth flagging for plugin
+authors and future format successors:
 
-Legacy 20-byte header → v1 14-byte direct (30% reduction on the common path).
+- **Replay protection lives in the security layer.** Noise AEAD
+  nonces already prevent replay, so GNET carries no per-frame
+  packet id of its own.
+- **Wire format is plugin-private.** The 14-byte header is not part
+  of `sdk/protocol.h`. Handlers see only the decoded `gn_message_t`
+  envelope (`protocol-layer.md`); they cannot import GNET-specific
+  types.
+- **Conditional PK fields enable relay and broadcast as first-class
+  modes.** A direct connection pays no overhead for identity it
+  already learned from the Noise handshake.
 
 ---
 
@@ -214,6 +217,5 @@ Legacy 20-byte header → v1 14-byte direct (30% reduction on the common path).
 ## 8. Cross-references
 
 - Kernel-side envelope semantics: `docs/contracts/protocol-layer.md`.
-- Security layer (Noise) wraps GNET frames: `docs/contracts/security-provider.md` (TBD).
-- Architectural decision: kernel agnostic to wire constants per
-  `Self/feedback_goodnet_core_agnostic.md` (memory, refined 2026-04-27).
+- Security layer (Noise) wraps GNET frames:
+  `docs/contracts/security-provider.md` (TBD).

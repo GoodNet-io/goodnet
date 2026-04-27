@@ -52,8 +52,9 @@ typedef struct gn_message_t {
 
 ### 2.2 Lifetime rules
 
-- `payload` is **borrowed** for the duration of `IHandler::handle_message`.
-  Plugins implementing `frame` must guarantee the same on outbound.
+- `payload` is **borrowed** for the duration of the synchronous handler
+  `handle_message` call (see `handler-registration.md`). Plugins
+  implementing `frame` must guarantee the same on outbound.
 - `gn_message_t` itself lives on the stack of the dispatching thread; its
   pointer **must not** escape `handle_message`.
 - Cross-thread retention requires `gn_message_dup(const gn_message_t*)` (SDK
@@ -73,57 +74,39 @@ dropped at kernel ingress and counted in `metrics.dropped.zero_sender`.
 
 ## 3. `IProtocolLayer`
 
-```cpp
-class IProtocolLayer {
-public:
-    virtual ~IProtocolLayer() = default;
+The kernel-facing interface is a C ABI vtable declared in
+`sdk/protocol.h`. A plugin implements `IProtocolLayer` by populating a
+`gn_protocol_layer_vtable_t` and registering it through the host API.
+The vtable carries four entry points:
 
-    // Identity for handler registration. Stable, lowercase, hyphenated.
-    // Examples: "gnet-v1", "mesh-v2".
-    virtual std::string_view protocol_id() const noexcept = 0;
+| Entry point | Purpose |
+|---|---|
+| `protocol_id` | Returns a stable, lowercase, hyphenated string identifying the protocol (e.g. `"gnet-v1"`, `"mesh-v2"`). Used for handler registration scope. |
+| `deframe` | Inbound: parses zero or more envelopes out of a decrypted byte stream. The stream may contain partial frames; the plugin reports how many input bytes were consumed and surfaces a sequence of envelopes whose `payload` pointers are borrowed from the input buffer for the duration of the dispatch cycle. |
+| `frame` | Outbound: serialises a single envelope into wire bytes. The kernel hands the result to the security layer for encryption, then to the transport for IO. |
+| `max_payload_size` | Reports the largest payload the protocol can frame in one message. The kernel consults this for fragmentation decisions. |
 
-    // Inbound: parse one or more envelopes out of a decrypted byte stream.
-    // Stream may contain partial frames; plugin returns consumed-byte count.
-    // Returned envelopes are kernel-owned; payload pointers are borrowed
-    // from the input buffer for the duration of the dispatch cycle.
-    struct DeframeResult {
-        std::span<const gn_message_t> messages;
-        size_t                        bytes_consumed;
-    };
-    virtual Result<DeframeResult> deframe(
-        ConnectionContext& ctx,
-        std::span<const uint8_t> bytes) = 0;
-
-    // Outbound: serialise envelope into wire bytes (handed to security layer
-    // for encryption, then transport for IO).
-    virtual Result<std::vector<uint8_t>> frame(
-        ConnectionContext& ctx,
-        const gn_message_t& msg) = 0;
-
-    // Maximum payload size this protocol can frame in a single message.
-    // Kernel uses for fragmentation decisions.
-    virtual size_t max_payload_size() const noexcept = 0;
-};
-```
+`deframe` and `frame` return a `gn_result_t` plus an output buffer
+descriptor; see `sdk/protocol.h` for exact field layout. Errors are
+mapped to the codes listed in §8.
 
 ### 3.1 `ConnectionContext`
 
-Per-connection state passed to every `deframe`/`frame` call. Plugin uses to
-populate envelope fields when wire does not carry them explicitly:
+Per-connection state is passed to every `deframe`/`frame` call as
+`gn_connection_context_t`, declared in `sdk/connection.h`. The struct
+carries:
 
-```cpp
-struct ConnectionContext {
-    NodeIdentity   local;          // our pk + privkey handle (for sign/verify)
-    PublicKey      remote;         // peer pk from Noise handshake
-    ConnectionId   conn_id;        // stable per-conn handle
-    ProtocolId     active;         // active protocol for this conn
-    void*          plugin_state;   // plugin-private, opaque to kernel
-};
-```
+| Field | Meaning |
+|---|---|
+| `local` | Local node identity (public key plus an opaque sign/verify handle held by the kernel). |
+| `remote` | Peer public key established by the security handshake. |
+| `conn_id` | Stable per-connection handle assigned by the kernel. |
+| `active_protocol_id` | The protocol that owns this connection. |
+| `plugin_state` | Plugin-private opaque pointer; kernel never inspects it. |
 
-For mesh-native direct conn: plugin reads `ctx.remote` → `sender_pk` (inbound)
-or `ctx.local.public_key` → `sender_pk` (outbound). For relay/broadcast: PK
-fields come from wire.
+For mesh-native direct connections the plugin reads `ctx.remote` →
+`sender_pk` (inbound) or `ctx.local.public_key` → `sender_pk` (outbound).
+For relay/broadcast plugins the public-key fields come from the wire.
 
 ---
 
@@ -184,17 +167,21 @@ identities sharing one process. Single-identity case = vector of size 1.
 
 ## 7. Handler registration
 
-```cpp
-kernel.register_handler(
-    ProtocolId{"gnet-v1"},   // active protocol; handler bound to this layer
-    msg_id_t{0x1001},        // local namespace per protocol
-    handler_ptr);
+```c
+host_api->register_handler(host_ctx,
+                           "gnet-v1",   /* active protocol; handler bound to this layer */
+                           0x1001,      /* msg_id — per-protocol namespace */
+                           priority,
+                           &handler_vtable,
+                           handler_self,
+                           &out_handler_id);
 ```
 
 Handlers are scoped to a `(protocol_id, msg_id)` pair. The same `msg_id`
-under different protocols is independent. This avoids the legacy
-`MSG_TYPE_*` global-namespace collision risk and lets plugins evolve their
-ID space without coordination.
+under different protocols is independent. The per-protocol namespace
+prevents collisions between unrelated protocols and lets plugins evolve
+their ID space without cross-protocol coordination. See
+`handler-registration.md` for the full registration semantics.
 
 ---
 
