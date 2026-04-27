@@ -89,6 +89,7 @@ TEST(HostApiChain, NotifyConnectThenDisconnect) {
                                    "tcp://127.0.0.1:9000",
                                    "tcp",
                                    GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
                                    &conn),
               GN_OK);
     EXPECT_NE(conn, GN_INVALID_ID);
@@ -128,6 +129,7 @@ TEST(HostApiChain, InboundBytesReachHandler) {
                                      "tcp://127.0.0.1:9000",
                                      "tcp",
                                      GN_TRUST_PEER,
+                                     GN_ROLE_RESPONDER,
                                      &conn),
               GN_OK);
 

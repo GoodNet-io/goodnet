@@ -37,6 +37,10 @@ const char* null_provider_id(void* /*self*/) {
 gn_result_t null_handshake_open(void* /*self*/,
                                 gn_conn_id_t /*conn*/,
                                 gn_trust_class_t /*trust*/,
+                                gn_handshake_role_t /*role*/,
+                                const std::uint8_t* /*local_static_sk*/,
+                                const std::uint8_t* /*local_static_pk*/,
+                                const std::uint8_t* /*remote_static_pk*/,
                                 void** out_state) {
     if (!out_state) return GN_ERR_NULL_ARG;
     /// No per-connection state for null security.

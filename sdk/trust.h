@@ -45,6 +45,20 @@ static inline int gn_trust_can_upgrade(gn_trust_class_t from, gn_trust_class_t t
     return from == to;
 }
 
+/**
+ * @brief Handshake role at the transport ↔ security boundary.
+ *
+ * The transport plugin sets the role on `host_api->notify_connect` based on
+ * who initiated the connection: the side that called `connect(uri)` is the
+ * initiator; the side that accepted an inbound socket is the responder.
+ * The kernel propagates the value to `security_provider->handshake_open`
+ * so the provider can drive the asymmetric pattern progression.
+ */
+typedef enum gn_handshake_role_e {
+    GN_ROLE_INITIATOR = 0,
+    GN_ROLE_RESPONDER = 1
+} gn_handshake_role_t;
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

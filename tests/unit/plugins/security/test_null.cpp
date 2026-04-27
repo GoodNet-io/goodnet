@@ -272,8 +272,13 @@ TEST_F(NullPluginTest, InitRejectsNullArgs) {
 TEST_F(NullPluginTest, HandshakeOpenSucceedsWithNullState) {
     LiveProvider lp = activate();
     void* state = reinterpret_cast<void*>(0xdeadbeef);
+    const std::uint8_t sk[GN_PRIVATE_KEY_BYTES]{};
+    const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]{};
     EXPECT_EQ(lp.vtable->handshake_open(lp.self, /*conn*/ 1,
-                                         GN_TRUST_LOOPBACK, &state),
+                                         GN_TRUST_LOOPBACK,
+                                         GN_ROLE_INITIATOR,
+                                         sk, pk, nullptr,
+                                         &state),
               GN_OK);
     /// Null provider stores no per-conn state.
     EXPECT_EQ(state, nullptr);
@@ -282,8 +287,13 @@ TEST_F(NullPluginTest, HandshakeOpenSucceedsWithNullState) {
 
 TEST_F(NullPluginTest, HandshakeOpenRejectsNullOut) {
     LiveProvider lp = activate();
+    const std::uint8_t sk[GN_PRIVATE_KEY_BYTES]{};
+    const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]{};
     EXPECT_EQ(lp.vtable->handshake_open(lp.self, /*conn*/ 1,
-                                         GN_TRUST_LOOPBACK, nullptr),
+                                         GN_TRUST_LOOPBACK,
+                                         GN_ROLE_INITIATOR,
+                                         sk, pk, nullptr,
+                                         nullptr),
               GN_ERR_NULL_ARG);
     teardown(lp);
 }
