@@ -4,6 +4,7 @@ add_library(goodnet_kernel STATIC
     util/placeholder.cpp
     registry/connection.cpp
     registry/handler.cpp
+    registry/transport.cpp
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/connection_context.cpp
