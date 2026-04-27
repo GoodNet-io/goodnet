@@ -43,15 +43,17 @@ GN_PLUGIN_EXPORT void gn_plugin_sdk_version(uint32_t* out_major,
  * sets up internal state. **Must not** call any `host_api->register_*`
  * here — registration happens in @ref gn_plugin_register.
  *
- * @param api      @borrowed; valid until @ref gn_plugin_shutdown returns.
- * @param host_ctx opaque pointer; pass back unchanged on every API call.
+ * @param api      @borrowed; valid until @ref gn_plugin_shutdown
+ *                 returns. The kernel-supplied pointer carries
+ *                 `api->host_ctx` already set; the plugin retains the
+ *                 single `api*` pointer and reads `api->host_ctx`
+ *                 wherever a vtable entry needs it.
  * @param out_self plugin-allocated state handle returned to the kernel.
  *
  * @return GN_OK on success; the kernel calls @ref gn_plugin_shutdown
  *         on failure to release any partial state.
  */
 GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(const host_api_t* api,
-                                            void* host_ctx,
                                             void** out_self);
 
 /**

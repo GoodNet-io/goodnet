@@ -35,6 +35,16 @@ public headers.
 typedef struct host_api_s {
     uint32_t api_size;             /* sizeof(host_api_t) at build time */
 
+    /**
+     * @brief Opaque kernel context. Pass back unchanged on every call.
+     *
+     * Set by the kernel before `gn_plugin_init` returns. The plugin
+     * retains the single `api*` pointer; convenience macros in
+     * `sdk/convenience.h` read `api->host_ctx` so that a call site
+     * stays one argument shorter than the raw vtable invocation.
+     */
+    void* host_ctx;
+
     /* ── Messaging ───────────────────────────────────────────────────── */
     /**
      * @brief Send an envelope to a specific peer over an existing connection.
