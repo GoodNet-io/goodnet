@@ -1,0 +1,235 @@
+/// @file   tests/unit/signal/test_signal_channel.cpp
+/// @brief  GoogleTest unit tests for `gn::core::signal::SignalChannel`.
+///
+/// Pins the contract from `core/signal/signal_channel.hpp`:
+///   - `subscribe` issues a monotonic token; `unsubscribe` is idempotent.
+///   - `fire` snapshots subscribers under the lock, then drops it before
+///     invoking handlers. So a handler may subscribe / unsubscribe inside
+///     its own callback without deadlocking against the channel.
+///   - Empty channel `fire` is a no-op.
+///   - Unsubscribing an unknown token is a no-op (no error).
+
+#include <gtest/gtest.h>
+
+#include <atomic>
+#include <chrono>
+#include <cstdint>
+#include <thread>
+#include <vector>
+
+#include <core/signal/signal_channel.hpp>
+
+namespace gn::core::signal {
+namespace {
+
+struct ConfigReload {
+    int generation{0};
+};
+
+// ─── basic subscribe / fire ─────────────────────────────────────────
+
+TEST(SignalChannel_Basic, SubscribeReceivesFire) {
+    SignalChannel<ConfigReload> ch;
+    int observed = -1;
+    auto t = ch.subscribe([&](const ConfigReload& e) {
+        observed = e.generation;
+    });
+    EXPECT_NE(t, 0u);
+    EXPECT_EQ(ch.subscriber_count(), 1u);
+
+    ch.fire(ConfigReload{42});
+    EXPECT_EQ(observed, 42);
+}
+
+TEST(SignalChannel_Basic, MultipleFiresAccumulate) {
+    SignalChannel<ConfigReload> ch;
+    int last_gen = -1;
+    int call_count = 0;
+    auto t = ch.subscribe([&](const ConfigReload& e) {
+        last_gen = e.generation;
+        ++call_count;
+    });
+
+    ch.fire(ConfigReload{1});
+    ch.fire(ConfigReload{2});
+    ch.fire(ConfigReload{3});
+    EXPECT_EQ(call_count, 3);
+    EXPECT_EQ(last_gen,   3);
+
+    ch.unsubscribe(t);
+}
+
+TEST(SignalChannel_Basic, MonotonicTokens) {
+    SignalChannel<Empty> ch;
+    auto t1 = ch.subscribe([](const Empty&) {});
+    auto t2 = ch.subscribe([](const Empty&) {});
+    auto t3 = ch.subscribe([](const Empty&) {});
+    EXPECT_LT(t1, t2);
+    EXPECT_LT(t2, t3);
+}
+
+// ─── unsubscribe ────────────────────────────────────────────────────
+
+TEST(SignalChannel_Unsubscribe, RemovesHandler) {
+    SignalChannel<ConfigReload> ch;
+    int count = 0;
+    auto t = ch.subscribe([&](const ConfigReload&) { ++count; });
+    ch.fire(ConfigReload{1});
+    EXPECT_EQ(count, 1);
+
+    ch.unsubscribe(t);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+    ch.fire(ConfigReload{2});
+    EXPECT_EQ(count, 1);  /// still 1 — unsubscribed handler did not fire
+}
+
+TEST(SignalChannel_Unsubscribe, UnknownTokenIsNoOp) {
+    SignalChannel<Empty> ch;
+    /// No subscriptions yet — unsubscribe of a fabricated token must
+    /// not throw and must not break subsequent fires.
+    ch.unsubscribe(999'999);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+
+    int hits = 0;
+    auto t = ch.subscribe([&](const Empty&) { ++hits; });
+    ch.unsubscribe(static_cast<SignalChannel<Empty>::Token>(t + 100));
+    ch.fire(Empty{});
+    EXPECT_EQ(hits, 1);
+
+    ch.unsubscribe(t);
+}
+
+TEST(SignalChannel_Unsubscribe, RepeatedUnsubscribeIsNoOp) {
+    SignalChannel<Empty> ch;
+    auto t = ch.subscribe([](const Empty&) {});
+    ch.unsubscribe(t);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+    /// Second call on the now-stale token must be a clean no-op.
+    ch.unsubscribe(t);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+}
+
+// ─── empty channel ─────────────────────────────────────────────────
+
+TEST(SignalChannel_Empty, FireIsNoOp) {
+    SignalChannel<ConfigReload> ch;
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+    /// Fire with no subscribers must complete without observable side
+    /// effects.
+    ch.fire(ConfigReload{0});
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+}
+
+// ─── multiple subscribers ──────────────────────────────────────────
+
+TEST(SignalChannel_Multi, AllSubscribersFire) {
+    SignalChannel<ConfigReload> ch;
+    int a = 0, b = 0, c = 0;
+    auto ta = ch.subscribe([&](const ConfigReload& e) { a = e.generation; });
+    auto tb = ch.subscribe([&](const ConfigReload& e) { b = e.generation; });
+    auto tc = ch.subscribe([&](const ConfigReload& e) { c = e.generation; });
+    EXPECT_EQ(ch.subscriber_count(), 3u);
+
+    ch.fire(ConfigReload{77});
+    EXPECT_EQ(a, 77);
+    EXPECT_EQ(b, 77);
+    EXPECT_EQ(c, 77);
+
+    ch.unsubscribe(tb);
+    ch.fire(ConfigReload{88});
+    EXPECT_EQ(a, 88);
+    EXPECT_EQ(b, 77);  /// unchanged after unsubscribe
+    EXPECT_EQ(c, 88);
+
+    ch.unsubscribe(ta);
+    ch.unsubscribe(tc);
+}
+
+// ─── re-entrant subscribe / unsubscribe inside a callback ──────────
+
+TEST(SignalChannel_Reentrant, HandlerSubscribesInsideCallback) {
+    SignalChannel<ConfigReload> ch;
+    int outer_count = 0;
+    int inner_count = 0;
+
+    /// Outer handler that, on first fire, subscribes a fresh inner
+    /// handler. The lock is released before handler invocation so this
+    /// must not deadlock.
+    auto outer = ch.subscribe([&](const ConfigReload&) {
+        ++outer_count;
+        if (outer_count == 1) {
+            auto inner = ch.subscribe([&](const ConfigReload&) {
+                ++inner_count;
+            });
+            (void)inner;
+        }
+    });
+    (void)outer;
+
+    /// Snapshot semantics: the *inner* handler subscribed during this
+    /// fire does not see the same fire — it only fires on subsequent
+    /// invocations.
+    ch.fire(ConfigReload{1});
+    EXPECT_EQ(outer_count, 1);
+    EXPECT_EQ(inner_count, 0);
+
+    ch.fire(ConfigReload{2});
+    EXPECT_EQ(outer_count, 2);
+    EXPECT_EQ(inner_count, 1);
+}
+
+TEST(SignalChannel_Reentrant, HandlerUnsubscribesItselfInsideCallback) {
+    SignalChannel<ConfigReload> ch;
+    int count = 0;
+    SignalChannel<ConfigReload>::Token self_token = 0;
+
+    self_token = ch.subscribe([&](const ConfigReload&) {
+        ++count;
+        ch.unsubscribe(self_token);
+    });
+
+    ch.fire(ConfigReload{1});
+    /// Snapshot of subscribers was taken before invocation; this handler
+    /// fires once for this event, removes itself, and does not fire on
+    /// the next event.
+    EXPECT_EQ(count, 1);
+
+    ch.fire(ConfigReload{2});
+    EXPECT_EQ(count, 1);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+}
+
+// ─── concurrent fires (smoke / deadlock) ───────────────────────────
+
+TEST(SignalChannel_Concurrency, MultipleProducersOneConsumer) {
+    SignalChannel<ConfigReload> ch;
+    std::atomic<int> total{0};
+    auto t = ch.subscribe([&](const ConfigReload& e) {
+        total.fetch_add(e.generation, std::memory_order_relaxed);
+    });
+
+    constexpr int kThreads     = 4;
+    constexpr int kPerThread   = 128;
+    std::vector<std::thread> producers;
+    producers.reserve(kThreads);
+
+    const auto start = std::chrono::steady_clock::now();
+    for (int p = 0; p < kThreads; ++p) {
+        producers.emplace_back([&, p]() {
+            for (int i = 0; i < kPerThread; ++i) {
+                ch.fire(ConfigReload{p * 100 + i});
+            }
+        });
+    }
+    for (auto& th : producers) th.join();
+    const auto elapsed = std::chrono::steady_clock::now() - start;
+
+    EXPECT_LT(elapsed, std::chrono::seconds(30))
+        << "concurrent fire took unexpectedly long; possible deadlock";
+    EXPECT_GT(total.load(), 0);
+
+    ch.unsubscribe(t);
+}
+
+}  // namespace
+}  // namespace gn::core::signal
