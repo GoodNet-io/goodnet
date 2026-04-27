@@ -150,6 +150,39 @@ typedef struct host_api_s {
                 gn_log_level_t level,
                 const char* fmt, ...);
 
+    /* ── Transport-side notifications ────────────────────────────────── */
+    /**
+     * @brief Transport announces a fully-established connection.
+     *        Allocates a kernel-side `gn_conn_id_t`, returned via @p out_conn.
+     *        Per `transport.md` §3 the transport computes `trust` from
+     *        observable connection properties.
+     */
+    gn_result_t (*notify_connect)(void* host_ctx,
+                                  const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
+                                  const char* uri,
+                                  const char* scheme,
+                                  gn_trust_class_t trust,
+                                  gn_conn_id_t* out_conn);
+
+    /**
+     * @brief Push received bytes through the kernel pipeline:
+     *        security decrypt → protocol deframe → router dispatch.
+     *        `bytes` is `@borrowed` for the duration of the call.
+     */
+    gn_result_t (*notify_inbound_bytes)(void* host_ctx,
+                                        gn_conn_id_t conn,
+                                        const uint8_t* bytes,
+                                        size_t size);
+
+    /**
+     * @brief Transport announces a connection close.
+     *        `reason` is `GN_OK` on a clean close, otherwise the
+     *        `gn_result_t` value that triggered teardown.
+     */
+    gn_result_t (*notify_disconnect)(void* host_ctx,
+                                     gn_conn_id_t conn,
+                                     gn_result_t reason);
+
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];
 } host_api_t;
