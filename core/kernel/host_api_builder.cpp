@@ -18,6 +18,80 @@ namespace {
 
 /* ── Slot thunks. Each casts host_ctx → PluginContext* and dispatches. ── */
 
+gn_result_t thunk_send(void* host_ctx,
+                       gn_conn_id_t conn,
+                       uint32_t msg_id,
+                       const uint8_t* payload,
+                       size_t payload_size) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+
+    auto* layer = pc->kernel->protocol_layer();
+    if (!layer) return GN_ERR_NOT_IMPLEMENTED;
+
+    /// Build the envelope from the connection's identity and the
+    /// caller-provided payload.
+    gn_message_t env{};
+    env.msg_id       = msg_id;
+    env.payload      = payload;
+    env.payload_size = payload_size;
+    if (auto local = pc->kernel->identities().any(); local) {
+        std::memcpy(env.sender_pk, local->data(), GN_PUBLIC_KEY_BYTES);
+    }
+    std::memcpy(env.receiver_pk, rec->remote_pk.data(), GN_PUBLIC_KEY_BYTES);
+
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = conn;
+    ctx.trust     = rec->trust;
+    ctx.remote_pk = rec->remote_pk;
+    if (auto local = pc->kernel->identities().any(); local) {
+        ctx.local_pk = *local;
+    }
+
+    auto framed = layer->frame(ctx, env);
+    if (!framed) return framed.error().code;
+
+    return trans->vtable->send(trans->self, conn,
+                               framed->data(), framed->size());
+}
+
+gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
+    if (!trans || !trans->vtable || !trans->vtable->disconnect) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+    return trans->vtable->disconnect(trans->self, conn);
+}
+
+gn_result_t thunk_register_transport(void* host_ctx,
+                                     const char* scheme,
+                                     const gn_transport_vtable_t* vtable,
+                                     void* transport_self,
+                                     gn_transport_id_t* out_id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->transports().register_transport(
+        scheme, vtable, transport_self, out_id);
+}
+
+gn_result_t thunk_unregister_transport(void* host_ctx, gn_transport_id_t id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->transports().unregister_transport(id);
+}
+
 gn_result_t thunk_register_handler(void* host_ctx,
                                    const char* protocol_id,
                                    uint32_t msg_id,
@@ -141,8 +215,14 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.api_size = sizeof(host_api_t);
     a.host_ctx = &ctx;
 
+    a.send                  = &thunk_send;
+    a.disconnect            = &thunk_disconnect;
+
     a.register_handler      = &thunk_register_handler;
     a.unregister_handler    = &thunk_unregister_handler;
+
+    a.register_transport    = &thunk_register_transport;
+    a.unregister_transport  = &thunk_unregister_transport;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;
