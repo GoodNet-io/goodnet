@@ -10,6 +10,14 @@ namespace gn::core {
 Kernel::Kernel() noexcept = default;
 Kernel::~Kernel() = default;
 
+void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
+    protocol_layer_ = std::move(layer);
+}
+
+void Kernel::set_limits(const gn_limits_t& limits) noexcept {
+    limits_ = limits;
+}
+
 Phase Kernel::current_phase() const noexcept {
     return state_.load(std::memory_order_acquire);
 }
