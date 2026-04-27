@@ -6,6 +6,20 @@
 
 include(GoogleTest)
 
+# RapidCheck on Nix: the cmake-config from the runtime output points
+# `INTERFACE_INCLUDE_DIRECTORIES` at `${runtime}/include` which only
+# exists in the `-dev` output. Patch the imported targets so the
+# include path resolves to the path pkg-config reports.
+pkg_check_modules(GN_RAPIDCHECK_PC IMPORTED_TARGET rapidcheck)
+if(GN_RAPIDCHECK_PC_FOUND)
+    set_target_properties(rapidcheck PROPERTIES
+        INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
+    if(TARGET rapidcheck_gtest)
+        set_target_properties(rapidcheck_gtest PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
+    endif()
+endif()
+
 # CONFIGURE_DEPENDS so adding a new test_*.cpp shows up on the next
 # `cmake --build` without re-running configure.
 file(GLOB_RECURSE goodnet_unit_test_sources
@@ -24,8 +38,11 @@ add_executable(goodnet_unit_tests ${goodnet_unit_test_sources})
 target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
+        GoodNet::protocol_gnet
         GTest::gtest
         GTest::gtest_main
+        rapidcheck
+        rapidcheck_gtest
 )
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
