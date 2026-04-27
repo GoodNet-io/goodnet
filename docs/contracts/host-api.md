@@ -149,7 +149,7 @@ Plugins access fields via the version-checked helpers in `sdk/abi.h`:
 
 ```c
 if (GN_API_HAS(api, pin_handler)) {
-    api->pin_handler(api->host_ctx, conn, handler_id);
+    api->pin_handler(host_ctx, conn, handler_id);
 }
 ```
 
