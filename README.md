@@ -61,7 +61,31 @@ The kernel does not pick a use case; the SDK and plugins do.
 
 ## Status
 
-`v0.1.0` — early. Contracts are written first; code grows behind them.
+`v0.1.0` — bring-up release. The kernel skeleton, the plugin C ABI, and
+the canonical security crypto have landed. Real transports, the
+security pipeline that drives the handshake, the NAT-traversal stack,
+and the multi-path scheduler are on the [roadmap](docs/ROADMAP.md) for
+v0.2.0 and beyond.
+
+What is in v0.1.0:
+
+- Kernel: connection registry, identity, handler/transport/extension
+  registries, plugin manager (`dlopen` + size-prefix vtable), service
+  resolver (Kahn topo-sort over plugin deps), signal channel, config
+  loader.
+- SDK: C ABI plugin boundary (`gn_*` types, vtables, host-API), C++
+  convenience wrappers, ABI evolution rules.
+- Crypto: full Noise XX and IK state machines on libsodium primitives —
+  X25519, ChaCha20-Poly1305 IETF, BLAKE2b, RFC-2104 HMAC-BLAKE2b, Noise
+  HKDF; CipherState / SymmetricState / HandshakeState / TransportState.
+- Reference security plugin: `null` (loopback / debug pass-through).
+- Mandatory mesh framing: GNET protocol v1, statically linked into the
+  kernel.
+- 304 tests passing across unit, integration, and property suites.
+  ASan/UBSan/TSan wired into CI.
+
+Roadmap and version history: [`docs/ROADMAP.md`](docs/ROADMAP.md),
+[`CHANGELOG.md`](CHANGELOG.md).
 
 ## Build
 
@@ -76,6 +100,13 @@ Or one-shot:
 ```bash
 nix run .#build
 nix run .#test
+```
+
+Sanitiser CI gates:
+
+```bash
+nix run .#test-asan   # AddressSanitizer + UBSan
+nix run .#test-tsan   # ThreadSanitizer
 ```
 
 ## Architecture
@@ -106,10 +137,17 @@ layer, the GNET frame on the wire.
 
 ## Contracts
 
-The kernel↔plugin boundary is documented in `docs/contracts/`:
+The kernel↔plugin boundary is documented in `docs/contracts/`. Plugin
+authors read these in order:
 
-- `protocol-layer.md` — envelope (`gn_message_t`) and `IProtocolLayer`
-- `gnet-protocol.md`  — GNET v1 wire format
+1. [`protocol-layer.md`](docs/contracts/protocol-layer.md) — envelope
+   (`gn_message_t`) and `IProtocolLayer`.
+2. [`host-api.md`](docs/contracts/host-api.md) — what the kernel offers
+   in return.
+3. [`plugin-lifetime.md`](docs/contracts/plugin-lifetime.md) — when each
+   entry point is called and what each phase may do.
+4. The contract for the role you are filling: `transport.md`,
+   `handler-registration.md`, `noise-handshake.md`, `security-trust.md`.
 
 Code follows contracts; contracts move first.
 
@@ -123,4 +161,4 @@ proprietary — and link statically or dynamically. SDK (`sdk/`) is MIT.
 Plugins are independent builds; each carries its own LICENSE file.
 Bundled-tree convention: templates and common transports are MIT,
 original implementations with no upstream analogue are Apache 2.0.
-See `LICENSE` for the full text and rationale.
+See [`LICENSE`](LICENSE) for the full text and rationale.

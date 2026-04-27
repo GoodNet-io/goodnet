@@ -12,6 +12,7 @@
 !CMakeLists.txt
 !LICENSE
 !README.md
+!CHANGELOG.md
 
 # Editor configs
 !.vscode/*.json
