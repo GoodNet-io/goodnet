@@ -23,9 +23,6 @@
 # directly from the root CMakeLists; it links statically into the
 # kernel binary and is not a `dlopen`-able plugin.
 
-# Subdirectories registered as bundled plugins land:
-#
-#   if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/tcp/CMakeLists.txt")
-#       add_subdirectory(transports/tcp)
-#   endif()
-#   ... etc.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/null/CMakeLists.txt")
+    add_subdirectory(security/null)
+endif()
