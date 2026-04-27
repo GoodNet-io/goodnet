@@ -57,6 +57,19 @@ typedef struct gn_handler_vtable_s {
                                        const gn_message_t* envelope);
 
     /**
+     * @brief Called after every `handle_message` regardless of outcome.
+     *
+     * Receives the propagation value the handler just returned. Used by
+     * relay counters, DHT bucket refresh, and other handlers that need
+     * to observe their own dispatch tail. Optional; the slot may be
+     * NULL when the handler has nothing to do at completion. The pinned
+     * fast-path invokes this slot identically to the slow path.
+     */
+    void (*on_result)(void* self,
+                      const gn_message_t* envelope,
+                      gn_propagation_t result);
+
+    /**
      * @brief Optional lifecycle hooks. May be NULL if not used.
      */
     void (*on_init)(void* self);
