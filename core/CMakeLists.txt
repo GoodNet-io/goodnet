@@ -12,6 +12,7 @@ add_library(goodnet_kernel STATIC
     kernel/connection_context.cpp
     kernel/host_api_builder.cpp
     kernel/service_resolver.cpp
+    plugin/plugin_manager.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 
@@ -27,6 +28,7 @@ target_link_libraries(goodnet_kernel
         fmt::fmt
         nlohmann_json::nlohmann_json
         PkgConfig::SODIUM
+        ${CMAKE_DL_LIBS}
 )
 
 target_compile_features(goodnet_kernel PUBLIC cxx_std_23)
