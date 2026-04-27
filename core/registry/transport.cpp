@@ -1,0 +1,75 @@
+/// @file   core/registry/transport.cpp
+/// @brief  Implementation of the transport registry.
+
+#include "transport.hpp"
+
+#include <mutex>
+
+namespace gn::core {
+
+gn_result_t TransportRegistry::register_transport(
+    std::string_view scheme,
+    const gn_transport_vtable_t* vtable,
+    void* self,
+    gn_transport_id_t* out_id) noexcept {
+
+    if (vtable == nullptr || out_id == nullptr || scheme.empty()) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    std::unique_lock lock(mu_);
+    std::string scheme_str{scheme};
+
+    if (by_scheme_.contains(scheme_str)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    TransportEntry entry;
+    entry.id     = next_id_.fetch_add(1, std::memory_order_relaxed);
+    entry.scheme = scheme_str;
+    entry.vtable = vtable;
+    entry.self   = self;
+
+    by_id_[entry.id] = scheme_str;
+    by_scheme_.emplace(std::move(scheme_str), std::move(entry));
+    *out_id = by_scheme_.find(by_id_[entry.id])->second.id;
+    return GN_OK;
+}
+
+gn_result_t TransportRegistry::unregister_transport(gn_transport_id_t id) noexcept {
+    if (id == GN_INVALID_ID) return GN_ERR_INVALID_ENVELOPE;
+
+    std::unique_lock lock(mu_);
+
+    auto it = by_id_.find(id);
+    if (it == by_id_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+
+    const std::string scheme = it->second;
+    by_id_.erase(it);
+    by_scheme_.erase(scheme);
+    return GN_OK;
+}
+
+std::optional<TransportEntry> TransportRegistry::find_by_scheme(
+    std::string_view scheme) const {
+    std::shared_lock lock(mu_);
+    auto it = by_scheme_.find(std::string{scheme});
+    if (it == by_scheme_.end()) return std::nullopt;
+    return it->second;
+}
+
+std::optional<TransportEntry> TransportRegistry::find_by_id(gn_transport_id_t id) const {
+    std::shared_lock lock(mu_);
+    auto by_id_it = by_id_.find(id);
+    if (by_id_it == by_id_.end()) return std::nullopt;
+    auto by_scheme_it = by_scheme_.find(by_id_it->second);
+    if (by_scheme_it == by_scheme_.end()) return std::nullopt;
+    return by_scheme_it->second;
+}
+
+std::size_t TransportRegistry::size() const noexcept {
+    std::shared_lock lock(mu_);
+    return by_id_.size();
+}
+
+} // namespace gn::core
