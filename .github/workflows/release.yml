@@ -1,0 +1,88 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+
+      - name: Build with Nix
+        run: nix build --print-build-logs
+
+      - name: Bundle portable release
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          mkdir -p release/bin release/lib release/plugins
+
+          if [ -d result/bin ]; then
+            cp -r result/bin/* release/bin/ 2>/dev/null || true
+          fi
+
+          if [ -d result/plugins ]; then
+            cp -r result/plugins/* release/plugins/ 2>/dev/null || true
+          fi
+
+          # Carry the shared libraries the binary and plugins resolve
+          # against from the Nix store, so the tarball runs on a stock
+          # glibc Linux without re-installing dependencies.
+          for bin in release/bin/*; do
+            [ -f "$bin" ] || continue
+            ldd "$bin" 2>/dev/null | { grep '/nix/store/' || true; } | awk '{print $3}' | sort -u | while read -r lib; do
+              [ -f "$lib" ] && cp "$lib" release/lib/ 2>/dev/null || true
+            done
+          done
+
+          find release/plugins -name '*.so' -exec ldd {} \; 2>/dev/null \
+            | { grep '/nix/store/' || true; } | awk '{print $3}' | sort -u | while read -r lib; do
+            [ -f "$lib" ] && [ ! -f "release/lib/$(basename "$lib")" ] && cp "$lib" release/lib/ 2>/dev/null || true
+          done
+
+          chmod -R u+w release/
+
+          # Repoint dynamic linker and rpath so the bundled binary
+          # finds its libraries through $ORIGIN, not the Nix store.
+          nix shell nixpkgs#patchelf --command bash -c '
+            set -euo pipefail
+            for bin in release/bin/*; do
+              [ -f "$bin" ] || continue
+              patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 "$bin" 2>/dev/null || true
+              patchelf --set-rpath "\$ORIGIN/../lib" "$bin" 2>/dev/null || true
+            done
+            find release/lib -name "*.so*" -exec patchelf --set-rpath "\$ORIGIN" {} \; 2>/dev/null || true
+            find release/plugins -name "*.so" -exec patchelf --set-rpath "\$ORIGIN/../../lib" {} \; 2>/dev/null || true
+          '
+
+          tar czf "goodnet-${TAG}-linux-x86_64.tar.gz" -C release .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: goodnet-*-linux-x86_64.tar.gz
+
+  release:
+    needs: [build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            goodnet-*-linux-x86_64.tar.gz
+          generate_release_notes: true

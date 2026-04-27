@@ -6,11 +6,15 @@
 # Top-level project files
 !.gitignore
 !.envrc
+!.clang-tidy
 !flake.nix
 !flake.lock
 !CMakeLists.txt
 !LICENSE
 !README.md
+
+# Editor configs
+!.vscode/*.json
 
 # Build / output dirs (re-block after top-level rules)
 build/

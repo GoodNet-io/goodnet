@@ -89,7 +89,6 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         if (hdr.has_explicit_receiver()) {
             std::memcpy(env.receiver_pk, frame_start + pk_offset,
                         wire::kPublicKeySize);
-            pk_offset += wire::kPublicKeySize;
         } else if (hdr.is_broadcast()) {
             /// receiver_pk stays zero-initialised.
         } else {
