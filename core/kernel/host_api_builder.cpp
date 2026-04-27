@@ -109,10 +109,9 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     ctx.conn_id   = conn;
     ctx.trust     = rec->trust;
     ctx.remote_pk = rec->remote_pk;
-    /// Local pk is whichever local identity the connection terminates on;
-    /// for v1 we surface the first identity in the set as a placeholder.
-    /// Multi-tenant routing per protocol-layer §6 picks the right one
-    /// from envelope.receiver_pk during dispatch.
+    if (auto local = pc->kernel->identities().any(); local) {
+        ctx.local_pk = *local;
+    }
 
     auto* layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;

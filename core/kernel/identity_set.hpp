@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <unordered_set>
 
@@ -50,6 +51,16 @@ public:
     [[nodiscard]] std::size_t size() const {
         std::shared_lock lock(mu_);
         return set_.size();
+    }
+
+    /// Return any one identity from the set, or nullopt if empty.
+    /// Used by the inbound-bytes thunk for the single-identity case;
+    /// multi-tenant routing per `protocol-layer.md` §6 picks the right
+    /// identity from the envelope's `receiver_pk` instead.
+    [[nodiscard]] std::optional<PublicKey> any() const {
+        std::shared_lock lock(mu_);
+        if (set_.empty()) return std::nullopt;
+        return *set_.begin();
     }
 
 private:
