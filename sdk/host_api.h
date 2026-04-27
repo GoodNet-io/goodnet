@@ -39,10 +39,26 @@ typedef struct gn_transport_vtable_s  gn_transport_vtable_t;
  * Begins with @ref api_size for size-prefix evolution. New entries are
  * appended at the tail; consumers gate access through `GN_API_HAS`
  * (`sdk/abi.h`).
+ *
+ * The @ref host_ctx field is paired with the function pointers: every
+ * vtable entry takes `host_ctx` as its first argument, and the kernel
+ * sets the field before handing the table to the plugin. Convenience
+ * macros in `sdk/convenience.h` read the field through `(api)->host_ctx`
+ * so plugin authors call entries without passing it explicitly.
  */
 typedef struct host_api_s {
     /** sizeof(host_api_t) at the producer's build time. */
     uint32_t api_size;
+
+    /**
+     * @brief Opaque kernel context. Pass back unchanged on every call.
+     *
+     * Set by the kernel before `gn_plugin_init` returns. Valid for the
+     * full plugin lifetime (init through shutdown). The plugin must not
+     * inspect it; it is stable, opaque, and identifies the plugin's
+     * loader-side state to the kernel.
+     */
+    void* host_ctx;
 
     /* ── Messaging ─────────────────────────────────────────────────────── */
 
