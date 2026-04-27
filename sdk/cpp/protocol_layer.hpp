@@ -16,6 +16,7 @@
 #include <string_view>
 #include <vector>
 
+#include <sdk/connection.h>
 #include <sdk/cpp/types.hpp>
 
 namespace gn {
@@ -23,10 +24,12 @@ namespace gn {
 /**
  * @brief Per-connection state passed to deframe/frame.
  *
- * Defined in `core/`. Plugins receive an opaque reference and use the
- * accessor functions declared alongside the transport contract (TBD).
+ * Aliased to the C ABI struct declared in `sdk/connection.h`. Plugins
+ * receive a reference and read state through the accessors declared
+ * in the same C header (`gn_ctx_local_pk`, `gn_ctx_remote_pk`, …).
+ * The full struct definition lives in `core/kernel/connection_context.hpp`.
  */
-struct ConnectionContext;
+using ConnectionContext = ::gn_connection_context_t;
 
 /**
  * @brief Result of a single deframe call.
