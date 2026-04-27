@@ -30,8 +30,9 @@ extern "C" {
 #endif
 
 /* Forward declarations — full vtable types live in their own headers. */
-typedef struct gn_handler_vtable_s    gn_handler_vtable_t;
-typedef struct gn_transport_vtable_s  gn_transport_vtable_t;
+typedef struct gn_handler_vtable_s             gn_handler_vtable_t;
+typedef struct gn_transport_vtable_s           gn_transport_vtable_t;
+typedef struct gn_security_provider_vtable_s   gn_security_provider_vtable_t;
 
 /**
  * @brief Public host vtable.
@@ -220,6 +221,27 @@ typedef struct host_api_s {
     gn_result_t (*notify_disconnect)(void* host_ctx,
                                      gn_conn_id_t conn,
                                      gn_result_t reason);
+
+    /* ── Security registration ─────────────────────────────────────────── */
+
+    /**
+     * @brief Register a security provider with the kernel.
+     *
+     * Stack policy from `security-trust.md` §4: a node uses one
+     * default provider per trust class; v1 simplification holds a
+     * single active provider total. Plugins register their vtable
+     * and self pointer; the kernel calls encrypt / decrypt /
+     * handshake entries through it.
+     *
+     * @param vtable @borrowed; valid until `unregister_security`.
+     */
+    gn_result_t (*register_security)(void* host_ctx,
+                                     const char* provider_id,
+                                     const struct gn_security_provider_vtable_s* vtable,
+                                     void* security_self);
+
+    gn_result_t (*unregister_security)(void* host_ctx,
+                                       const char* provider_id);
 
     /* ── Reserved for future extension ─────────────────────────────────── */
 
