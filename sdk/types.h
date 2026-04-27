@@ -29,6 +29,76 @@ extern "C" {
 #define GN_PUBLIC_KEY_BYTES   32  /**< Ed25519 public key */
 #define GN_PRIVATE_KEY_BYTES  64  /**< Ed25519 secret key (libsodium layout) */
 
+/* ── Identifier typedefs ────────────────────────────────────────────────── */
+
+/** Stable per-connection handle. Allocated only by the kernel. */
+typedef uint64_t gn_conn_id_t;
+
+/** Opaque per-handler-registration handle. Returned by register_handler. */
+typedef uint64_t gn_handler_id_t;
+
+/** Opaque per-transport-registration handle. Returned by register_transport. */
+typedef uint64_t gn_transport_id_t;
+
+/** Sentinel value indicating an unset / invalid id. */
+#define GN_INVALID_ID ((uint64_t)0)
+
+/* ── Diagnostics enums ──────────────────────────────────────────────────── */
+
+/** Severity levels for the host-API logging entry. */
+typedef enum gn_log_level_e {
+    GN_LOG_TRACE = 0,
+    GN_LOG_DEBUG = 1,
+    GN_LOG_INFO  = 2,
+    GN_LOG_WARN  = 3,
+    GN_LOG_ERROR = 4,
+    GN_LOG_FATAL = 5
+} gn_log_level_t;
+
+/**
+ * @brief Reasons for dropping a frame at any kernel chokepoint.
+ *
+ * One metric counter exists per value. New reasons may be appended in minor
+ * releases; consumers default-handle unknown values rather than enumerate.
+ */
+typedef enum gn_drop_reason_e {
+    GN_DROP_NONE                  = 0,
+
+    GN_DROP_FRAME_TOO_LARGE       = 1,  /**< exceeds max_frame_bytes */
+    GN_DROP_PAYLOAD_TOO_LARGE     = 2,  /**< exceeds max_payload_bytes */
+    GN_DROP_QUEUE_HARD_CAP        = 3,  /**< per-conn pending queue full */
+    GN_DROP_RESERVED_BIT_SET      = 4,  /**< unknown reserved flag in frame */
+    GN_DROP_DEFRAME_CORRUPT       = 5,  /**< plugin signalled corruption */
+    GN_DROP_ZERO_SENDER           = 6,  /**< envelope sender_pk all zero */
+    GN_DROP_UNKNOWN_RECEIVER      = 7,  /**< no local identity matches receiver_pk */
+    GN_DROP_RELAY_TTL_EXCEEDED    = 8,
+    GN_DROP_RELAY_LOOP_DEDUP      = 9,
+    GN_DROP_RATE_LIMITED          = 10,
+    GN_DROP_TRUST_CLASS_MISMATCH  = 11
+} gn_drop_reason_t;
+
+/**
+ * @brief Backpressure signal returned to senders when the queue is loaded.
+ *
+ * Returned by `host_api->send` and friends. Plugins must branch on the value;
+ * ignoring `GN_BP_HARD_LIMIT` and tight-looping on send is a contract
+ * violation.
+ */
+typedef enum gn_backpressure_e {
+    GN_BP_OK            = 0,  /**< accepted, no pressure */
+    GN_BP_SOFT_LIMIT    = 1,  /**< past low watermark — sender should slow down */
+    GN_BP_HARD_LIMIT    = 2,  /**< dropped — back off, do not retry tight */
+    GN_BP_DISCONNECT    = 3   /**< connection gone — caller should stop */
+} gn_backpressure_t;
+
+/**
+ * @brief Policy returned from `IHandler::on_result` to influence dispatch.
+ */
+typedef enum gn_on_result_policy_e {
+    GN_ORP_CONTINUE_CHAIN = 0, /**< default: dispatch continues per `Propagation` */
+    GN_ORP_STOP_CHAIN     = 1  /**< stop the chain regardless of `Propagation` */
+} gn_on_result_policy_t;
+
 /* ── Result codes ───────────────────────────────────────────────────────── */
 
 /**
