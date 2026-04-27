@@ -116,5 +116,9 @@ Code follows contracts; contracts move first.
 ## License
 
 Kernel (`core/`) is GPL-2.0; SDK (`sdk/`) is MIT. Plugins are independent
-builds — each carries its own LICENSE in its directory.
+builds — each carries its own LICENSE in its directory. Bundled-tree
+convention: reference/template/debug plugins and common transports are
+MIT; original real implementations with no upstream analogue are Apache
+2.0; statically-linked plugins (the mandatory mesh-framing layer) stay
+GPL-compatible.
 See `LICENSE` for the full breakdown.

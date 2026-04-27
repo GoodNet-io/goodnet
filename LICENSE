@@ -1,9 +1,11 @@
 GoodNet — Licensing
 ====================
 
-The platform consists of the kernel and the SDK. They live under a single
-license model. Plugins are independent builds against the SDK and carry
-their own licenses; each plugin directory has its own LICENSE file.
+The platform consists of the kernel and the SDK. They live under a split
+license model so that the kernel stays free in the strong sense while the
+SDK — the boundary plugin authors compile against — remains permissive.
+Plugins are independent builds and carry their own licenses; each plugin
+directory has its own LICENSE file.
 
 
 Platform Components
@@ -20,19 +22,36 @@ Plugins
 -------
 
 Plugins are independent builds. Each is licensed at the discretion of its
-authors. Common cases:
+authors. Two distribution modes exist:
 
-  - Open MIT plugins ship with the upstream tree under plugins/ as a
-    convenience for development; they remain independently licensed.
-  - Closed-source or commercial plugins live in their own repositories
-    and link against the installed SDK.
+  - Dynamic plugins load through the stable C ABI at runtime. The boundary
+    is the SDK (MIT), not GPL kernel internals. Such plugins may carry any
+    license — MIT, BSD, Apache 2.0, proprietary — without triggering the
+    kernel's copyleft.
 
-Loading a plugin at runtime through the stable C ABI does NOT trigger
-GPL copyleft on the kernel side: the boundary between kernel and plugin
-is the SDK, which is MIT and explicitly intended for cross-license use.
+  - Static plugins (currently: plugins/protocols/gnet, the mandatory
+    mesh-framing protocol) are compiled into the kernel binary. Their
+    source must be GPL-compatible — MIT and BSD qualify; Apache 2.0 is
+    NOT compatible with GPL-2.0 and must not be used here.
+
+In-tree convention for bundled plugins:
+
+  - Reference / template / debug providers
+    (null, raw, ...)               .. MIT License
+  - Common transports
+    (tcp, udp)                     .. MIT License
+  - Mandatory mesh framing
+    (gnet, statically linked)      .. MIT License (GPL-compatible)
+  - Real implementations with
+    original work and no obvious
+    upstream analogues
+    (noise, ipc, heartbeat, ...)   .. Apache 2.0 License
+
+These are conventions for the bundled tree. Out-of-tree plugins choose
+freely within the constraints above.
 
 To discover the license of a specific plugin, consult its own LICENSE file.
 
 
-Copyright (c) 2026 GoodNet contributors (kernel + SDK).
+Copyright (c) 2026 GoodNet Contributors (kernel + SDK).
 Plugins copyright their respective authors.
