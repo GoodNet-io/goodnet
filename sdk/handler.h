@@ -1,0 +1,72 @@
+/**
+ * @file   sdk/handler.h
+ * @brief  C ABI for application-level message handlers.
+ *
+ * Handlers consume envelopes whose `(protocol_id, msg_id)` pair matches
+ * their registration. Multiple handlers may share the same pair; the
+ * kernel dispatches in priority order until one returns @ref GN_PROP_CONSUMED.
+ */
+#ifndef GOODNET_SDK_HANDLER_H
+#define GOODNET_SDK_HANDLER_H
+
+#include <sdk/types.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**
+ * @brief Propagation policy returned from `handle_message`.
+ *
+ * Determines whether subsequent handlers in the dispatch chain see the
+ * same envelope.
+ */
+typedef enum gn_propagation_e {
+    GN_PROP_CONTINUE = 0,  /**< pass envelope to the next handler */
+    GN_PROP_CONSUMED = 1,  /**< stop dispatch chain — handled */
+    GN_PROP_REJECT   = 2   /**< drop envelope and close the connection */
+} gn_propagation_t;
+
+/**
+ * @brief Vtable for an `IHandler` implementation in C.
+ */
+typedef struct gn_handler_vtable_s {
+    /**
+     * @brief Stable identifier of the protocol layer this handler binds to.
+     *        Returned pointer outlives the plugin.
+     */
+    const char* (*protocol_id)(void* self);
+
+    /**
+     * @brief List of message IDs this handler subscribes to.
+     *
+     * The kernel queries this once at registration. Returned span is
+     * borrowed for the lifetime of the handler.
+     */
+    void (*supported_msg_ids)(void* self,
+                              const uint32_t** out_ids,
+                              size_t* out_count);
+
+    /**
+     * @brief Dispatch entry point.
+     *
+     * Synchronous; `envelope->payload` is borrowed and only valid until
+     * return. Handlers that need to retain payload bytes must copy.
+     */
+    gn_propagation_t (*handle_message)(void* self,
+                                       const gn_message_t* envelope);
+
+    /**
+     * @brief Optional lifecycle hooks. May be NULL if not used.
+     */
+    void (*on_init)(void* self);
+    void (*on_shutdown)(void* self);
+
+    void* _reserved[4];
+} gn_handler_vtable_t;
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
+#endif /* GOODNET_SDK_HANDLER_H */
