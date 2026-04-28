@@ -43,11 +43,18 @@ otherwise without source-level evidence:
 
 ```c
 gn_result_t (*notify_connect)(void* host_ctx,
-                              gn_conn_id_t conn,
-                              const gn_endpoint_t* ep,
-                              const char* stack_name,
-                              gn_trust_class_t trust);
+                              const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
+                              const char* uri,
+                              const char* scheme,
+                              gn_trust_class_t trust,
+                              gn_handshake_role_t role,
+                              gn_conn_id_t* out_conn);
 ```
+
+The kernel allocates `*out_conn` and returns it to the transport;
+`role` reports whether the local side initiated (outbound `connect`)
+or accepted (inbound on `listen`) so the security session drives
+the correct half of the asymmetric handshake pattern.
 
 The transport plugin computes `trust` from observable connection
 properties:
