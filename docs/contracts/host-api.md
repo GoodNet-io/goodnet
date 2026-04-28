@@ -204,12 +204,15 @@ The kernel guarantees:
 Per `plugin-lifetime.md` §4, async tasks capture a weak observer of the
 plugin's reference-counted handle and upgrade before using `api`.
 
-`unregister_extension` is intentionally not on `host_api_t`: the
-kernel reaps a plugin's extensions automatically on
-`gn_plugin_shutdown` so the C ABI does not need a separate
-withdrawal entry. Plugins that re-publish an extension under a
-different version string between sessions rely on that automatic
-reap, not a manual unregister.
+`unregister_extension` is on `host_api_t` so plugins can withdraw
+an entry without dragging the whole plugin through `gn_plugin_shutdown`
+— for example, a plugin that re-registers an extension under a
+different version while staying loaded calls `unregister_extension`
+on the old name first. The kernel **also** auto-reaps a plugin's
+extensions on shutdown via the lifetime-anchor drain
+(`plugin-lifetime.md` §4), so a plugin that does not call
+`unregister_extension` does not leak the entry — automatic reap is
+the safety net, manual call is the explicit path.
 
 ---
 

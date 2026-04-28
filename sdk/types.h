@@ -133,7 +133,10 @@ typedef enum gn_result_e {
     GN_ERR_DEFRAME_CORRUPT    = -7,  /**< magic mismatch / bad version / overflow */
     GN_ERR_NOT_IMPLEMENTED    = -8,
     GN_ERR_VERSION_MISMATCH   = -9,  /**< plugin SDK major != kernel SDK major */
-    GN_ERR_LIMIT_REACHED      = -10
+    GN_ERR_LIMIT_REACHED      = -10,
+    GN_ERR_INVALID_STATE      = -11  /**< callee in wrong phase for the requested op
+                                       *   (Noise handshake on a transport-phase session,
+                                       *   set_timer after shutdown, etc.) */
 } gn_result_t;
 
 /* ── Kernel↔plugin envelope ─────────────────────────────────────────────── */

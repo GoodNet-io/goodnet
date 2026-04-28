@@ -210,8 +210,8 @@ gn_result_t noise_export_transport_keys(void* /*self*/,
                                          gn_handshake_keys_t* out_keys) {
     if (!state || !out_keys) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
-    if (!s->handshake.is_complete()) return GN_ERR_INVALID_ENVELOPE;
-    if (s->split_done) return GN_ERR_INVALID_ENVELOPE;
+    if (!s->handshake.is_complete()) return GN_ERR_INVALID_STATE;
+    if (s->split_done) return GN_ERR_INVALID_STATE;
 
     auto pair = s->handshake.split();
     s->transport = TransportState(std::move(pair.send), std::move(pair.recv));
@@ -239,7 +239,7 @@ gn_result_t noise_encrypt(void* /*self*/,
                            gn_secure_buffer_t* out) {
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
-    if (!s->split_done) return GN_ERR_INVALID_ENVELOPE;
+    if (!s->split_done) return GN_ERR_INVALID_STATE;
 
     auto cipher = s->transport.encrypt(
         std::span<const std::uint8_t>(plaintext, plaintext_size));
@@ -253,7 +253,7 @@ gn_result_t noise_decrypt(void* /*self*/,
                            gn_secure_buffer_t* out) {
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
-    if (!s->split_done) return GN_ERR_INVALID_ENVELOPE;
+    if (!s->split_done) return GN_ERR_INVALID_STATE;
 
     auto plain = s->transport.decrypt(
         std::span<const std::uint8_t>(ciphertext, ciphertext_size));
@@ -264,7 +264,7 @@ gn_result_t noise_decrypt(void* /*self*/,
 gn_result_t noise_rekey(void* /*self*/, void* state) {
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
-    if (!s->split_done) return GN_ERR_INVALID_ENVELOPE;
+    if (!s->split_done) return GN_ERR_INVALID_STATE;
     s->transport.rekey();
     return GN_OK;
 }

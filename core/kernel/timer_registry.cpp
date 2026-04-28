@@ -50,7 +50,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
                                        gn_timer_id_t* out_id) noexcept {
     if (fn == nullptr || out_id == nullptr) return GN_ERR_NULL_ARG;
     if (shutdown_.load(std::memory_order_acquire)) {
-        return GN_ERR_NOT_IMPLEMENTED;
+        return GN_ERR_INVALID_STATE;
     }
 
     try {
@@ -138,7 +138,7 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
                                  const std::shared_ptr<void>& anchor) noexcept {
     if (fn == nullptr) return GN_ERR_NULL_ARG;
     if (shutdown_.load(std::memory_order_acquire)) {
-        return GN_ERR_NOT_IMPLEMENTED;
+        return GN_ERR_INVALID_STATE;
     }
     if (pending_tasks_.load(std::memory_order_relaxed) >=
         max_pending_tasks_.load(std::memory_order_relaxed)) {

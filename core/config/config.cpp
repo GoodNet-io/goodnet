@@ -112,6 +112,16 @@ gn_result_t Config::validate(std::string* out_reason) const {
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
+    /// `limits.md §3` invariant: a payload plus the fixed 14-byte
+    /// GNET header must fit in one wire frame; otherwise a max-size
+    /// payload accepted at the inject path produces a frame that
+    /// the deframer rejects.
+    constexpr std::uint32_t kGnetFixedHeaderBytes = 14;
+    if (limits_.max_payload_bytes >
+        limits_.max_frame_bytes - kGnetFixedHeaderBytes) {
+        note("limits.max_payload_bytes + 14 > max_frame_bytes");
+        return GN_ERR_LIMIT_REACHED;
+    }
     return GN_OK;
 }
 
