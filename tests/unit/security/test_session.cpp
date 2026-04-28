@@ -234,13 +234,13 @@ TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
 
 // ── Sessions ────────────────────────────────────────────────────────
 
-TEST(Sessions, CreateAndFindReturnsSamePointer) {
+TEST(Sessions, CreateAndFindReturnsSameHandle) {
     FakeProvider prov;
     auto vt = make_vtable();
     Sessions sessions;
 
     gn_result_t rc = GN_OK;
-    SecuritySession* a = sessions.create(
+    auto a = sessions.create(
         /*conn*/ 7, &vt, &prov,
         GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
@@ -248,11 +248,11 @@ TEST(Sessions, CreateAndFindReturnsSamePointer) {
         std::span<const std::uint8_t>{}, rc);
     ASSERT_EQ(rc, GN_OK);
     ASSERT_NE(a, nullptr);
-    EXPECT_EQ(sessions.find(7), a);
+    EXPECT_EQ(sessions.find(7).get(), a.get());
     EXPECT_EQ(sessions.size(), 1u);
 }
 
-TEST(Sessions, FindUnknownConnReturnsNull) {
+TEST(Sessions, FindUnknownConnReturnsEmptyHandle) {
     Sessions sessions;
     EXPECT_EQ(sessions.find(99), nullptr);
 }

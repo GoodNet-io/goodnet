@@ -23,11 +23,21 @@ target_link_libraries(goodnet_integration_tests
         GoodNet::kernel
         GoodNet::protocol_gnet
         GoodNet::sdk
+        goodnet_tcp_objects
         GTest::gtest
         GTest::gtest_main
+        ${CMAKE_DL_LIBS}
 )
 
 target_compile_features(goodnet_integration_tests PRIVATE cxx_std_23)
+
+if(TARGET goodnet_security_noise)
+    add_dependencies(goodnet_integration_tests goodnet_security_noise)
+    target_compile_definitions(goodnet_integration_tests
+        PRIVATE
+            "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    )
+endif()
 
 gtest_discover_tests(goodnet_integration_tests
     PROPERTIES LABELS integration

@@ -65,7 +65,7 @@ gn_result_t thunk_send(void* host_ctx,
     /// During the handshake phase application data is rejected; the
     /// no-session path (loopback / null-security per security-trust.md
     /// §4) sends the framed bytes verbatim.
-    SecuritySession* session = pc->kernel->sessions().find(conn);
+    auto session = pc->kernel->sessions().find(conn);
     if (session != nullptr) {
         if (session->phase() == SecurityPhase::Handshake) {
             return GN_ERR_INVALID_ENVELOPE;
@@ -297,7 +297,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         }
 
         gn_result_t session_rc = GN_OK;
-        SecuritySession* session = pc->kernel->sessions().create(
+        (void)pc->kernel->sessions().create(
             new_id,
             entry.vtable,
             entry.self,
@@ -311,23 +311,32 @@ gn_result_t thunk_notify_connect(void* host_ctx,
             (void)pc->kernel->connections().erase_with_index(new_id);
             return session_rc;
         }
-
-        /// Initiator drives the first handshake message; responder
-        /// waits for inbound bytes.
-        if (session && role == GN_ROLE_INITIATOR) {
-            std::vector<std::uint8_t> first;
-            const gn_result_t adv_rc = session->advance_handshake({}, first);
-            if (adv_rc != GN_OK) {
-                pc->kernel->sessions().destroy(new_id);
-                (void)pc->kernel->connections().erase_with_index(new_id);
-                return adv_rc;
-            }
-            if (!first.empty()) {
-                (void)send_raw_via_transport(pc, new_id, scheme, first);
-            }
-        }
+        /// Initiator's first wire message is deferred to a separate
+        /// `kick_handshake` call so the transport has a window to
+        /// register its socket under `new_id` before bytes ride out.
     }
 
+    return GN_OK;
+}
+
+gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    auto session = pc->kernel->sessions().find(conn);
+    if (!session) return GN_OK;  /// no security on this conn
+    if (session->phase() != SecurityPhase::Handshake) return GN_OK;
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    std::vector<std::uint8_t> first;
+    const gn_result_t adv_rc = session->advance_handshake({}, first);
+    if (adv_rc != GN_OK) return adv_rc;
+
+    if (!first.empty()) {
+        (void)send_raw_via_transport(pc, conn, rec->transport_scheme, first);
+    }
     return GN_OK;
 }
 
@@ -348,7 +357,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     /// protocol layer. Connections without a session (loopback +
     /// null-security stacks per security-trust.md §4) skip both
     /// branches and fall through to the bare protocol layer.
-    SecuritySession* session = pc->kernel->sessions().find(conn);
+    auto session = pc->kernel->sessions().find(conn);
     std::vector<std::uint8_t> plaintext;
     std::span<const std::uint8_t> wire_bytes{bytes, size};
 
@@ -527,6 +536,7 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.inject_external_message = &thunk_inject_external_message;
     a.inject_frame            = &thunk_inject_frame;
+    a.kick_handshake          = &thunk_kick_handshake;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

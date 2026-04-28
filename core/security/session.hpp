@@ -115,8 +115,12 @@ public:
     /// state. Idempotent. Always called by `Sessions::destroy`.
     void close() noexcept;
 
-    [[nodiscard]] SecurityPhase phase() const noexcept { return phase_; }
-    [[nodiscard]] bool is_open() const noexcept { return phase_ != SecurityPhase::Closed; }
+    [[nodiscard]] SecurityPhase phase() const noexcept {
+        return phase_.load(std::memory_order_acquire);
+    }
+    [[nodiscard]] bool is_open() const noexcept {
+        return phase() != SecurityPhase::Closed;
+    }
 
     [[nodiscard]] const gn_handshake_keys_t& transport_keys() const noexcept {
         return keys_;
@@ -130,8 +134,8 @@ private:
     /// handshake_close).
     void* state_ = nullptr;
 
-    SecurityPhase  phase_   = SecurityPhase::Closed;
-    gn_conn_id_t   conn_id_ = GN_INVALID_ID;
+    std::atomic<SecurityPhase>  phase_   {SecurityPhase::Closed};
+    gn_conn_id_t                conn_id_ = GN_INVALID_ID;
 
     gn_handshake_keys_t keys_{};
 };
@@ -150,10 +154,12 @@ public:
     /// inserted into the map under @p conn; existing entries are
     /// replaced after closing.
     ///
-    /// Returns a borrowed pointer to the session (live until
-    /// `destroy(conn)`). The session is left in `Closed` phase if
-    /// `open()` failed; the caller checks `phase()` and the result.
-    [[nodiscard]] SecuritySession* create(
+    /// Returns a shared handle to the session. Holding the handle
+    /// keeps the session alive past concurrent `destroy(conn)` calls
+    /// — the entry is removed from the map but the session lives
+    /// until the last shared reference drops, so an in-flight
+    /// `phase()` / `encrypt_transport()` cannot race a free.
+    [[nodiscard]] std::shared_ptr<SecuritySession> create(
         gn_conn_id_t conn,
         const gn_security_provider_vtable_t* vtable,
         void* provider_self,
@@ -164,18 +170,20 @@ public:
         std::span<const std::uint8_t> remote_static_pk_or_empty,
         gn_result_t& out_result);
 
-    /// Look up the session for @p conn; nullptr if none.
-    [[nodiscard]] SecuritySession* find(gn_conn_id_t conn) noexcept;
+    /// Look up the session for @p conn; empty handle if none.
+    [[nodiscard]] std::shared_ptr<SecuritySession> find(
+        gn_conn_id_t conn) const noexcept;
 
-    /// Tear down the session for @p conn. Calls `close()` and removes
-    /// the entry. Idempotent.
+    /// Tear down the session for @p conn. Drops the map's reference;
+    /// the session is freed once any concurrent borrower releases
+    /// its own handle. Idempotent.
     void destroy(gn_conn_id_t conn);
 
     [[nodiscard]] std::size_t size() const;
 
 private:
     mutable std::shared_mutex mu_;
-    std::unordered_map<gn_conn_id_t, std::unique_ptr<SecuritySession>> map_;
+    std::unordered_map<gn_conn_id_t, std::shared_ptr<SecuritySession>> map_;
 };
 
 } // namespace gn::core
