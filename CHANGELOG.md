@@ -131,6 +131,20 @@ typed extension API.
   counters through every alternate index. Counters are allocated
   on `insert_with_index`, reaped on `erase_with_index`; calls on
   a missing id are silent no-ops to absorb teardown races.
+- **Handshake-phase pending queue** — `host_api->send` no longer
+  rejects application data while the connection's
+  `SecuritySession` is in `Handshake`. Each framed plaintext is
+  buffered on the session's pending queue (per
+  `backpressure.md` §8), capped at
+  `gn_limits_t::pending_handshake_bytes` (default 256 KiB,
+  `GN_ERR_LIMIT_REACHED` past the cap). When `advance_handshake`
+  transitions the session to `Transport` — on either the
+  `kick_handshake` or `notify_inbound_bytes` path — the kernel
+  encrypts every queued plaintext and pushes it through the
+  resolved transport in arrival order. `SecuritySession::close`
+  drops any leftover bytes; a connection that disconnects
+  mid-handshake reports the loss through
+  `GN_CONN_EVENT_DISCONNECTED`.
 - **Connection-event observer** — `host_api->subscribe_conn_state`,
   `unsubscribe_conn_state`, `for_each_connection`. The kernel
   publishes a typed event for every observable change in

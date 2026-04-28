@@ -162,3 +162,57 @@ process-level governor adds it in its own
 - Transport ownership of the write queue: `transport.md` §4.
 - Quiescence anchor on event subscriptions: `plugin-lifetime.md`
   §4.
+
+---
+
+## 8. Handshake-phase pending queue
+
+Application data submitted through `host_api->send` while the
+connection's `SecuritySession` is still in `Handshake` phase
+(`security-trust.md` §3) cannot be encrypted yet — the transport
+keys have not been derived. The kernel buffers each framed
+plaintext on a per-session pending queue and drains it once the
+session reaches `Transport`.
+
+### Cap
+
+`gn_limits_t::pending_handshake_bytes` (default `256 KiB`) caps
+the sum of buffered plaintext per connection. Once the cap would
+be exceeded, `host_api->send` returns `GN_ERR_LIMIT_REACHED`. A
+zero value disables the cap; the reference build wires
+`Config::limits` through `limits.md` §2.
+
+### Drain
+
+After every `advance_handshake` call that transitions the session
+to `Transport`, the kernel:
+
+1. Atomically takes the queued plaintexts via
+   `SecuritySession::take_pending()`.
+2. Encrypts each one through `encrypt_transport`.
+3. Pushes the ciphertext through the resolved transport's `send`
+   slot in arrival order, accounting `add_outbound` per byte that
+   leaves.
+
+The drain happens both on the responder's first inbound run (the
+`notify_inbound_bytes` path that completes XX / IK on the receive
+half) and on the initiator's `kick_handshake` for IK-style
+patterns that complete on the first message.
+
+### Drop on close
+
+`SecuritySession::close()` clears the pending queue. A connection
+that disconnects mid-handshake drops every buffered plaintext;
+the producer observes the loss through
+`GN_CONN_EVENT_DISCONNECTED` (`conn-events.md` §2) and is
+responsible for retry semantics at its own layer.
+
+### Why not the transport's queue
+
+Routing handshake-phase plaintext through the transport's write
+queue would require encrypting before keys exist — impossible —
+or buffering raw application data on the transport, which is the
+wrong layer (the transport must remain crypto-agnostic per
+`transport.md` §1). The pending queue lives on the security
+session because it is the only kernel object that observes both
+phase transitions and the encryption primitives.
