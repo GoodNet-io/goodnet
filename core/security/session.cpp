@@ -45,7 +45,12 @@ SecuritySession::~SecuritySession() {
 }
 
 void SecuritySession::close() noexcept {
-    if (vtable_ && state_ && vtable_->handshake_close) {
+    /// Symmetric pair to `open()`: handshake_close fires whenever the
+    /// session is in any phase other than `Closed`, including the
+    /// `state == nullptr` case (some providers carry no per-conn
+    /// state). Default-constructed sessions stay in `Closed` and so
+    /// skip the call.
+    if (vtable_ && phase_ != SecurityPhase::Closed && vtable_->handshake_close) {
         vtable_->handshake_close(provider_self_, state_);
     }
     state_ = nullptr;
