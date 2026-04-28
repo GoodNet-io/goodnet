@@ -1,7 +1,6 @@
 # Kernel — minimal, plugin-driven, public-key addressed.
 
 add_library(goodnet_kernel STATIC
-    util/placeholder.cpp
     config/config.cpp
     identity/keypair.cpp
     identity/derive.cpp

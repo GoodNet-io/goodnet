@@ -183,9 +183,22 @@ The kernel guarantees:
 - A plugin **must not** retain `api` past `gn_plugin_shutdown`. Posting
   a task that fires after shutdown and dereferences `api` would be a
   use-after-free.
+- A slot's presence in `api_size` does **not** imply a non-null
+  function pointer. Forward-looking entries that the current
+  release does not fulfil are zero-initialised; consumers gate
+  their call sites on `if (api->slot)` (or use the `GN_API_HAS`
+  macro from `sdk/abi.h` which combines size-prefix presence with
+  a null-pointer check).
 
 Per `plugin-lifetime.md` §4, async tasks capture a weak observer of the
 plugin's reference-counted handle and upgrade before using `api`.
+
+`unregister_extension` is intentionally not on `host_api_t`: the
+kernel reaps a plugin's extensions automatically on
+`gn_plugin_shutdown` so the C ABI does not need a separate
+withdrawal entry. Plugins that re-publish an extension under a
+different version string between sessions rely on that automatic
+reap, not a manual unregister.
 
 ---
 
@@ -197,7 +210,6 @@ reachable from a plugin:
 - `_create_plugin_ctx` — kernel allocates the plugin context.
 - `_load_so` / `_unload_so` — `dlopen` / `dlclose` orchestration.
 - `_iterate_plugins` — kernel introspection over the plugin set.
-- Plugin manifest verification (`plugin-manifest.md` TBD).
 
 A plugin that needs cross-plugin communication uses extensions
 (`query_extension_checked`), not loader internals.
@@ -228,9 +240,6 @@ Plugins **must not**:
   Plugins register all handlers in `gn_plugin_register`, not lazily.
 - Issue calls to `api` from a thread other than the plugin's own
   io-context unless a slot is documented as cross-thread safe.
-
-The plugin lint pass (`tools/plugin_lint.py`, TBD) flags these
-statically.
 
 ---
 

@@ -50,8 +50,8 @@ Sequencing rules:
    only deadlock-avoidance mechanism; concurrent inserts that need
    the same triple acquire it identically.
 2. Verify each index is free of the proposed key. If any is taken,
-   release all locks and return `GN_ERR_DUPLICATE`. No partial state
-   is visible.
+   release all locks and return `GN_ERR_LIMIT_REACHED`. No partial
+   state is visible.
 3. Insert the record into the shard, point the URI index at it,
    point the pk index at it.
 4. Release all locks.

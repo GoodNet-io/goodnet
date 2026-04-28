@@ -3,14 +3,15 @@
 /// @brief  Boost.Asio AF_UNIX transport plugin per `transport.md` §3
 ///         (AF_UNIX → `Loopback`).
 ///
-/// Same single-writer / strand-per-session shape as TCP — different
-/// socket type. The legacy `TR-S1` audit flagged TCP/IPC/WS as
-/// almost identical; v1 plays this straight: each transport owns its
-/// own implementation now, the duplication will collapse during
-/// Спина 11 (Plugin Compression). Listen avoids the TOCTOU class
-/// `TR-C6` describes: parent directory is `chmod 0700` before
-/// `bind`, the socket path is only unlinked when an existing entry
-/// is a socket, and `IPV6_V6ONLY`-style edge cases do not apply.
+/// Single-writer / strand-per-session shape: each connection owns a
+/// `boost::asio::strand` that serialises every `async_write_some`
+/// against the same socket so the kernel's per-conn ordering
+/// guarantee survives concurrent senders. `listen()` chmods the
+/// parent directory to `0700` before `bind` so the socket inode is
+/// never reachable by other users between the `bind` syscall and
+/// the manual permission tightening that would otherwise need to
+/// follow it; the socket path is only unlinked when an existing
+/// entry is a socket so a typo never clobbers an unrelated file.
 
 #pragma once
 

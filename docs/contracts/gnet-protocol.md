@@ -216,6 +216,5 @@ authors and future format successors:
 
 ## 8. Cross-references
 
-- Kernel-side envelope semantics: `docs/contracts/protocol-layer.md`.
-- Security layer (Noise) wraps GNET frames:
-  `docs/contracts/security-provider.md` (TBD).
+- Kernel-side envelope semantics: `protocol-layer.md`.
+- Security layer (Noise) wraps GNET frames: `noise-handshake.md`.

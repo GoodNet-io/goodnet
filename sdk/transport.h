@@ -93,8 +93,8 @@ typedef struct gn_transport_vtable_s {
      * @brief Per-transport extension surface (stats, runtime tweaks).
      *
      * Returns NULL if the transport exposes no extension. Otherwise
-     * returns a stable name like `"gn.tcp.transport"` and the matching
-     * vtable through @ref extension_vtable.
+     * returns a stable name like `"gn.transport.tcp"` and the matching
+     * vtable through @ref extension_vtable. See `transport.md` §8.
      */
     const char* (*extension_name)(void* self);
     const void* (*extension_vtable)(void* self);

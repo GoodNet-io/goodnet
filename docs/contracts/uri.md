@@ -11,10 +11,10 @@
 
 A connection URI identifies the wire-side counterpart of a kernel
 `gn_conn_id_t` — where to listen, where to dial. One parser, one
-canonical form, one set of invariants. Every transport plugin, the
-orchestrator, and the `host_api->find_conn_by_uri` lookup all share
-it; without that, "tcp://1.2.3.4:80" can substring-match "1.2.3.4:8080"
-and the kernel routes to the wrong peer.
+canonical form, one set of invariants. Every transport plugin and
+the kernel's connection-registry URI index share it; without that
+shared parser, "tcp://1.2.3.4:80" can substring-match
+"1.2.3.4:8080" and routing hits the wrong peer.
 
 The parser is pure string operation — no DNS resolution, no URL
 decoding. Transports own DNS and any auxiliary parameters (MQTT
@@ -53,9 +53,10 @@ struct UriParts {
 ```
 
 `is_path_style()` returns true iff `port == 0 && !path.empty()`. The
-`host` field is mirrored from `path` on path-style URIs so call sites
-that read `host` (registry stash key, `find_conn_by_uri`) keep working
-without scheme-specific branches.
+`host` field is mirrored from `path` on path-style URIs so call
+sites that read `host` (registry URI-index stash key, transport
+`listen` / `connect` arguments) keep working without scheme-specific
+branches.
 
 The `host` of a bracketed IPv6 URI is stored **without** brackets so
 callers can hand it straight to the platform's address parser.

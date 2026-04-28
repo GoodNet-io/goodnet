@@ -199,8 +199,6 @@ Omitting an ownership tag is a code-review failure pre-RC.
   at phase 5). Move dependent construction into `gn_plugin_register`,
   after `query_extension_checked` succeeds.
 
-The plugin lint pass (TBD) catches the first three statically.
-
 ---
 
 ## 9. Cross-references
@@ -208,5 +206,4 @@ The plugin lint pass (TBD) catches the first three statically.
 - C ABI evolution: `abi-evolution.md` §3.
 - The host vtable used at registration: `host-api.md`.
 - Quiescence wait mechanics: `fsm-events.md` §6 (generation counter).
-- Per-language liveness probe idioms: `docs/impl/<lang>/` (TBD).
 - Handler ordering and priority: `handler-registration.md`.

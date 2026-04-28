@@ -2,8 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/security/noise/`
-**Implements:** `ISecurityProvider` (contract TBD in `security-provider.md`)
-**Last verified:** 2026-04-27
+**Implements:** `gn_security_provider_vtable_t` from `sdk/security.h`
 **Stability:** wire-incompatible changes require a new protocol-name suffix.
 
 ---
@@ -12,13 +11,12 @@
 
 This contract pins the cryptographic surface of the canonical
 security provider: handshake patterns, hash function, buffer sizing,
-and rekey semantics. Three Noise patterns are declared:
+and rekey semantics. Two Noise patterns are declared:
 
 | Pattern | When used | Identity |
 |---|---|---|
 | `Noise_XX_25519_ChaChaPoly_BLAKE2b` | unknown peer, mutual auth | both sides Ed25519 keys |
 | `Noise_IK_25519_ChaChaPoly_BLAKE2b` | initiator knows responder pk | both sides Ed25519, initiator preshared responder pk |
-| `Noise_NK_25519_ChaChaPoly_BLAKE2b` | initiator anonymous | responder Ed25519 key only |
 
 The protocol name string is the **on-wire** name; the implementation
 **must** match it exactly. A name string that disagrees with the

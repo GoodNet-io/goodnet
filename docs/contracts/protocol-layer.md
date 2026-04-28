@@ -57,8 +57,10 @@ typedef struct gn_message_t {
   implementing `frame` must guarantee the same on outbound.
 - `gn_message_t` itself lives on the stack of the dispatching thread; its
   pointer **must not** escape `handle_message`.
-- Cross-thread retention requires `gn_message_dup(const gn_message_t*)` (SDK
-  helper, allocates owned copy of payload + struct).
+- Cross-thread or async retention is the consumer's responsibility:
+  copy the `payload` bytes into a buffer the consumer owns before
+  yielding. The kernel does not extend `payload`'s lifetime past the
+  dispatch return.
 
 ### 2.3 ZERO `receiver_pk` (broadcast)
 
@@ -111,13 +113,59 @@ broadcast plugins the public-key fields come from the wire.
 
 ---
 
+### 3.2 `gn::wire::WireSchema<T>` for typed payloads
+
+A handler that exchanges a fixed-shape payload (heartbeat,
+auto-NAT, relay tunnel header, …) binds a stateless schema type
+that satisfies `gn::wire::WireSchema<T>` from `sdk/cpp/wire.hpp`:
+
+```cpp
+template <class T>
+concept WireSchema = requires {
+    typename T::value_type;
+    { T::msg_id } -> std::convertible_to<std::uint32_t>;
+    { T::size   } -> std::convertible_to<std::size_t>;
+    requires std::is_invocable_v<
+        decltype(&T::serialize),
+        const typename T::value_type&>;
+    requires std::is_invocable_r_v<
+        std::optional<typename T::value_type>,
+        decltype(&T::parse),
+        std::span<const std::uint8_t>>;
+};
+```
+
+A schema is a stateless type (never instantiated) carrying:
+
+- `using value_type = …;` — the in-memory representation
+- `static constexpr std::uint32_t msg_id` — protocol-layer routing key
+- `static constexpr std::size_t   size`   — fixed wire-frame length
+- `static std::array<std::uint8_t, size> serialize(const value_type&) noexcept`
+- `static std::optional<value_type> parse(std::span<const std::uint8_t>) noexcept`
+
+`serialize` writes exactly `size` bytes; `parse` returns
+`std::nullopt` when the input length is wrong or the bytes do not
+decode to a valid `value_type`. Both functions must be `noexcept`.
+Implementers add a `static_assert(WireSchema<MySchema>)` next to
+the binding to fail fast on a missing or mistyped member.
+
+`HeartbeatSchema` (`plugins/handlers/heartbeat/heartbeat.hpp`) is
+the v1 reference binding.
+
+---
+
 ## 4. Mandatory single-implementation rule
 
 The kernel binary links **exactly one** `IProtocolLayer` implementation
-statically (`target_link_libraries(kernel PUBLIC <impl>)`). Default and
-currently only blessed implementation: `gnet-v1` in `plugins/protocols/gnet/`.
+statically (`target_link_libraries(kernel PUBLIC <impl>)`). Default
+implementation: `gnet-v1` in `plugins/protocols/gnet/`. A second
+implementation, `raw-v1` in `plugins/protocols/raw/`, is permitted as
+a build-time alternative for simulation harnesses, PCAP replay, and
+foreign-protocol passthrough; `raw-v1` deframes only on
+`GN_TRUST_LOOPBACK` / `GN_TRUST_INTRA_NODE` per `security-trust.md`
+§4.
 
-Multi-impl loading is **not** supported. Future evolution path:
+Multi-impl loading at runtime is **not** supported. Future evolution path:
 1. Add `mesh-v2` impl alongside `gnet-v1`.
 2. Build kernel with `-DGOODNET_MESH_LAYER=mesh-v2`.
 3. Cut deprecation release that ships both binaries during transition.
@@ -210,9 +258,10 @@ the kernel may interpret them.
 
 ## 10. Cross-references
 
-- Wire details for the current mesh-framing implementation:
-  `docs/contracts/gnet-protocol.md`.
-- Security layer contract: `docs/contracts/security-provider.md` (TBD).
-- Transport contract: `docs/contracts/transport.md` (TBD).
-- Handler contract: `docs/contracts/handler.md` (TBD).
-- Architectural decision log: `docs/ROADMAP.md` Phase 0 entry.
+- Wire details for the canonical mesh-framing implementation:
+  `gnet-protocol.md`.
+- Noise security: `noise-handshake.md`.
+- Transport ABI: `transport.md`.
+- Handler registration: `handler-registration.md`.
+- Trust-class policy: `security-trust.md`.
+- Architectural roadmap: `docs/ROADMAP.md`.
