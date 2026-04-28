@@ -17,6 +17,52 @@ namespace gn::core {
 
 namespace {
 
+/// Stable name per `RouteOutcome` value for diagnostic logs.
+[[nodiscard]] const char* route_outcome_str(RouteOutcome o) noexcept {
+    switch (o) {
+        case RouteOutcome::DispatchedLocal:        return "dispatched-local";
+        case RouteOutcome::DispatchedBroadcast:    return "dispatched-broadcast";
+        case RouteOutcome::DeferredRelay:          return "deferred-relay";
+        case RouteOutcome::DroppedZeroSender:      return "drop-zero-sender";
+        case RouteOutcome::DroppedInvalidMsgId:    return "drop-invalid-msg-id";
+        case RouteOutcome::DroppedUnknownReceiver: return "drop-unknown-receiver";
+        case RouteOutcome::DroppedNoHandler:       return "drop-no-handler";
+        case RouteOutcome::Rejected:               return "rejected";
+    }
+    return "unknown";
+}
+
+/// Surface the router's verdict — the result was previously dropped
+/// `(void)`-cast at every dispatch site, so a handler returning
+/// `Rejected` or a malformed envelope hitting `DroppedZeroSender`
+/// produced no kernel-side trace. Per `fsm-events.md`, every
+/// callback return is consumed; here we consume by logging. Reject
+/// is a handler-policy signal — kernel does not auto-disconnect on
+/// it (that decision belongs to a future policy layer), but the
+/// operator now sees it.
+void route_one_envelope(Kernel& kernel,
+                        std::string_view protocol_id,
+                        const gn_message_t& env) {
+    const auto outcome = kernel.router().route_inbound(protocol_id, env);
+    switch (outcome) {
+        case RouteOutcome::DispatchedLocal:
+        case RouteOutcome::DispatchedBroadcast:
+        case RouteOutcome::DeferredRelay:
+            return;
+        case RouteOutcome::Rejected:
+        case RouteOutcome::DroppedZeroSender:
+        case RouteOutcome::DroppedInvalidMsgId:
+            ::gn::log::warn("router: drop outcome={} msg_id={}",
+                            route_outcome_str(outcome), env.msg_id);
+            return;
+        case RouteOutcome::DroppedUnknownReceiver:
+        case RouteOutcome::DroppedNoHandler:
+            ::gn::log::debug("router: drop outcome={} msg_id={}",
+                             route_outcome_str(outcome), env.msg_id);
+            return;
+    }
+}
+
 /* ── Slot thunks. Each casts host_ctx → PluginContext* and dispatches. ── */
 
 gn_result_t thunk_send(void* host_ctx,
@@ -461,9 +507,8 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     auto deframed = layer->deframe(ctx, wire_bytes);
     if (!deframed.has_value()) return deframed.error().code;
 
-    auto& router = pc->kernel->router();
     for (const auto& env : deframed->messages) {
-        (void)router.route_inbound(layer->protocol_id(), env);
+        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
     }
     return GN_OK;
 }
@@ -505,7 +550,7 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
         std::memcpy(env.receiver_pk, local->data(), GN_PUBLIC_KEY_BYTES);
     }
 
-    (void)pc->kernel->router().route_inbound(layer->protocol_id(), env);
+    route_one_envelope(*pc->kernel, layer->protocol_id(), env);
     return GN_OK;
 }
 
@@ -553,9 +598,8 @@ gn_result_t thunk_inject_frame(void* host_ctx,
         return GN_ERR_DEFRAME_INCOMPLETE;
     }
 
-    auto& router = pc->kernel->router();
     for (const auto& env : deframed->messages) {
-        (void)router.route_inbound(layer->protocol_id(), env);
+        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
     }
     return GN_OK;
 }
