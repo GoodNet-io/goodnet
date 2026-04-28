@@ -145,6 +145,18 @@ typed extension API.
   drops any leftover bytes; a connection that disconnects
   mid-handshake reports the loss through
   `GN_CONN_EVENT_DISCONNECTED`.
+- **DNS resolver helper** — header-only `sdk/cpp/dns.hpp` with
+  `gn::sdk::resolve_uri_host(io_context&, uri)`. Blocking
+  `asio::ip::tcp::resolver` lookup on the calling thread for
+  hostname inputs; IP literals and `ipc://` path-style URIs
+  short-circuit. The TCP / UDP / WS / TLS transports now route
+  every outbound `connect()` through the helper so the
+  registry's URI index keys and the on-connect callback URI
+  always carry an IP literal. Per `docs/contracts/dns.md` §1
+  (new). Seven new unit tests cover IP-literal passthrough,
+  IPv6 brackets, path-style URIs, query preservation,
+  unparseable inputs, the `localhost` lookup, and `*.invalid`
+  failure surfaces.
 - **Connection-event observer** — `host_api->subscribe_conn_state`,
   `unsubscribe_conn_state`, `for_each_connection`. The kernel
   publishes a typed event for every observable change in

@@ -13,6 +13,7 @@ Checks: >
   -cert-dcl50-cpp,
   -cert-err58-cpp,
   clang-analyzer-*,
+  -clang-analyzer-optin.cplusplus.VirtualCall,
   performance-*,
   -performance-enum-size,
   portability-*,

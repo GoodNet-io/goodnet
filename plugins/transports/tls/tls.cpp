@@ -4,6 +4,8 @@
 
 #include "tls.hpp"
 
+#include <sdk/cpp/dns.hpp>
+
 #include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
 #include <asio/dispatch.hpp>
@@ -537,9 +539,17 @@ void TlsTransport::on_accept(std::shared_ptr<Session> session,
 gn_result_t TlsTransport::connect(std::string_view uri) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
+    /// Hostname → IP literal up-front per `dns.md` §1; the rest of
+    /// the connect path expects a literal-host URI so the OpenSSL
+    /// certificate-name match (when enabled) sees the same identity
+    /// the connection registry will key on.
+    auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri);
+    if (!resolved) return GN_ERR_INVALID_ENVELOPE;
+    std::string_view uri_view = *resolved;
+
     constexpr std::string_view kScheme = "tls://";
-    if (!uri.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
-    std::string_view rest = uri.substr(kScheme.size());
+    if (!uri_view.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
+    std::string_view rest = uri_view.substr(kScheme.size());
 
     std::string host;
     std::uint16_t port = 0;
