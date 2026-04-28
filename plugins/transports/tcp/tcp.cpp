@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "tcp.hpp"
 
+#include <sdk/cpp/dns.hpp>
 #include <sdk/cpp/uri.hpp>
 
 #include <asio/bind_executor.hpp>
@@ -438,7 +439,14 @@ void TcpTransport::on_accept(std::shared_ptr<Session> session,
 gn_result_t TcpTransport::connect(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
-    const auto parts = ::gn::parse_uri(uri_sv);
+    /// Resolve hostname → IP literal up-front so the registry's URI
+    /// index keys and the on-connect callback URI line up per
+    /// `dns.md` §1. IP-literal inputs short-circuit through the
+    /// helper without a lookup.
+    auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri_sv);
+    if (!resolved) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(*resolved);
     if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
     /// `connect`-side rejects port 0 per `uri.md` §5 — the parser
     /// accepts it for ephemeral allocation on the listen path, but

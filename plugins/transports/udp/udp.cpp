@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "udp.hpp"
 
+#include <sdk/cpp/dns.hpp>
 #include <sdk/cpp/uri.hpp>
 
 #include <asio/bind_executor.hpp>
@@ -136,7 +137,12 @@ gn_result_t UdpTransport::listen(std::string_view uri_sv) {
 gn_result_t UdpTransport::connect(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
-    const auto parts = ::gn::parse_uri(uri_sv);
+    /// Hostname → IP literal up-front per `dns.md` §1; IP-literal
+    /// hosts short-circuit through the helper without a lookup.
+    auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri_sv);
+    if (!resolved) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(*resolved);
     if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
     /// `connect`-side rejects port 0 per `uri.md` §5 — listen accepts
     /// it for ephemeral allocation, but a zero target port is never a

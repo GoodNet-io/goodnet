@@ -6,6 +6,8 @@
 
 #include "wire.hpp"
 
+#include <sdk/cpp/dns.hpp>
+
 #include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
 #include <asio/connect.hpp>
@@ -759,12 +761,16 @@ void WsTransport::start_accept() {
 }
 
 gn_result_t WsTransport::connect(std::string_view uri) {
-    auto parsed = parse_uri(uri);
+    /// Hostname → IP literal up-front per `dns.md` §1; the helper
+    /// short-circuits IP-literal hosts. The HTTP `Host:` header sent
+    /// during the upgrade carries the literal `host:port`, matching
+    /// the registry key the kernel will use.
+    auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri);
+    if (!resolved) return GN_ERR_INVALID_ENVELOPE;
+
+    auto parsed = parse_uri(*resolved);
     if (!parsed) return GN_ERR_INVALID_ENVELOPE;
 
-    /// IP-literal only — DNS resolution is the kernel orchestrator's
-    /// job, not the transport's. Peer URIs handed to a transport
-    /// always carry a resolved address.
     asio::ip::tcp::endpoint ep;
     try {
         ep = asio::ip::tcp::endpoint(
