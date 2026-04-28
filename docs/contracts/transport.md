@@ -147,7 +147,7 @@ Rules from `host-api.md` §6 apply:
 
 - Only inside `gn_plugin_register` (phase 5 per `plugin-lifetime.md` §2).
 - `scheme` is unique across loaded transports; duplicate returns
-  `GN_ERR_DUPLICATE`.
+  `GN_ERR_LIMIT_REACHED`.
 - `vtable` is `@borrowed` for the lifetime, valid until `unregister`.
 
 A plugin may register multiple schemes through multiple calls. Pre-RC
