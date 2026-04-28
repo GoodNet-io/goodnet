@@ -21,7 +21,7 @@ extern "C" {
 /* ── ABI versioning ─────────────────────────────────────────────────────── */
 
 #define GN_SDK_VERSION_MAJOR 1   /**< incompatible ABI changes */
-#define GN_SDK_VERSION_MINOR 3   /**< additive (size-prefix-protected) */
+#define GN_SDK_VERSION_MINOR 4   /**< additive (size-prefix-protected) */
 #define GN_SDK_VERSION_PATCH 0   /**< documentation / non-binary fixes */
 
 /* ── Identity sizing ────────────────────────────────────────────────────── */
@@ -40,8 +40,21 @@ typedef uint64_t gn_handler_id_t;
 /** Opaque per-transport-registration handle. Returned by register_transport. */
 typedef uint64_t gn_transport_id_t;
 
+/** Opaque service-executor timer handle. Returned by set_timer. */
+typedef uint64_t gn_timer_id_t;
+
 /** Sentinel value indicating an unset / invalid id. */
 #define GN_INVALID_ID ((uint64_t)0)
+
+/** Sentinel value indicating an unset / invalid timer id. Aliases
+ *  `GN_INVALID_ID` for source-level convenience.
+ */
+#define GN_INVALID_TIMER_ID ((gn_timer_id_t)0)
+
+/** Service-executor task callback. Runs on the kernel's
+ *  single-thread service executor (timer.md §3); `user_data` is
+ *  passed back unchanged. */
+typedef void (*gn_task_fn_t)(void* user_data);
 
 /* ── Diagnostics enums ──────────────────────────────────────────────────── */
 

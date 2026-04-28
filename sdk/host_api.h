@@ -304,6 +304,41 @@ typedef struct host_api_s {
      */
     gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
 
+    /* ── Service executor (timer.md is the authoritative spec) ─────────── */
+
+    /**
+     * @brief Schedule a one-shot callback after @p delay_ms ms.
+     *
+     * `fn(user_data)` runs on the kernel's single-thread service
+     * executor. The kernel pairs every timer with a weak observer
+     * of the calling plugin's quiescence sentinel; a callback whose
+     * plugin already unloaded is dropped silently (`timer.md` §4).
+     *
+     * @return `GN_OK` on success, `GN_ERR_NULL_ARG` on null
+     *         argument, `GN_ERR_LIMIT_REACHED` when
+     *         `gn_limits_t::max_timers` has been exhausted.
+     */
+    gn_result_t (*set_timer)(void* host_ctx,
+                             uint32_t delay_ms,
+                             gn_task_fn_t fn,
+                             void* user_data,
+                             gn_timer_id_t* out_id);
+
+    /**
+     * @brief Cancel a pending timer. Idempotent: cancelling an
+     *        already-fired or already-cancelled timer is success.
+     */
+    gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
+
+    /**
+     * @brief Run @p fn(user_data) on the service executor at the
+     *        next available point. Used to hand work back from a
+     *        transport's strand into the kernel's serialised loop.
+     */
+    gn_result_t (*post_to_executor)(void* host_ctx,
+                                    gn_task_fn_t fn,
+                                    void* user_data);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];
