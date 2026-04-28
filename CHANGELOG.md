@@ -157,6 +157,29 @@ typed extension API.
   IPv6 brackets, path-style URIs, query preservation,
   unparseable inputs, the `localhost` lookup, and `*.invalid`
   failure surfaces.
+- **Path-optimiser plugin framework** —
+  `sdk/extensions/optimizer.h` defines the `gn.optimizer.<name>`
+  extension shape: a `recommend(conn)` slot that returns a
+  `Replace` / `AddPath` / `Drop` recommendation for the kernel's
+  `PathManager`, an `on_event(ev)` slot for connection-event
+  subscriptions, and a `subscribed_events` bitmask. Reserved
+  initial names (`transport-failover`, `relay-upgrade`, `ice`,
+  `autonat`) lock the namespace so future plugins land in
+  predictable slots. Per `docs/contracts/optimizer.md` (new).
+  No optimiser plugins ship in v1 — Phase 4 work — but the
+  contract pins the shape so each plugin lands without
+  re-touching the core.
+- **Capability TLV codec** — `sdk/cpp/capability_tlv.hpp` ships
+  a header-only encode / parse pair against the
+  `[type:u16 BE][length:u16 BE][value]*` blob format described
+  in `docs/contracts/capability-tlv.md` (new). Used by the
+  post-Noise capability handshake — peers exchange the supported
+  optimiser / transport / protocol names in a single GNET frame.
+  Unknown record types are skipped on parse so the format stays
+  wire-additive. Eight new unit tests cover empty round-trip,
+  multi-record order, big-endian field layout, oversized-value
+  rejection, truncated-header / truncated-value surfaces, and
+  unknown-type tolerance.
 - **Connection-event observer** — `host_api->subscribe_conn_state`,
   `unsubscribe_conn_state`, `for_each_connection`. The kernel
   publishes a typed event for every observable change in
