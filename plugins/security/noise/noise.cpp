@@ -39,9 +39,6 @@ using gn::noise::Keypair;
 using gn::noise::Pattern;
 using gn::noise::PublicKey;
 using gn::noise::TransportState;
-using gn::noise::DH_PUBLIC_KEY_BYTES;
-using gn::noise::DH_PRIVATE_KEY_BYTES;
-using gn::noise::HASHLEN;
 
 constexpr const char* kProviderId = "noise";
 
@@ -60,7 +57,7 @@ struct NoiseSession {
     NoiseSession(Pattern p, bool initiator,
                   const Keypair& static_keypair,
                   std::optional<PublicKey> remote_static_pk)
-        : handshake(p, initiator, static_keypair, std::move(remote_static_pk)),
+        : handshake(p, initiator, static_keypair, remote_static_pk),
           pattern(p),
           role(initiator ? GN_ROLE_INITIATOR : GN_ROLE_RESPONDER),
           total_steps(p == Pattern::IK ? 2 : 3),
@@ -283,6 +280,17 @@ void noise_handshake_close(void* /*self*/, void* state) {
 /// avoid a double-delete if both arrive.
 void noise_destroy(void* /*self*/) {}
 
+/// Noise provider authenticates and encrypts every direction; safe
+/// on every trust class. The kernel may still choose `null+raw` on
+/// loopback when latency matters (per `security-trust.md` §4 default
+/// stacks); the mask declares capability, not policy.
+std::uint32_t noise_allowed_trust_mask(void* /*self*/) {
+    return (1u << GN_TRUST_UNTRUSTED) |
+           (1u << GN_TRUST_PEER)      |
+           (1u << GN_TRUST_LOOPBACK)  |
+           (1u << GN_TRUST_INTRA_NODE);
+}
+
 gn_security_provider_vtable_t make_vtable() {
     gn_security_provider_vtable_t v{};
     v.api_size              = sizeof(gn_security_provider_vtable_t);
@@ -296,6 +304,7 @@ gn_security_provider_vtable_t make_vtable() {
     v.rekey                 = &noise_rekey;
     v.handshake_close       = &noise_handshake_close;
     v.destroy               = &noise_destroy;
+    v.allowed_trust_mask    = &noise_allowed_trust_mask;
     return v;
 }
 

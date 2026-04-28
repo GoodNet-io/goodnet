@@ -163,7 +163,23 @@ typedef struct gn_security_provider_vtable_s {
     /** Plugin destruction. */
     void (*destroy)(void* self);
 
-    void* _reserved[4];
+    /**
+     * @brief Bitmask of `gn_trust_class_t` values this provider may serve.
+     *
+     * Bit `1u << GN_TRUST_<X>` set means the provider permits its own
+     * involvement on a connection of class `<X>`. The kernel reads
+     * this once at `register_security` time and enforces the gate on
+     * every `Sessions::create`; a connection whose trust class is not
+     * in the mask is rejected before any handshake byte rides — per
+     * `security-trust.md` §4.
+     *
+     * Examples:
+     *   - NoiseProvider: `1u<<UNTRUSTED | 1u<<PEER | 1u<<LOOPBACK | 1u<<INTRA_NODE`
+     *   - NullProvider:  `1u<<LOOPBACK | 1u<<INTRA_NODE`
+     */
+    uint32_t (*allowed_trust_mask)(void* self);
+
+    void* _reserved[3];
 } gn_security_provider_vtable_t;
 
 #ifdef __cplusplus

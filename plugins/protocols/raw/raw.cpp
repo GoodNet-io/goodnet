@@ -103,15 +103,24 @@ void destroy_thunk(void* /*self*/) noexcept {
     /// Nothing to release — `raw` is stateless.
 }
 
+std::uint32_t allowed_trust_mask_thunk(void* /*self*/) noexcept {
+    /// Same gate as `deframe_thunk` enforces inline. Two layers in
+    /// case the kernel ever consults the vtable mask before a
+    /// deframe call (a future dlopen'd-protocol path), and the
+    /// inline check stays defence-in-depth for direct invocations.
+    return (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+}
+
 }  // namespace
 
 gn_protocol_layer_vtable_t make_vtable() noexcept {
     gn_protocol_layer_vtable_t v{};
-    v.protocol_id      = &protocol_id_thunk;
-    v.deframe          = &deframe_thunk;
-    v.frame            = &frame_thunk;
-    v.max_payload_size = &max_payload_size_thunk;
-    v.destroy          = &destroy_thunk;
+    v.protocol_id        = &protocol_id_thunk;
+    v.deframe            = &deframe_thunk;
+    v.frame              = &frame_thunk;
+    v.max_payload_size   = &max_payload_size_thunk;
+    v.destroy            = &destroy_thunk;
+    v.allowed_trust_mask = &allowed_trust_mask_thunk;
     return v;
 }
 

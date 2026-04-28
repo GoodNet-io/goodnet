@@ -30,6 +30,16 @@ struct FakeProvider {
     int encrypt_calls = 0;
     int decrypt_calls = 0;
     bool complete_immediately = true;
+    /// Default mask: permit every class. Tests narrow this to drive
+    /// the stack-policy gate against specific connection trust.
+    std::uint32_t trust_mask = (1u << GN_TRUST_UNTRUSTED) |
+                                (1u << GN_TRUST_PEER)      |
+                                (1u << GN_TRUST_LOOPBACK)  |
+                                (1u << GN_TRUST_INTRA_NODE);
+
+    static std::uint32_t mask(void* self) {
+        return static_cast<FakeProvider*>(self)->trust_mask;
+    }
 
     static gn_result_t open(void* self, gn_conn_id_t,
                              gn_trust_class_t, gn_handshake_role_t,
@@ -113,6 +123,7 @@ gn_security_provider_vtable_t make_vtable() {
     v.encrypt               = &FakeProvider::encrypt;
     v.decrypt               = &FakeProvider::decrypt;
     v.handshake_close       = &FakeProvider::close;
+    v.allowed_trust_mask    = &FakeProvider::mask;
     return v;
 }
 
@@ -311,4 +322,50 @@ TEST(Sessions, DestroyUnknownIsNoop) {
     Sessions sessions;
     sessions.destroy(42);  /// must not crash; nothing to remove
     EXPECT_EQ(sessions.size(), 0u);
+}
+
+TEST(Sessions, CreateRefusedWhenTrustNotInProviderMask) {
+    /// Null-style provider: only LOOPBACK / INTRA_NODE permitted. A
+    /// caller that hands an UNTRUSTED conn to such a provider hits
+    /// the stack-policy gate before any handshake state is allocated.
+    FakeProvider prov;
+    prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    auto vt = make_vtable();
+    Sessions sessions;
+
+    gn_result_t rc = GN_OK;
+    auto sess = sessions.create(
+        /*conn*/ 13, &vt, &prov,
+        GN_TRUST_UNTRUSTED, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+
+    EXPECT_EQ(rc, GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(sess, nullptr);
+    EXPECT_EQ(sessions.size(), 0u);
+    /// Critically: the gate fires before `handshake_open` runs, so
+    /// the provider observed zero handshake-state allocations.
+    EXPECT_EQ(prov.handshake_open_calls, 0);
+}
+
+TEST(Sessions, CreateAcceptsTrustClassInProviderMask) {
+    /// Same restrictive mask, but the conn is LOOPBACK — gate
+    /// permits.
+    FakeProvider prov;
+    prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    auto vt = make_vtable();
+    Sessions sessions;
+
+    gn_result_t rc = GN_OK;
+    auto sess = sessions.create(
+        /*conn*/ 14, &vt, &prov,
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+
+    EXPECT_EQ(rc, GN_OK);
+    ASSERT_NE(sess, nullptr);
+    EXPECT_EQ(prov.handshake_open_calls, 1);
 }

@@ -88,6 +88,24 @@ public:
      * Must be constant over the lifetime of the instance.
      */
     [[nodiscard]] virtual std::size_t max_payload_size() const noexcept = 0;
+
+    /**
+     * @brief Bitmask of `gn_trust_class_t` values this implementation
+     *        may serve.
+     *
+     * Bit `1u << GN_TRUST_<X>` set means deframe is allowed on a
+     * connection of that class. Default is "permit every class" so
+     * the canonical mesh-framing implementation needs no override;
+     * implementations narrower in scope (passthrough / opaque-
+     * payload) override to a subset. Per `security-trust.md` §4 the
+     * kernel enforces the gate before any envelope rides.
+     */
+    [[nodiscard]] virtual std::uint32_t allowed_trust_mask() const noexcept {
+        return (1u << GN_TRUST_UNTRUSTED)  |
+               (1u << GN_TRUST_PEER)       |
+               (1u << GN_TRUST_LOOPBACK)   |
+               (1u << GN_TRUST_INTRA_NODE);
+    }
 };
 
 } // namespace gn

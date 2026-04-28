@@ -209,6 +209,21 @@ std::shared_ptr<SecuritySession> Sessions::create(
     std::span<const std::uint8_t> remote_static_pk_or_empty,
     gn_result_t& out_result)
 {
+    /// Stack-policy gate per `security-trust.md` §4: the provider
+    /// declares which trust classes it may serve through
+    /// `allowed_trust_mask`; the kernel rejects any mismatch before
+    /// the handshake state is allocated. Refusing here keeps the
+    /// upstream pipeline from leaking a half-initialised session
+    /// into the registry on a misconfigured stack.
+    if (vtable && vtable->allowed_trust_mask) {
+        const std::uint32_t mask = vtable->allowed_trust_mask(provider_self);
+        const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
+        if ((mask & bit) == 0u) {
+            out_result = GN_ERR_INVALID_ENVELOPE;
+            return nullptr;
+        }
+    }
+
     /// Reject duplicate creation under the same `conn` id. Without
     /// this guard a second `create()` call silently overwrites the
     /// existing entry; an active borrower keeps the old session
