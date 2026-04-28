@@ -257,6 +257,38 @@ TEST(Sessions, FindUnknownConnReturnsEmptyHandle) {
     EXPECT_EQ(sessions.find(99), nullptr);
 }
 
+TEST(Sessions, CreateRejectsDuplicateConn) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    Sessions sessions;
+
+    gn_result_t rc = GN_OK;
+    auto first = sessions.create(
+        /*conn*/ 11, &vt, &prov,
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+    ASSERT_EQ(rc, GN_OK);
+    ASSERT_NE(first, nullptr);
+
+    /// Second `create()` with the same `conn` must fail. A silent
+    /// overwrite would orphan the existing session — borrowers
+    /// holding `shared_ptr` continue to encrypt against the old
+    /// keys while new callers see a freshly-keyed handshake;
+    /// payloads diverge.
+    auto second = sessions.create(
+        /*conn*/ 11, &vt, &prov,
+        GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+    EXPECT_EQ(rc, GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(second, nullptr);
+    EXPECT_EQ(sessions.find(11).get(), first.get());
+    EXPECT_EQ(sessions.size(), 1u);
+}
+
 TEST(Sessions, DestroyClearsAndCallsHandshakeClose) {
     FakeProvider prov;
     auto vt = make_vtable();

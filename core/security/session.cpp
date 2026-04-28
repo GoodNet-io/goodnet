@@ -209,6 +209,21 @@ std::shared_ptr<SecuritySession> Sessions::create(
     std::span<const std::uint8_t> remote_static_pk_or_empty,
     gn_result_t& out_result)
 {
+    /// Reject duplicate creation under the same `conn` id. Without
+    /// this guard a second `create()` call silently overwrites the
+    /// existing entry; an active borrower keeps the old session
+    /// alive through `shared_ptr`, but new callers see a fresh
+    /// session that lost the handshake state. The kernel pipeline
+    /// allocates one session per `notify_connect`, so a duplicate
+    /// here is a contract violation by the caller.
+    {
+        std::shared_lock lock(mu_);
+        if (map_.count(conn) != 0) {
+            out_result = GN_ERR_LIMIT_REACHED;
+            return nullptr;
+        }
+    }
+
     auto session = std::make_shared<SecuritySession>();
     out_result = session->open(vtable, provider_self, conn, trust, role,
                                 local_static_sk, local_static_pk,
@@ -218,7 +233,16 @@ std::shared_ptr<SecuritySession> Sessions::create(
     }
     {
         std::unique_lock lock(mu_);
-        map_[conn] = session;
+        /// Race re-check — another thread could have inserted between
+        /// our shared-lock probe and the unique-lock acquire. `emplace`
+        /// returns `inserted == false` on conflict; in that case we
+        /// surface the same error and drop our new session on the
+        /// floor (the existing one wins).
+        const auto [_, inserted] = map_.emplace(conn, session);
+        if (!inserted) {
+            out_result = GN_ERR_LIMIT_REACHED;
+            return nullptr;
+        }
     }
     return session;
 }
