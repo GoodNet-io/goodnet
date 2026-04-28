@@ -180,7 +180,7 @@ struct Node {
 
 // ── Async wait helper ───────────────────────────────────────────────
 
-void wait_for(std::function<bool()> pred,
+void wait_for(const std::function<bool()>& pred,
               std::chrono::milliseconds timeout,
               const char* what) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -262,6 +262,31 @@ TEST(NoiseTcpE2E, HandshakeOverRealSocketReachesTransportPhase) {
     EXPECT_EQ(std::memcmp(alice_keys.handshake_hash,
                            bob_keys.handshake_hash,
                            GN_HASH_BYTES), 0);
+
+    /// Trust gate per `security-trust.md` §3 + `sdk/trust.h` helper:
+    /// TCP on `127.0.0.1` declared `GN_TRUST_LOOPBACK` at connect.
+    /// The post-handshake hook in `thunk_notify_inbound_bytes` calls
+    /// `upgrade_trust(conn, GN_TRUST_PEER)` indiscriminately; the
+    /// registry consults `gn_trust_can_upgrade(LOOPBACK, PEER)`,
+    /// which returns 0, and the record stays `LOOPBACK`. This proves
+    /// the gate is wired and rejects an unsafe transition. The
+    /// `Untrusted → Peer` happy path is exercised in
+    /// `tests/unit/registry/test_connection.cpp`.
+    bool alice_loopback_held = false, bob_loopback_held = false;
+    for (gn_conn_id_t id = 1; id <= 8; ++id) {
+        if (auto rec = alice->kernel->connections().find_by_id(id);
+            rec && rec->trust == GN_TRUST_LOOPBACK) {
+            alice_loopback_held = true;
+        }
+        if (auto rec = bob->kernel->connections().find_by_id(id);
+            rec && rec->trust == GN_TRUST_LOOPBACK) {
+            bob_loopback_held = true;
+        }
+    }
+    EXPECT_TRUE(alice_loopback_held)
+        << "loopback upgrade gate leaked: alice's trust mutated";
+    EXPECT_TRUE(bob_loopback_held)
+        << "loopback upgrade gate leaked: bob's trust mutated";
 
     /// Tear down — destruction joins worker threads and closes the
     /// listening socket.

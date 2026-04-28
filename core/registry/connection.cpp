@@ -80,6 +80,24 @@ std::optional<ConnectionRecord> ConnectionRegistry::find_by_id(gn_conn_id_t id) 
     return it->second;
 }
 
+gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
+                                              gn_trust_class_t target) noexcept {
+    if (id == GN_INVALID_ID) return GN_ERR_NULL_ARG;
+    Shard& s = shard_for(id);
+    std::unique_lock lock(s.mu);
+    auto it = s.records.find(id);
+    if (it == s.records.end()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!gn_trust_can_upgrade(it->second.trust, target)) {
+        /// Helper from `sdk/trust.h` rejects: only `Untrusted → Peer`
+        /// or identity transitions. The shard mutex serialises the
+        /// read-decide-write so concurrent upgrades cannot race past
+        /// the gate.
+        return GN_ERR_LIMIT_REACHED;
+    }
+    it->second.trust = target;
+    return GN_OK;
+}
+
 std::optional<ConnectionRecord> ConnectionRegistry::find_by_uri(std::string_view uri) const {
     gn_conn_id_t id = GN_INVALID_ID;
     {

@@ -85,6 +85,15 @@ public:
     /// Snapshot lookup by id.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_id(gn_conn_id_t id) const;
 
+    /// Promote a record's `trust` field through the policy gate from
+    /// `sdk/trust.h`. Only `Untrusted → Peer` is a real transition;
+    /// identity targets are a no-op success; every other combination
+    /// returns `GN_ERR_LIMIT_REACHED` and leaves the record untouched.
+    /// The contract is one-way — there is no `downgrade_trust` because
+    /// security weakening is a closure event, not a registry mutation.
+    [[nodiscard]] gn_result_t upgrade_trust(gn_conn_id_t id,
+                                             gn_trust_class_t target) noexcept;
+
     /// Snapshot lookup by URI string.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_uri(std::string_view uri) const;
 

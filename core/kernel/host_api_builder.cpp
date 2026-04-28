@@ -383,6 +383,17 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (!first.empty()) {
         (void)send_raw_via_transport(pc, conn, rec->transport_scheme, first);
     }
+
+    /// IK-style patterns can complete the handshake on the initiator's
+    /// first message. If `advance_handshake` already moved the session
+    /// to Transport, gate-promote `Untrusted → Peer` per
+    /// `security-trust.md` §3. Loopback / Peer connections take the
+    /// helper's no-op path; `LIMIT_REACHED` from the gate is the
+    /// "policy says no" return and is not propagated — the connection
+    /// is still functional, just at its declared trust class.
+    if (session->phase() == SecurityPhase::Transport) {
+        (void)pc->kernel->connections().upgrade_trust(conn, GN_TRUST_PEER);
+    }
     return GN_OK;
 }
 
@@ -414,6 +425,16 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             if (rc != GN_OK) return rc;
             if (!reply.empty()) {
                 (void)send_raw_via_transport(pc, conn, rec->transport_scheme, reply);
+            }
+            /// `advance_handshake` may have moved the session to
+            /// Transport on this byte run. Gate-promote `Untrusted →
+            /// Peer` per `security-trust.md` §3; the helper rejects
+            /// any other transition with `LIMIT_REACHED`, which we
+            /// silently absorb — the connection continues at its
+            /// declared trust class.
+            if (session->phase() == SecurityPhase::Transport) {
+                (void)pc->kernel->connections().upgrade_trust(
+                    conn, GN_TRUST_PEER);
             }
             /// Handshake bytes never carry application payload — the
             /// protocol layer is not consulted until Transport phase.
