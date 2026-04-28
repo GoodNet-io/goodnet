@@ -15,7 +15,7 @@
         let
           stdenv = pkgs.gcc15Stdenv;
           coreBuildInputs = with pkgs; [
-            asio spdlog fmt nlohmann_json libsodium
+            asio spdlog fmt nlohmann_json libsodium openssl
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
