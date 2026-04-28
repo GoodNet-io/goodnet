@@ -12,6 +12,7 @@ add_library(goodnet_kernel STATIC
     registry/handler.cpp
     registry/security.cpp
     registry/transport.cpp
+    security/session.cpp
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/connection_context.cpp
