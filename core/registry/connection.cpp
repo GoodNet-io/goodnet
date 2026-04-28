@@ -129,4 +129,15 @@ std::size_t ConnectionRegistry::size() const noexcept {
     return n;
 }
 
+void ConnectionRegistry::for_each(
+    const std::function<bool(const ConnectionRecord&)>& visitor) const {
+    if (!visitor) return;
+    for (const auto& s : shards_) {
+        std::shared_lock lock(s.mu);
+        for (const auto& [_, rec] : s.records) {
+            if (!visitor(rec)) return;
+        }
+    }
+}
+
 } // namespace gn::core

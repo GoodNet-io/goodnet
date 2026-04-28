@@ -12,6 +12,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <functional>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -102,6 +103,14 @@ public:
 
     /// Number of records currently held; useful for tests.
     [[nodiscard]] std::size_t size() const noexcept;
+
+    /// Iterate every record under per-shard read locks. The visitor
+    /// returns `true` to continue, `false` to stop. The visitor must
+    /// not call back into mutating methods on this registry —
+    /// the shard locks are held for the duration. Per
+    /// `conn-events.md` §4.
+    void for_each(
+        const std::function<bool(const ConnectionRecord&)>& visitor) const;
 
 private:
     struct Shard {

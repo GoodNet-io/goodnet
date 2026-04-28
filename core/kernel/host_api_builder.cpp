@@ -289,6 +289,57 @@ gn_result_t thunk_post_to_executor(void* host_ctx,
     return pc->kernel->timers().post(fn, user_data, pc->plugin_anchor);
 }
 
+gn_result_t thunk_subscribe_conn_state(void* host_ctx,
+                                        gn_conn_event_cb_t cb,
+                                        void* user_data,
+                                        gn_subscription_id_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    auto anchor_weak = std::weak_ptr<void>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+    auto token = pc->kernel->on_conn_event().subscribe(
+        [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
+            if (anchor_set && anchor_weak.expired()) return;
+            gn_conn_event_t e{};
+            e.api_size      = sizeof(gn_conn_event_t);
+            e.kind          = ev.kind;
+            e.conn          = ev.conn;
+            e.trust         = ev.trust;
+            e.pending_bytes = ev.pending_bytes;
+            std::memcpy(e.remote_pk, ev.remote_pk.data(),
+                        GN_PUBLIC_KEY_BYTES);
+            cb(user_data, &e);
+        });
+    *out_id = static_cast<gn_subscription_id_t>(token);
+    return GN_OK;
+}
+
+gn_result_t thunk_unsubscribe_conn_state(void* host_ctx,
+                                          gn_subscription_id_t id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (id == GN_INVALID_SUBSCRIPTION_ID) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    pc->kernel->on_conn_event().unsubscribe(
+        static_cast<signal::SignalChannel<ConnEvent>::Token>(id));
+    return GN_OK;
+}
+
+gn_result_t thunk_for_each_connection(void* host_ctx,
+                                       gn_conn_visitor_t visitor,
+                                       void* user_data) {
+    if (!host_ctx || !visitor) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    pc->kernel->connections().for_each(
+        [visitor, user_data](const ConnectionRecord& rec) -> bool {
+            return visitor(user_data,
+                           rec.id,
+                           rec.trust,
+                           rec.remote_pk.data(),
+                           rec.uri.c_str()) == 0;
+        });
+    return GN_OK;
+}
+
 gn_result_t thunk_register_transport(void* host_ctx,
                                      const char* scheme,
                                      const gn_transport_vtable_t* vtable,
@@ -454,6 +505,15 @@ gn_result_t thunk_notify_connect(void* host_ctx,
 
     *out_conn = new_id;
 
+    {
+        ConnEvent ev{};
+        ev.kind  = GN_CONN_EVENT_CONNECTED;
+        ev.conn  = new_id;
+        ev.trust = trust;
+        std::memcpy(ev.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
+        pc->kernel->on_conn_event().fire(ev);
+    }
+
     /// Spin up a security session if a provider is registered and the
     /// kernel carries a NodeIdentity. Trust classes that bypass
     /// encryption (Loopback / IntraNode with explicit opt-in per
@@ -520,7 +580,17 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     /// "policy says no" return and is not propagated — the connection
     /// is still functional, just at its declared trust class.
     if (session->phase() == SecurityPhase::Transport) {
-        (void)pc->kernel->connections().upgrade_trust(conn, GN_TRUST_PEER);
+        if (pc->kernel->connections().upgrade_trust(conn, GN_TRUST_PEER) == GN_OK) {
+            ConnEvent ev{};
+            ev.kind  = GN_CONN_EVENT_TRUST_UPGRADED;
+            ev.conn  = conn;
+            ev.trust = GN_TRUST_PEER;
+            if (auto upgraded =
+                    pc->kernel->connections().find_by_id(conn)) {
+                ev.remote_pk = upgraded->remote_pk;
+            }
+            pc->kernel->on_conn_event().fire(ev);
+        }
     }
     return GN_OK;
 }
@@ -562,8 +632,18 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             /// silently absorb — the connection continues at its
             /// declared trust class.
             if (session->phase() == SecurityPhase::Transport) {
-                (void)pc->kernel->connections().upgrade_trust(
-                    conn, GN_TRUST_PEER);
+                if (pc->kernel->connections().upgrade_trust(
+                        conn, GN_TRUST_PEER) == GN_OK) {
+                    ConnEvent ev{};
+                    ev.kind  = GN_CONN_EVENT_TRUST_UPGRADED;
+                    ev.conn  = conn;
+                    ev.trust = GN_TRUST_PEER;
+                    if (auto rec_after =
+                            pc->kernel->connections().find_by_id(conn)) {
+                        ev.remote_pk = rec_after->remote_pk;
+                    }
+                    pc->kernel->on_conn_event().fire(ev);
+                }
             }
             /// Handshake bytes never carry application payload — the
             /// protocol layer is not consulted until Transport phase.
@@ -692,8 +772,23 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+
+    /// Snapshot record before erase so the event payload reflects
+    /// the just-departed conn's trust + pk. The kernel has not yet
+    /// reaped the registry by this point.
+    ConnEvent ev{};
+    ev.kind = GN_CONN_EVENT_DISCONNECTED;
+    ev.conn = conn;
+    if (auto rec = pc->kernel->connections().find_by_id(conn)) {
+        ev.trust     = rec->trust;
+        ev.remote_pk = rec->remote_pk;
+    }
+
     pc->kernel->sessions().destroy(conn);
-    return pc->kernel->connections().erase_with_index(conn);
+    const auto erase_rc = pc->kernel->connections().erase_with_index(conn);
+
+    pc->kernel->on_conn_event().fire(ev);
+    return erase_rc;
 }
 
 } // namespace
@@ -719,6 +814,10 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.set_timer               = &thunk_set_timer;
     a.cancel_timer            = &thunk_cancel_timer;
     a.post_to_executor        = &thunk_post_to_executor;
+
+    a.subscribe_conn_state    = &thunk_subscribe_conn_state;
+    a.unsubscribe_conn_state  = &thunk_unsubscribe_conn_state;
+    a.for_each_connection     = &thunk_for_each_connection;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;

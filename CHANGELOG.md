@@ -96,6 +96,18 @@ typed extension API.
   transport). Self-contained TCP socket; full `wss://` support
   rides on top once the `gn.transport.tls` composer plugin
   ships.
+- **Connection-event observer** — `host_api->subscribe_conn_state`,
+  `unsubscribe_conn_state`, `for_each_connection`. The kernel
+  publishes a typed event for every observable change in
+  connection lifecycle: `CONNECTED`, `DISCONNECTED`,
+  `TRUST_UPGRADED` (Untrusted → Peer), and the reserved
+  `BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` kinds for the
+  send-queue layer. Subscriptions carry a weak observer of the
+  caller's quiescence sentinel so a callback whose plugin
+  unloaded is dropped silently. `for_each_connection` walks the
+  registry under per-shard read locks. New
+  `docs/contracts/conn-events.md` and `sdk/conn_events.h`.
+  SDK_VERSION_MINOR bumped to 1.5.
 - **Service executor** — `core/kernel/timer_registry`. The kernel
   owns a single-thread executor reserved for plugin service tasks.
   Three new `host_api` slots route to it: `set_timer` (one-shot
@@ -128,7 +140,7 @@ typed extension API.
 
 ### Tests
 
-465 across unit, integration, scenario, and property suites.
+472 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28
