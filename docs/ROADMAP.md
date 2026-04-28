@@ -39,7 +39,7 @@ this lands, every later layer can rely on a working secured byte pipe.
 | Area | Plan |
 |---|---|
 | URI parser foundation | shipped — `sdk/cpp/uri.hpp` (header-only, no libsodium) + `core/util/uri_query.hpp` (libsodium peer-pk decode); 33 unit + property tests; contract `docs/contracts/uri.md` |
-| Kernel injection API | `host_api->inject_external_message` + `inject_frame` per Bridge-tier contract; per-source token bucket rate limiter |
+| Kernel injection API | shipped — `host_api->inject_external_message` + `inject_frame` per `host-api.md` §8; per-source `RateLimiterMap` with `Clock`-injection token bucket per `clock.md` §2 |
 | TCP transport plugin | Boost.Asio-based, single-writer-per-conn invariant, address-based listen and connect |
 | IPC transport plugin | AF_UNIX socket with length-prefix stream framing, declares `Loopback` trust |
 | UDP transport plugin | datagram-mode with strand-bound receive path |

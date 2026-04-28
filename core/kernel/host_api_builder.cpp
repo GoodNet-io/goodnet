@@ -392,6 +392,98 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t thunk_inject_external_message(void* host_ctx,
+                                           gn_conn_id_t source,
+                                           std::uint32_t msg_id,
+                                           const std::uint8_t* payload,
+                                           std::size_t payload_size) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (!payload && payload_size > 0) return GN_ERR_NULL_ARG;
+    if (msg_id == 0) return GN_ERR_INVALID_ENVELOPE;
+
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    auto rec = pc->kernel->connections().find_by_id(source);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    const auto& limits = pc->kernel->limits();
+    if (limits.max_payload_bytes != 0 &&
+        payload_size > limits.max_payload_bytes) {
+        return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+
+    if (!pc->kernel->inject_rate_limiter().allow(
+            static_cast<std::uint64_t>(source))) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    auto* layer = pc->kernel->protocol_layer();
+    if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
+
+    gn_message_t env{};
+    env.msg_id       = msg_id;
+    env.payload      = payload;
+    env.payload_size = payload_size;
+    std::memcpy(env.sender_pk, rec->remote_pk.data(), GN_PUBLIC_KEY_BYTES);
+    if (auto local = pc->kernel->identities().any(); local) {
+        std::memcpy(env.receiver_pk, local->data(), GN_PUBLIC_KEY_BYTES);
+    }
+
+    (void)pc->kernel->router().route_inbound(layer->protocol_id(), env);
+    return GN_OK;
+}
+
+gn_result_t thunk_inject_frame(void* host_ctx,
+                                gn_conn_id_t source,
+                                const std::uint8_t* frame,
+                                std::size_t frame_size) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (!frame || frame_size == 0) return GN_ERR_NULL_ARG;
+
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    auto rec = pc->kernel->connections().find_by_id(source);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    const auto& limits = pc->kernel->limits();
+    if (limits.max_frame_bytes != 0 &&
+        frame_size > limits.max_frame_bytes) {
+        return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+
+    if (!pc->kernel->inject_rate_limiter().allow(
+            static_cast<std::uint64_t>(source))) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    auto* layer = pc->kernel->protocol_layer();
+    if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
+
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = source;
+    ctx.trust     = rec->trust;
+    ctx.remote_pk = rec->remote_pk;
+    if (auto local = pc->kernel->identities().any(); local) {
+        ctx.local_pk = *local;
+    }
+
+    auto deframed = layer->deframe(
+        ctx, std::span<const std::uint8_t>{frame, frame_size});
+    if (!deframed.has_value()) return deframed.error().code;
+
+    /// inject_frame expects a complete frame; partial input or empty
+    /// envelope set is a malformed call per host-api.md §8.
+    if (deframed->messages.empty() || deframed->bytes_consumed == 0) {
+        return GN_ERR_DEFRAME_INCOMPLETE;
+    }
+
+    auto& router = pc->kernel->router();
+    for (const auto& env : deframed->messages) {
+        (void)router.route_inbound(layer->protocol_id(), env);
+    }
+    return GN_OK;
+}
+
 gn_result_t thunk_notify_disconnect(void* host_ctx,
                                     gn_conn_id_t conn,
                                     gn_result_t /*reason*/) {
@@ -432,6 +524,9 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.register_security     = &thunk_register_security;
     a.unregister_security   = &thunk_unregister_security;
+
+    a.inject_external_message = &thunk_inject_external_message;
+    a.inject_frame            = &thunk_inject_frame;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;
