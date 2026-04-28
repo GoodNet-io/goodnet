@@ -3,11 +3,11 @@
 
 #include <sdk/cpp/uri.hpp>
 
-#include <boost/asio/bind_executor.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/dispatch.hpp>
-#include <boost/asio/ip/v6_only.hpp>
-#include <boost/system/error_code.hpp>
+#include <asio/bind_executor.hpp>
+#include <asio/buffer.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/ip/v6_only.hpp>
+#include <system_error>
 
 #include <cstring>
 #include <utility>
@@ -15,7 +15,7 @@
 
 namespace gn::transport::udp {
 
-namespace asio_ip = boost::asio::ip;
+namespace asio_ip = asio::ip;
 
 namespace {
 
@@ -28,8 +28,8 @@ constexpr std::uint32_t kMtuCeiling = 65000;
 
 UdpTransport::UdpTransport()
     : ioc_(),
-      work_(boost::asio::make_work_guard(ioc_)),
-      strand_(boost::asio::make_strand(ioc_.get_executor())) {
+      work_(asio::make_work_guard(ioc_)),
+      strand_(asio::make_strand(ioc_.get_executor())) {
     worker_ = std::thread([this] { ioc_.run(); });
 }
 
@@ -98,7 +98,7 @@ gn_result_t UdpTransport::listen(std::string_view uri_sv) {
     const auto parts = ::gn::parse_uri(uri_sv);
     if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
 
-    boost::system::error_code ec;
+    std::error_code ec;
     const auto addr = asio_ip::make_address(parts->host, ec);
     if (ec) return GN_ERR_NULL_ARG;
 
@@ -113,7 +113,7 @@ gn_result_t UdpTransport::listen(std::string_view uri_sv) {
         /// — pre-Linux-3.x kernels lack the option, v4-only fallback
         /// is the documented behaviour.
         if (addr.is_v6() && addr.is_unspecified()) {
-            boost::system::error_code v6_ec;
+            std::error_code v6_ec;
             if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
                 api_ && api_->log) {
                 api_->log(api_->host_ctx, GN_LOG_DEBUG,
@@ -143,7 +143,7 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
     /// real peer.
     if (parts->port == 0) return GN_ERR_NULL_ARG;
 
-    boost::system::error_code ec;
+    std::error_code ec;
     const auto addr = asio_ip::make_address(parts->host, ec);
     if (ec) return GN_ERR_NULL_ARG;
     asio_ip::udp::endpoint ep(addr, parts->port);
@@ -160,7 +160,7 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
             asio_ip::udp::socket sock(
                 ioc_, asio_ip::udp::endpoint(family, 0));
             if (addr.is_v6()) {
-                boost::system::error_code v6_ec;
+                std::error_code v6_ec;
                 if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
                     api_ && api_->log) {
                     api_->log(api_->host_ctx, GN_LOG_DEBUG,
@@ -179,7 +179,7 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
         if (socket_freshly_created) {
             /// Roll back the socket we just minted — without a host
             /// API there is nowhere for received bytes to flow.
-            boost::system::error_code close_ec;
+            std::error_code close_ec;
             if (socket_->close(close_ec) && api_ && api_->log) {
                 api_->log(api_->host_ctx, GN_LOG_DEBUG,
                           "udp: rollback close: %s",
@@ -218,7 +218,7 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
             resolve_trust(ep), GN_ROLE_INITIATOR, &conn);
         if (rc != GN_OK || conn == GN_INVALID_ID) {
             if (socket_freshly_created) {
-                boost::system::error_code close_ec;
+                std::error_code close_ec;
                 if (socket_->close(close_ec) && api_->log) {
                     api_->log(api_->host_ctx, GN_LOG_DEBUG,
                               "udp: rollback close: %s",
@@ -272,14 +272,14 @@ gn_result_t UdpTransport::send(gn_conn_id_t conn,
     auto buf = std::make_shared<std::vector<std::uint8_t>>(
         bytes.begin(), bytes.end());
     auto self = shared_from_this();
-    boost::asio::dispatch(strand_,
+    asio::dispatch(strand_,
         [weak = std::weak_ptr<UdpTransport>(self), buf, target] {
             auto t = weak.lock();
             if (!t || t->shutdown_.load(std::memory_order_acquire)) return;
             t->socket_->async_send_to(
-                boost::asio::buffer(*buf), target,
-                boost::asio::bind_executor(t->strand_,
-                    [buf, weak](const boost::system::error_code& send_ec,
+                asio::buffer(*buf), target,
+                asio::bind_executor(t->strand_,
+                    [buf, weak](const std::error_code& send_ec,
                                 std::size_t n) {
                         auto t2 = weak.lock();
                         if (!t2) return;
@@ -348,15 +348,15 @@ void UdpTransport::start_receive() {
     /// capture would close a cycle through `ioc_` (which owns the
     /// pending op) and leak the transport — `plugin-lifetime.md` §4.
     socket_->async_receive_from(
-        boost::asio::buffer(recv_buf_), recv_endpoint_,
-        boost::asio::bind_executor(strand_,
+        asio::buffer(recv_buf_), recv_endpoint_,
+        asio::bind_executor(strand_,
             [weak = weak_from_this()](
-                const boost::system::error_code& ec, std::size_t bytes) {
+                const std::error_code& ec, std::size_t bytes) {
                 auto self = weak.lock();
                 if (!self || self->shutdown_.load(std::memory_order_acquire))
                     return;
                 if (ec) {
-                    if (ec == boost::asio::error::operation_aborted) {
+                    if (ec == asio::error::operation_aborted) {
                         /// Shutdown path — stop quietly.
                         return;
                     }
@@ -368,8 +368,8 @@ void UdpTransport::start_receive() {
                     /// next frame). Anything else stops the loop —
                     /// the kernel observes the silence and the
                     /// operator sees the diagnostic.
-                    if (ec == boost::asio::error::connection_refused ||
-                        ec == boost::asio::error::message_size) {
+                    if (ec == asio::error::connection_refused ||
+                        ec == asio::error::message_size) {
                         self->start_receive();
                         return;
                     }
@@ -489,7 +489,7 @@ void UdpTransport::shutdown() {
     }
 
     if (socket_) {
-        boost::system::error_code ec;
+        std::error_code ec;
         if (socket_->close(ec) && api_ && api_->log) {
             api_->log(api_->host_ctx, GN_LOG_DEBUG,
                       "udp: close failed: %s", ec.message().c_str());

@@ -3,12 +3,12 @@
 
 #include <sdk/cpp/uri.hpp>
 
-#include <boost/asio/bind_executor.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/dispatch.hpp>
-#include <boost/asio/post.hpp>
-#include <boost/asio/write.hpp>
-#include <boost/system/error_code.hpp>
+#include <asio/bind_executor.hpp>
+#include <asio/buffer.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/post.hpp>
+#include <asio/write.hpp>
+#include <system_error>
 
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -25,7 +25,7 @@ namespace gn::transport::ipc {
 namespace {
 
 constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
-namespace local_proto = boost::asio::local;
+namespace local_proto = asio::local;
 
 }  // namespace
 
@@ -45,17 +45,17 @@ public:
 
     void start_read() {
         socket_.async_read_some(
-            boost::asio::buffer(read_buf_),
-            boost::asio::bind_executor(strand_,
+            asio::buffer(read_buf_),
+            asio::bind_executor(strand_,
                 [self = shared_from_this()](
-                    const boost::system::error_code& ec, std::size_t n) {
+                    const std::error_code& ec, std::size_t n) {
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) {
                         if (t->api_ && t->api_->notify_disconnect) {
                             t->api_->notify_disconnect(
                                 t->api_->host_ctx, self->conn_id,
-                                ec == boost::asio::error::eof
+                                ec == asio::error::eof
                                     ? GN_OK : GN_ERR_NULL_ARG);
                         }
                         t->erase_session(self->conn_id);
@@ -77,7 +77,7 @@ public:
     void do_send(std::span<const std::uint8_t> data) {
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
-        boost::asio::dispatch(strand_,
+        asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
@@ -93,7 +93,7 @@ public:
             std::memcpy(buf->data() + offset, f.data(), f.size());
             offset += f.size();
         }
-        boost::asio::dispatch(strand_,
+        asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
@@ -106,8 +106,8 @@ public:
     /// surface a debug log via the transport's `api_->log` so the
     /// failure isn't silent.
     void do_close() {
-        boost::asio::dispatch(strand_, [self = shared_from_this()] {
-            boost::system::error_code ec;
+        asio::dispatch(strand_, [self = shared_from_this()] {
+            std::error_code ec;
             if (self->socket_.close(ec)) {
                 if (auto t = self->transport_.lock();
                     t && t->api_ && t->api_->log) {
@@ -124,10 +124,10 @@ private:
         if (write_in_flight_ || write_queue_.empty()) return;
         write_in_flight_ = true;
         auto buf = write_queue_.front();
-        boost::asio::async_write(socket_, boost::asio::buffer(*buf),
-            boost::asio::bind_executor(strand_,
+        asio::async_write(socket_, asio::buffer(*buf),
+            asio::bind_executor(strand_,
                 [self = shared_from_this(), buf](
-                    const boost::system::error_code& ec, std::size_t n) {
+                    const std::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
                     auto t = self->transport_.lock();
@@ -147,7 +147,7 @@ private:
     }
 
     local_proto::stream_protocol::socket                      socket_;
-    boost::asio::strand<boost::asio::any_io_executor>         strand_;
+    asio::strand<asio::any_io_executor>         strand_;
     std::weak_ptr<IpcTransport>                               transport_;
 
     std::array<std::uint8_t, kReadBufferSize>                 read_buf_{};
@@ -159,7 +159,7 @@ private:
 
 IpcTransport::IpcTransport()
     : ioc_(),
-      work_(boost::asio::make_work_guard(ioc_)) {
+      work_(asio::make_work_guard(ioc_)) {
     worker_ = std::thread([this] { ioc_.run(); });
 }
 
@@ -278,13 +278,13 @@ void IpcTransport::start_accept() {
     acceptor_->async_accept(sock,
         [weak = std::weak_ptr<IpcTransport>(shared_from_this()),
          session = std::move(session)](
-            const boost::system::error_code& ec) mutable {
+            const std::error_code& ec) mutable {
             if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
         });
 }
 
 void IpcTransport::on_accept(std::shared_ptr<Session> session,
-                              const boost::system::error_code& ec) {
+                              const std::error_code& ec) {
     if (ec || shutdown_.load(std::memory_order_acquire)) return;
 
     if (api_ && api_->notify_connect) {
@@ -329,7 +329,7 @@ gn_result_t IpcTransport::connect(std::string_view uri_sv) {
     session->socket().async_connect(ep,
         [weak = std::weak_ptr<IpcTransport>(shared_from_this()),
          session, canonical_uri](
-            const boost::system::error_code& connect_ec) {
+            const std::error_code& connect_ec) {
             auto t = weak.lock();
             if (!t || t->shutdown_.load(std::memory_order_acquire)) return;
             if (connect_ec) return;
@@ -410,7 +410,7 @@ void IpcTransport::shutdown() {
     if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
 
     if (acceptor_) {
-        boost::system::error_code ec;
+        std::error_code ec;
         /// `close(ec)` is best-effort on shutdown — the FD is gone
         /// either way. Surface the error through `api_->log` if the
         /// host bound one, otherwise discard.

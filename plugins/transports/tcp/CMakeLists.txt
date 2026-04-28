@@ -6,7 +6,7 @@
 add_library(goodnet_tcp_objects OBJECT
     tcp.cpp
 )
-target_link_libraries(goodnet_tcp_objects PUBLIC GoodNet::sdk Boost::thread)
+target_link_libraries(goodnet_tcp_objects PUBLIC GoodNet::sdk asio::asio Threads::Threads)
 target_compile_features(goodnet_tcp_objects PUBLIC cxx_std_23)
 target_compile_options(goodnet_tcp_objects PRIVATE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter)
@@ -19,4 +19,4 @@ add_plugin(goodnet_transport_tcp
     plugin_entry.cpp
 )
 target_link_libraries(goodnet_transport_tcp
-    PRIVATE goodnet_tcp_objects Boost::thread)
+    PRIVATE goodnet_tcp_objects asio::asio Threads::Threads)

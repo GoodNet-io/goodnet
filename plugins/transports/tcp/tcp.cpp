@@ -3,14 +3,14 @@
 
 #include <sdk/cpp/uri.hpp>
 
-#include <boost/asio/bind_executor.hpp>
-#include <boost/asio/buffer.hpp>
-#include <boost/asio/dispatch.hpp>
-#include <boost/asio/ip/v6_only.hpp>
-#include <boost/asio/post.hpp>
-#include <boost/asio/read.hpp>
-#include <boost/asio/write.hpp>
-#include <boost/system/error_code.hpp>
+#include <asio/bind_executor.hpp>
+#include <asio/buffer.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/ip/v6_only.hpp>
+#include <asio/post.hpp>
+#include <asio/read.hpp>
+#include <asio/write.hpp>
+#include <system_error>
 
 #include <array>
 #include <cstring>
@@ -29,13 +29,13 @@ constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
 
 class TcpTransport::Session : public std::enable_shared_from_this<Session> {
 public:
-    Session(boost::asio::ip::tcp::socket sock,
+    Session(asio::ip::tcp::socket sock,
              std::weak_ptr<TcpTransport> transport)
         : socket_(std::move(sock)),
           strand_(socket_.get_executor()),
           transport_(std::move(transport)) {}
 
-    boost::asio::ip::tcp::socket& socket() noexcept { return socket_; }
+    asio::ip::tcp::socket& socket() noexcept { return socket_; }
 
     gn_conn_id_t conn_id = GN_INVALID_ID;
 
@@ -44,17 +44,17 @@ public:
     /// posts `notify_disconnect`.
     void start_read() {
         socket_.async_read_some(
-            boost::asio::buffer(read_buf_),
-            boost::asio::bind_executor(strand_,
+            asio::buffer(read_buf_),
+            asio::bind_executor(strand_,
                 [self = shared_from_this()](
-                    const boost::system::error_code& ec, std::size_t n) {
+                    const std::error_code& ec, std::size_t n) {
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) {
                         if (t->api_ && t->api_->notify_disconnect) {
                             t->api_->notify_disconnect(
                                 t->api_->host_ctx, self->conn_id,
-                                ec == boost::asio::error::eof
+                                ec == asio::error::eof
                                     ? GN_OK
                                     : GN_ERR_NULL_ARG);
                         }
@@ -75,13 +75,13 @@ public:
     }
 
     /// Enqueue a payload onto the strand-bound write queue and kick
-    /// the writer. `boost::asio::async_write` cannot run concurrently
+    /// the writer. `asio::async_write` cannot run concurrently
     /// against the same socket: composed `async_write_some` calls
     /// would otherwise interleave bytes on the wire.
     void do_send(std::span<const std::uint8_t> data) {
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
-        boost::asio::dispatch(strand_,
+        asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
@@ -100,7 +100,7 @@ public:
             std::memcpy(buf->data() + offset, f.data(), f.size());
             offset += f.size();
         }
-        boost::asio::dispatch(strand_,
+        asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
@@ -113,8 +113,8 @@ public:
     /// surface a debug log via the transport's `api_->log` so the
     /// failure isn't silent.
     void do_close() {
-        boost::asio::dispatch(strand_, [self = shared_from_this()] {
-            boost::system::error_code ec;
+        asio::dispatch(strand_, [self = shared_from_this()] {
+            std::error_code ec;
             if (self->socket_.close(ec)) {
                 if (auto t = self->transport_.lock();
                     t && t->api_ && t->api_->log) {
@@ -132,10 +132,10 @@ private:
         if (write_in_flight_ || write_queue_.empty()) return;
         write_in_flight_ = true;
         auto buf = write_queue_.front();
-        boost::asio::async_write(socket_, boost::asio::buffer(*buf),
-            boost::asio::bind_executor(strand_,
+        asio::async_write(socket_, asio::buffer(*buf),
+            asio::bind_executor(strand_,
                 [self = shared_from_this(), buf](
-                    const boost::system::error_code& ec, std::size_t n) {
+                    const std::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
                     auto t = self->transport_.lock();
@@ -154,8 +154,8 @@ private:
                 }));
     }
 
-    boost::asio::ip::tcp::socket                              socket_;
-    boost::asio::strand<boost::asio::any_io_executor>         strand_;
+    asio::ip::tcp::socket                              socket_;
+    asio::strand<asio::any_io_executor>         strand_;
     std::weak_ptr<TcpTransport>                               transport_;
 
     std::array<std::uint8_t, kReadBufferSize>                 read_buf_{};
@@ -167,7 +167,7 @@ private:
 
 TcpTransport::TcpTransport()
     : ioc_(),
-      work_(boost::asio::make_work_guard(ioc_)) {
+      work_(asio::make_work_guard(ioc_)) {
     worker_ = std::thread([this] { ioc_.run(); });
 }
 
@@ -227,14 +227,14 @@ gn_transport_caps_t TcpTransport::capabilities() noexcept {
 }
 
 gn_trust_class_t TcpTransport::resolve_trust(
-    const boost::asio::ip::tcp::endpoint& peer) const noexcept
+    const asio::ip::tcp::endpoint& peer) const noexcept
 {
     return peer.address().is_loopback() ? GN_TRUST_LOOPBACK
                                           : GN_TRUST_UNTRUSTED;
 }
 
 std::string TcpTransport::endpoint_to_uri(
-    const boost::asio::ip::tcp::endpoint& ep)
+    const asio::ip::tcp::endpoint& ep)
 {
     std::string uri = "tcp://";
     if (ep.address().is_v6()) {
@@ -255,13 +255,13 @@ gn_result_t TcpTransport::listen(std::string_view uri_sv) {
     const auto parts = ::gn::parse_uri(uri_sv);
     if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
 
-    boost::system::error_code ec;
-    const auto addr = boost::asio::ip::make_address(parts->host, ec);
+    std::error_code ec;
+    const auto addr = asio::ip::make_address(parts->host, ec);
     if (ec) return GN_ERR_NULL_ARG;
-    boost::asio::ip::tcp::endpoint ep(addr, parts->port);
+    asio::ip::tcp::endpoint ep(addr, parts->port);
 
     try {
-        boost::asio::ip::tcp::acceptor acceptor(ioc_);
+        asio::ip::tcp::acceptor acceptor(ioc_);
         acceptor.open(ep.protocol());
         /// IPv6 wildcard `::` — disable `IPV6_V6ONLY` so dual-stack
         /// listens accept v4-mapped clients on Linux. `set_option`
@@ -269,18 +269,18 @@ gn_result_t TcpTransport::listen(std::string_view uri_sv) {
         /// v4-only fallback is the documented behaviour. Specific v6
         /// literals stay v6-only by default.
         if (addr.is_v6() && addr.is_unspecified()) {
-            boost::system::error_code v6_ec;
+            std::error_code v6_ec;
             if (acceptor.set_option(
-                    boost::asio::ip::v6_only(false), v6_ec) &&
+                    asio::ip::v6_only(false), v6_ec) &&
                 api_ && api_->log) {
                 api_->log(api_->host_ctx, GN_LOG_DEBUG,
                           "tcp: v6_only(false) failed: %s",
                           v6_ec.message().c_str());
             }
         }
-        boost::system::error_code reuse_ec;
+        std::error_code reuse_ec;
         if (acceptor.set_option(
-                boost::asio::ip::tcp::acceptor::reuse_address(true),
+                asio::ip::tcp::acceptor::reuse_address(true),
                 reuse_ec) &&
             api_ && api_->log) {
             api_->log(api_->host_ctx, GN_LOG_DEBUG,
@@ -304,7 +304,7 @@ void TcpTransport::start_accept() {
     if (shutdown_.load(std::memory_order_acquire) || !acceptor_) return;
 
     auto session = std::make_shared<Session>(
-        boost::asio::ip::tcp::socket(ioc_),
+        asio::ip::tcp::socket(ioc_),
         weak_from_this());
 
     /// Re-check `acceptor_.has_value()` immediately above the deref —
@@ -315,17 +315,17 @@ void TcpTransport::start_accept() {
     acceptor_->async_accept(sock,
         [weak = std::weak_ptr<TcpTransport>(shared_from_this()),
          session = std::move(session)](
-            const boost::system::error_code& ec) mutable {
+            const std::error_code& ec) mutable {
             if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
         });
 }
 
 void TcpTransport::on_accept(std::shared_ptr<Session> session,
-                              const boost::system::error_code& ec)
+                              const std::error_code& ec)
 {
     if (ec || shutdown_.load(std::memory_order_acquire)) return;
 
-    boost::system::error_code re_ec;
+    std::error_code re_ec;
     const auto remote = session->socket().remote_endpoint(re_ec);
     if (re_ec) {
         session->do_close();
@@ -366,13 +366,13 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
     /// a zero target port is never a real peer.
     if (parts->port == 0) return GN_ERR_NULL_ARG;
 
-    boost::system::error_code ec;
-    const auto addr = boost::asio::ip::make_address(parts->host, ec);
+    std::error_code ec;
+    const auto addr = asio::ip::make_address(parts->host, ec);
     if (ec) return GN_ERR_NULL_ARG;
-    boost::asio::ip::tcp::endpoint ep(addr, parts->port);
+    asio::ip::tcp::endpoint ep(addr, parts->port);
 
     auto session = std::make_shared<Session>(
-        boost::asio::ip::tcp::socket(ioc_),
+        asio::ip::tcp::socket(ioc_),
         weak_from_this());
 
     /// Open against the endpoint's protocol family before the
@@ -381,7 +381,7 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
     /// `open(proto, ec)` overload returns the same `error_code` it
     /// stores into `open_ec`; consume the return through the failure
     /// guard.
-    boost::system::error_code open_ec;
+    std::error_code open_ec;
     if (session->socket().open(ep.protocol(), open_ec)) {
         return GN_ERR_NULL_ARG;
     }
@@ -390,7 +390,7 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
     session->socket().async_connect(ep,
         [weak = std::weak_ptr<TcpTransport>(shared_from_this()),
          session, canonical_uri, ep](
-            const boost::system::error_code& connect_ec) {
+            const std::error_code& connect_ec) {
             auto t = weak.lock();
             if (!t || t->shutdown_.load(std::memory_order_acquire)) return;
             if (connect_ec) {
@@ -481,7 +481,7 @@ void TcpTransport::shutdown() {
     if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
 
     if (acceptor_) {
-        boost::system::error_code ec;
+        std::error_code ec;
         /// `close(ec)` is best-effort on shutdown — the FD is gone
         /// either way. Surface the error through `api_->log` if the
         /// host bound one, otherwise discard.

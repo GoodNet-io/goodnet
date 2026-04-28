@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/transports/tcp/tcp.hpp
-/// @brief  Boost.Asio TCP transport plugin per `docs/contracts/transport.md`.
+/// @brief  Asio TCP transport plugin per `docs/contracts/transport.md`.
 ///
 /// One io_context per plugin runs on a single worker thread; sessions
 /// are owned via `shared_ptr` and refer back to the transport with
@@ -28,10 +28,10 @@
 #include <unordered_map>
 #include <vector>
 
-#include <boost/asio/executor_work_guard.hpp>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/ip/tcp.hpp>
+#include <asio/strand.hpp>
 
 #include <sdk/extensions/transport.h>
 #include <sdk/host_api.h>
@@ -117,7 +117,7 @@ private:
     /// `Untrusted`. Trust upgrades to `Peer` happen later in the
     /// kernel after Noise completes.
     [[nodiscard]] gn_trust_class_t resolve_trust(
-        const boost::asio::ip::tcp::endpoint& peer) const noexcept;
+        const asio::ip::tcp::endpoint& peer) const noexcept;
 
     /// Re-arm the acceptor for the next inbound connection. No-op
     /// when shutdown has been signalled.
@@ -127,7 +127,7 @@ private:
     /// session into the registered set after `notify_connect` returns
     /// a fresh conn id, then chains the next accept.
     void on_accept(std::shared_ptr<Session> session,
-                    const boost::system::error_code& ec);
+                    const std::error_code& ec);
 
     void register_session(gn_conn_id_t id, std::shared_ptr<Session> s);
     void erase_session(gn_conn_id_t id);
@@ -135,13 +135,13 @@ private:
 
     /// Build a uri-string for the conn record from a peer endpoint.
     [[nodiscard]] static std::string endpoint_to_uri(
-        const boost::asio::ip::tcp::endpoint& ep);
+        const asio::ip::tcp::endpoint& ep);
 
-    boost::asio::io_context                                          ioc_;
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+    asio::io_context                                          ioc_;
+    asio::executor_work_guard<asio::io_context::executor_type> work_;
     std::thread                                                      worker_;
 
-    std::optional<boost::asio::ip::tcp::acceptor> acceptor_;
+    std::optional<asio::ip::tcp::acceptor> acceptor_;
     std::atomic<std::uint16_t>                    listen_port_{0};
     std::atomic<bool>                             shutdown_{false};
 

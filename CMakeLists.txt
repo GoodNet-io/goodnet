@@ -52,16 +52,25 @@ option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" O
 option(GOODNET_USE_LTO                "Link-time optimization (Release)" OFF)
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
-# Boost.System is header-only since Boost 1.69; we only need a real
-# library link for Boost.Thread. CMake 4.1 dropped the bundled
-# FindBoost.cmake module, so we use the upstream BoostConfig.cmake
-# package config instead — `CONFIG` mode bypasses the legacy module.
-find_package(Boost REQUIRED CONFIG COMPONENTS thread)
+# Standalone Asio is the same library as Boost.Asio without the Boost
+# umbrella — Christopher Kohlhoff maintains both in lockstep. Keeping
+# only the standalone variant trims the dependency closure (no
+# Boost.System, Boost.Thread, Boost.Atomic) and stays header-only.
+set(THREADS_PREFER_PTHREAD_FLAG ON)
+find_package(Threads REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(fmt    REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+# Standalone Asio ships only a pkg-config file in nixpkgs; wrap it
+# into an alias `asio::asio` so target_link_libraries reads the same
+# as if the library shipped a CMake config. ASIO_STANDALONE switches
+# the headers off the Boost umbrella.
+pkg_check_modules(ASIO REQUIRED IMPORTED_TARGET asio)
+add_library(asio::asio INTERFACE IMPORTED)
+target_link_libraries(asio::asio INTERFACE PkgConfig::ASIO)
+target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
 
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────
 add_subdirectory(sdk)

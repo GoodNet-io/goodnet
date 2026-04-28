@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/transports/ipc/ipc.hpp
-/// @brief  Boost.Asio AF_UNIX transport plugin per `transport.md` §3
+/// @brief  Asio AF_UNIX transport plugin per `transport.md` §3
 ///         (AF_UNIX → `Loopback`).
 ///
 /// Single-writer / strand-per-session shape: each connection owns a
-/// `boost::asio::strand` that serialises every `async_write_some`
+/// `asio::strand` that serialises every `async_write_some`
 /// against the same socket so the kernel's per-conn ordering
 /// guarantee survives concurrent senders. `listen()` chmods the
 /// parent directory to `0700` before `bind` so the socket inode is
@@ -26,10 +26,10 @@
 #include <thread>
 #include <unordered_map>
 
-#include <boost/asio/executor_work_guard.hpp>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/local/stream_protocol.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/local/stream_protocol.hpp>
+#include <asio/strand.hpp>
 
 #include <sdk/extensions/transport.h>
 #include <sdk/host_api.h>
@@ -88,7 +88,7 @@ private:
 
     void start_accept();
     void on_accept(std::shared_ptr<Session> session,
-                    const boost::system::error_code& ec);
+                    const std::error_code& ec);
     void register_session(gn_conn_id_t id, std::shared_ptr<Session> s);
     void erase_session(gn_conn_id_t id);
     [[nodiscard]] std::shared_ptr<Session> find_session(gn_conn_id_t id) const;
@@ -97,11 +97,11 @@ private:
     /// malformed input.
     [[nodiscard]] static std::string path_from_uri(std::string_view uri);
 
-    boost::asio::io_context                                          ioc_;
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+    asio::io_context                                          ioc_;
+    asio::executor_work_guard<asio::io_context::executor_type> work_;
     std::thread                                                      worker_;
 
-    std::optional<boost::asio::local::stream_protocol::acceptor>     acceptor_;
+    std::optional<asio::local::stream_protocol::acceptor>     acceptor_;
     std::string                                                      socket_path_;
     std::atomic<bool>                                                shutdown_{false};
 

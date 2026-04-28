@@ -27,7 +27,7 @@ using CipherKey = std::array<std::uint8_t, CIPHER_KEY_BYTES>;
 ///
 /// Owned by SymmetricState during the handshake and by TransportState
 /// after Split. Single-strand access is the project invariant — a
-/// connection's reads and writes are serialised on a Boost.Asio strand,
+/// connection's reads and writes are serialised on a Asio strand,
 /// so no atomics are needed for the nonce counter.
 class CipherState {
 public:
