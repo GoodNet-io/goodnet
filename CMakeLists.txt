@@ -74,6 +74,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/protocols/gnet/CMakeLists.txt")
     add_subdirectory(plugins/protocols/gnet)
 endif()
 
+# Raw protocol — alternative layer for simulation harnesses, PCAP replay,
+# foreign-protocol passthrough. Built unconditionally so tests can link
+# it; production kernel builds with `gnet-v1` linked.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/protocols/raw/CMakeLists.txt")
+    add_subdirectory(plugins/protocols/raw)
+endif()
+
 # ── Bundled plugins (development convenience) ────────────────────────────────
 # Production: each plugin is a separate build/derivation, depends on the
 # installed SDK via find_package(GoodNet REQUIRED).
