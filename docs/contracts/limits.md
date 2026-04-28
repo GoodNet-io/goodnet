@@ -37,8 +37,8 @@ integers in network byte order on the C ABI:
 | `max_relay_ttl` | 32 | 4 | forwarded message hop count |
 | `max_plugins` | 32 | 64 | dlopen ceiling |
 | `max_extensions` | 32 | 256 | extension registry size |
-| `max_timers` | 32 | 4 096 | active one-shot timers (`timer.md` §6) |
-| `max_pending_tasks` | 32 | 4 096 | queued `post_to_executor` tasks |
+| `max_timers` | 32 | 4096 | active one-shot timers (`timer.md` §6) |
+| `max_pending_tasks` | 32 | 4096 | queued `post_to_executor` tasks |
 | `max_storage_table_entries` | 64 | 10 000 | storage handler bound |
 | `max_storage_value_bytes` | 64 | `max_payload_bytes` | per-entry size |
 | `_reserved[8]` | 32×8 | 0 | size-prefix evolution |

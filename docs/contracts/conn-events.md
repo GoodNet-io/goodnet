@@ -61,16 +61,17 @@ Semantics:
 - `TRUST_UPGRADED` — fired when a connection transitions from
   `Untrusted` to `Peer` (see `security-trust.md` §3 one-way upgrade).
 - `BACKPRESSURE_SOFT` — fired when a transport's send-queue
-  crosses `pending_queue_bytes_high` (see
-  `limits.md` §6, future `backpressure.md`). Subscribers should
-  slow down their producers; the kernel does not enforce.
+  crosses `pending_queue_bytes_high` (see `limits.md` §2 watermark
+  rows and `backpressure.md` §3 for the rising-edge model).
+  Subscribers should slow down their producers; the kernel does
+  not enforce.
 - `BACKPRESSURE_CLEAR` — fired when the queue drops below
   `pending_queue_bytes_low`.
 
-The `BACKPRESSURE_*` event kinds are reserved at v1.0 but emit only
-once the send-queue layer ships (Phase 5.C). Until then no plugin
-will observe them; consumers can still subscribe and the channel
-ignores never-fired kinds.
+The `BACKPRESSURE_*` event kinds are reserved at v1.0 but the
+producer ships in `backpressure.md`. Subscribers register a single
+callback that demultiplexes on `event->kind`; until the producer
+fires those kinds, subscribers simply never see them.
 
 `pending_bytes` carries the current queued byte count for the
 backpressure events; ignored (zero) for the lifecycle kinds.
@@ -85,6 +86,10 @@ typedef void (*gn_conn_event_cb_t)(void* user_data,
 
 typedef uint64_t gn_subscription_id_t;
 #define GN_INVALID_SUBSCRIPTION_ID ((gn_subscription_id_t)0)
+/* Allocated ids are monotonically increasing starting at 1; 0 is
+   reserved as the unset sentinel.  Reuse is structurally
+   impossible across realistic kernel runtimes per
+   signal-channel.md §3. */
 
 gn_result_t (*subscribe_conn_state)(void* host_ctx,
                                      gn_conn_event_cb_t cb,
@@ -100,17 +105,30 @@ quiescence sentinel (`plugin-lifetime.md` §4); a callback whose
 plugin already unloaded is dropped silently. `unsubscribe` is
 idempotent — calling on an already-removed id returns `GN_OK`.
 
-Subscribers run on the **publishing thread** — typically the
-transport's strand for `CONNECTED` / `DISCONNECTED`, the kernel's
-service executor for trust upgrades, the transport's strand again
-for backpressure events. Subscribers must be cheap; long work is
-posted back through `host_api->post_to_executor`
-(`timer.md` §2).
+Subscribers run on the **publishing thread**, which is **not the
+same thread for every event kind**:
 
-Re-entry is permitted: a callback may call `subscribe_conn_state`
-or `unsubscribe_conn_state` against the same channel without
-deadlocking. The channel snapshots subscribers under a shared
-lock and fires outside the lock (`signal_channel.hpp` semantics).
+- `CONNECTED` / `DISCONNECTED` — the transport's strand (the same
+  thread that called `notify_connect` / `notify_disconnect`).
+- `TRUST_UPGRADED` — the thread that drove the security
+  handshake completion (typically the transport's strand again,
+  since the upgrade is fired from inside `notify_inbound_bytes`).
+- `BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` — the transport's
+  strand for the affected connection (`backpressure.md` §3).
+
+A subscriber that maintains state across event kinds **must**
+guard it with a lock or post every event through
+`host_api->post_to_executor` (`timer.md` §2) to serialise
+processing on the kernel's service executor. The kernel does not
+synthesise a unified order across publishing threads.
+
+Subscribers must be cheap; long work is posted back through
+`post_to_executor`. Re-entry is permitted under the
+`signal-channel.md` snapshot rule: a callback that calls
+`subscribe_conn_state` or `unsubscribe_conn_state` while a fire
+is in progress runs to completion against the snapshot taken
+before the change — newly-added subscribers do not see the
+in-flight event, newly-removed subscribers still see it.
 
 ---
 
@@ -129,11 +147,15 @@ gn_result_t (*for_each_connection)(void* host_ctx,
 ```
 
 Visitor returns `0` to continue iteration, non-zero to stop.
-Iteration takes a per-shard read lock; the visitor must not block
-or call back into `register/unregister` paths on the same kernel
-instance (it would deadlock against the shard lock). For long-
-running side effects, snapshot ids inside the visitor, return,
-then process the snapshot outside.
+Iteration takes a per-shard read lock; the visitor **must not
+call any host_api slot that mutates the connection registry**
+(`notify_connect`, `notify_disconnect`, `disconnect`,
+`inject_external_message`, `inject_frame`) — every such slot
+re-acquires the shard mutex and self-deadlocks. The visitor may
+read counters off the record, copy the id / pk / uri, and append
+to its own scratch storage. For everything else (sending,
+subscribing, scheduling timers), snapshot ids inside the visitor,
+return, then post-process the snapshot.
 
 `uri` lives in the kernel's connection record and is borrowed for
 the duration of the visitor call only — copy if retained.
@@ -165,10 +187,13 @@ Plugins that need a complete picture of current state subscribe
 | `unsubscribe_conn_state` | removed or already gone | host_ctx null, id == `GN_INVALID_SUBSCRIPTION_ID` | — |
 | `for_each_connection` | iteration ran | host_ctx / visitor null | — |
 
-The subscription cap defaults to `gn_limits_t::max_extensions` —
-the same registry pool that bounds extension entries. A plugin
-must not subscribe more than once per topic; the typical pattern
-is one subscription per plugin instance.
+The subscription cap reuses the `gn_limits_t::max_extensions`
+**numeric default** (256) so operators do not have to tune yet
+another knob. The two pools are separate — extension entries
+live in `ExtensionRegistry`, conn-event subscriptions live on
+the `SignalChannel` token list — but they share the same default
+ceiling. A plugin must not subscribe more than once per topic;
+the typical pattern is one subscription per plugin instance.
 
 ---
 
@@ -177,5 +202,5 @@ is one subscription per plugin instance.
 - Quiescence anchor: `plugin-lifetime.md` §4.
 - Service executor for deferred work: `timer.md`.
 - Trust upgrade rule: `security-trust.md` §3.
-- Backpressure watermarks: `limits.md` §6 (future
+- Backpressure watermarks: `limits.md` §2 (future
   `backpressure.md`).

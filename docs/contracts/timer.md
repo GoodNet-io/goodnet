@@ -4,8 +4,9 @@
 **Owner:** `core/kernel/timer_registry`, every plugin that schedules
 async work
 **Last verified:** 2026-04-28
-**Stability:** v1.x; one-shot timer + post_to_executor are stable;
-periodic timer ride opt-in extension once a producer needs them.
+**Stability:** v1.x; `set_timer`, `cancel_timer`, and
+`post_to_executor` are stable; periodic timer support ships as an
+opt-in extension once a producer needs it.
 
 ---
 
@@ -52,10 +53,23 @@ gn_result_t post_to_executor(void* host_ctx,
 ```
 
 `set_timer` schedules `fn(user_data)` to run after `delay_ms`
-milliseconds. The returned id is unique within the kernel's
-lifetime; `0` is reserved as `GN_INVALID_TIMER_ID`. Returning
+milliseconds. The returned id is monotonically increasing and
+unique within the kernel's lifetime — `gn_timer_id_t` is 64 bits
+and reuse is structurally impossible across realistic process
+runtimes. `0` is reserved as `GN_INVALID_TIMER_ID`. Returning
 `GN_OK` does not guarantee the callback fires — see §4 for the
 cancellation and quiescence rules.
+
+`delay_ms == 0` is permitted and behaves as "post on the next
+service-executor tick"; the callback runs serialised with every
+other queued task per §3, never synchronously on the calling
+thread. Producers that want a synchronous callback are misusing
+the slot — `post_to_executor` is the same machinery without the
+zero-delay misdirection.
+
+Delays are measured against a monotonic clock (`steady_clock` on
+glibc-class platforms); system time changes do not advance or
+delay scheduled callbacks.
 
 `cancel_timer` removes a still-pending timer. Returns
 `GN_OK` on success, `GN_ERR_UNKNOWN_RECEIVER` when the timer has
@@ -89,11 +103,13 @@ thread-local state survives the dispatch.
 ## 4. Lifetime safety
 
 Every scheduled task carries a **weak observer** of the calling
-plugin's quiescence sentinel (`plugin-lifetime.md` §4) — the same
-anchor that handler / transport / extension entries inherit.
-Before invoking `fn(user_data)`, the kernel upgrades the observer
-to a strong reference; failure to upgrade is a clean exit, the
-callback is dropped silently.
+plugin's quiescence sentinel (`plugin-lifetime.md` §4). Registry
+entries hold the sentinel through a strong reference (the
+"lifetime anchor"); async tasks like timers and posted callbacks
+hold the matching weak observer so a stale callback cannot extend
+the plugin's effective lifetime. Before invoking `fn(user_data)`,
+the kernel upgrades the observer to a strong reference; failure
+to upgrade is a clean exit, the callback is dropped silently.
 
 Concrete properties:
 
@@ -103,10 +119,10 @@ Concrete properties:
    permitted; the kernel handles re-entry on the same thread by
    deferring the erase until the current callback returns.
 3. `PluginManager::rollback` cancels every still-pending timer
-   whose anchor matches the plugin being unloaded before draining
-   the lifetime anchor (`plugin-lifetime.md` §4 quiescence). This
-   keeps the drain loop fast: in-flight timers do not extend the
-   plugin's effective lifetime.
+   whose weak observer matches the plugin being unloaded before
+   draining the lifetime anchor (`plugin-lifetime.md` §4
+   quiescence). This keeps the drain loop fast: in-flight timers
+   do not extend the plugin's effective lifetime.
 
 A plugin **must not** spawn its own threads to back periodic work.
 The contract is "post your task to the service executor"; everything
@@ -169,5 +185,5 @@ race against the self-cleanup path on natural firing.
 
 - Reference-counted ownership rule: `plugin-lifetime.md` §4.
 - Resource limits: `limits.md` §2.
-- Host-API surface: `host-api.md` §11 (this section is the
+- Host-API surface: `host-api.md` §9 (this section is the
   authoritative semantics; host-api.md cites here).
