@@ -52,6 +52,21 @@ public:
     /// valid for the lifetime of the KeyPair.
     [[nodiscard]] const ::gn::PublicKey& public_key() const noexcept { return pk_; }
 
+    /// Read-only span over the secret key bytes (libsodium Ed25519
+    /// layout). Reserved for the kernel's security pipeline so it can
+    /// hand the bytes to a registered security provider through the
+    /// stable C ABI; the SDK's plugin boundary never sees this view
+    /// directly. The span stays valid for the lifetime of the KeyPair
+    /// and must not be retained past it.
+    [[nodiscard]] std::span<const std::uint8_t, kEd25519SecretKeyBytes>
+    secret_key_view() const noexcept {
+        return std::span<const std::uint8_t, kEd25519SecretKeyBytes>(sk_);
+    }
+
+    /// True once `generate` or `from_seed` populated the pair. Useful
+    /// for default-constructed instances or after `wipe`.
+    [[nodiscard]] bool has_secret() const noexcept { return present_; }
+
     /// Signs @p message with the secret key. Returns the 64-byte
     /// detached signature on success.
     [[nodiscard]] ::gn::Result<std::array<std::uint8_t, kEd25519SignatureBytes>>

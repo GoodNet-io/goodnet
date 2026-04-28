@@ -18,6 +18,10 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     limits_ = limits;
 }
 
+void Kernel::set_node_identity(identity::NodeIdentity ident) noexcept {
+    node_identity_.emplace(std::move(ident));
+}
+
 Phase Kernel::current_phase() const noexcept {
     return state_.load(std::memory_order_acquire);
 }

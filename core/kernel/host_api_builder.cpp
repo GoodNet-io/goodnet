@@ -64,6 +64,21 @@ gn_result_t thunk_send(void* host_ctx,
                                framed->data(), framed->size());
 }
 
+gn_result_t thunk_register_security(void* host_ctx,
+                                     const char* provider_id,
+                                     const gn_security_provider_vtable_t* vtable,
+                                     void* security_self) {
+    if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->security().register_provider(provider_id, vtable, security_self);
+}
+
+gn_result_t thunk_unregister_security(void* host_ctx, const char* provider_id) {
+    if (!host_ctx || !provider_id) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->security().unregister_provider(provider_id);
+}
+
 gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
@@ -293,6 +308,9 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.notify_connect        = &thunk_notify_connect;
     a.notify_inbound_bytes  = &thunk_notify_inbound_bytes;
     a.notify_disconnect     = &thunk_notify_disconnect;
+
+    a.register_security     = &thunk_register_security;
+    a.unregister_security   = &thunk_unregister_security;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

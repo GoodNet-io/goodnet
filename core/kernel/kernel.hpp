@@ -27,10 +27,14 @@
 #include "phase.hpp"
 #include "router.hpp"
 
+#include <core/identity/node_identity.hpp>
+#include <core/security/session.hpp>
+
 #include <core/config/config.hpp>
 #include <core/registry/connection.hpp>
 #include <core/registry/extension.hpp>
 #include <core/registry/handler.hpp>
+#include <core/registry/security.hpp>
 #include <core/registry/transport.hpp>
 #include <core/signal/signal_channel.hpp>
 
@@ -92,6 +96,8 @@ public:
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] TransportRegistry&   transports()  noexcept { return transports_; }
+    [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
+    [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
 
@@ -117,6 +123,24 @@ public:
         return on_config_reload_;
     }
 
+    /// Install the kernel's `NodeIdentity` for the security pipeline.
+    /// Must be called before reaching `Wire` phase so the security
+    /// session has the local Ed25519 keypair available at handshake
+    /// time. The kernel takes ownership; the move zeroises secrets
+    /// when the kernel is destroyed.
+    void set_node_identity(identity::NodeIdentity identity) noexcept;
+
+    [[nodiscard]] bool has_node_identity() const noexcept {
+        return node_identity_.has_value();
+    }
+
+    /// Read-only access to the installed node identity. Returns nullptr
+    /// when none has been set. The pointed-to instance stays valid for
+    /// the kernel's lifetime.
+    [[nodiscard]] const identity::NodeIdentity* node_identity() const noexcept {
+        return node_identity_ ? &*node_identity_ : nullptr;
+    }
+
 private:
     void                      fire(Phase prev, Phase next);
 
@@ -133,6 +157,8 @@ private:
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
     TransportRegistry    transports_;
+    SecurityRegistry     security_;
+    Sessions             sessions_;
     ExtensionRegistry    extensions_;
     Router               router_{identities_, handlers_};
 
@@ -141,6 +167,8 @@ private:
     Config                                config_;
 
     signal::SignalChannel<signal::Empty>  on_config_reload_;
+
+    std::optional<identity::NodeIdentity> node_identity_;
 };
 
 } // namespace gn::core
