@@ -1,0 +1,479 @@
+// SPDX-License-Identifier: MIT
+#include "udp.hpp"
+
+#include <sdk/cpp/uri.hpp>
+
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/ip/v6_only.hpp>
+#include <boost/system/error_code.hpp>
+
+#include <cstring>
+#include <utility>
+#include <vector>
+
+namespace gn::transport::udp {
+
+namespace asio_ip = boost::asio::ip;
+
+namespace {
+
+/// Cap MTU at the IPv4/v6 datagram theoretical max so the receive
+/// scratch buffer (`recv_buf_`, 64 KiB) is never under-sized for a
+/// frame the configured limit accepts.
+constexpr std::uint32_t kMtuCeiling = 65000;
+
+}  // namespace
+
+UdpTransport::UdpTransport()
+    : ioc_(),
+      work_(boost::asio::make_work_guard(ioc_)),
+      strand_(boost::asio::make_strand(ioc_.get_executor())) {
+    worker_ = std::thread([this] { ioc_.run(); });
+}
+
+UdpTransport::~UdpTransport() {
+    shutdown();
+}
+
+void UdpTransport::set_host_api(const host_api_t* api) noexcept {
+    api_ = api;
+}
+
+std::size_t UdpTransport::session_count() const noexcept {
+    std::lock_guard lk(peers_mu_);
+    return peers_.size();
+}
+
+void UdpTransport::set_mtu(std::uint32_t bytes) noexcept {
+    if (bytes == 0)            bytes = kDefaultMtu;
+    if (bytes > kMtuCeiling)   bytes = kMtuCeiling;
+    mtu_.store(bytes, std::memory_order_relaxed);
+}
+
+gn_trust_class_t UdpTransport::resolve_trust(
+    const asio_ip::udp::endpoint& peer) const noexcept
+{
+    return peer.address().is_loopback() ? GN_TRUST_LOOPBACK
+                                          : GN_TRUST_UNTRUSTED;
+}
+
+std::string UdpTransport::endpoint_to_uri(
+    const asio_ip::udp::endpoint& ep)
+{
+    std::string uri = "udp://";
+    if (ep.address().is_v6()) {
+        uri += '[';
+        uri += ep.address().to_string();
+        uri += ']';
+    } else {
+        uri += ep.address().to_string();
+    }
+    uri += ':';
+    uri += std::to_string(ep.port());
+    return uri;
+}
+
+gn_result_t UdpTransport::listen(std::string_view uri_sv) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(uri_sv);
+    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+
+    boost::system::error_code ec;
+    const auto addr = asio_ip::make_address(parts->host, ec);
+    if (ec) return GN_ERR_NULL_ARG;
+
+    asio_ip::udp::endpoint ep(addr, parts->port);
+
+    try {
+        asio_ip::udp::socket sock(ioc_);
+        sock.open(ep.protocol());
+        /// Same dual-stack treatment as TCP: IPv6 wildcard listens
+        /// accept v4-mapped peers when `IPV6_V6ONLY` is off; specific
+        /// v6 literals stay v6-only. `set_option` here is best-effort
+        /// — pre-Linux-3.x kernels lack the option, v4-only fallback
+        /// is the documented behaviour.
+        if (addr.is_v6() && addr.is_unspecified()) {
+            boost::system::error_code v6_ec;
+            if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
+                api_ && api_->log) {
+                api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                          "udp: v6_only(false) failed: %s",
+                          v6_ec.message().c_str());
+            }
+        }
+        sock.bind(ep);
+        listen_port_.store(sock.local_endpoint().port(),
+                            std::memory_order_release);
+        socket_.emplace(std::move(sock));
+    } catch (const std::exception&) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    start_receive();
+    return GN_OK;
+}
+
+gn_result_t UdpTransport::connect(std::string_view uri_sv) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(uri_sv);
+    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+    /// `connect`-side rejects port 0 per `uri.md` §5 — listen accepts
+    /// it for ephemeral allocation, but a zero target port is never a
+    /// real peer.
+    if (parts->port == 0) return GN_ERR_NULL_ARG;
+
+    boost::system::error_code ec;
+    const auto addr = asio_ip::make_address(parts->host, ec);
+    if (ec) return GN_ERR_NULL_ARG;
+    asio_ip::udp::endpoint ep(addr, parts->port);
+
+    /// A pure client (connect without listen) needs an outbound
+    /// socket. Bind to the matching protocol family on an ephemeral
+    /// port; v6 wildcards disable `IPV6_V6ONLY` so v4-mapped sends
+    /// also work.
+    bool socket_freshly_created = false;
+    if (!socket_) {
+        try {
+            const auto family = addr.is_v6() ? asio_ip::udp::v6()
+                                              : asio_ip::udp::v4();
+            asio_ip::udp::socket sock(
+                ioc_, asio_ip::udp::endpoint(family, 0));
+            if (addr.is_v6()) {
+                boost::system::error_code v6_ec;
+                if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
+                    api_ && api_->log) {
+                    api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                              "udp: v6_only(false) failed: %s",
+                              v6_ec.message().c_str());
+                }
+            }
+            socket_.emplace(std::move(sock));
+            socket_freshly_created = true;
+        } catch (const std::exception&) {
+            return GN_ERR_NULL_ARG;
+        }
+    }
+
+    if (!api_ || !api_->notify_connect) {
+        if (socket_freshly_created) {
+            /// Roll back the socket we just minted — without a host
+            /// API there is nowhere for received bytes to flow.
+            boost::system::error_code close_ec;
+            if (socket_->close(close_ec) && api_ && api_->log) {
+                api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                          "udp: rollback close: %s",
+                          close_ec.message().c_str());
+            }
+            socket_.reset();
+        }
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+
+    /// Hold `peers_mu_` across `notify_connect` so a concurrent
+    /// inbound datagram from the same endpoint cannot race the
+    /// kernel-allocated id and clobber the map. The kernel side of
+    /// `notify_connect` only touches its own session registry;
+    /// nothing in that path re-enters the transport, so the lock is
+    /// safe to span.
+    std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+    gn_conn_id_t conn = GN_INVALID_ID;
+    const std::string canonical = endpoint_to_uri(ep);
+    {
+        std::lock_guard lk(peers_mu_);
+        if (auto it = endpoint_to_id_.find(ep);
+            it != endpoint_to_id_.end()) {
+            /// Endpoint already registered (a concurrent inbound
+            /// datagram from the same peer raced ahead). Keep the
+            /// existing id; refresh activity. `socket_freshly_created`
+            /// is unreachable here — if we just minted the socket no
+            /// recv could have populated the map yet — so no need to
+            /// start a second receive loop.
+            peers_[it->second].last_active =
+                std::chrono::steady_clock::now();
+            return GN_OK;
+        }
+        const gn_result_t rc = api_->notify_connect(
+            api_->host_ctx, remote_pk, canonical.c_str(), "udp",
+            resolve_trust(ep), GN_ROLE_INITIATOR, &conn);
+        if (rc != GN_OK || conn == GN_INVALID_ID) {
+            if (socket_freshly_created) {
+                boost::system::error_code close_ec;
+                if (socket_->close(close_ec) && api_->log) {
+                    api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                              "udp: rollback close: %s",
+                              close_ec.message().c_str());
+                }
+                socket_.reset();
+            }
+            return rc;
+        }
+        peers_[conn] = {conn, ep, std::chrono::steady_clock::now()};
+        endpoint_to_id_[ep] = conn;
+    }
+
+    if (socket_freshly_created) start_receive();
+
+    if (api_->kick_handshake) {
+        if (const auto rc = api_->kick_handshake(api_->host_ctx, conn);
+            rc != GN_OK && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "udp: kick_handshake rc=%d for conn=%llu",
+                      rc, static_cast<unsigned long long>(conn));
+        }
+    }
+    return GN_OK;
+}
+
+gn_result_t UdpTransport::send(gn_conn_id_t conn,
+                                std::span<const std::uint8_t> bytes) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+    if (!socket_) return GN_ERR_NULL_ARG;
+    /// Reject oversized payloads up front — IP fragmentation in the
+    /// hot path is never the desired behaviour and a fragmented frame
+    /// almost always loses on the wire when one fragment drops.
+    if (bytes.size() > mtu_.load(std::memory_order_relaxed)) {
+        return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+
+    asio_ip::udp::endpoint target;
+    {
+        std::lock_guard lk(peers_mu_);
+        auto it = peers_.find(conn);
+        if (it == peers_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+        target = it->second.endpoint;
+        it->second.last_active = std::chrono::steady_clock::now();
+    }
+
+    /// Asio forbids overlapping ops on one socket; the strand is the
+    /// only writer just like it is the only reader. The payload
+    /// rides in `buf` so the caller's span can vanish before the
+    /// syscall completes.
+    auto buf = std::make_shared<std::vector<std::uint8_t>>(
+        bytes.begin(), bytes.end());
+    auto self = shared_from_this();
+    boost::asio::dispatch(strand_,
+        [weak = std::weak_ptr<UdpTransport>(self), buf, target] {
+            auto t = weak.lock();
+            if (!t || t->shutdown_.load(std::memory_order_acquire)) return;
+            t->socket_->async_send_to(
+                boost::asio::buffer(*buf), target,
+                boost::asio::bind_executor(t->strand_,
+                    [buf, weak](const boost::system::error_code& send_ec,
+                                std::size_t) {
+                        if (!send_ec) return;
+                        if (auto t2 = weak.lock();
+                            t2 && t2->api_ && t2->api_->log) {
+                            t2->api_->log(t2->api_->host_ctx, GN_LOG_DEBUG,
+                                          "udp: send_to failed: %s",
+                                          send_ec.message().c_str());
+                        }
+                    }));
+        });
+    return GN_OK;
+}
+
+gn_result_t UdpTransport::send_batch(
+    gn_conn_id_t conn,
+    std::span<const std::span<const std::uint8_t>> frames)
+{
+    /// Datagram transports never coalesce — each frame keeps its
+    /// boundary on the wire. Pre-validate every frame against MTU
+    /// up front so a partial batch never lands on the wire when one
+    /// frame is malformed; either every frame goes out or nothing.
+    const auto cap = mtu_.load(std::memory_order_relaxed);
+    for (const auto& f : frames) {
+        if (f.size() > cap) return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+    for (const auto& f : frames) {
+        if (const auto rc = send(conn, f); rc != GN_OK) return rc;
+    }
+    return GN_OK;
+}
+
+gn_result_t UdpTransport::disconnect(gn_conn_id_t conn) {
+    bool erased = false;
+    {
+        std::lock_guard lk(peers_mu_);
+        auto it = peers_.find(conn);
+        if (it == peers_.end()) return GN_OK;  /// idempotent
+        endpoint_to_id_.erase(it->second.endpoint);
+        peers_.erase(it);
+        erased = true;
+    }
+    /// Tell the kernel the conn is gone so its registry releases the
+    /// id — without this the kernel leaks the record forever, since
+    /// UDP has no in-band close signal.
+    if (erased && api_ && api_->notify_disconnect) {
+        if (const auto rc = api_->notify_disconnect(
+                api_->host_ctx, conn, GN_OK);
+            rc != GN_OK && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "udp: notify_disconnect rc=%d for conn=%llu",
+                      rc, static_cast<unsigned long long>(conn));
+        }
+    }
+    return GN_OK;
+}
+
+void UdpTransport::start_receive() {
+    if (!socket_ || shutdown_.load(std::memory_order_acquire)) return;
+
+    /// Capture a weak observer, not a strong reference. A strong
+    /// capture would close a cycle through `ioc_` (which owns the
+    /// pending op) and leak the transport — `plugin-lifetime.md` §4.
+    socket_->async_receive_from(
+        boost::asio::buffer(recv_buf_), recv_endpoint_,
+        boost::asio::bind_executor(strand_,
+            [weak = weak_from_this()](
+                const boost::system::error_code& ec, std::size_t bytes) {
+                auto self = weak.lock();
+                if (!self || self->shutdown_.load(std::memory_order_acquire))
+                    return;
+                if (ec) {
+                    if (ec == boost::asio::error::operation_aborted) {
+                        /// Shutdown path — stop quietly.
+                        return;
+                    }
+                    /// Re-arm only on errors that are recoverable on
+                    /// the next syscall: ICMP-driven `connection_refused`
+                    /// (transient when a previous send hit a closed
+                    /// remote port) and `message_size` (the runt
+                    /// datagram is gone, the next read returns the
+                    /// next frame). Anything else stops the loop —
+                    /// the kernel observes the silence and the
+                    /// operator sees the diagnostic.
+                    if (ec == boost::asio::error::connection_refused ||
+                        ec == boost::asio::error::message_size) {
+                        self->start_receive();
+                        return;
+                    }
+                    if (self->api_ && self->api_->log) {
+                        self->api_->log(self->api_->host_ctx, GN_LOG_WARN,
+                                        "udp: recv stopped: %s",
+                                        ec.message().c_str());
+                    }
+                    return;
+                }
+
+                /// Both the existing-conn lookup and the new-conn
+                /// allocation run inside `peers_mu_` so a concurrent
+                /// `connect()` to the same endpoint cannot interleave
+                /// — winner inserts, loser observes existing entry.
+                gn_conn_id_t id = GN_INVALID_ID;
+                bool fresh_conn = false;
+                {
+                    std::lock_guard lk(self->peers_mu_);
+                    if (auto it = self->endpoint_to_id_.find(
+                            self->recv_endpoint_);
+                        it != self->endpoint_to_id_.end()) {
+                        id = it->second;
+                        self->peers_[id].last_active =
+                            std::chrono::steady_clock::now();
+                    } else if (self->api_ && self->api_->notify_connect) {
+                        std::uint64_t ip_key = 0;
+                        if (self->recv_endpoint_.address().is_v4()) {
+                            ip_key = self->recv_endpoint_.address()
+                                         .to_v4().to_uint();
+                        } else {
+                            const auto v6_bytes =
+                                self->recv_endpoint_.address()
+                                    .to_v6().to_bytes();
+                            std::memcpy(&ip_key, v6_bytes.data(),
+                                        sizeof(ip_key));
+                        }
+                        if (!self->new_conn_limiter_.allow(ip_key)) {
+                            /// Drop, re-arm. No log spam — an
+                            /// attacker can trivially fill any
+                            /// rate-limited log channel.
+                            self->start_receive();
+                            return;
+                        }
+                        std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+                        gn_conn_id_t conn = GN_INVALID_ID;
+                        const std::string uri =
+                            endpoint_to_uri(self->recv_endpoint_);
+                        const auto rc = self->api_->notify_connect(
+                            self->api_->host_ctx, remote_pk, uri.c_str(),
+                            "udp",
+                            self->resolve_trust(self->recv_endpoint_),
+                            GN_ROLE_RESPONDER, &conn);
+                        if (rc == GN_OK && conn != GN_INVALID_ID) {
+                            id = conn;
+                            self->peers_[id] = {id, self->recv_endpoint_,
+                                                std::chrono::steady_clock::now()};
+                            self->endpoint_to_id_[self->recv_endpoint_] = id;
+                            fresh_conn = true;
+                        }
+                    }
+                }
+
+                if (fresh_conn && self->api_ && self->api_->kick_handshake) {
+                    /// Kick from outside the mutex — the kernel may
+                    /// drive the responder side which will call back
+                    /// into `host_api->send`, which re-acquires
+                    /// `peers_mu_` to look up the target endpoint.
+                    /// Holding the mutex would deadlock there.
+                    if (const auto rc = self->api_->kick_handshake(
+                            self->api_->host_ctx, id);
+                        rc != GN_OK && self->api_->log) {
+                        self->api_->log(self->api_->host_ctx, GN_LOG_DEBUG,
+                                        "udp: kick_handshake rc=%d", rc);
+                    }
+                }
+
+                if (id != GN_INVALID_ID && self->api_ &&
+                    self->api_->notify_inbound_bytes && bytes > 0) {
+                    self->api_->notify_inbound_bytes(
+                        self->api_->host_ctx, id,
+                        self->recv_buf_.data(), bytes);
+                }
+
+                self->start_receive();
+            }));
+}
+
+void UdpTransport::shutdown() {
+    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
+
+    /// Snapshot conn ids while holding the mutex, then release before
+    /// firing `notify_disconnect` to avoid a re-entry deadlock if
+    /// the kernel calls back into the transport.
+    std::vector<gn_conn_id_t> closing;
+    {
+        std::lock_guard lk(peers_mu_);
+        closing.reserve(peers_.size());
+        for (const auto& [conn, _entry] : peers_) closing.push_back(conn);
+        peers_.clear();
+        endpoint_to_id_.clear();
+    }
+    if (api_ && api_->notify_disconnect) {
+        for (const auto conn : closing) {
+            if (const auto rc = api_->notify_disconnect(
+                    api_->host_ctx, conn, GN_OK);
+                rc != GN_OK && api_->log) {
+                api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                          "udp: notify_disconnect rc=%d for conn=%llu",
+                          rc, static_cast<unsigned long long>(conn));
+            }
+        }
+    }
+
+    if (socket_) {
+        boost::system::error_code ec;
+        if (socket_->close(ec) && api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "udp: close failed: %s", ec.message().c_str());
+        }
+        socket_.reset();
+    }
+
+    work_.reset();
+    ioc_.stop();
+    if (worker_.joinable()) worker_.join();
+}
+
+}  // namespace gn::transport::udp

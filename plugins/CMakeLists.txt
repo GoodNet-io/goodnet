@@ -42,3 +42,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/ipc/CMakeLists.txt")
     add_subdirectory(transports/ipc)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/udp/CMakeLists.txt")
+    add_subdirectory(transports/udp)
+endif()

@@ -15,12 +15,13 @@
 #include <array>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <utility>
 
 namespace gn::transport::tcp {
 namespace {
 
-constexpr std::size_t kReadBufferSize = 16 * 1024;
+constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
 
 }  // namespace
 
@@ -77,7 +78,7 @@ public:
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
         boost::asio::dispatch(strand_,
-            [self = shared_from_this(), buf = std::move(buf)] {
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
             });
@@ -96,18 +97,28 @@ public:
             offset += f.size();
         }
         boost::asio::dispatch(strand_,
-            [self = shared_from_this(), buf = std::move(buf)] {
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
             });
     }
 
     /// Close on the strand so the reactor's per-descriptor cleanup
-    /// runs without overlapping a pending `async_read_some`.
+    /// runs without overlapping a pending `async_read_some`. The
+    /// `close(ec)` return is best-effort — the FD is gone either way,
+    /// surface a debug log via the transport's `api_->log` so the
+    /// failure isn't silent.
     void do_close() {
         boost::asio::dispatch(strand_, [self = shared_from_this()] {
             boost::system::error_code ec;
-            (void)self->socket_.close(ec);
+            if (self->socket_.close(ec)) {
+                if (auto t = self->transport_.lock();
+                    t && t->api_ && t->api_->log) {
+                    t->api_->log(t->api_->host_ctx, GN_LOG_DEBUG,
+                                 "tcp: close failed: %s",
+                                 ec.message().c_str());
+                }
+            }
         });
     }
 
@@ -155,7 +166,26 @@ TcpTransport::TcpTransport()
 }
 
 TcpTransport::~TcpTransport() {
-    shutdown();
+    /// Destructors must not throw — `shutdown()` walks the strand
+    /// dispatch chain, which can throw `bad_executor` if the
+    /// io_context already tore down. Surface the error through the
+    /// host log if it is still bound; without a log sink there is
+    /// nowhere safe to write from inside a dtor, so the catch only
+    /// observes the exception type to satisfy the no-empty-catch
+    /// lint without re-throwing.
+    try {
+        shutdown();
+    } catch (const std::exception& e) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "tcp: shutdown threw: %s", e.what());
+        }
+    } catch (...) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "tcp: shutdown threw non-std exception");
+        }
+    }
 }
 
 void TcpTransport::set_host_api(const host_api_t* api) noexcept {
@@ -209,15 +239,29 @@ gn_result_t TcpTransport::listen(std::string_view uri_sv) {
         boost::asio::ip::tcp::acceptor acceptor(ioc_);
         acceptor.open(ep.protocol());
         /// IPv6 wildcard `::` — disable `IPV6_V6ONLY` so dual-stack
-        /// listens accept v4-mapped clients on Linux. Specific v6
+        /// listens accept v4-mapped clients on Linux. `set_option`
+        /// here is best-effort — pre-Linux-3.x kernels lack the option,
+        /// v4-only fallback is the documented behaviour. Specific v6
         /// literals stay v6-only by default.
         if (addr.is_v6() && addr.is_unspecified()) {
             boost::system::error_code v6_ec;
-            (void)acceptor.set_option(
-                boost::asio::ip::v6_only(false), v6_ec);
+            if (acceptor.set_option(
+                    boost::asio::ip::v6_only(false), v6_ec) &&
+                api_ && api_->log) {
+                api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                          "tcp: v6_only(false) failed: %s",
+                          v6_ec.message().c_str());
+            }
         }
-        (void)acceptor.set_option(
-            boost::asio::ip::tcp::acceptor::reuse_address(true));
+        boost::system::error_code reuse_ec;
+        if (acceptor.set_option(
+                boost::asio::ip::tcp::acceptor::reuse_address(true),
+                reuse_ec) &&
+            api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "tcp: reuse_address(true) failed: %s",
+                      reuse_ec.message().c_str());
+        }
         acceptor.bind(ep);
         acceptor.listen();
         listen_port_.store(acceptor.local_endpoint().port(),
@@ -238,10 +282,16 @@ void TcpTransport::start_accept() {
         boost::asio::ip::tcp::socket(ioc_),
         weak_from_this());
 
-    acceptor_->async_accept(session->socket(),
-        [weak = std::weak_ptr<TcpTransport>(shared_from_this()), session](
-            const boost::system::error_code& ec) {
-            if (auto t = weak.lock()) t->on_accept(session, ec);
+    /// Re-check `acceptor_.has_value()` immediately above the deref —
+    /// the lint pass doesn't track the early-return guard at the top
+    /// of the function across the intervening `make_shared` call.
+    if (!acceptor_.has_value()) return;
+    auto& sock = session->socket();
+    acceptor_->async_accept(sock,
+        [weak = std::weak_ptr<TcpTransport>(shared_from_this()),
+         session = std::move(session)](
+            const boost::system::error_code& ec) mutable {
+            if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
         });
 }
 
@@ -267,8 +317,10 @@ void TcpTransport::on_accept(std::shared_ptr<Session> session,
             resolve_trust(remote), GN_ROLE_RESPONDER, &conn);
         if (rc == GN_OK && conn != GN_INVALID_ID) {
             session->conn_id = conn;
-            register_session(conn, session);
             session->start_read();
+            /// Move-into the session map — ownership transfers to the
+            /// registry, so the local `session` is consumed here.
+            register_session(conn, std::move(session));
         } else {
             session->do_close();
         }
@@ -296,10 +348,14 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
 
     /// Open against the endpoint's protocol family before the
     /// async_connect — a default-constructed socket carries no family,
-    /// and Linux silently never completes the connect for IPv6.
+    /// and Linux silently never completes the connect for IPv6. The
+    /// `open(proto, ec)` overload returns the same `error_code` it
+    /// stores into `open_ec`; consume the return through the failure
+    /// guard.
     boost::system::error_code open_ec;
-    session->socket().open(ep.protocol(), open_ec);
-    if (open_ec) return GN_ERR_NULL_ARG;
+    if (session->socket().open(ep.protocol(), open_ec)) {
+        return GN_ERR_NULL_ARG;
+    }
 
     const std::string canonical_uri(uri_sv);
     session->socket().async_connect(ep,
@@ -397,7 +453,14 @@ void TcpTransport::shutdown() {
 
     if (acceptor_) {
         boost::system::error_code ec;
-        (void)acceptor_->close(ec);
+        /// `close(ec)` is best-effort on shutdown — the FD is gone
+        /// either way. Surface the error through `api_->log` if the
+        /// host bound one, otherwise discard.
+        if (acceptor_->close(ec) && api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "tcp: acceptor close failed: %s",
+                      ec.message().c_str());
+        }
         acceptor_.reset();
     }
 
