@@ -63,6 +63,7 @@ find_package(fmt    REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+find_package(OpenSSL REQUIRED)
 # Standalone Asio ships only a pkg-config file in nixpkgs; wrap it
 # into an alias `asio::asio` so target_link_libraries reads the same
 # as if the library shipped a CMake config. ASIO_STANDALONE switches

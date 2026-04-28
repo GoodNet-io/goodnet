@@ -1,0 +1,653 @@
+// SPDX-License-Identifier: Apache-2.0
+/// @file   plugins/transports/tls/tls.cpp
+/// @brief  Implementation of the TLS transport.
+
+#include "tls.hpp"
+
+#include <asio/bind_executor.hpp>
+#include <asio/buffer.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/read.hpp>
+#include <asio/write.hpp>
+
+#include <array>
+#include <cstring>
+#include <deque>
+#include <exception>
+#include <span>
+#include <sstream>
+#include <utility>
+#include <vector>
+
+namespace gn::transport::tls {
+
+namespace {
+
+constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
+
+} // namespace
+
+// ── Session ──────────────────────────────────────────────────────
+
+class TlsTransport::Session : public std::enable_shared_from_this<Session> {
+public:
+    enum class Mode { Server, Client };
+
+    Session(asio::ip::tcp::socket sock,
+            asio::ssl::context& ctx,
+            std::weak_ptr<TlsTransport> transport,
+            Mode mode)
+        : ssl_(std::move(sock), ctx),
+          strand_(ssl_.get_executor()),
+          transport_(std::move(transport)),
+          mode_(mode) {}
+
+    asio::ssl::stream<asio::ip::tcp::socket>& stream() noexcept { return ssl_; }
+    asio::ip::tcp::socket::lowest_layer_type& lowest_layer() noexcept {
+        return ssl_.lowest_layer();
+    }
+
+    gn_conn_id_t conn_id = GN_INVALID_ID;
+
+    void start_handshake_then(std::function<void()> after) {
+        const auto side = mode_ == Mode::Server
+            ? asio::ssl::stream_base::server
+            : asio::ssl::stream_base::client;
+        ssl_.async_handshake(side,
+            asio::bind_executor(strand_,
+                [self = shared_from_this(),
+                 after = std::move(after)](const std::error_code& ec) {
+                    if (ec) { self->fail(); return; }
+                    after();
+                }));
+    }
+
+    void start_read() {
+        ssl_.async_read_some(
+            asio::buffer(read_buf_),
+            asio::bind_executor(strand_,
+                [self = shared_from_this()](
+                    const std::error_code& ec, std::size_t n) {
+                    auto t = self->transport_.lock();
+                    if (!t) return;
+                    if (ec) {
+                        if (t->api_ && t->api_->notify_disconnect) {
+                            t->api_->notify_disconnect(
+                                t->api_->host_ctx, self->conn_id,
+                                ec == asio::error::eof ? GN_OK : GN_ERR_NULL_ARG);
+                        }
+                        t->erase_session(self->conn_id);
+                        return;
+                    }
+                    if (n > 0) {
+                        t->bytes_in_.fetch_add(n, std::memory_order_relaxed);
+                        t->frames_in_.fetch_add(1, std::memory_order_relaxed);
+                        if (t->api_ && t->api_->notify_inbound_bytes) {
+                            t->api_->notify_inbound_bytes(
+                                t->api_->host_ctx, self->conn_id,
+                                self->read_buf_.data(), n);
+                        }
+                    }
+                    self->start_read();
+                }));
+    }
+
+    void do_send(std::span<const std::uint8_t> data) {
+        auto buf = std::make_shared<std::vector<std::uint8_t>>(
+            data.begin(), data.end());
+        asio::dispatch(strand_,
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
+                self->write_queue_.push_back(std::move(buf));
+                self->maybe_start_write();
+            });
+    }
+
+    void do_send_batch(std::span<const std::span<const std::uint8_t>> frames) {
+        std::size_t total = 0;
+        for (auto& f : frames) total += f.size();
+        auto buf = std::make_shared<std::vector<std::uint8_t>>(total);
+        std::size_t offset = 0;
+        for (auto& f : frames) {
+            std::memcpy(buf->data() + offset, f.data(), f.size());
+            offset += f.size();
+        }
+        asio::dispatch(strand_,
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
+                self->write_queue_.push_back(std::move(buf));
+                self->maybe_start_write();
+            });
+    }
+
+    void do_close() {
+        asio::dispatch(strand_, [self = shared_from_this()] {
+            std::error_code ec;
+            /// `shutdown` issues TLS close_notify; the close that
+            /// follows is what guarantees the FD goes away.
+            if (self->ssl_.shutdown(ec)) {}
+            if (self->lowest_layer().close(ec)) {}
+        });
+    }
+
+private:
+    void maybe_start_write() {
+        if (write_in_flight_ || write_queue_.empty()) return;
+        write_in_flight_ = true;
+        auto buf = write_queue_.front();
+        asio::async_write(ssl_, asio::buffer(*buf),
+            asio::bind_executor(strand_,
+                [self = shared_from_this(), buf](
+                    const std::error_code& ec, std::size_t n) {
+                    self->write_queue_.pop_front();
+                    self->write_in_flight_ = false;
+                    auto t = self->transport_.lock();
+                    if (!t) return;
+                    if (ec) {
+                        if (t->api_ && t->api_->notify_disconnect) {
+                            t->api_->notify_disconnect(
+                                t->api_->host_ctx, self->conn_id, GN_ERR_NULL_ARG);
+                        }
+                        t->erase_session(self->conn_id);
+                        return;
+                    }
+                    t->bytes_out_.fetch_add(n, std::memory_order_relaxed);
+                    t->frames_out_.fetch_add(1, std::memory_order_relaxed);
+                    self->maybe_start_write();
+                }));
+    }
+
+    void fail() {
+        auto t = transport_.lock();
+        if (t && t->api_ && t->api_->notify_disconnect &&
+            conn_id != GN_INVALID_ID) {
+            t->api_->notify_disconnect(t->api_->host_ctx, conn_id, GN_OK);
+        }
+        if (t && conn_id != GN_INVALID_ID) t->erase_session(conn_id);
+        std::error_code ec;
+        if (lowest_layer().close(ec)) {}
+    }
+
+    asio::ssl::stream<asio::ip::tcp::socket>           ssl_;
+    asio::strand<asio::any_io_executor>                strand_;
+    std::weak_ptr<TlsTransport>                        transport_;
+    Mode                                                mode_;
+
+    std::array<std::uint8_t, kReadBufferSize>          read_buf_{};
+    std::deque<std::shared_ptr<std::vector<std::uint8_t>>> write_queue_;
+    bool                                                write_in_flight_ = false;
+};
+
+// ── TlsTransport ─────────────────────────────────────────────────
+
+TlsTransport::TlsTransport()
+    : ioc_(),
+      work_(asio::make_work_guard(ioc_)),
+      server_ctx_(asio::ssl::context::tls_server),
+      client_ctx_(asio::ssl::context::tls_client) {
+    /// TLS 1.2 minimum on both sides; OpenSSL keeps 1.3 negotiation
+    /// automatic. Disable compression (CRIME / BREAST mitigation
+    /// retained as default at `tls_*_method` but explicitly here so
+    /// future pre-set context migrations don't drop it).
+    server_ctx_.set_options(asio::ssl::context::default_workarounds |
+                             asio::ssl::context::no_sslv2 |
+                             asio::ssl::context::no_sslv3 |
+                             asio::ssl::context::no_tlsv1 |
+                             asio::ssl::context::no_tlsv1_1 |
+                             asio::ssl::context::no_compression);
+    client_ctx_.set_options(asio::ssl::context::default_workarounds |
+                             asio::ssl::context::no_sslv2 |
+                             asio::ssl::context::no_sslv3 |
+                             asio::ssl::context::no_tlsv1 |
+                             asio::ssl::context::no_tlsv1_1 |
+                             asio::ssl::context::no_compression);
+    /// `verify_none` is the default — Noise above us is the
+    /// authentication gate. Operators who want X.509 PKI as a
+    /// second factor enable `transports.tls.verify_peer` on the
+    /// kernel config and load a CA bundle through OpenSSL's
+    /// default verify paths.
+    client_ctx_.set_verify_mode(asio::ssl::verify_none);
+
+    worker_ = std::thread([this] { ioc_.run(); });
+}
+
+TlsTransport::~TlsTransport() {
+    try { shutdown(); }
+    catch (const std::exception& e) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "tls: shutdown threw: %s", e.what());
+        }
+    } catch (...) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "tls: shutdown threw non-std exception");
+        }
+    }
+}
+
+void TlsTransport::set_host_api(const host_api_t* api) noexcept { api_ = api; }
+void TlsTransport::set_server_credentials(const std::string& cert_pem,
+                                           const std::string& key_pem) {
+    override_cert_pem_ = cert_pem;
+    override_key_pem_  = key_pem;
+}
+void TlsTransport::set_verify_peer(bool on) noexcept {
+    verify_peer_ = on;
+    /// `set_verify_mode` is `noexcept`-incompatible in older asio
+    /// builds; swallow any throw rather than propagate, since the
+    /// caller's intent is "best-effort policy update".
+    try {
+        client_ctx_.set_verify_mode(
+            on ? asio::ssl::verify_peer : asio::ssl::verify_none);
+    } catch (const std::exception& e) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "tls: set_verify_mode threw: %s", e.what());
+        }
+    }
+}
+
+std::uint16_t TlsTransport::listen_port() const noexcept {
+    return listen_port_.load(std::memory_order_acquire);
+}
+
+std::size_t TlsTransport::session_count() const noexcept {
+    std::lock_guard lk(sessions_mu_);
+    return sessions_.size();
+}
+
+TlsTransport::Stats TlsTransport::stats() const noexcept {
+    Stats s{};
+    s.bytes_in           = bytes_in_.load(std::memory_order_relaxed);
+    s.bytes_out          = bytes_out_.load(std::memory_order_relaxed);
+    s.frames_in          = frames_in_.load(std::memory_order_relaxed);
+    s.frames_out         = frames_out_.load(std::memory_order_relaxed);
+    s.active_connections = session_count();
+    return s;
+}
+
+gn_transport_caps_t TlsTransport::capabilities() noexcept {
+    gn_transport_caps_t c{};
+    c.flags       = GN_TRANSPORT_CAP_STREAM
+                  | GN_TRANSPORT_CAP_RELIABLE
+                  | GN_TRANSPORT_CAP_ORDERED
+                  | GN_TRANSPORT_CAP_ENCRYPTED_PATH;
+    c.max_payload = 0;
+    return c;
+}
+
+gn_trust_class_t TlsTransport::resolve_trust(
+    const asio::ip::tcp::endpoint& peer) noexcept {
+    if (peer.address().is_loopback()) return GN_TRUST_LOOPBACK;
+    return GN_TRUST_UNTRUSTED;
+}
+
+std::string TlsTransport::endpoint_to_uri(
+    const asio::ip::tcp::endpoint& ep) {
+    std::ostringstream s;
+    s << "tls://";
+    if (ep.address().is_v6()) {
+        s << '[' << ep.address().to_string() << ']';
+    } else {
+        s << ep.address().to_string();
+    }
+    s << ':' << ep.port();
+    return s.str();
+}
+
+bool TlsTransport::load_server_credentials() {
+    /// Test-fixture override wins so unit tests stay independent
+    /// of the kernel config. Production paths flow through
+    /// `host_api->config_get_string`.
+    if (!override_cert_pem_.empty() && !override_key_pem_.empty()) {
+        try {
+            server_ctx_.use_certificate_chain(
+                asio::buffer(override_cert_pem_));
+            server_ctx_.use_private_key(
+                asio::buffer(override_key_pem_),
+                asio::ssl::context::pem);
+            return true;
+        } catch (...) {
+            return false;
+        }
+    }
+    if (!api_ || !api_->config_get_string) return false;
+
+    char* cert_path = nullptr;
+    void (*cert_free)(char*) = nullptr;
+    if (api_->config_get_string(api_->host_ctx,
+            "transports.tls.cert_path", &cert_path, &cert_free) != GN_OK ||
+        !cert_path) {
+        return false;
+    }
+    char* key_path = nullptr;
+    void (*key_free)(char*) = nullptr;
+    if (api_->config_get_string(api_->host_ctx,
+            "transports.tls.key_path", &key_path, &key_free) != GN_OK ||
+        !key_path) {
+        if (cert_free) cert_free(cert_path);
+        return false;
+    }
+    bool ok = false;
+    try {
+        server_ctx_.use_certificate_chain_file(cert_path);
+        server_ctx_.use_private_key_file(key_path,
+            asio::ssl::context::pem);
+        ok = true;
+    } catch (...) {
+        ok = false;
+    }
+    if (cert_free) cert_free(cert_path);
+    if (key_free)  key_free(key_path);
+    return ok;
+}
+
+gn_result_t TlsTransport::listen(std::string_view uri) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    /// Server cert + key must be loadable before bind; otherwise a
+    /// peer's TLS handshake fails after socket connect, which is a
+    /// noisier failure than refusing to bind.
+    if (!load_server_credentials()) return GN_ERR_NOT_IMPLEMENTED;
+
+    constexpr std::string_view kScheme = "tls://";
+    if (!uri.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
+    std::string_view rest = uri.substr(kScheme.size());
+
+    /// Authority parser shared with `connect`: IPv6 brackets are
+    /// preserved literally.
+    std::string host;
+    std::uint16_t port = 0;
+    {
+        std::string_view authority = rest;
+        const auto slash = authority.find('/');
+        if (slash != std::string_view::npos) {
+            authority = authority.substr(0, slash);
+        }
+        std::string_view host_sv;
+        std::string_view port_sv;
+        if (!authority.empty() && authority.front() == '[') {
+            const auto rb = authority.find(']');
+            if (rb == std::string_view::npos) return GN_ERR_INVALID_ENVELOPE;
+            host_sv = authority.substr(1, rb - 1);
+            if (rb + 1 < authority.size() && authority[rb + 1] == ':') {
+                port_sv = authority.substr(rb + 2);
+            }
+        } else {
+            const auto colon = authority.rfind(':');
+            if (colon == std::string_view::npos) {
+                host_sv = authority;
+            } else {
+                host_sv = authority.substr(0, colon);
+                port_sv = authority.substr(colon + 1);
+            }
+        }
+        if (host_sv.empty()) return GN_ERR_INVALID_ENVELOPE;
+        host = std::string{host_sv};
+        if (port_sv.empty()) {
+            port = 443;
+        } else {
+            unsigned p = 0;
+            for (auto ch : port_sv) {
+                if (ch < '0' || ch > '9') return GN_ERR_INVALID_ENVELOPE;
+                p = p * 10U + static_cast<unsigned>(ch - '0');
+                if (p > 0xffffU) return GN_ERR_INVALID_ENVELOPE;
+            }
+            port = static_cast<std::uint16_t>(p);
+        }
+    }
+
+    asio::ip::tcp::endpoint ep;
+    try {
+        ep = asio::ip::tcp::endpoint(asio::ip::make_address(host), port);
+    } catch (const std::exception&) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    std::error_code ec;
+    asio::ip::tcp::acceptor acc(ioc_);
+    if (acc.open(ep.protocol(), ec)) return GN_ERR_NULL_ARG;
+    if (acc.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    if (acc.bind(ep, ec)) return GN_ERR_LIMIT_REACHED;
+    if (acc.listen(asio::socket_base::max_listen_connections, ec)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    listen_port_.store(acc.local_endpoint().port(),
+                        std::memory_order_release);
+    acceptor_.emplace(std::move(acc));
+    start_accept();
+    return GN_OK;
+}
+
+void TlsTransport::start_accept() {
+    if (shutdown_.load(std::memory_order_acquire) || !acceptor_) return;
+
+    auto session = std::make_shared<Session>(
+        asio::ip::tcp::socket(ioc_),
+        server_ctx_,
+        weak_from_this(),
+        Session::Mode::Server);
+    if (!acceptor_.has_value()) return;
+    auto& sock = session->lowest_layer();
+    acceptor_->async_accept(sock,
+        [weak = weak_from_this(),
+         session = std::move(session)](const std::error_code& ec) mutable {
+            if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
+        });
+}
+
+void TlsTransport::on_accept(std::shared_ptr<Session> session,
+                              const std::error_code& ec) {
+    if (ec || shutdown_.load(std::memory_order_acquire)) return;
+
+    std::error_code re_ec;
+    const auto remote = session->lowest_layer().remote_endpoint(re_ec);
+    if (re_ec) {
+        session->do_close();
+        start_accept();
+        return;
+    }
+
+    session->start_handshake_then([weak = weak_from_this(),
+                                    session = std::move(session), remote] {
+        auto t = weak.lock();
+        if (!t || !t->api_ || !t->api_->notify_connect) {
+            session->do_close();
+            return;
+        }
+        std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+        gn_conn_id_t conn = GN_INVALID_ID;
+        const std::string uri = TlsTransport::endpoint_to_uri(remote);
+        const gn_result_t rc = t->api_->notify_connect(
+            t->api_->host_ctx, remote_pk, uri.c_str(), "tls",
+            TlsTransport::resolve_trust(remote),
+            GN_ROLE_RESPONDER, &conn);
+        if (rc == GN_OK && conn != GN_INVALID_ID) {
+            session->conn_id = conn;
+            t->register_session(conn, session);
+            session->start_read();
+        } else {
+            session->do_close();
+        }
+    });
+    start_accept();
+}
+
+gn_result_t TlsTransport::connect(std::string_view uri) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    constexpr std::string_view kScheme = "tls://";
+    if (!uri.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
+    std::string_view rest = uri.substr(kScheme.size());
+
+    std::string host;
+    std::uint16_t port = 0;
+    {
+        std::string_view authority = rest;
+        const auto slash = authority.find('/');
+        if (slash != std::string_view::npos) {
+            authority = authority.substr(0, slash);
+        }
+        std::string_view host_sv;
+        std::string_view port_sv;
+        if (!authority.empty() && authority.front() == '[') {
+            const auto rb = authority.find(']');
+            if (rb == std::string_view::npos) return GN_ERR_INVALID_ENVELOPE;
+            host_sv = authority.substr(1, rb - 1);
+            if (rb + 1 < authority.size() && authority[rb + 1] == ':') {
+                port_sv = authority.substr(rb + 2);
+            }
+        } else {
+            const auto colon = authority.rfind(':');
+            if (colon == std::string_view::npos) {
+                host_sv = authority;
+            } else {
+                host_sv = authority.substr(0, colon);
+                port_sv = authority.substr(colon + 1);
+            }
+        }
+        if (host_sv.empty()) return GN_ERR_INVALID_ENVELOPE;
+        host = std::string{host_sv};
+        if (port_sv.empty()) {
+            port = 443;
+        } else {
+            unsigned p = 0;
+            for (auto ch : port_sv) {
+                if (ch < '0' || ch > '9') return GN_ERR_INVALID_ENVELOPE;
+                p = p * 10U + static_cast<unsigned>(ch - '0');
+                if (p > 0xffffU) return GN_ERR_INVALID_ENVELOPE;
+            }
+            port = static_cast<std::uint16_t>(p);
+        }
+    }
+    if (port == 0) return GN_ERR_NULL_ARG;
+
+    asio::ip::tcp::endpoint ep;
+    try {
+        ep = asio::ip::tcp::endpoint(asio::ip::make_address(host), port);
+    } catch (const std::exception&) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    auto session = std::make_shared<Session>(
+        asio::ip::tcp::socket(ioc_),
+        client_ctx_,
+        weak_from_this(),
+        Session::Mode::Client);
+    auto& sock = session->lowest_layer();
+    std::error_code open_ec;
+    if (sock.open(ep.protocol(), open_ec)) return GN_ERR_NULL_ARG;
+    sock.async_connect(ep,
+        [weak = weak_from_this(),
+         session, ep](const std::error_code& cec) mutable {
+            if (cec) return;
+            auto t = weak.lock();
+            if (!t || t->shutdown_.load(std::memory_order_acquire)) {
+                session->do_close();
+                return;
+            }
+            session->start_handshake_then(
+                [weak, session, ep]() mutable {
+                    auto tr = weak.lock();
+                    if (!tr || !tr->api_ || !tr->api_->notify_connect) {
+                        session->do_close();
+                        return;
+                    }
+                    std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+                    gn_conn_id_t conn = GN_INVALID_ID;
+                    const std::string peer_uri = TlsTransport::endpoint_to_uri(ep);
+                    const gn_result_t rc = tr->api_->notify_connect(
+                        tr->api_->host_ctx, remote_pk, peer_uri.c_str(), "tls",
+                        TlsTransport::resolve_trust(ep),
+                        GN_ROLE_INITIATOR, &conn);
+                    if (rc != GN_OK || conn == GN_INVALID_ID) {
+                        session->do_close();
+                        return;
+                    }
+                    session->conn_id = conn;
+                    tr->register_session(conn, session);
+                    session->start_read();
+                    if (tr->api_->kick_handshake) {
+                        (void)tr->api_->kick_handshake(
+                            tr->api_->host_ctx, conn);
+                    }
+                });
+        });
+    return GN_OK;
+}
+
+gn_result_t TlsTransport::send(gn_conn_id_t conn,
+                                std::span<const std::uint8_t> bytes) {
+    auto session = find_session(conn);
+    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    session->do_send(bytes);
+    return GN_OK;
+}
+
+gn_result_t TlsTransport::send_batch(
+    gn_conn_id_t conn,
+    std::span<const std::span<const std::uint8_t>> frames) {
+    if (frames.empty()) return GN_OK;
+    if (frames.size() == 1) return send(conn, frames[0]);
+    auto session = find_session(conn);
+    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    session->do_send_batch(frames);
+    return GN_OK;
+}
+
+gn_result_t TlsTransport::disconnect(gn_conn_id_t conn) {
+    std::shared_ptr<Session> session;
+    {
+        std::lock_guard lk(sessions_mu_);
+        auto it = sessions_.find(conn);
+        if (it == sessions_.end()) return GN_OK;
+        session = std::move(it->second);
+        sessions_.erase(it);
+    }
+    session->do_close();
+    return GN_OK;
+}
+
+void TlsTransport::register_session(gn_conn_id_t id,
+                                     std::shared_ptr<Session> s) {
+    std::lock_guard lk(sessions_mu_);
+    sessions_[id] = std::move(s);
+}
+
+void TlsTransport::erase_session(gn_conn_id_t id) {
+    std::lock_guard lk(sessions_mu_);
+    sessions_.erase(id);
+}
+
+std::shared_ptr<TlsTransport::Session>
+TlsTransport::find_session(gn_conn_id_t id) const {
+    std::lock_guard lk(sessions_mu_);
+    auto it = sessions_.find(id);
+    return it == sessions_.end() ? nullptr : it->second;
+}
+
+void TlsTransport::shutdown() {
+    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
+
+    if (acceptor_) {
+        std::error_code ec;
+        if (acceptor_->close(ec) && api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "tls: acceptor close failed: %s", ec.message().c_str());
+        }
+        acceptor_.reset();
+    }
+
+    {
+        std::lock_guard lk(sessions_mu_);
+        for (auto& [_, s] : sessions_) s->do_close();
+        sessions_.clear();
+    }
+
+    work_.reset();
+    ioc_.stop();
+    if (worker_.joinable()) worker_.join();
+}
+
+} // namespace gn::transport::tls

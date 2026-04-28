@@ -96,6 +96,15 @@ typed extension API.
   transport). Self-contained TCP socket; full `wss://` support
   rides on top once the `gn.transport.tls` composer plugin
   ships.
+- **TLS transport** — `goodnet_transport_tls.so` registers `tls://`
+  and the `gn.transport.tls` extension. Asio-on-OpenSSL
+  `ssl::stream<tcp::socket>` with TLS 1.2 minimum, sslv2/sslv3/
+  tlsv1.0/tlsv1.1 disabled, no_compression. Server reads cert and
+  key from kernel config (`transports.tls.cert_path` /
+  `transports.tls.key_path`); client defaults to `verify_none`
+  because the kernel's identity / Noise pipeline is the
+  authentication gate (`security-trust.md` §3 single source).
+  Capability descriptor adds `EncryptedPath`.
 
 ### Changed
 
@@ -109,7 +118,7 @@ typed extension API.
 
 ### Tests
 
-451 across unit, integration, scenario, and property suites.
+454 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

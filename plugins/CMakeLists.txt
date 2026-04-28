@@ -50,3 +50,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/ws/CMakeLists.txt")
     add_subdirectory(transports/ws)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/tls/CMakeLists.txt")
+    add_subdirectory(transports/tls)
+endif()
