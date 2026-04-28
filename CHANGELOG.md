@@ -96,6 +96,19 @@ typed extension API.
   transport). Self-contained TCP socket; full `wss://` support
   rides on top once the `gn.transport.tls` composer plugin
   ships.
+- **Backpressure hard cap** — TCP / IPC / WS / TLS transports now
+  refuse fresh sends once the per-connection write queue holds
+  more than `gn_limits_t::pending_queue_bytes_hard` bytes per
+  `backpressure.md` §3. Each Session carries an atomic
+  `bytes_buffered_` counter incremented on enqueue, drained on
+  the matching `async_write` completion. `host_api->send` /
+  `send_batch` return `GN_ERR_LIMIT_REACHED` past the cap; the
+  producer back-pressures by retrying after the
+  `BACKPRESSURE_CLEAR` event (§5.C.2 wires the watermark
+  publishers). A `pending_queue_bytes_hard` of zero leaves
+  enforcement off, matching the v1.0 baseline behaviour for
+  out-of-process kernel embeddings that have not yet wired
+  their limits.
 - **Connection-event observer** — `host_api->subscribe_conn_state`,
   `unsubscribe_conn_state`, `for_each_connection`. The kernel
   publishes a typed event for every observable change in
@@ -140,7 +153,7 @@ typed extension API.
 
 ### Tests
 
-472 across unit, integration, scenario, and property suites.
+474 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28
