@@ -249,6 +249,43 @@ typedef struct host_api_s {
     gn_result_t (*unregister_security)(void* host_ctx,
                                        const char* provider_id);
 
+    /* ── Foreign-payload injection ─────────────────────────────────────── */
+
+    /**
+     * @brief Bridge plugins inject foreign-system payloads into the mesh
+     *        under their own identity.
+     *
+     * Builds an envelope with `sender_pk = source.remote_pk`,
+     * `receiver_pk = local_identity`, the supplied `msg_id`, and payload,
+     * then routes it through the kernel as if the bytes had arrived
+     * from the source connection's transport. Per `host-api.md` §8.
+     *
+     * @param source        existing connection that originated the foreign payload
+     * @param msg_id        envelope routing key; must be non-zero
+     * @param payload       @borrowed; copied internally before return
+     * @param payload_size  bounded by `limits.max_payload_bytes`
+     */
+    gn_result_t (*inject_external_message)(void* host_ctx,
+                                           gn_conn_id_t source,
+                                           uint32_t msg_id,
+                                           const uint8_t* payload,
+                                           size_t payload_size);
+
+    /**
+     * @brief Inject a fully framed wire-side bytes buffer at the
+     *        protocol-layer's deframe entry, dispatching the resulting
+     *        envelopes through the router.
+     *
+     * The frame is parsed by the active protocol layer; malformed
+     * frames return the deframer's error verbatim. Used by
+     * relay-style tunnels that move opaque inner frames between mesh
+     * peers. Per `host-api.md` §8.
+     */
+    gn_result_t (*inject_frame)(void* host_ctx,
+                                gn_conn_id_t source,
+                                const uint8_t* frame,
+                                size_t frame_size);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];

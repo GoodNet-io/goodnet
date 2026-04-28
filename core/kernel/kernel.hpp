@@ -29,6 +29,7 @@
 
 #include <core/identity/node_identity.hpp>
 #include <core/security/session.hpp>
+#include <core/util/token_bucket.hpp>
 
 #include <core/config/config.hpp>
 #include <core/registry/connection.hpp>
@@ -100,6 +101,9 @@ public:
     [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
+    [[nodiscard]] util::RateLimiterMap<>& inject_rate_limiter() noexcept {
+        return inject_rate_limiter_;
+    }
 
     /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
     /// Set once before `Wire` phase; cannot be replaced afterwards.
@@ -169,6 +173,11 @@ private:
     signal::SignalChannel<signal::Empty>  on_config_reload_;
 
     std::optional<identity::NodeIdentity> node_identity_;
+
+    /// Per-source rate limiter for `host_api->inject_*` per
+    /// `host-api.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
+    util::RateLimiterMap<>                inject_rate_limiter_{
+        100.0, 50.0, 4096};
 };
 
 } // namespace gn::core
