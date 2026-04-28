@@ -28,7 +28,7 @@ target_include_directories(goodnet_kernel PUBLIC
 target_link_libraries(goodnet_kernel
     PUBLIC
         GoodNet::sdk
-        Boost::thread
+        Threads::Threads
         spdlog::spdlog
         fmt::fmt
         nlohmann_json::nlohmann_json

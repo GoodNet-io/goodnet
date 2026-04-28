@@ -7,8 +7,8 @@
 
 #include <plugins/transports/udp/udp.hpp>
 
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/udp.hpp>
+#include <asio/io_context.hpp>
+#include <asio/ip/udp.hpp>
 
 #include <sdk/host_api.h>
 #include <sdk/trust.h>
@@ -104,24 +104,24 @@ void wait_for(const std::function<bool()>& pred,
 
 /// Pre-flight: not every host wires up the IPv6 loopback. The Nix
 /// build sandbox in particular leaves `[::1]` reachable for `bind`
-/// but rejects `send_to` with `EPERM`. Probe with raw Boost.Asio so
+/// but rejects `send_to` with `EPERM`. Probe with raw Asio so
 /// the gtest body skips cleanly instead of timing out.
 [[nodiscard]] bool host_supports_v6_loopback() {
-    boost::asio::io_context ioc;
-    boost::system::error_code ec;
-    const auto v6 = boost::asio::ip::make_address("::1", ec);
+    asio::io_context ioc;
+    std::error_code ec;
+    const auto v6 = asio::ip::make_address("::1", ec);
     if (ec) return false;
-    boost::asio::ip::udp::socket sock(ioc);
-    if (sock.open(boost::asio::ip::udp::v6(), ec) || ec) return false;
+    asio::ip::udp::socket sock(ioc);
+    if (sock.open(asio::ip::udp::v6(), ec) || ec) return false;
     if (sock.bind(
-            boost::asio::ip::udp::endpoint(boost::asio::ip::udp::v6(), 0),
+            asio::ip::udp::endpoint(asio::ip::udp::v6(), 0),
             ec) || ec) {
         return false;
     }
     const char probe[] = "x";
-    boost::asio::ip::udp::endpoint target(
+    asio::ip::udp::endpoint target(
         v6, sock.local_endpoint().port());
-    if (sock.send_to(boost::asio::buffer(probe, 1), target, 0, ec) == 0 ||
+    if (sock.send_to(asio::buffer(probe, 1), target, 0, ec) == 0 ||
         ec) {
         return false;
     }

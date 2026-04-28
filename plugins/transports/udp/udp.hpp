@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/transports/udp/udp.hpp
-/// @brief  Boost.Asio UDP datagram transport per `transport.md` §3
+/// @brief  Asio UDP datagram transport per `transport.md` §3
 ///         (datagram-mode, single-socket, per-peer synthetic conn_id).
 ///
 /// UDP is the first datagram transport in the tree, so the shape is
@@ -31,10 +31,10 @@
 #include <thread>
 #include <unordered_map>
 
-#include <boost/asio/executor_work_guard.hpp>
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/ip/udp.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/io_context.hpp>
+#include <asio/ip/udp.hpp>
+#include <asio/strand.hpp>
 
 #include <core/util/token_bucket.hpp>
 
@@ -119,7 +119,7 @@ public:
 private:
     struct PeerEntry {
         gn_conn_id_t                              id;
-        boost::asio::ip::udp::endpoint            endpoint;
+        asio::ip::udp::endpoint            endpoint;
         std::chrono::steady_clock::time_point     last_active;
     };
 
@@ -132,7 +132,7 @@ private:
             h ^= v + kMagic + (h << 6) + (h >> 2);
         }
         std::size_t operator()(
-            const boost::asio::ip::udp::endpoint& ep) const noexcept {
+            const asio::ip::udp::endpoint& ep) const noexcept {
             std::size_t h = 0;
             if (ep.address().is_v4()) {
                 mix(h, std::hash<std::uint32_t>{}(
@@ -150,31 +150,31 @@ private:
 
     void start_receive();
     [[nodiscard]] gn_trust_class_t resolve_trust(
-        const boost::asio::ip::udp::endpoint& peer) const noexcept;
+        const asio::ip::udp::endpoint& peer) const noexcept;
     [[nodiscard]] static std::string endpoint_to_uri(
-        const boost::asio::ip::udp::endpoint& ep);
+        const asio::ip::udp::endpoint& ep);
 
-    boost::asio::io_context                                          ioc_;
-    boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work_;
+    asio::io_context                                          ioc_;
+    asio::executor_work_guard<asio::io_context::executor_type> work_;
     std::thread                                                      worker_;
 
     /// One strand per *socket* — UDP has no per-session strand because
     /// every datagram crosses the same FD. Both `async_receive_from`
     /// and `async_send_to` bind to it.
-    boost::asio::strand<boost::asio::io_context::executor_type> strand_;
+    asio::strand<asio::io_context::executor_type> strand_;
 
-    std::optional<boost::asio::ip::udp::socket>                  socket_;
+    std::optional<asio::ip::udp::socket>                  socket_;
     std::atomic<std::uint16_t>                                   listen_port_{0};
     std::atomic<bool>                                            shutdown_{false};
 
     /// Receive scratch buffer. 64 KiB matches the IPv4/v6 datagram
     /// theoretical max so any legitimately-accepted payload fits.
     std::array<std::uint8_t, 65536>                              recv_buf_{};
-    boost::asio::ip::udp::endpoint                               recv_endpoint_;
+    asio::ip::udp::endpoint                               recv_endpoint_;
 
     mutable std::mutex                                              peers_mu_;
     std::unordered_map<gn_conn_id_t, PeerEntry>                     peers_;
-    std::unordered_map<boost::asio::ip::udp::endpoint,
+    std::unordered_map<asio::ip::udp::endpoint,
                        gn_conn_id_t,
                        EndpointHash>                                endpoint_to_id_;
 

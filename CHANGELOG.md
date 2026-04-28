@@ -87,6 +87,16 @@ typed extension API.
   leaking the entry. Auto-wired through the
   `TRANSPORT_PLUGIN` macro.
 
+### Changed
+
+- **Standalone Asio.** The networking dependency now ships as
+  the `asio` package (Christopher Kohlhoff's standalone build,
+  same library as Boost.Asio without the umbrella). The
+  dependency closure drops Boost.System, Boost.Thread, and
+  Boost.Atomic; the source compiles unchanged after a
+  mechanical `boost::asio::` → `asio::` rename. Build is
+  header-only end-to-end.
+
 ### Tests
 
 443 across unit, integration, scenario, and property suites.

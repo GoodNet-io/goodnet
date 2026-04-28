@@ -4,7 +4,7 @@
 add_library(goodnet_ipc_objects OBJECT
     ipc.cpp
 )
-target_link_libraries(goodnet_ipc_objects PUBLIC GoodNet::sdk Boost::thread)
+target_link_libraries(goodnet_ipc_objects PUBLIC GoodNet::sdk asio::asio Threads::Threads)
 target_compile_features(goodnet_ipc_objects PUBLIC cxx_std_23)
 target_compile_options(goodnet_ipc_objects PRIVATE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter)
@@ -17,4 +17,4 @@ add_plugin(goodnet_transport_ipc
     plugin_entry.cpp
 )
 target_link_libraries(goodnet_transport_ipc
-    PRIVATE goodnet_ipc_objects Boost::thread)
+    PRIVATE goodnet_ipc_objects asio::asio Threads::Threads)
