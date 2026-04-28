@@ -120,6 +120,17 @@ typed extension API.
   enforcement off, matching the v1.0 baseline behaviour for
   out-of-process kernel embeddings that have not yet wired
   their limits.
+- **Per-connection counters** — `ConnectionRegistry` now owns an
+  `AtomicCounters` block alongside each record (bytes_in /
+  bytes_out / frames_in / frames_out / pending_queue_bytes /
+  last_rtt_us). `host_api->notify_inbound_bytes` folds into
+  `add_inbound`, `host_api->send` into `add_outbound`,
+  `notify_backpressure` into `set_pending_bytes`. `find_by_id`
+  reads the atomics into the snapshot under the same shared
+  shard lock, so `find_by_uri` / `find_by_pk` surface the same
+  counters through every alternate index. Counters are allocated
+  on `insert_with_index`, reaped on `erase_with_index`; calls on
+  a missing id are silent no-ops to absorb teardown races.
 - **Connection-event observer** — `host_api->subscribe_conn_state`,
   `unsubscribe_conn_state`, `for_each_connection`. The kernel
   publishes a typed event for every observable change in

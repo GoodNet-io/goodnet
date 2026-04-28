@@ -13,6 +13,7 @@
 #include <cstdint>
 #include <cstring>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -112,10 +113,35 @@ public:
     void for_each(
         const std::function<bool(const ConnectionRecord&)>& visitor) const;
 
+    /// Lock-free counter accessors — kernel thunks fold these into
+    /// the inbound / outbound / backpressure paths so per-conn
+    /// observability surfaces through `get_endpoint` without
+    /// per-frame shard-lock contention. Each record owns an
+    /// `AtomicCounters` block created on `insert_with_index` and
+    /// erased with the record. Calls on a missing id are silent
+    /// no-ops.
+    void add_inbound(gn_conn_id_t id, std::uint64_t bytes,
+                     std::uint64_t frames) noexcept;
+    void add_outbound(gn_conn_id_t id, std::uint64_t bytes,
+                      std::uint64_t frames) noexcept;
+    void set_pending_bytes(gn_conn_id_t id,
+                           std::uint64_t bytes) noexcept;
+
 private:
+    struct AtomicCounters {
+        std::atomic<std::uint64_t> bytes_in{0};
+        std::atomic<std::uint64_t> bytes_out{0};
+        std::atomic<std::uint64_t> frames_in{0};
+        std::atomic<std::uint64_t> frames_out{0};
+        std::atomic<std::uint64_t> pending_queue_bytes{0};
+        std::atomic<std::uint64_t> last_rtt_us{0};
+    };
+
     struct Shard {
         mutable std::shared_mutex mu;
         std::unordered_map<gn_conn_id_t, ConnectionRecord> records;
+        std::unordered_map<gn_conn_id_t,
+                            std::unique_ptr<AtomicCounters>> counters;
     };
 
     /// Shard owning a given id.
