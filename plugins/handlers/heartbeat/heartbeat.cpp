@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 #include "heartbeat.hpp"
 
+#include <core/util/endian.hpp>
+
 #include <sdk/cpp/uri.hpp>
 
 #include <chrono>
@@ -25,14 +27,49 @@ constexpr std::uint32_t kSupportedMsgIds[] = {kHeartbeatMsgId};
 
 /// Copy a NUL-padded host string into the wire payload's
 /// `observed_addr` slot. Truncates rather than overflows.
-void copy_observed(char dst[64], std::string_view src) noexcept {
-    std::memset(dst, 0, 64);
-    const std::size_t n = std::min(src.size(), static_cast<std::size_t>(63));
+void copy_observed(char dst[kObservedAddrBytes], std::string_view src) noexcept {
+    std::memset(dst, 0, kObservedAddrBytes);
+    const std::size_t n =
+        std::min(src.size(), static_cast<std::size_t>(kObservedAddrBytes - 1));
     std::memcpy(dst, src.data(), n);
     dst[n] = '\0';
 }
 
 }  // namespace
+
+std::array<std::uint8_t, kPayloadSize>
+serialize_payload(const HeartbeatPayload& hb) noexcept {
+    std::array<std::uint8_t, kPayloadSize> out{};
+    ::gn::util::write_be<std::uint64_t>(
+        std::span<std::uint8_t>(out.data() + 0, 8), hb.timestamp_us);
+    ::gn::util::write_be<std::uint32_t>(
+        std::span<std::uint8_t>(out.data() + 8, 4), hb.seq);
+    out[12] = hb.flags;
+    /// out[13..15] padded with the array's value-init zeros.
+    std::memcpy(out.data() + 16, hb.observed_addr, kObservedAddrBytes);
+    ::gn::util::write_be<std::uint16_t>(
+        std::span<std::uint8_t>(out.data() + 80, 2), hb.observed_port);
+    /// out[82..87] zero.
+    return out;
+}
+
+std::optional<HeartbeatPayload>
+parse_payload(std::span<const std::uint8_t> src) noexcept {
+    if (src.size() != kPayloadSize) return std::nullopt;
+    HeartbeatPayload out;
+    out.timestamp_us =
+        ::gn::util::read_be<std::uint64_t>(src.subspan(0, 8));
+    out.seq          =
+        ::gn::util::read_be<std::uint32_t>(src.subspan(8, 4));
+    out.flags        = src[12];
+    std::memcpy(out.observed_addr, src.data() + 16, kObservedAddrBytes);
+    /// Defence-in-depth: never trust a peer-supplied string is
+    /// NUL-terminated.
+    out.observed_addr[kObservedAddrBytes - 1] = '\0';
+    out.observed_port =
+        ::gn::util::read_be<std::uint16_t>(src.subspan(80, 2));
+    return out;
+}
 
 HeartbeatHandler::HeartbeatHandler(const host_api_t* api,
                                      ClockNowUs clock)
@@ -93,18 +130,22 @@ gn_result_t HeartbeatHandler::send_ping(gn_conn_id_t conn) {
     hb.seq          = peer->seq.fetch_add(1, std::memory_order_acq_rel);
     hb.flags        = kFlagPing;
 
+    const auto wire = serialize_payload(hb);
     return api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
-                      reinterpret_cast<const std::uint8_t*>(&hb),
-                      sizeof(hb));
+                      wire.data(), wire.size());
 }
 
 gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
-    if (!env || env->payload_size != sizeof(HeartbeatPayload)) {
+    if (!env) return GN_PROP_CONTINUE;
+
+    auto parsed = parse_payload(
+        std::span<const std::uint8_t>(env->payload, env->payload_size));
+    if (!parsed) {
+        /// Wrong size or other malformed input — never fall through
+        /// to peer-state mutation.
         return GN_PROP_CONTINUE;
     }
-
-    HeartbeatPayload hb{};
-    std::memcpy(&hb, env->payload, sizeof(hb));
+    const HeartbeatPayload& hb = *parsed;
 
     /// Locate the source connection from the envelope's sender pk;
     /// the host_api `find_conn_by_pk` resolves it through the
@@ -142,9 +183,9 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
         reply.observed_port = port;
 
         if (api_ && api_->send) {
+            const auto wire = serialize_payload(reply);
             (void)api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
-                              reinterpret_cast<const std::uint8_t*>(&reply),
-                              sizeof(reply));
+                              wire.data(), wire.size());
         }
         return GN_PROP_CONSUMED;
     }
@@ -156,9 +197,8 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
         peer->last_rtt_us.store(rtt, std::memory_order_release);
         peer->missed.store(0, std::memory_order_release);
 
-        /// Latest peer-reported view of our address — guard against
-        /// truncation by enforcing the trailing NUL ourselves.
-        hb.observed_addr[sizeof(hb.observed_addr) - 1] = '\0';
+        /// Latest peer-reported view of our address; `parse_payload`
+        /// already enforced the trailing NUL.
         if (hb.observed_addr[0] != '\0' && hb.observed_port != 0) {
             std::lock_guard plk(peer->mu);
             peer->observed_addr.assign(hb.observed_addr);
