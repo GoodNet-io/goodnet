@@ -1,0 +1,275 @@
+// SPDX-License-Identifier: Apache-2.0
+#include "heartbeat.hpp"
+
+#include <sdk/cpp/uri.hpp>
+
+#include <chrono>
+#include <cstring>
+#include <limits>
+
+namespace gn::handler::heartbeat {
+
+ClockNowUs default_clock() {
+    return []() -> std::uint64_t {
+        const auto now = std::chrono::steady_clock::now().time_since_epoch();
+        return static_cast<std::uint64_t>(
+            std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+    };
+}
+
+namespace {
+
+/// Per `kHeartbeatMsgId` registration — the handler subscribes to
+/// exactly one `(protocol_id, msg_id)` pair.
+constexpr std::uint32_t kSupportedMsgIds[] = {kHeartbeatMsgId};
+
+/// Copy a NUL-padded host string into the wire payload's
+/// `observed_addr` slot. Truncates rather than overflows.
+void copy_observed(char dst[64], std::string_view src) noexcept {
+    std::memset(dst, 0, 64);
+    const std::size_t n = std::min(src.size(), static_cast<std::size_t>(63));
+    std::memcpy(dst, src.data(), n);
+    dst[n] = '\0';
+}
+
+}  // namespace
+
+HeartbeatHandler::HeartbeatHandler(const host_api_t* api,
+                                     ClockNowUs clock)
+    : api_(api), now_us_(std::move(clock))
+{
+    vtable_.protocol_id        = &HeartbeatHandler::vtable_protocol_id;
+    vtable_.supported_msg_ids  = &HeartbeatHandler::vtable_supported_msg_ids;
+    vtable_.handle_message     = &HeartbeatHandler::vtable_handle_message;
+    vtable_.on_result          = nullptr;  /// no per-dispatch tail work
+    vtable_.on_init            = nullptr;
+    vtable_.on_shutdown        = nullptr;
+
+    ext_vtable_.get_stats             = &HeartbeatHandler::ext_get_stats;
+    ext_vtable_.get_rtt               = &HeartbeatHandler::ext_get_rtt;
+    ext_vtable_.get_observed_address  = &HeartbeatHandler::ext_get_observed_address;
+    ext_vtable_.ctx                   = this;
+}
+
+HeartbeatHandler::~HeartbeatHandler() {
+    reset_state();
+}
+
+void HeartbeatHandler::reset_state() noexcept {
+    std::unique_lock lock(peers_mu_);
+    peers_.clear();
+}
+
+std::size_t HeartbeatHandler::peer_count() const noexcept {
+    std::shared_lock lock(peers_mu_);
+    return peers_.size();
+}
+
+std::shared_ptr<HeartbeatHandler::PeerState>
+HeartbeatHandler::ensure_peer(gn_conn_id_t conn) {
+    {
+        std::shared_lock lock(peers_mu_);
+        if (auto it = peers_.find(conn); it != peers_.end()) return it->second;
+    }
+    std::unique_lock lock(peers_mu_);
+    auto& slot = peers_[conn];
+    if (!slot) slot = std::make_shared<PeerState>();
+    return slot;
+}
+
+std::shared_ptr<HeartbeatHandler::PeerState>
+HeartbeatHandler::find_peer(gn_conn_id_t conn) const {
+    std::shared_lock lock(peers_mu_);
+    auto it = peers_.find(conn);
+    return (it == peers_.end()) ? nullptr : it->second;
+}
+
+gn_result_t HeartbeatHandler::send_ping(gn_conn_id_t conn) {
+    if (!api_ || !api_->send) return GN_ERR_NOT_IMPLEMENTED;
+    auto peer = ensure_peer(conn);
+
+    HeartbeatPayload hb{};
+    hb.timestamp_us = now_us_();
+    hb.seq          = peer->seq.fetch_add(1, std::memory_order_acq_rel);
+    hb.flags        = kFlagPing;
+
+    return api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
+                      reinterpret_cast<const std::uint8_t*>(&hb),
+                      sizeof(hb));
+}
+
+gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
+    if (!env || env->payload_size != sizeof(HeartbeatPayload)) {
+        return GN_PROP_CONTINUE;
+    }
+
+    HeartbeatPayload hb{};
+    std::memcpy(&hb, env->payload, sizeof(hb));
+
+    /// Locate the source connection from the envelope's sender pk;
+    /// the host_api `find_conn_by_pk` resolves it through the
+    /// connection registry.
+    gn_conn_id_t conn = GN_INVALID_ID;
+    if (api_ && api_->find_conn_by_pk) {
+        if (api_->find_conn_by_pk(api_->host_ctx, env->sender_pk, &conn) != GN_OK) {
+            return GN_PROP_CONTINUE;
+        }
+    }
+    if (conn == GN_INVALID_ID) return GN_PROP_CONTINUE;
+
+    auto peer = ensure_peer(conn);
+
+    if (hb.flags == kFlagPing) {
+        /// Reflect the requester's endpoint back so they learn how we
+        /// see their address (STUN-on-the-wire). Resolved through
+        /// `get_endpoint` → URI parse.
+        gn_endpoint_t ep{};
+        std::string host;
+        std::uint16_t port = 0;
+        if (api_ && api_->get_endpoint &&
+            api_->get_endpoint(api_->host_ctx, conn, &ep) == GN_OK)
+        {
+            const auto parts = ::gn::parse_uri(ep.uri);
+            if (parts) {
+                host = parts->host;
+                port = parts->port;
+            }
+        }
+
+        HeartbeatPayload reply = hb;
+        reply.flags = kFlagPong;
+        copy_observed(reply.observed_addr, host);
+        reply.observed_port = port;
+
+        if (api_ && api_->send) {
+            (void)api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
+                              reinterpret_cast<const std::uint8_t*>(&reply),
+                              sizeof(reply));
+        }
+        return GN_PROP_CONSUMED;
+    }
+
+    if (hb.flags == kFlagPong) {
+        const std::uint64_t now = now_us_();
+        const std::uint64_t rtt =
+            (now > hb.timestamp_us) ? (now - hb.timestamp_us) : 0;
+        peer->last_rtt_us.store(rtt, std::memory_order_release);
+        peer->missed.store(0, std::memory_order_release);
+
+        /// Latest peer-reported view of our address — guard against
+        /// truncation by enforcing the trailing NUL ourselves.
+        hb.observed_addr[sizeof(hb.observed_addr) - 1] = '\0';
+        if (hb.observed_addr[0] != '\0' && hb.observed_port != 0) {
+            std::lock_guard plk(peer->mu);
+            peer->observed_addr.assign(hb.observed_addr);
+            peer->observed_port = hb.observed_port;
+        }
+        return GN_PROP_CONSUMED;
+    }
+
+    /// Unknown flag — leave for the next handler to decide.
+    return GN_PROP_CONTINUE;
+}
+
+void HeartbeatHandler::snapshot_stats(gn_heartbeat_stats_t* out) const {
+    if (!out) return;
+    out->peer_count = 0;
+    out->avg_rtt_us = 0;
+    out->min_rtt_us = 0;
+    out->max_rtt_us = 0;
+
+    std::shared_lock lock(peers_mu_);
+    std::uint64_t sum = 0;
+    std::uint32_t mn = std::numeric_limits<std::uint32_t>::max();
+    std::uint32_t mx = 0;
+    std::uint32_t count = 0;
+
+    for (const auto& [_, peer] : peers_) {
+        const std::uint32_t rtt = static_cast<std::uint32_t>(
+            peer->last_rtt_us.load(std::memory_order_acquire));
+        if (rtt == 0) continue;
+        sum += rtt;
+        if (rtt < mn) mn = rtt;
+        if (rtt > mx) mx = rtt;
+        ++count;
+    }
+
+    out->peer_count = count;
+    out->avg_rtt_us = (count > 0) ? static_cast<std::uint32_t>(sum / count) : 0;
+    out->min_rtt_us = (count > 0) ? mn : 0;
+    out->max_rtt_us = mx;
+}
+
+int HeartbeatHandler::get_rtt(gn_conn_id_t conn,
+                                std::uint64_t* out_rtt_us) const {
+    if (!out_rtt_us) return -1;
+    auto peer = find_peer(conn);
+    if (!peer) return -1;
+    const std::uint64_t rtt = peer->last_rtt_us.load(std::memory_order_acquire);
+    if (rtt == 0) return -1;
+    *out_rtt_us = rtt;
+    return 0;
+}
+
+int HeartbeatHandler::get_observed_address(gn_conn_id_t conn,
+                                             char* buf, std::size_t buf_len,
+                                             std::uint16_t* port_out) const {
+    if (!buf || buf_len == 0) return -1;
+    auto peer = find_peer(conn);
+    if (!peer) return -1;
+
+    std::lock_guard plk(peer->mu);
+    if (peer->observed_addr.empty()) return -1;
+
+    const std::size_t n = peer->observed_addr.size();
+    if (n + 1 > buf_len) {
+        std::memcpy(buf, peer->observed_addr.data(), buf_len - 1);
+        buf[buf_len - 1] = '\0';
+        if (port_out) *port_out = peer->observed_port;
+        return -1;
+    }
+    std::memcpy(buf, peer->observed_addr.data(), n);
+    buf[n] = '\0';
+    if (port_out) *port_out = peer->observed_port;
+    return 0;
+}
+
+// ── static thunks ──────────────────────────────────────────────────
+
+const char* HeartbeatHandler::vtable_protocol_id(void* /*self*/) {
+    return kProtocolId;
+}
+
+void HeartbeatHandler::vtable_supported_msg_ids(void* /*self*/,
+                                                  const std::uint32_t** out_ids,
+                                                  std::size_t* out_count) {
+    if (out_ids)   *out_ids = kSupportedMsgIds;
+    if (out_count) *out_count = std::size(kSupportedMsgIds);
+}
+
+gn_propagation_t HeartbeatHandler::vtable_handle_message(void* self,
+                                                           const gn_message_t* env) {
+    return static_cast<HeartbeatHandler*>(self)->handle_message(env);
+}
+
+int HeartbeatHandler::ext_get_stats(void* ctx, gn_heartbeat_stats_t* out) {
+    if (!ctx || !out) return -1;
+    static_cast<HeartbeatHandler*>(ctx)->snapshot_stats(out);
+    return 0;
+}
+
+int HeartbeatHandler::ext_get_rtt(void* ctx, gn_conn_id_t conn,
+                                    std::uint64_t* out_rtt_us) {
+    if (!ctx) return -1;
+    return static_cast<HeartbeatHandler*>(ctx)->get_rtt(conn, out_rtt_us);
+}
+
+int HeartbeatHandler::ext_get_observed_address(void* ctx, gn_conn_id_t conn,
+                                                 char* buf, std::size_t buf_len,
+                                                 std::uint16_t* port_out) {
+    if (!ctx) return -1;
+    return static_cast<HeartbeatHandler*>(ctx)->get_observed_address(
+        conn, buf, buf_len, port_out);
+}
+
+}  // namespace gn::handler::heartbeat

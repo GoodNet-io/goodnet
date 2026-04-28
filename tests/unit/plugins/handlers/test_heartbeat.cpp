@@ -1,0 +1,395 @@
+// SPDX-License-Identifier: Apache-2.0
+/// @file   tests/unit/plugins/handlers/test_heartbeat.cpp
+/// @brief  HeartbeatHandler — PING/PONG state machine + observed-address
+///         reflection + extension surface, with deterministic clock.
+
+#include <gtest/gtest.h>
+
+#include <plugins/handlers/heartbeat/heartbeat.hpp>
+
+#include <sdk/extensions/heartbeat.h>
+#include <sdk/host_api.h>
+#include <sdk/types.h>
+
+#include <atomic>
+#include <cstdint>
+#include <cstring>
+#include <mutex>
+#include <string>
+#include <utility>
+#include <vector>
+
+namespace {
+
+using namespace gn::handler::heartbeat;
+
+/// Captures `host_api->send` calls and provides scripted responses
+/// for `find_conn_by_pk` / `get_endpoint`.
+struct StubHost {
+    std::atomic<int>                     send_calls{0};
+    std::vector<std::vector<std::uint8_t>> sent_payloads;
+    std::vector<gn_conn_id_t>            sent_conns;
+    std::vector<std::uint32_t>           sent_msg_ids;
+    std::mutex                           mu;
+
+    /// pk[0] byte → (conn_id, uri). Tests prime via `add_peer`.
+    struct PeerEntry {
+        gn_conn_id_t conn;
+        std::string  uri;
+    };
+    std::unordered_map<std::uint8_t, PeerEntry> peer_map;
+
+    void add_peer(std::uint8_t marker, gn_conn_id_t conn, std::string uri) {
+        peer_map[marker] = {conn, std::move(uri)};
+    }
+
+    static gn_result_t on_send(void* host_ctx, gn_conn_id_t conn,
+                                std::uint32_t msg_id,
+                                const std::uint8_t* payload, std::size_t size) {
+        auto* h = static_cast<StubHost*>(host_ctx);
+        std::lock_guard lk(h->mu);
+        h->sent_payloads.emplace_back(payload, payload + size);
+        h->sent_conns.push_back(conn);
+        h->sent_msg_ids.push_back(msg_id);
+        h->send_calls.fetch_add(1);
+        return GN_OK;
+    }
+
+    static gn_result_t on_find_conn(void* host_ctx,
+                                     const std::uint8_t pk[GN_PUBLIC_KEY_BYTES],
+                                     gn_conn_id_t* out_conn) {
+        auto* h = static_cast<StubHost*>(host_ctx);
+        std::lock_guard lk(h->mu);
+        auto it = h->peer_map.find(pk[0]);
+        if (it == h->peer_map.end()) return GN_ERR_UNKNOWN_RECEIVER;
+        *out_conn = it->second.conn;
+        return GN_OK;
+    }
+
+    static gn_result_t on_get_endpoint(void* host_ctx, gn_conn_id_t conn,
+                                        gn_endpoint_t* out) {
+        auto* h = static_cast<StubHost*>(host_ctx);
+        std::lock_guard lk(h->mu);
+        for (auto& [m, p] : h->peer_map) {
+            if (p.conn == conn) {
+                std::memset(out, 0, sizeof(*out));
+                out->conn_id = conn;
+                const std::size_t n = std::min(p.uri.size(),
+                                                static_cast<std::size_t>(GN_ENDPOINT_URI_MAX - 1));
+                std::memcpy(out->uri, p.uri.data(), n);
+                out->uri[n] = '\0';
+                return GN_OK;
+            }
+        }
+        return GN_ERR_UNKNOWN_RECEIVER;
+    }
+};
+
+host_api_t make_stub_api(StubHost& h) {
+    host_api_t api{};
+    api.api_size         = sizeof(host_api_t);
+    api.host_ctx         = &h;
+    api.send             = &StubHost::on_send;
+    api.find_conn_by_pk  = &StubHost::on_find_conn;
+    api.get_endpoint     = &StubHost::on_get_endpoint;
+    return api;
+}
+
+/// Mock clock with explicit `set` / `advance`. The handler accepts
+/// any callable returning `uint64_t microseconds`.
+struct MockClock {
+    std::atomic<std::uint64_t> now{0};
+    ClockNowUs as_callable() {
+        return [this] { return now.load(std::memory_order_acquire); };
+    }
+    void set(std::uint64_t v) { now.store(v, std::memory_order_release); }
+    void advance(std::uint64_t d) { now.fetch_add(d, std::memory_order_acq_rel); }
+};
+
+/// Build a `gn_message_t` describing a PING/PONG envelope sourced
+/// from a peer whose `sender_pk` first byte equals `marker`.
+gn_message_t make_envelope(std::uint8_t marker,
+                            const HeartbeatPayload& hb) {
+    gn_message_t env{};
+    env.msg_id       = kHeartbeatMsgId;
+    env.sender_pk[0] = marker;
+    env.payload      = reinterpret_cast<const std::uint8_t*>(&hb);
+    env.payload_size = sizeof(hb);
+    return env;
+}
+
+}  // namespace
+
+// ── PING reflection ────────────────────────────────────────────────
+
+TEST(Heartbeat, PingProducesPongWithObservedAddress) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 7, "tcp://203.0.113.5:9000");
+    auto api = make_stub_api(host);
+    MockClock clock;
+    clock.set(1'000'000);
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    HeartbeatPayload ping{};
+    ping.timestamp_us = 500'000;
+    ping.seq          = 42;
+    ping.flags        = kFlagPing;
+
+    auto env = make_envelope(0xAA, ping);
+    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+
+    ASSERT_EQ(host.send_calls.load(), 1);
+    ASSERT_EQ(host.sent_conns.front(), 7u);
+    ASSERT_EQ(host.sent_msg_ids.front(), kHeartbeatMsgId);
+
+    HeartbeatPayload reply{};
+    ASSERT_EQ(host.sent_payloads.front().size(), sizeof(reply));
+    std::memcpy(&reply, host.sent_payloads.front().data(), sizeof(reply));
+
+    EXPECT_EQ(reply.flags, kFlagPong);
+    EXPECT_EQ(reply.timestamp_us, 500'000u);  /// echoed
+    EXPECT_EQ(reply.seq, 42u);
+    EXPECT_STREQ(reply.observed_addr, "203.0.113.5");
+    EXPECT_EQ(reply.observed_port, 9000);
+}
+
+TEST(Heartbeat, PongRecordsRttAndObservation) {
+    StubHost host;
+    host.add_peer(0xBB, /*conn*/ 11, "tcp://198.51.100.7:5000");
+    auto api = make_stub_api(host);
+    MockClock clock;
+    clock.set(2'000'000);
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    HeartbeatPayload pong{};
+    pong.timestamp_us = 1'500'000;     /// PING was 500 ms ago
+    pong.flags        = kFlagPong;
+    std::strncpy(pong.observed_addr, "203.0.113.5", sizeof(pong.observed_addr));
+    pong.observed_port = 9000;
+
+    auto env = make_envelope(0xBB, pong);
+    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+
+    /// PONG path does not call send.
+    EXPECT_EQ(host.send_calls.load(), 0);
+
+    std::uint64_t rtt = 0;
+    ASSERT_EQ(hh.get_rtt(11, &rtt), 0);
+    EXPECT_EQ(rtt, 500'000u);  /// 2'000'000 - 1'500'000
+
+    char buf[64] = {};
+    std::uint16_t port = 0;
+    ASSERT_EQ(hh.get_observed_address(11, buf, sizeof(buf), &port), 0);
+    EXPECT_STREQ(buf, "203.0.113.5");
+    EXPECT_EQ(port, 9000);
+}
+
+TEST(Heartbeat, RttIsDeterministicUnderInjectedClock) {
+    StubHost host;
+    host.add_peer(0xCC, /*conn*/ 3, "tcp://192.0.2.1:1");
+    auto api = make_stub_api(host);
+    MockClock clock;
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    HeartbeatPayload pong{};
+    pong.flags = kFlagPong;
+
+    /// Three round-trips with different intervals — RTT reflects
+    /// each one without flake.
+    for (std::uint64_t interval : {std::uint64_t{1'000},
+                                     std::uint64_t{100'000},
+                                     std::uint64_t{7'500}}) {
+        clock.set(0);
+        pong.timestamp_us = 0;
+        clock.set(interval);
+        auto env = make_envelope(0xCC, pong);
+        EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+
+        std::uint64_t rtt = 0;
+        ASSERT_EQ(hh.get_rtt(3, &rtt), 0);
+        EXPECT_EQ(rtt, interval);
+    }
+}
+
+TEST(Heartbeat, MultiplePeersTrackedIndependently) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 1, "tcp://10.0.0.1:1000");
+    host.add_peer(0xBB, /*conn*/ 2, "tcp://10.0.0.2:2000");
+    auto api = make_stub_api(host);
+    MockClock clock;
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    {
+        clock.set(100);
+        HeartbeatPayload p{};
+        p.flags = kFlagPong;
+        p.timestamp_us = 50;
+        auto env = make_envelope(0xAA, p);
+        ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    }
+    {
+        clock.set(1000);
+        HeartbeatPayload p{};
+        p.flags = kFlagPong;
+        p.timestamp_us = 100;
+        auto env = make_envelope(0xBB, p);
+        ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    }
+
+    std::uint64_t r1 = 0, r2 = 0;
+    EXPECT_EQ(hh.get_rtt(1, &r1), 0);
+    EXPECT_EQ(hh.get_rtt(2, &r2), 0);
+    EXPECT_EQ(r1, 50u);
+    EXPECT_EQ(r2, 900u);
+    EXPECT_EQ(hh.peer_count(), 2u);
+}
+
+TEST(Heartbeat, MalformedPayloadLeavesNoState) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 9, "tcp://10.0.0.9:9999");
+    auto api = make_stub_api(host);
+    MockClock clock;
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    /// Truncated payload — handler must not consume nor allocate state.
+    gn_message_t env{};
+    env.msg_id = kHeartbeatMsgId;
+    env.sender_pk[0] = 0xAA;
+    const std::uint8_t junk[7] = {1, 2, 3, 4, 5, 6, 7};
+    env.payload = junk;
+    env.payload_size = sizeof(junk);
+
+    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONTINUE);
+    EXPECT_EQ(host.send_calls.load(), 0);
+    EXPECT_EQ(hh.peer_count(), 0u);
+}
+
+TEST(Heartbeat, UnknownSenderRejected) {
+    StubHost host;
+    /// No peer entries — find_conn_by_pk returns UNKNOWN_RECEIVER.
+    auto api = make_stub_api(host);
+    MockClock clock;
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+
+    HeartbeatPayload ping{};
+    ping.flags = kFlagPing;
+    auto env = make_envelope(0xFF, ping);
+    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONTINUE);
+    EXPECT_EQ(host.send_calls.load(), 0);
+}
+
+// ── send_ping ───────────────────────────────────────────────────────
+
+TEST(Heartbeat, SendPingPopulatesPayloadFromClock) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 5, "tcp://10.0.0.5:5555");
+    auto api = make_stub_api(host);
+    MockClock clock;
+    clock.set(123'456);
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+    EXPECT_EQ(hh.send_ping(/*conn*/ 5), GN_OK);
+
+    ASSERT_EQ(host.send_calls.load(), 1);
+    ASSERT_EQ(host.sent_payloads.front().size(), sizeof(HeartbeatPayload));
+
+    HeartbeatPayload ping{};
+    std::memcpy(&ping, host.sent_payloads.front().data(), sizeof(ping));
+    EXPECT_EQ(ping.flags, kFlagPing);
+    EXPECT_EQ(ping.timestamp_us, 123'456u);
+    EXPECT_EQ(ping.seq, 0u);  /// first ping uses seq 0
+    EXPECT_EQ(ping.observed_addr[0], '\0');  /// PING leaves it empty
+    EXPECT_EQ(ping.observed_port, 0);
+}
+
+TEST(Heartbeat, SendPingIncrementsSequence) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 5, "tcp://10.0.0.5:5555");
+    auto api = make_stub_api(host);
+    MockClock clock;
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+    (void)hh.send_ping(5);
+    (void)hh.send_ping(5);
+    (void)hh.send_ping(5);
+
+    ASSERT_EQ(host.send_calls.load(), 3);
+    HeartbeatPayload p0{}, p1{}, p2{};
+    std::memcpy(&p0, host.sent_payloads[0].data(), sizeof(p0));
+    std::memcpy(&p1, host.sent_payloads[1].data(), sizeof(p1));
+    std::memcpy(&p2, host.sent_payloads[2].data(), sizeof(p2));
+    EXPECT_EQ(p0.seq, 0u);
+    EXPECT_EQ(p1.seq, 1u);
+    EXPECT_EQ(p2.seq, 2u);
+}
+
+// ── Extension API ──────────────────────────────────────────────────
+
+TEST(Heartbeat, ExtensionVtablePopulatedAndFunctional) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 1, "tcp://1.2.3.4:1000");
+    auto api = make_stub_api(host);
+    MockClock clock;
+    clock.set(2'000);
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+    HeartbeatPayload pong{};
+    pong.flags = kFlagPong;
+    pong.timestamp_us = 1'500;
+    auto env = make_envelope(0xAA, pong);
+    ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+
+    const auto& ext = hh.extension_vtable();
+    ASSERT_NE(ext.get_rtt, nullptr);
+    ASSERT_NE(ext.get_stats, nullptr);
+    ASSERT_NE(ext.get_observed_address, nullptr);
+    EXPECT_EQ(ext.ctx, &hh);
+
+    std::uint64_t rtt = 0;
+    EXPECT_EQ(ext.get_rtt(ext.ctx, /*conn*/ 1, &rtt), 0);
+    EXPECT_EQ(rtt, 500u);
+
+    gn_heartbeat_stats_t stats{};
+    EXPECT_EQ(ext.get_stats(ext.ctx, &stats), 0);
+    EXPECT_EQ(stats.peer_count, 1u);
+    EXPECT_EQ(stats.avg_rtt_us, 500u);
+    EXPECT_EQ(stats.min_rtt_us, 500u);
+    EXPECT_EQ(stats.max_rtt_us, 500u);
+}
+
+TEST(Heartbeat, ExtensionGetRttUnknownConnReturnsError) {
+    StubHost host;
+    auto api = make_stub_api(host);
+    HeartbeatHandler hh(&api);
+    std::uint64_t rtt = 0;
+    EXPECT_EQ(hh.get_rtt(/*conn*/ 99, &rtt), -1);
+}
+
+TEST(Heartbeat, ExtensionGetObservedAddressTruncationReturnsError) {
+    StubHost host;
+    host.add_peer(0xAA, /*conn*/ 1, "tcp://10.0.0.5:5555");
+    auto api = make_stub_api(host);
+    MockClock clock;
+    clock.set(1000);
+
+    HeartbeatHandler hh(&api, clock.as_callable());
+    HeartbeatPayload pong{};
+    pong.flags = kFlagPong;
+    pong.timestamp_us = 0;
+    std::strncpy(pong.observed_addr, "192.0.2.42", sizeof(pong.observed_addr));
+    pong.observed_port = 4242;
+    auto env = make_envelope(0xAA, pong);
+    ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+
+    char buf[3] = {};                 /// too small for "192.0.2.42"
+    std::uint16_t port = 0;
+    EXPECT_EQ(hh.get_observed_address(1, buf, sizeof(buf), &port), -1);
+    /// Even on truncation the buffer is NUL-terminated.
+    EXPECT_EQ(buf[2], '\0');
+}
