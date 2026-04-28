@@ -258,6 +258,12 @@ gn_result_t thunk_register_extension(void* host_ctx,
         name, version, vtable, pc->plugin_anchor);
 }
 
+gn_result_t thunk_unregister_extension(void* host_ctx, const char* name) {
+    if (!host_ctx || !name) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->extensions().unregister_extension(name);
+}
+
 gn_result_t thunk_register_transport(void* host_ctx,
                                      const char* scheme,
                                      const gn_transport_vtable_t* vtable,
@@ -683,6 +689,7 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.query_extension_checked = &thunk_query_extension_checked;
     a.register_extension      = &thunk_register_extension;
+    a.unregister_extension    = &thunk_unregister_extension;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;

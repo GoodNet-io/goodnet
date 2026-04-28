@@ -145,6 +145,9 @@ typedef struct host_api_s {
                                       uint32_t version,
                                       const void* vtable);
 
+    gn_result_t (*unregister_extension)(void* host_ctx,
+                                        const char* name);
+
     /* ── Configuration ─────────────────────────────────────────────────── */
 
     /**

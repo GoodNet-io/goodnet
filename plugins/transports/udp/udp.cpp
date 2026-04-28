@@ -46,6 +46,23 @@ std::size_t UdpTransport::session_count() const noexcept {
     return peers_.size();
 }
 
+UdpTransport::Stats UdpTransport::stats() const noexcept {
+    Stats s{};
+    s.bytes_in           = bytes_in_.load(std::memory_order_relaxed);
+    s.bytes_out          = bytes_out_.load(std::memory_order_relaxed);
+    s.frames_in          = frames_in_.load(std::memory_order_relaxed);
+    s.frames_out         = frames_out_.load(std::memory_order_relaxed);
+    s.active_connections = session_count();
+    return s;
+}
+
+gn_transport_caps_t UdpTransport::capabilities() noexcept {
+    gn_transport_caps_t c{};
+    c.flags       = GN_TRANSPORT_CAP_DATAGRAM;
+    c.max_payload = kDefaultMtu;
+    return c;
+}
+
 void UdpTransport::set_mtu(std::uint32_t bytes) noexcept {
     if (bytes == 0)            bytes = kDefaultMtu;
     if (bytes > kMtuCeiling)   bytes = kMtuCeiling;
@@ -263,14 +280,19 @@ gn_result_t UdpTransport::send(gn_conn_id_t conn,
                 boost::asio::buffer(*buf), target,
                 boost::asio::bind_executor(t->strand_,
                     [buf, weak](const boost::system::error_code& send_ec,
-                                std::size_t) {
-                        if (!send_ec) return;
-                        if (auto t2 = weak.lock();
-                            t2 && t2->api_ && t2->api_->log) {
-                            t2->api_->log(t2->api_->host_ctx, GN_LOG_DEBUG,
-                                          "udp: send_to failed: %s",
-                                          send_ec.message().c_str());
+                                std::size_t n) {
+                        auto t2 = weak.lock();
+                        if (!t2) return;
+                        if (send_ec) {
+                            if (t2->api_ && t2->api_->log) {
+                                t2->api_->log(t2->api_->host_ctx, GN_LOG_DEBUG,
+                                              "udp: send_to failed: %s",
+                                              send_ec.message().c_str());
+                            }
+                            return;
                         }
+                        t2->bytes_out_.fetch_add(n, std::memory_order_relaxed);
+                        t2->frames_out_.fetch_add(1, std::memory_order_relaxed);
                     }));
         });
     return GN_OK;
@@ -425,11 +447,15 @@ void UdpTransport::start_receive() {
                     }
                 }
 
-                if (id != GN_INVALID_ID && self->api_ &&
-                    self->api_->notify_inbound_bytes && bytes > 0) {
-                    self->api_->notify_inbound_bytes(
-                        self->api_->host_ctx, id,
-                        self->recv_buf_.data(), bytes);
+                if (bytes > 0) {
+                    self->bytes_in_.fetch_add(bytes, std::memory_order_relaxed);
+                    self->frames_in_.fetch_add(1, std::memory_order_relaxed);
+                    if (id != GN_INVALID_ID && self->api_ &&
+                        self->api_->notify_inbound_bytes) {
+                        self->api_->notify_inbound_bytes(
+                            self->api_->host_ctx, id,
+                            self->recv_buf_.data(), bytes);
+                    }
                 }
 
                 self->start_receive();

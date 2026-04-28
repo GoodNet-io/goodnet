@@ -19,10 +19,11 @@ using gn::handler::heartbeat::kHeartbeatMsgId;
 using gn::handler::heartbeat::kProtocolId;
 
 struct HeartbeatPlugin {
-    const host_api_t*                  api          = nullptr;
-    void*                              host_ctx     = nullptr;
+    const host_api_t*                  api                 = nullptr;
+    void*                              host_ctx            = nullptr;
     std::unique_ptr<HeartbeatHandler>  handler;
-    gn_handler_id_t                    handler_id   = GN_INVALID_ID;
+    gn_handler_id_t                    handler_id          = GN_INVALID_ID;
+    bool                               extension_registered = false;
 };
 
 const char* const kProvidesList[] = {
@@ -76,9 +77,11 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {
     if (rc != GN_OK) return rc;
 
     if (p->api->register_extension) {
-        (void)p->api->register_extension(
-            p->host_ctx, GN_EXT_HEARTBEAT, GN_EXT_HEARTBEAT_VERSION,
-            &p->handler->extension_vtable());
+        if (p->api->register_extension(
+                p->host_ctx, GN_EXT_HEARTBEAT, GN_EXT_HEARTBEAT_VERSION,
+                &p->handler->extension_vtable()) == GN_OK) {
+            p->extension_registered = true;
+        }
     }
     return GN_OK;
 }
@@ -86,6 +89,11 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {
 GN_PLUGIN_EXPORT gn_result_t gn_plugin_unregister(void* self) {
     if (!self) return GN_ERR_NULL_ARG;
     auto* p = static_cast<HeartbeatPlugin*>(self);
+    if (p->extension_registered &&
+        p->api && p->api->unregister_extension) {
+        (void)p->api->unregister_extension(p->host_ctx, GN_EXT_HEARTBEAT);
+        p->extension_registered = false;
+    }
     if (p->api && p->api->unregister_handler &&
         p->handler_id != GN_INVALID_ID) {
         (void)p->api->unregister_handler(p->host_ctx, p->handler_id);

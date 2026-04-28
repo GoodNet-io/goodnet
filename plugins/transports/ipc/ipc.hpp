@@ -31,6 +31,7 @@
 #include <boost/asio/local/stream_protocol.hpp>
 #include <boost/asio/strand.hpp>
 
+#include <sdk/extensions/transport.h>
 #include <sdk/host_api.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -71,6 +72,17 @@ public:
         return socket_path_;
     }
 
+    struct Stats {
+        std::uint64_t bytes_in            = 0;
+        std::uint64_t bytes_out           = 0;
+        std::uint64_t frames_in           = 0;
+        std::uint64_t frames_out          = 0;
+        std::uint64_t active_connections  = 0;
+    };
+    [[nodiscard]] Stats stats() const noexcept;
+
+    [[nodiscard]] static gn_transport_caps_t capabilities() noexcept;
+
 private:
     class Session;
 
@@ -95,6 +107,11 @@ private:
 
     mutable std::mutex                                                  sessions_mu_;
     std::unordered_map<gn_conn_id_t, std::shared_ptr<Session>>          sessions_;
+
+    std::atomic<std::uint64_t> bytes_in_{0};
+    std::atomic<std::uint64_t> bytes_out_{0};
+    std::atomic<std::uint64_t> frames_in_{0};
+    std::atomic<std::uint64_t> frames_out_{0};
 
     const host_api_t* api_ = nullptr;
 };
