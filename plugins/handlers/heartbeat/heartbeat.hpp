@@ -22,6 +22,7 @@
 #include <string>
 #include <unordered_map>
 
+#include <sdk/cpp/wire.hpp>
 #include <sdk/extensions/heartbeat.h>
 #include <sdk/handler.h>
 #include <sdk/host_api.h>
@@ -83,6 +84,30 @@ serialize_payload(const HeartbeatPayload& hb) noexcept;
 /// length is not exactly `kPayloadSize`.
 [[nodiscard]] std::optional<HeartbeatPayload>
 parse_payload(std::span<const std::uint8_t> src) noexcept;
+
+/// `gn::wire::WireSchema` binding for the heartbeat payload —
+/// stateless type, never instantiated. The kernel and any
+/// future cross-handler tooling can drive `serialize` / `parse`
+/// through one concept, and the `static_assert` below pins this
+/// payload's shape at compile time.
+struct HeartbeatSchema {
+    using value_type = HeartbeatPayload;
+    static constexpr std::uint32_t msg_id = kHeartbeatMsgId;
+    static constexpr std::size_t   size   = kPayloadSize;
+
+    [[nodiscard]] static std::array<std::uint8_t, size>
+    serialize(const value_type& v) noexcept {
+        return serialize_payload(v);
+    }
+
+    [[nodiscard]] static std::optional<value_type>
+    parse(std::span<const std::uint8_t> src) noexcept {
+        return parse_payload(src);
+    }
+};
+
+static_assert(::gn::wire::WireSchema<HeartbeatSchema>,
+              "HeartbeatSchema must satisfy gn::wire::WireSchema");
 
 /// Time source for RTT computation. Production binds to
 /// `steady_clock`; tests inject a deterministic mock per

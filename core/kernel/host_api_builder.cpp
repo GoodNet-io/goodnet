@@ -17,6 +17,29 @@ namespace gn::core {
 
 namespace {
 
+/// Build a `gn_message_t` from the four pieces every assembly site
+/// always has: the two public keys, the msg id, and the borrowed
+/// payload span. Pre-helper this was a 7-line memcpy ritual at
+/// every site (thunk_send, thunk_inject_external_message); the
+/// helper centralises the layout so a future field addition lands
+/// in one place. `payload` is `@borrowed` for the kernel call;
+/// the helper does not copy.
+[[nodiscard]] gn_message_t build_envelope(
+    const PublicKey&   sender_pk,
+    const PublicKey&   receiver_pk,
+    std::uint32_t      msg_id,
+    const std::uint8_t* payload,
+    std::size_t        payload_size) noexcept
+{
+    gn_message_t env{};
+    env.msg_id       = msg_id;
+    env.payload      = payload;
+    env.payload_size = payload_size;
+    std::memcpy(env.sender_pk,   sender_pk.data(),   GN_PUBLIC_KEY_BYTES);
+    std::memcpy(env.receiver_pk, receiver_pk.data(), GN_PUBLIC_KEY_BYTES);
+    return env;
+}
+
 /// Stable name per `RouteOutcome` value for diagnostic logs.
 [[nodiscard]] const char* route_outcome_str(RouteOutcome o) noexcept {
     switch (o) {
@@ -84,16 +107,14 @@ gn_result_t thunk_send(void* host_ctx,
     auto* layer = pc->kernel->protocol_layer();
     if (!layer) return GN_ERR_NOT_IMPLEMENTED;
 
-    /// Build the envelope from the connection's identity and the
-    /// caller-provided payload.
-    gn_message_t env{};
-    env.msg_id       = msg_id;
-    env.payload      = payload;
-    env.payload_size = payload_size;
-    if (auto local = pc->kernel->identities().any(); local) {
-        std::memcpy(env.sender_pk, local->data(), GN_PUBLIC_KEY_BYTES);
-    }
-    std::memcpy(env.receiver_pk, rec->remote_pk.data(), GN_PUBLIC_KEY_BYTES);
+    /// Outbound envelope: this node is the sender, `rec` is the
+    /// receiver. `identities().any()` returns the kernel's local
+    /// identity public key; absent it the envelope's `sender_pk`
+    /// stays zero and the protocol layer emits the broadcast form.
+    const PublicKey local_pk =
+        pc->kernel->identities().any().value_or(PublicKey{});
+    gn_message_t env = build_envelope(
+        local_pk, rec->remote_pk, msg_id, payload, payload_size);
 
     gn_connection_context_t ctx{};
     ctx.conn_id   = conn;
@@ -541,14 +562,13 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
     auto* layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    gn_message_t env{};
-    env.msg_id       = msg_id;
-    env.payload      = payload;
-    env.payload_size = payload_size;
-    std::memcpy(env.sender_pk, rec->remote_pk.data(), GN_PUBLIC_KEY_BYTES);
-    if (auto local = pc->kernel->identities().any(); local) {
-        std::memcpy(env.receiver_pk, local->data(), GN_PUBLIC_KEY_BYTES);
-    }
+    /// Inbound bridge envelope: source connection's remote pk is
+    /// the sender (the bridge re-publishes a foreign-system payload
+    /// under that identity); this node's local pk is the receiver.
+    const PublicKey local_pk =
+        pc->kernel->identities().any().value_or(PublicKey{});
+    gn_message_t env = build_envelope(
+        rec->remote_pk, local_pk, msg_id, payload, payload_size);
 
     route_one_envelope(*pc->kernel, layer->protocol_id(), env);
     return GN_OK;
