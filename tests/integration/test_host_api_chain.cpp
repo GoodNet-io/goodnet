@@ -182,3 +182,38 @@ TEST(HostApiChain, LimitsSlotReturnsKernelLimits) {
     ASSERT_NE(got, nullptr);
     EXPECT_EQ(got->max_connections, 1234u);
 }
+
+TEST(HostApiChain, NotifyConnectRejectedFromHandlerKind) {
+    /// Loader-side entries are reserved for transport plugins. A
+    /// handler / security / protocol plugin attempting to call
+    /// `notify_connect` is rejected with `GN_ERR_NOT_IMPLEMENTED`
+    /// — phantom connection records would corrupt the registry.
+    KernelHarness h;
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_HANDLER;
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {};
+    pk[0] = 0xAA;
+    gn_conn_id_t out = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx, pk,
+                                    "tcp://1.2.3.4:9000", "tcp",
+                                    GN_TRUST_UNTRUSTED,
+                                    GN_ROLE_INITIATOR, &out),
+              GN_ERR_NOT_IMPLEMENTED);
+    EXPECT_EQ(out, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+}
+
+TEST(HostApiChain, NotifyDisconnectRejectedFromSecurityKind) {
+    KernelHarness h;
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_SECURITY;
+    EXPECT_EQ(h.api.notify_disconnect(h.api.host_ctx,
+                                       /*conn*/ 7, GN_OK),
+              GN_ERR_NOT_IMPLEMENTED);
+}
+
+TEST(HostApiChain, KickHandshakeRejectedFromProtocolKind) {
+    KernelHarness h;
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_PROTOCOL;
+    EXPECT_EQ(h.api.kick_handshake(h.api.host_ctx, /*conn*/ 7),
+              GN_ERR_NOT_IMPLEMENTED);
+}

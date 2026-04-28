@@ -120,6 +120,7 @@ const gn_plugin_descriptor_t kDescriptor = {
     /* hot_reload_safe   */ 0,
     /* ext_requires      */ nullptr,
     /* ext_provides      */ kProvidesList,
+    /* kind              */ GN_PLUGIN_KIND_TRANSPORT,
     /* _reserved         */ {nullptr, nullptr, nullptr, nullptr},
 };
 

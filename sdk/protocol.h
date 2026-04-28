@@ -115,7 +115,7 @@ typedef struct gn_protocol_layer_vtable_s {
      */
     uint32_t (*allowed_trust_mask)(void* self);
 
-    void* _reserved[3];
+    void* _reserved[4];
 } gn_protocol_layer_vtable_t;
 
 #ifdef __cplusplus

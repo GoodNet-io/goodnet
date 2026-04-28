@@ -87,6 +87,25 @@ GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self);
 /* ── Plugin descriptor ───────────────────────────────────────────────────── */
 
 /**
+ * @brief Plugin role declared in the descriptor.
+ *
+ * The kernel splits its host-API surface by role: only `Transport`
+ * plugins may invoke the loader-side `notify_connect` /
+ * `notify_inbound_bytes` / `notify_disconnect` / `kick_handshake`
+ * entries; calls from other roles are rejected. `Unknown` is
+ * permissive (treated as no-gate) for backward-compat with plugins
+ * built against the v1.1 descriptor that did not carry the field.
+ */
+typedef enum gn_plugin_kind_e {
+    GN_PLUGIN_KIND_UNKNOWN   = 0,
+    GN_PLUGIN_KIND_TRANSPORT = 1,
+    GN_PLUGIN_KIND_HANDLER   = 2,
+    GN_PLUGIN_KIND_SECURITY  = 3,
+    GN_PLUGIN_KIND_PROTOCOL  = 4,
+    GN_PLUGIN_KIND_BRIDGE    = 5
+} gn_plugin_kind_t;
+
+/**
  * @brief Static metadata declared inside the plugin shared object.
  *
  * Read by the kernel through a sixth, optional, exported symbol
@@ -103,6 +122,9 @@ typedef struct gn_plugin_descriptor_s {
     /** Null-terminated arrays of extension names this plugin requires/provides. */
     const char* const* ext_requires;
     const char* const* ext_provides;
+
+    /** Plugin role; gates loader-side host_api entries. */
+    gn_plugin_kind_t kind;
 
     void* _reserved[4];
 } gn_plugin_descriptor_t;
