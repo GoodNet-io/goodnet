@@ -84,7 +84,7 @@ value is removed from the type.**
 Pre-RC review fails on any dispatch invocation whose return is not
 used. Discarding `Propagation` is a contract violation.
 
-### 4.2 `gn_backpressure_t` from `host_api->send`
+### 4.2 `gn_backpressure_t` (queue-pressure signal)
 
 | Value | Meaning |
 |---|---|
@@ -93,8 +93,11 @@ used. Discarding `Propagation` is a contract violation.
 | `GN_BP_HARD_LIMIT` | dropped — caller must back off, not retry tight |
 | `GN_BP_DISCONNECT` | connection gone — caller should stop |
 
-Plugins **must** branch on the value. Ignoring `HARD_LIMIT` and
-tight-looping on send is a contract violation.
+`host_api->send` itself returns `gn_result_t`; the
+backpressure enum is surfaced through a separate per-connection
+signal once the send-queue layer lands. Plugins that retain the
+intent **must** branch on the value when consumed; ignoring
+`HARD_LIMIT` and tight-looping on send is a contract violation.
 
 ### 4.3 `gn_on_result_policy_t` from `on_result`
 
@@ -143,20 +146,21 @@ wraparound a non-concern across any realistic deployment lifetime.
 
 ---
 
-## 7. State observation API
+## 7. State observation
 
-The C ABI provides three host-API entries for kernel-state observation:
+Kernel phase is observed kernel-internally through
+`Kernel::current_phase()` (atomic load) and
+`Kernel::subscribe(weak_ptr<IPhaseObserver>)`. Observers are
+stored as weak references and pruned at fire time. The kernel
+itself owns these — they are not part of the plugin-facing C ABI;
+plugins that need to react to phase transitions wire through the
+`SignalChannel<PhaseEvent>` (per `signal-channel.md`) the kernel
+publishes during transitions.
 
-| Entry | Purpose |
-|---|---|
-| `host_api->subscribe_phase(observer)` | register observer; weak reference internally |
-| `host_api->unsubscribe_phase(observer)` | remove observer |
-| `host_api->current_phase()` | read the live phase atomically |
-
-Observers are stored as weak references and pruned at fire time. A
-plugin that forgets to unsubscribe before `gn_plugin_shutdown` does not
-crash the kernel — the weak observer expires automatically when the
-plugin's liveness probe goes "dead" (`plugin-lifetime.md` §4).
+A plugin that forgets to clean up a subscription before
+`gn_plugin_shutdown` does not crash the kernel — the weak observer
+expires automatically when the plugin's liveness probe goes "dead"
+(`plugin-lifetime.md` §4).
 
 ---
 
