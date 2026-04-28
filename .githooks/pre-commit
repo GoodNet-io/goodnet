@@ -5,7 +5,10 @@
 # intentionally noisy (rare; prefer fixing the diagnostic).
 #
 # Wires through CMake's `compile_commands.json` from the `build/`
-# directory; `nix run .#dev` populates it.
+# directory; `nix run .#dev` populates it. clang-tidy needs every
+# `-isystem` flag the dev shell injects through `NIX_CFLAGS_COMPILE`
+# (gtest, spdlog, boost) — git launches hooks with a stripped env, so
+# the body re-enters `nix develop` and runs there.
 set -euo pipefail
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR \
@@ -19,15 +22,17 @@ if [ ! -f build/compile_commands.json ]; then
     exit 1
 fi
 
+# Re-enter the dev shell. `_GN_PRECOMMIT_INSIDE` guards against
+# infinite recursion if the user already spawned the hook from
+# inside a dev shell that re-execs the script.
+if [ -z "${_GN_PRECOMMIT_INSIDE:-}" ]; then
+    export _GN_PRECOMMIT_INSIDE=1
+    exec nix develop "${FLAKE_DIR:-.}" --command bash -- "$0" "$@"
+fi
+
 failed=0
 while IFS= read -r f; do
     [ -f "$f" ] || continue
-
-    # Capture clang-tidy output instead of piping through grep — under
-    # `set -o pipefail` clang-tidy's non-zero exit (warnings-as-errors
-    # tripped) makes the whole pipe non-zero even when grep matched, so
-    # the previous `! clang-tidy | grep` form silently fell into the
-    # success branch. Match against the captured buffer instead.
     output=$(clang-tidy --quiet --warnings-as-errors='*' \
                 -p build "$f" 2>&1 || true)
     if printf '%s\n' "$output" | grep -qE "error:|treated as errors"; then
