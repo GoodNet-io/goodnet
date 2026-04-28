@@ -14,15 +14,13 @@
       packages = forAllSystems (system: pkgs:
         let
           stdenv = pkgs.gcc15Stdenv;
-          deps = with pkgs; [
+          coreBuildInputs = with pkgs; [
             boost spdlog fmt nlohmann_json libsodium
           ];
-          devTools = with pkgs; [ gtest rapidcheck ];
-          nativeTools = with pkgs; [ cmake ninja pkg-config ];
+          coreNative = with pkgs; [ cmake ninja pkg-config ];
+          testInputs = with pkgs; [ gtest rapidcheck ];
         in
         {
-          # Platform = kernel + SDK + statically-linked mandatory mesh-framing
-          # plugin (GNET). Other plugins are independent derivations.
           default = stdenv.mkDerivation {
             pname   = "goodnet";
             version = "0.1.0";
@@ -32,43 +30,70 @@
                 let b = builtins.baseNameOf path; in
                 !(b == "build" || b == "result" || b == ".direnv");
             };
-            nativeBuildInputs = nativeTools ++ devTools;
-            buildInputs       = deps ++ devTools;
-            cmakeFlags = [ "-DCMAKE_BUILD_TYPE=Release" "-DBUILD_TESTING=ON" ];
-            doCheck    = false;
+            nativeBuildInputs = coreNative ++ testInputs;
+            buildInputs       = coreBuildInputs ++ testInputs;
+            propagatedBuildInputs = coreBuildInputs;
+            cmakeFlags = [
+              "-DCMAKE_BUILD_TYPE=Release"
+              "-DGOODNET_BUILD_TESTS=ON"
+            ];
+            doCheck = false;
           };
         });
 
       apps = forAllSystems (system: pkgs:
         let
-          stdenv = pkgs.gcc15Stdenv;
-          deps = with pkgs; [
-            boost spdlog fmt nlohmann_json libsodium gtest rapidcheck
-          ];
-          nativeTools = with pkgs; [ cmake ninja pkg-config ];
+          # All build apps re-enter the dev shell through `nix develop
+          # --command`. `writeShellApplication` only sets up PATH from
+          # `runtimeInputs`; CMake's `find_package(... CONFIG)` needs
+          # the full `CMAKE_PREFIX_PATH` / `PKG_CONFIG_PATH` that the
+          # dev shell wires from `inputsFrom = [ goodnet-core ]`.
 
-          gn-build = pkgs.writeShellApplication {
-            name = "gn-build";
-            runtimeInputs = nativeTools ++ deps;
-            text = ''
-              cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON "$@"
-              cmake --build build -j"$(nproc)"
-            '';
-          };
+          gn-dev = pkgs.writeShellScriptBin "gn-dev" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring Debug build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Debug \
+                  -DGOODNET_BUILD_TESTS=ON
+              fi
+              cmake --build "$BUILD_DIR" -j"$(nproc)" "$@"
+            ' _ "$@"
+          '';
 
-          gn-test = pkgs.writeShellApplication {
-            name = "gn-test";
-            runtimeInputs = nativeTools ++ deps;
-            text = ''
-              cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
-              cmake --build build -j"$(nproc)"
-              ctest --test-dir build --output-on-failure "$@"
-            '';
-          };
+          gn-build = pkgs.writeShellScriptBin "gn-build" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build-release"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring Release build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DGOODNET_BUILD_TESTS=ON
+              fi
+              cmake --build "$BUILD_DIR" -j"$(nproc)" "$@"
+            ' _ "$@"
+          '';
+
+          gn-test = pkgs.writeShellScriptBin "gn-test" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring Debug build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Debug \
+                  -DGOODNET_BUILD_TESTS=ON
+              fi
+              cmake --build "$BUILD_DIR" -j"$(nproc)"
+              ctest --test-dir "$BUILD_DIR" --output-on-failure "$@"
+            ' _ "$@"
+          '';
 
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
         in
         {
+          default   = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
+          dev       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
           build     = { type = "app"; program = "${gn-build}/bin/gn-build"; };
           test      = { type = "app"; program = "${gn-test}/bin/gn-test"; };
           test-asan = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
@@ -78,37 +103,40 @@
       devShells = forAllSystems (system: pkgs:
         let
           stdenv = pkgs.gcc15Stdenv;
-          deps = with pkgs; [
-            boost spdlog fmt nlohmann_json libsodium gtest rapidcheck
-          ];
+          # `inputsFrom = [ goodnet-core ]` in a `mkShell` pulls every
+          # build / native / propagated input the package needs into
+          # the shell, so the dev environment matches the Nix build
+          # exactly without re-listing dependencies here.
+          goodnet-core = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
         in
         {
           default = (pkgs.mkShell.override { inherit stdenv; }) {
+            inputsFrom = [ goodnet-core ];
             packages = with pkgs; [
-              cmake ninja pkg-config
               clang-tools ccache cmake-format jq
               gdb valgrind
               doxygen graphviz
-            ] ++ deps;
+            ];
 
+            # Welcome message points at the `nix run` apps so callers
+            # never need to remember a CMake invocation by hand.
+            # ccache is wired through so repeat builds do not pay the
+            # full compile cost.
             shellHook = ''
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
               export CMAKE_CXX_COMPILER_LAUNCHER=ccache
 
-              cfg()  { cmake -B build       -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON "$@"; }
-              cfgd() { cmake -B build/debug -G Ninja -DCMAKE_BUILD_TYPE=Debug   -DBUILD_TESTING=ON "$@"; }
-              b()    { cmake --build build       -j"$(nproc)" "$@"; }
-              bd()   { cmake --build build/debug -j"$(nproc)" "$@"; }
-              t()    { ctest --test-dir build --output-on-failure "$@"; }
+              cat <<'EOF'
 
-              echo ""
-              echo "GoodNet devShell  (gcc15, C++23)"
-              echo "  cfg / b / t       — Release configure / build / test"
-              echo "  cfgd / bd         — Debug configure / build"
-              echo "  nix run .#build   — one-shot Release build"
-              echo "  nix run .#test    — Debug build + ctest"
-              echo ""
+GoodNet devShell  (gcc15, C++23)
+  nix run .#         — Debug build (incremental)
+  nix run .#build    — Release build
+  nix run .#test     — Debug build + ctest
+  nix run .#test-asan
+  nix run .#test-tsan
+
+EOF
             '';
           };
         });
