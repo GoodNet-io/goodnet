@@ -17,13 +17,14 @@
 #include <array>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <filesystem>
 #include <utility>
 
 namespace gn::transport::ipc {
 namespace {
 
-constexpr std::size_t kReadBufferSize = 16 * 1024;
+constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
 namespace local_proto = boost::asio::local;
 
 }  // namespace
@@ -73,7 +74,7 @@ public:
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
         boost::asio::dispatch(strand_,
-            [self = shared_from_this(), buf = std::move(buf)] {
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
             });
@@ -89,16 +90,28 @@ public:
             offset += f.size();
         }
         boost::asio::dispatch(strand_,
-            [self = shared_from_this(), buf = std::move(buf)] {
+            [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
             });
     }
 
+    /// Close on the strand so the reactor's per-descriptor cleanup
+    /// runs without overlapping a pending `async_read_some`. The
+    /// `close(ec)` return is best-effort — the FD is gone either way,
+    /// surface a debug log via the transport's `api_->log` so the
+    /// failure isn't silent.
     void do_close() {
         boost::asio::dispatch(strand_, [self = shared_from_this()] {
             boost::system::error_code ec;
-            (void)self->socket_.close(ec);
+            if (self->socket_.close(ec)) {
+                if (auto t = self->transport_.lock();
+                    t && t->api_ && t->api_->log) {
+                    t->api_->log(t->api_->host_ctx, GN_LOG_DEBUG,
+                                 "ipc: close failed: %s",
+                                 ec.message().c_str());
+                }
+            }
         });
     }
 
@@ -145,7 +158,26 @@ IpcTransport::IpcTransport()
 }
 
 IpcTransport::~IpcTransport() {
-    shutdown();
+    /// Destructors must not throw — `shutdown()` walks the strand
+    /// dispatch chain, which can throw `bad_executor` if the
+    /// io_context already tore down. Surface the error through the
+    /// host log if it is still bound; without a log sink there is
+    /// nowhere safe to write from inside a dtor, so the catch only
+    /// observes the exception type to satisfy the no-empty-catch
+    /// lint without re-throwing.
+    try {
+        shutdown();
+    } catch (const std::exception& e) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "ipc: shutdown threw: %s", e.what());
+        }
+    } catch (...) {
+        if (api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_WARN,
+                      "ipc: shutdown threw non-std exception");
+        }
+    }
 }
 
 void IpcTransport::set_host_api(const host_api_t* api) noexcept {
@@ -212,10 +244,16 @@ void IpcTransport::start_accept() {
         local_proto::stream_protocol::socket(ioc_),
         weak_from_this());
 
-    acceptor_->async_accept(session->socket(),
-        [weak = std::weak_ptr<IpcTransport>(shared_from_this()), session](
-            const boost::system::error_code& ec) {
-            if (auto t = weak.lock()) t->on_accept(session, ec);
+    /// Re-check `acceptor_.has_value()` immediately above the deref —
+    /// the lint pass doesn't track the early-return guard at the top
+    /// of the function across the intervening `make_shared` call.
+    if (!acceptor_.has_value()) return;
+    auto& sock = session->socket();
+    acceptor_->async_accept(sock,
+        [weak = std::weak_ptr<IpcTransport>(shared_from_this()),
+         session = std::move(session)](
+            const boost::system::error_code& ec) mutable {
+            if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
         });
 }
 
@@ -232,11 +270,13 @@ void IpcTransport::on_accept(std::shared_ptr<Session> session,
             GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER, &conn);
         if (rc == GN_OK && conn != GN_INVALID_ID) {
             session->conn_id = conn;
-            register_session(conn, session);
             session->start_read();
             if (api_->kick_handshake) {
                 (void)api_->kick_handshake(api_->host_ctx, conn);
             }
+            /// Move-into the session map — ownership transfers to the
+            /// registry, so the local `session` is consumed here.
+            register_session(conn, std::move(session));
         } else {
             session->do_close();
         }
@@ -345,7 +385,14 @@ void IpcTransport::shutdown() {
 
     if (acceptor_) {
         boost::system::error_code ec;
-        (void)acceptor_->close(ec);
+        /// `close(ec)` is best-effort on shutdown — the FD is gone
+        /// either way. Surface the error through `api_->log` if the
+        /// host bound one, otherwise discard.
+        if (acceptor_->close(ec) && api_ && api_->log) {
+            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                      "ipc: acceptor close failed: %s",
+                      ec.message().c_str());
+        }
         acceptor_.reset();
     }
     {
