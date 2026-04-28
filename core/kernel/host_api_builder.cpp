@@ -216,7 +216,8 @@ gn_result_t thunk_register_security(void* host_ctx,
                                      void* security_self) {
     if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
-    return pc->kernel->security().register_provider(provider_id, vtable, security_self);
+    return pc->kernel->security().register_provider(
+        provider_id, vtable, security_self, pc->plugin_anchor);
 }
 
 gn_result_t thunk_unregister_security(void* host_ctx, const char* provider_id) {
@@ -253,7 +254,8 @@ gn_result_t thunk_register_extension(void* host_ctx,
                                      const void* vtable) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
-    return pc->kernel->extensions().register_extension(name, version, vtable);
+    return pc->kernel->extensions().register_extension(
+        name, version, vtable, pc->plugin_anchor);
 }
 
 gn_result_t thunk_register_transport(void* host_ctx,
@@ -264,7 +266,7 @@ gn_result_t thunk_register_transport(void* host_ctx,
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     return pc->kernel->transports().register_transport(
-        scheme, vtable, transport_self, out_id);
+        scheme, vtable, transport_self, out_id, pc->plugin_anchor);
 }
 
 gn_result_t thunk_unregister_transport(void* host_ctx, gn_transport_id_t id) {
@@ -283,7 +285,8 @@ gn_result_t thunk_register_handler(void* host_ctx,
     if (!host_ctx || !protocol_id || !vtable || !out_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     return pc->kernel->handlers().register_handler(
-        protocol_id, msg_id, priority, vtable, handler_self, out_id);
+        protocol_id, msg_id, priority, vtable, handler_self, out_id,
+        pc->plugin_anchor);
 }
 
 gn_result_t thunk_unregister_handler(void* host_ctx, gn_handler_id_t id) {

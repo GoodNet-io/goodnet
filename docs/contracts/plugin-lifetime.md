@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every plugin
-**Last verified:** 2026-04-27
+**Last verified:** 2026-04-28
 **Stability:** v1.x; lifecycle phases stable, hooks are size-prefix-evolvable
 
 ---
@@ -99,6 +99,31 @@ Three observable properties:
    upgrade. A null result is the clean exit; a non-null result is held
    for the duration of the callback so the object cannot be destroyed
    during use.
+
+The kernel applies the same pattern at registry granularity. Every
+registry entry — handler, transport, extension, security — carries a
+**lifetime anchor**: a strong reference to the registering plugin's
+quiescence sentinel. Dispatch-time snapshots (`HandlerRegistry::lookup`,
+`TransportRegistry::find_by_*`, `SecurityRegistry::current`,
+`ExtensionRegistry::query_prefix`) are returned by value, so the
+snapshot's anchor copy keeps the sentinel's reference count above zero
+for the duration of the call.
+
+`PluginManager` observes the sentinel through a `weak_ptr` between
+`gn_plugin_unregister` / `gn_plugin_shutdown` and `dlclose`:
+
+1. `gn_plugin_unregister` — registry entries drop their anchor copies.
+2. `gn_plugin_shutdown` — plugin's `self` is destroyed.
+3. Manager promotes its strong ref to a weak observer and drops the
+   ref, leaving only in-flight dispatch snapshots holding anchors.
+4. Wait until `weak_ptr::expired()` returns true (bounded; default 1s).
+5. `dlclose` — safe; no snapshot is dereferencing plugin .text.
+
+On timeout — a plugin that spawned a worker outlasting `shutdown` per
+§8 — the manager logs a warning and **leaks the dlclose handle**. The
+.so stays mapped; the leftover work dereferences live code rather than
+unmapped memory. Loud accounting (`PluginManager::leaked_handles()`)
+makes the leak observable instead of silent.
 
 The contract describes the invariant in terms any FFI-capable language
 can satisfy. The C++ binding uses the standard reference-counted

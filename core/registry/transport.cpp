@@ -11,7 +11,8 @@ gn_result_t TransportRegistry::register_transport(
     std::string_view scheme,
     const gn_transport_vtable_t* vtable,
     void* self,
-    gn_transport_id_t* out_id) noexcept {
+    gn_transport_id_t* out_id,
+    std::shared_ptr<void> lifetime_anchor) noexcept {
 
     if (vtable == nullptr || out_id == nullptr || scheme.empty()) {
         return GN_ERR_NULL_ARG;
@@ -25,14 +26,16 @@ gn_result_t TransportRegistry::register_transport(
     }
 
     TransportEntry entry;
-    entry.id     = next_id_.fetch_add(1, std::memory_order_relaxed);
-    entry.scheme = scheme_str;
-    entry.vtable = vtable;
-    entry.self   = self;
+    entry.id              = next_id_.fetch_add(1, std::memory_order_relaxed);
+    entry.scheme          = scheme_str;
+    entry.vtable          = vtable;
+    entry.self            = self;
+    entry.lifetime_anchor = std::move(lifetime_anchor);
 
-    by_id_[entry.id] = scheme_str;
+    const auto assigned_id = entry.id;
+    by_id_[assigned_id] = scheme_str;
     by_scheme_.emplace(std::move(scheme_str), std::move(entry));
-    *out_id = by_scheme_.find(by_id_[entry.id])->second.id;
+    *out_id = assigned_id;
     return GN_OK;
 }
 

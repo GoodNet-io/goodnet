@@ -8,6 +8,7 @@
 #pragma once
 
 #include <atomic>
+#include <memory>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
@@ -21,6 +22,11 @@ struct SecurityEntry {
     std::string                          provider_id;
     const gn_security_provider_vtable_t* vtable = nullptr;
     void*                                self   = nullptr;
+
+    /// Same shape as `HandlerEntry::lifetime_anchor`. The kernel
+    /// snapshots `SecurityRegistry::current()` value-style; the
+    /// returned anchor lives for the duration of the snapshot.
+    std::shared_ptr<void>                lifetime_anchor;
 };
 
 class SecurityRegistry {
@@ -31,9 +37,11 @@ public:
 
     /// Install @p vtable as the kernel's active security provider.
     /// Returns `GN_ERR_LIMIT_REACHED` when one is already registered.
+    /// @p lifetime_anchor mirrors `HandlerRegistry::register_handler`.
     [[nodiscard]] gn_result_t register_provider(std::string_view provider_id,
                                                 const gn_security_provider_vtable_t* vtable,
-                                                void* self) noexcept;
+                                                void* self,
+                                                std::shared_ptr<void> lifetime_anchor = {}) noexcept;
 
     /// Remove the provider matching @p provider_id.
     [[nodiscard]] gn_result_t unregister_provider(std::string_view provider_id) noexcept;

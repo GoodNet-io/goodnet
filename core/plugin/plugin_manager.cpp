@@ -5,7 +5,9 @@
 
 #include <dlfcn.h>
 
+#include <chrono>
 #include <cstring>
+#include <thread>
 #include <utility>
 
 #include <core/kernel/host_api_builder.hpp>
@@ -122,11 +124,27 @@ gn_result_t PluginManager::open_one(const std::string& path,
         return GN_ERR_VERSION_MISMATCH;
     }
 
-    out.descriptor      = descriptor_from_symbol(syms, path);
-    out.ctx.plugin_name = out.descriptor.plugin_name;
-    out.ctx.kind        = out.descriptor.kind;
-    out.ctx.kernel      = &kernel_;
-    out.api = build_host_api(out.ctx);
+    out.descriptor = descriptor_from_symbol(syms, path);
+
+    /// PluginContext lives on the heap so its address survives the
+    /// reorder pass (instances_ is reordered after the resolver runs;
+    /// a stack/inline ctx would relocate, invalidating every
+    /// `host_api->host_ctx` pointer plugins captured in their own
+    /// state).
+    out.ctx = std::make_unique<PluginContext>();
+    out.ctx->plugin_name = out.descriptor.plugin_name;
+    out.ctx->kind        = out.descriptor.kind;
+    out.ctx->kernel      = &kernel_;
+
+    /// The quiescence sentinel. A trivial heap allocation whose
+    /// reference count tracks `(this manager) + (this ctx) +
+    /// (every registry entry the plugin installs) + (every dispatch
+    /// snapshot in flight)`. Choosing a non-null sentinel value
+    /// keeps shared_ptr's empty-state semantics out of play —
+    /// `weak_ptr::expired()` is the single source of truth.
+    out.ctx->plugin_anchor = std::make_shared<int>(0);
+
+    out.api  = build_host_api(*out.ctx);
     out.self = nullptr;
     out.registered = false;
     return GN_OK;
@@ -220,9 +238,45 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     return GN_OK;
 }
 
+bool PluginManager::drain_anchor(PluginInstance& inst,
+                                  const std::weak_ptr<void>& watch) {
+    /// Spin-wait with a short backoff. Most async callbacks complete
+    /// in the microsecond range; the timeout exists to catch stuck
+    /// workers that the plugin never told us about (a §8 violation).
+    /// The interval grows from 100µs to 1ms so a fast quiescence
+    /// pays no perceptible cost while a slow one yields the CPU.
+    using clock = std::chrono::steady_clock;
+    const auto deadline = clock::now() + quiescence_timeout_;
+    auto interval = std::chrono::microseconds{100};
+    while (!watch.expired()) {
+        if (clock::now() >= deadline) {
+            ::gn::log::warn(
+                "plugin '{}' did not quiesce within {}ms; "
+                "leaking dlclose handle to keep async callbacks safe",
+                inst.descriptor.plugin_name,
+                quiescence_timeout_.count());
+            ++leaked_handles_;
+            return false;
+        }
+        std::this_thread::sleep_for(interval);
+        if (interval < std::chrono::milliseconds{1}) {
+            interval *= 2;
+        }
+    }
+    return true;
+}
+
 void PluginManager::rollback() {
+    leaked_handles_ = 0;
+
     /// Mirror the activation path: unregister registered, shutdown
-    /// inited, dlclose loaded — all in reverse order.
+    /// inited, drain anchors, dlclose loaded — all in reverse order.
+    /// The drain step is the §4 quiescence gate: registry entries
+    /// drop their anchor copy on `unregister`, the plugin's `self`
+    /// is destroyed by `shutdown`, and the kernel-side strong refs
+    /// drop right before the wait. Anything that survives is an
+    /// in-flight dispatch snapshot — we wait for it to release the
+    /// anchor before unmapping the .text section behind its vtable.
     for (auto it = instances_.rbegin(); it != instances_.rend(); ++it) {
         if (it->registered && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
@@ -238,10 +292,30 @@ void PluginManager::rollback() {
             }
             it->self = nullptr;
         }
+
         if (it->so_handle) {
-            ::dlclose(it->so_handle);
+            /// Promote the kernel-side strong reference to a weak
+            /// observer, then drop both strong refs (manager-held
+            /// and ctx-held) so only in-flight snapshots remain.
+            std::weak_ptr<void> watch;
+            if (it->ctx) {
+                watch = it->ctx->plugin_anchor;
+                it->ctx->plugin_anchor.reset();
+            }
+
+            const bool drained = drain_anchor(*it, watch);
+            if (drained) {
+                ::dlclose(it->so_handle);
+            }
             it->so_handle = nullptr;
         }
+
+        /// ctx is the last kernel-side owner of the heap allocation.
+        /// Reset it after dlclose so any leftover `host_ctx` pointer
+        /// the plugin captured points at freed memory rather than
+        /// freed-and-reused memory; any UAF here surfaces as a clean
+        /// ASan diagnostic instead of a silent corruption.
+        it->ctx.reset();
     }
     instances_.clear();
     active_ = false;

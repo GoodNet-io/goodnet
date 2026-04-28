@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -26,9 +27,17 @@ namespace gn::core {
 /// pointer; the producer is responsible for keeping the vtable
 /// alive until `unregister_extension` returns.
 struct ExtensionEntry {
-    std::string   name;
-    std::uint32_t version;
-    const void*   vtable;
+    std::string           name;
+    std::uint32_t         version = 0;
+    const void*           vtable  = nullptr;
+
+    /// Strong reference to the registering plugin's quiescence
+    /// sentinel. `query_prefix` snapshots inherit it via value-copy.
+    /// The C-ABI `query_extension_checked` path returns only the
+    /// vtable pointer for back-compat; transport-composition consumers
+    /// that want an anchor-bearing handle should reach for the C++
+    /// `query_extension_with_anchor` overload.
+    std::shared_ptr<void> lifetime_anchor;
 };
 
 class ExtensionRegistry {
@@ -39,9 +48,11 @@ public:
 
     /// Register a vtable under @p name with @p version. Fails with
     /// `GN_ERR_LIMIT_REACHED` if @p name is already taken.
+    /// @p lifetime_anchor mirrors `HandlerRegistry::register_handler`.
     [[nodiscard]] gn_result_t register_extension(std::string_view name,
                                                  std::uint32_t version,
-                                                 const void* vtable) noexcept;
+                                                 const void* vtable,
+                                                 std::shared_ptr<void> lifetime_anchor = {}) noexcept;
 
     /// Remove an extension by name.
     [[nodiscard]] gn_result_t unregister_extension(std::string_view name) noexcept;
