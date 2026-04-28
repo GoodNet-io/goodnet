@@ -309,11 +309,12 @@ Failure modes:
 | Rate budget exceeded for `source` | `GN_ERR_LIMIT_REACHED` |
 
 Per-source rate limiting uses a token bucket sized at one hundred
-messages per second with a burst of fifty by default; the budget is
-configurable through `limits.md` §inject. The bucket key is the
-`gn_conn_id_t` of the source. The kernel creates buckets lazily;
-LRU eviction caps the map at `inject_rate_limit_max_sources` entries
-(default 4096) so unbounded source-id growth cannot exhaust memory.
+messages per second with a burst of fifty by default. The bucket
+key is the `gn_conn_id_t` of the source. The kernel creates
+buckets lazily; LRU eviction caps the map at 4 096 entries so
+unbounded source-id growth cannot exhaust memory. The cap is a
+kernel-side constant in v1.0; a future minor release may surface
+it through `gn_limits_t` if real deployments need to tune it.
 
 The contract is **not** a downgrade from peer-direct delivery: the
 envelope's `sender_pk` is whatever the source connection records as
@@ -337,7 +338,10 @@ limiter primitive is `core/util/token_bucket.hpp`.
 
 The `set_timer`, `cancel_timer`, and `post_to_executor` slots route
 to a kernel-owned single-thread executor reserved for plugin
-service tasks. `timer.md` is the authoritative specification:
+service tasks. They sit at the v1.x ABI tail; consumers built
+against earlier prereleases must guard with `GN_API_HAS` from
+`sdk/abi.h` before calling. `timer.md` is the authoritative
+specification:
 
 - §2 — slot signatures and invariants
 - §3 — single-thread serialisation guarantee
