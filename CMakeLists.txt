@@ -47,7 +47,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
 # installed SDK. The bundled-plugins option iterates plugins/ for in-tree
 # development convenience; production builds package each plugin separately.
 option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
-option(GOODNET_BUILD_EXAMPLES         "Build example apps"               ON)
+option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
 option(GOODNET_USE_LTO                "Link-time optimization (Release)" OFF)
 
@@ -89,7 +89,7 @@ if(GOODNET_BUILD_BUNDLED_PLUGINS)
 endif()
 
 # ── Examples & tests ─────────────────────────────────────────────────────────
-if(GOODNET_BUILD_EXAMPLES)
+if(GOODNET_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
     add_subdirectory(examples)
 endif()
 
