@@ -23,6 +23,7 @@
 #include <sdk/cpp/protocol_layer.hpp>
 #include <sdk/limits.h>
 
+#include "conn_event.hpp"
 #include "identity_set.hpp"
 #include "phase.hpp"
 #include "router.hpp"
@@ -103,6 +104,9 @@ public:
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
     [[nodiscard]] TimerRegistry&       timers()      noexcept { return timers_; }
+    [[nodiscard]] signal::SignalChannel<ConnEvent>& on_conn_event() noexcept {
+        return on_conn_event_;
+    }
     [[nodiscard]] util::RateLimiterMap<>& inject_rate_limiter() noexcept {
         return inject_rate_limiter_;
     }
@@ -174,6 +178,7 @@ private:
     Config                                config_;
 
     signal::SignalChannel<signal::Empty>  on_config_reload_;
+    signal::SignalChannel<ConnEvent>      on_conn_event_;
 
     std::optional<identity::NodeIdentity> node_identity_;
 

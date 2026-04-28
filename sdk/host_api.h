@@ -20,6 +20,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <sdk/conn_events.h>
 #include <sdk/types.h>
 #include <sdk/handler.h>
 #include <sdk/limits.h>
@@ -338,6 +339,37 @@ typedef struct host_api_s {
     gn_result_t (*post_to_executor)(void* host_ctx,
                                     gn_task_fn_t fn,
                                     void* user_data);
+
+    /* ── Connection events (conn-events.md is authoritative) ───────────── */
+
+    /**
+     * @brief Subscribe to connection-lifecycle events.
+     *
+     * The kernel pairs each subscription with a weak observer of
+     * the calling plugin's quiescence sentinel; a callback whose
+     * plugin already unloaded is dropped silently
+     * (`conn-events.md` §3).
+     */
+    gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                        gn_conn_event_cb_t cb,
+                                        void* user_data,
+                                        gn_subscription_id_t* out_id);
+
+    /**
+     * @brief Remove a subscription. Idempotent: removing an already-
+     *        gone id returns @ref GN_OK.
+     */
+    gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
+                                          gn_subscription_id_t id);
+
+    /**
+     * @brief Visit every currently-registered connection under a
+     *        per-shard read lock. Visitor returns 0 to continue,
+     *        non-zero to stop.
+     */
+    gn_result_t (*for_each_connection)(void* host_ctx,
+                                        gn_conn_visitor_t visitor,
+                                        void* user_data);
 
     /* ── Reserved for future extension ─────────────────────────────────── */
 
