@@ -28,7 +28,8 @@ namespace {
 gn_result_t ExtensionRegistry::register_extension(
     std::string_view name,
     std::uint32_t version,
-    const void* vtable) noexcept {
+    const void* vtable,
+    std::shared_ptr<void> lifetime_anchor) noexcept {
 
     if (name.empty() || vtable == nullptr) return GN_ERR_NULL_ARG;
 
@@ -36,8 +37,13 @@ gn_result_t ExtensionRegistry::register_extension(
     std::string key{name};
     if (entries_.contains(key)) return GN_ERR_LIMIT_REACHED;
 
-    entries_.emplace(std::move(key),
-                     ExtensionEntry{std::string{name}, version, vtable});
+    ExtensionEntry entry;
+    entry.name            = std::string{name};
+    entry.version         = version;
+    entry.vtable          = vtable;
+    entry.lifetime_anchor = std::move(lifetime_anchor);
+
+    entries_.emplace(std::move(key), std::move(entry));
     return GN_OK;
 }
 

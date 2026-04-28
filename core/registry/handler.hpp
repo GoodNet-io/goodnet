@@ -10,6 +10,7 @@
 
 #include <atomic>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
@@ -42,6 +43,12 @@ struct HandlerEntry {
     /// Monotonic insertion sequence used to break ties between
     /// handlers that share a priority.
     std::uint64_t              insertion_seq = 0;
+
+    /// Reference-counted plugin liveness anchor. Copied by value into
+    /// every dispatch snapshot; PluginManager observes the underlying
+    /// control block through `weak_ptr` during unload to drive the
+    /// quiescence wait before `dlclose` (see `plugin-lifetime.md` §4).
+    std::shared_ptr<void>      lifetime_anchor;
 };
 
 class HandlerRegistry {
@@ -55,12 +62,21 @@ public:
     /// Fails with `GN_ERR_LIMIT_REACHED` when the chain is already at
     /// `max_chain_length`. `out_id` receives a fresh handler id that
     /// the caller hands back on `unregister_handler`.
+    ///
+    /// @p lifetime_anchor is a strong reference to the registering
+    /// plugin's quiescence sentinel. The registry stores it on the
+    /// entry so dispatch-time snapshots automatically extend the
+    /// plugin's lifetime; PluginManager drains the corresponding
+    /// `weak_ptr` between unregister and `dlclose`. Callers that do
+    /// not load through PluginManager (in-tree tests, kernel-built
+    /// fixtures) pass an empty anchor.
     [[nodiscard]] gn_result_t register_handler(std::string_view           protocol_id,
                                                std::uint32_t              msg_id,
                                                std::uint8_t               priority,
                                                const gn_handler_vtable_t* vtable,
                                                void*                      self,
-                                               gn_handler_id_t*           out_id) noexcept;
+                                               gn_handler_id_t*           out_id,
+                                               std::shared_ptr<void>      lifetime_anchor = {}) noexcept;
 
     /// Remove the handler with id @p id from whichever chain holds it.
     [[nodiscard]] gn_result_t unregister_handler(gn_handler_id_t id) noexcept;

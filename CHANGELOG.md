@@ -54,10 +54,20 @@ typed extension API.
 - **`nix run .#install-hooks`** — opt-in pre-commit hook that runs
   strict `clang-tidy --warnings-as-errors=*` on staged C++ files,
   mirroring the CI lint gate locally.
+- **Plugin quiescence anchor** — every registry entry (handler,
+  transport, extension, security) carries a strong reference to
+  the registering plugin's `std::shared_ptr` quiescence sentinel.
+  Dispatch snapshots inherit the reference by value-copy; the
+  plugin manager observes it through `weak_ptr` between
+  `gn_plugin_unregister` / `gn_plugin_shutdown` and `dlclose`.
+  An unmap that races with an in-flight dispatch is now
+  structurally impossible — the snapshot keeps the .so mapped
+  until the call returns. A bounded drain timeout falls through
+  to `log warn + leak handle` rather than blocking shutdown.
 
 ### Tests
 
-410 across unit, integration, scenario, and property suites.
+437 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

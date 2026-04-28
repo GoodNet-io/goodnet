@@ -13,7 +13,8 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
                                               std::uint8_t               priority,
                                               const gn_handler_vtable_t* vtable,
                                               void*                      self,
-                                              gn_handler_id_t*           out_id) noexcept {
+                                              gn_handler_id_t*           out_id,
+                                              std::shared_ptr<void>      lifetime_anchor) noexcept {
     if (vtable == nullptr || out_id == nullptr || protocol_id.empty()) {
         return GN_ERR_NULL_ARG;
     }
@@ -26,13 +27,14 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
     const std::size_t cap = max_chain_length_.load(std::memory_order_relaxed);
 
     HandlerEntry entry;
-    entry.id            = next_id_.fetch_add(1, std::memory_order_relaxed);
-    entry.protocol_id   = std::string{protocol_id};
-    entry.msg_id        = msg_id;
-    entry.priority      = priority;
-    entry.vtable        = vtable;
-    entry.self          = self;
-    entry.insertion_seq = insertion_seq_.fetch_add(1, std::memory_order_relaxed);
+    entry.id              = next_id_.fetch_add(1, std::memory_order_relaxed);
+    entry.protocol_id     = std::string{protocol_id};
+    entry.msg_id          = msg_id;
+    entry.priority        = priority;
+    entry.vtable          = vtable;
+    entry.self            = self;
+    entry.insertion_seq   = insertion_seq_.fetch_add(1, std::memory_order_relaxed);
+    entry.lifetime_anchor = std::move(lifetime_anchor);
 
     Key key{entry.protocol_id, msg_id};
 
