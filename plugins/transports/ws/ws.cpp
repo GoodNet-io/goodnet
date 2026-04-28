@@ -211,19 +211,23 @@ public:
             wire::build_binary_frame(payload,
                 /*mask=*/mode_ == Mode::Client,
                 make_mask_seed()));
-        const std::size_t payload_size = payload.size();
+        bytes_buffered_.fetch_add(frame->size(), std::memory_order_relaxed);
         asio::dispatch(strand_,
-            [self = shared_from_this(), frame, payload_size]() mutable {
+            [self = shared_from_this(), frame]() mutable {
                 self->write_queue_.push_back(std::move(frame));
-                self->pending_payload_ += payload_size;
                 self->maybe_start_write();
             });
+    }
+
+    [[nodiscard]] std::uint64_t bytes_buffered() const noexcept {
+        return bytes_buffered_.load(std::memory_order_relaxed);
     }
 
     void enqueue_close() {
         auto frame = std::make_shared<std::vector<std::uint8_t>>(
             wire::build_close_frame(/*mask=*/mode_ == Mode::Client,
                                     make_mask_seed()));
+        bytes_buffered_.fetch_add(frame->size(), std::memory_order_relaxed);
         asio::dispatch(strand_,
             [self = shared_from_this(), frame]() mutable {
                 if (self->phase_ == Phase::Closed) return;
@@ -427,6 +431,8 @@ private:
                         auto reply = std::make_shared<std::vector<std::uint8_t>>(
                             wire::build_close_frame(
                                 mode_ == Mode::Client, make_mask_seed()));
+                        bytes_buffered_.fetch_add(
+                            reply->size(), std::memory_order_relaxed);
                         write_queue_.push_back(std::move(reply));
                         maybe_start_write();
                     }
@@ -439,6 +445,8 @@ private:
                             std::span<const std::uint8_t>(
                                 payload.data(), payload.size()),
                             mode_ == Mode::Client, make_mask_seed()));
+                    bytes_buffered_.fetch_add(
+                        pong->size(), std::memory_order_relaxed);
                     write_queue_.push_back(std::move(pong));
                     maybe_start_write();
                     break;
@@ -456,12 +464,15 @@ private:
         if (write_in_flight_ || write_queue_.empty()) return;
         write_in_flight_ = true;
         auto buf = write_queue_.front();
+        const std::size_t buf_size = buf->size();
         asio::async_write(socket_, asio::buffer(*buf),
             asio::bind_executor(strand_,
-                [self = shared_from_this(), buf](
+                [self = shared_from_this(), buf, buf_size](
                     const std::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
+                    self->bytes_buffered_.fetch_sub(
+                        buf_size, std::memory_order_relaxed);
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) { self->fail(); return; }
@@ -501,7 +512,7 @@ private:
     std::vector<std::uint8_t>                           frame_buf_;
     std::deque<std::shared_ptr<std::vector<std::uint8_t>>> write_queue_;
     bool                                                write_in_flight_ = false;
-    std::size_t                                         pending_payload_  = 0;
+    std::atomic<std::uint64_t>                          bytes_buffered_{0};
     std::string                                         nonce_;
 };
 
@@ -534,6 +545,11 @@ WsTransport::~WsTransport() {
 
 void WsTransport::set_host_api(const host_api_t* api) noexcept {
     api_ = api;
+    if (api_ != nullptr && api_->limits != nullptr) {
+        if (const auto* L = api_->limits(api_->host_ctx); L != nullptr) {
+            pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
+        }
+    }
 }
 
 std::uint16_t WsTransport::listen_port() const noexcept {
@@ -737,6 +753,14 @@ gn_result_t WsTransport::send(gn_conn_id_t conn,
     if (bytes.size() > kMaxFramePayload) return GN_ERR_PAYLOAD_TOO_LARGE;
     auto s = find_session(conn);
     if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    /// Account against the framed wire size — header overhead +
+    /// payload — so the cap mirrors what actually sits in
+    /// `write_queue_`.
+    const auto framed = bytes.size() + 14U;
+    if (pending_queue_bytes_hard_ != 0 &&
+        s->bytes_buffered() + framed > pending_queue_bytes_hard_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     s->enqueue_send(bytes);
     return GN_OK;
 }
@@ -755,6 +779,11 @@ gn_result_t WsTransport::send_batch(
     }
     auto s = find_session(conn);
     if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    const auto framed = total + 14U;
+    if (pending_queue_bytes_hard_ != 0 &&
+        s->bytes_buffered() + framed > pending_queue_bytes_hard_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     s->enqueue_send(std::span<const std::uint8_t>(coalesced));
     return GN_OK;
 }

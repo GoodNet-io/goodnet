@@ -155,6 +155,11 @@ private:
     std::atomic<std::uint64_t> frames_in_{0};
     std::atomic<std::uint64_t> frames_out_{0};
 
+    /// Per-connection write-queue ceiling per `backpressure.md` §1.
+    /// Read from `api_->limits()` once `set_host_api` binds; 0
+    /// disables enforcement.
+    std::uint64_t pending_queue_bytes_hard_ = 0;
+
     const host_api_t* api_ = nullptr;
 };
 

@@ -81,6 +81,7 @@ public:
     void do_send(std::span<const std::uint8_t> data) {
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
+        bytes_buffered_.fetch_add(buf->size(), std::memory_order_relaxed);
         asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
@@ -100,11 +101,19 @@ public:
             std::memcpy(buf->data() + offset, f.data(), f.size());
             offset += f.size();
         }
+        bytes_buffered_.fetch_add(buf->size(), std::memory_order_relaxed);
         asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
                 self->maybe_start_write();
             });
+    }
+
+    /// Snapshot the per-connection write-queue depth, in bytes.
+    /// Producers consult this through the transport before queuing
+    /// fresh payload to enforce the `backpressure.md` §3 hard cap.
+    [[nodiscard]] std::uint64_t bytes_buffered() const noexcept {
+        return bytes_buffered_.load(std::memory_order_relaxed);
     }
 
     /// Close on the strand so the reactor's per-descriptor cleanup
@@ -132,12 +141,20 @@ private:
         if (write_in_flight_ || write_queue_.empty()) return;
         write_in_flight_ = true;
         auto buf = write_queue_.front();
+        const std::size_t buf_size = buf->size();
         asio::async_write(socket_, asio::buffer(*buf),
             asio::bind_executor(strand_,
-                [self = shared_from_this(), buf](
+                [self = shared_from_this(), buf, buf_size](
                     const std::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
+                    /// Drain bytes_buffered_ by the queued payload
+                    /// size, not by `n`: an error or short write
+                    /// still removes the buffer from the queue, so
+                    /// the counter must drop by the same amount that
+                    /// `do_send` added when it enqueued.
+                    self->bytes_buffered_.fetch_sub(
+                        buf_size, std::memory_order_relaxed);
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) {
@@ -161,6 +178,7 @@ private:
     std::array<std::uint8_t, kReadBufferSize>                 read_buf_{};
     std::deque<std::shared_ptr<std::vector<std::uint8_t>>>    write_queue_;
     bool                                                      write_in_flight_ = false;
+    std::atomic<std::uint64_t>                                bytes_buffered_{0};
 };
 
 // ── TcpTransport ────────────────────────────────────────────────────
@@ -196,6 +214,16 @@ TcpTransport::~TcpTransport() {
 
 void TcpTransport::set_host_api(const host_api_t* api) noexcept {
     api_ = api;
+    /// Cache the per-connection write-queue ceiling once the kernel
+    /// hands over its limits table. A null `limits` slot or zero
+    /// `pending_queue_bytes_hard` leaves enforcement off — the
+    /// transport behaves as before, the kernel just skipped the
+    /// configuration step.
+    if (api_ != nullptr && api_->limits != nullptr) {
+        if (const auto* L = api_->limits(api_->host_ctx); L != nullptr) {
+            pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
+        }
+    }
 }
 
 std::uint16_t TcpTransport::listen_port() const noexcept {
@@ -428,6 +456,11 @@ gn_result_t TcpTransport::send(gn_conn_id_t conn,
 {
     auto session = find_session(conn);
     if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    if (pending_queue_bytes_hard_ != 0 &&
+        session->bytes_buffered() + bytes.size() >
+            pending_queue_bytes_hard_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     session->do_send(bytes);
     return GN_OK;
 }
@@ -441,6 +474,12 @@ gn_result_t TcpTransport::send_batch(
 
     auto session = find_session(conn);
     if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    std::size_t total = 0;
+    for (const auto& f : frames) total += f.size();
+    if (pending_queue_bytes_hard_ != 0 &&
+        session->bytes_buffered() + total > pending_queue_bytes_hard_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     session->do_send_batch(frames);
     return GN_OK;
 }
