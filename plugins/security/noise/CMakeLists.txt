@@ -1,12 +1,14 @@
-# Noise security provider — Apache-2.0. Implements XX and IK patterns
-# from `docs/contracts/noise-handshake.md` on libsodium primitives:
-# X25519 (`crypto_scalarmult`), ChaCha20-Poly1305 IETF AEAD, BLAKE2b.
+# Noise security provider — Apache-2.0. Implements the
+# Noise_XX_25519_ChaChaPoly_BLAKE2b pattern from
+# `docs/contracts/noise-handshake.md` on libsodium primitives.
 #
-# This subdirectory ships the Noise crypto state machines as an OBJECT
-# library so unit tests can link them directly. The dlopen-able plugin
-# wrapper that exposes the SDK security-provider vtable lands in a
-# follow-up once the kernel grows a security pipeline that drives
-# `handshake_open` per `noise-handshake.md` and `security-trust.md`.
+# Two build artefacts share the same source files:
+#   - `goodnet_noise_objects` OBJECT library carrying the crypto
+#     primitives + state machines, linked into unit tests so they
+#     exercise the implementation without going through dlopen.
+#   - `goodnet_security_noise` SHARED plugin via `add_plugin()`,
+#     exposing the gn_security_provider_vtable through the stable
+#     C ABI; loaded by the kernel's plugin manager at runtime.
 
 add_library(goodnet_noise_objects OBJECT
     hash.cpp
@@ -29,3 +31,11 @@ target_include_directories(goodnet_noise_objects
 
 set_target_properties(goodnet_noise_objects PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
+
+add_plugin(goodnet_security_noise
+    noise.cpp
+)
+target_link_libraries(goodnet_security_noise
+    PRIVATE goodnet_noise_objects PkgConfig::SODIUM)
+target_include_directories(goodnet_security_noise
+    PRIVATE ${SODIUM_INCLUDE_DIRS})

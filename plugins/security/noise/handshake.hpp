@@ -74,6 +74,14 @@ public:
     /// True once every pattern message has been processed.
     [[nodiscard]] bool is_complete() const noexcept;
 
+    /// Number of pattern messages already processed (read or written).
+    /// XX completes at 3, IK at 2. Plugins consult this to decide
+    /// whose turn the next message belongs to.
+    [[nodiscard]] int step() const noexcept { return step_; }
+
+    /// Local role chosen at construction time.
+    [[nodiscard]] bool initiator() const noexcept { return initiator_; }
+
     /// Channel-binding hash, available at any point during the handshake
     /// and frozen after Split.
     [[nodiscard]] Digest handshake_hash() const noexcept {

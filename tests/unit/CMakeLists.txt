@@ -63,6 +63,14 @@ if(TARGET goodnet_security_null)
     )
 endif()
 
+if(TARGET goodnet_security_noise)
+    add_dependencies(goodnet_unit_tests goodnet_security_noise)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_unit_tests
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60

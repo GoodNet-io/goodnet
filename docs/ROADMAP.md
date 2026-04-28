@@ -22,10 +22,12 @@ move bytes between two nodes.
 | GNET protocol v1 — mandatory mesh framing, static-linked into kernel | shipped |
 | Null security provider — loopback pass-through | shipped |
 | Noise crypto state machines — XX + IK on libsodium primitives | shipped |
+| Kernel security pipeline — per-connection SecuritySession + Sessions registry, drives handshake_open through encrypt/decrypt | shipped |
+| Noise plugin `.so` wrapper — `gn_security_provider_vtable` bound to the XX state machines, dlopen-tested with two-session handshake | shipped |
 | Linking exception license model | shipped |
 | CI/CD — ASan / UBSan / TSan / clang-tidy strict / nix flake check | shipped |
 
-Tests: 304 passing across unit, integration, scenario, property suites.
+Tests: 319 passing across unit, integration, scenario, property suites.
 
 ---
 
@@ -36,13 +38,14 @@ this lands, every later layer can rely on a working secured byte pipe.
 
 | Area | Plan |
 |---|---|
-| Kernel security pipeline | per-connection session that drives `handshake_open`, buffers handshake messages over the transport, transitions to transport-phase encrypt/decrypt on completion |
-| Noise plugin `.so` wrapper | thin `gn_security_provider_vtable` bound to the existing crypto state machines |
+| URI parser foundation | `core/util/uri.{hpp,cpp}` with IPv6-bracket invariant + `core/util/uri_query.{hpp,cpp}` for `?peer=hex`-style query strings; foundation for every transport plugin |
+| Kernel injection API | `host_api->inject_external_message` + `inject_frame` per Bridge-tier contract; per-source token bucket rate limiter |
 | TCP transport plugin | Boost.Asio-based, single-writer-per-conn invariant, address-based listen and connect |
-| End-to-end loopback test | two kernels in one process, full XX handshake, transport round-trip, clean shutdown |
-
-The security and transport contracts are already in place; v0.2.0
-implements them.
+| IPC transport plugin | AF_UNIX socket with length-prefix stream framing, declares `Loopback` trust |
+| UDP transport plugin | datagram-mode with strand-bound receive path |
+| Raw protocol plugin | opaque-payload protocol layer for foreign-protocol-payload (`null+raw` on Loopback per security-trust.md §4) |
+| Heartbeat handler + `gn.heartbeat` extension | PING/PONG with RTT and observed-address reflection (STUN-on-the-wire) |
+| End-to-end loopback test | two kernels in one process plus a fork-based scenario; full XX handshake over real TCP, transport round-trip, clean shutdown |
 
 ---
 
