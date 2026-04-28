@@ -128,6 +128,14 @@ void null_destroy(void* self) {
     delete static_cast<NullPlugin*>(self);
 }
 
+/// Null provider is a passthrough — no encryption, no authentication.
+/// Permitted only on inherently trusted classes per
+/// `security-trust.md` §4: AF_UNIX-style loopback and intra-process
+/// pipes. Public-network connections must not reach this provider.
+std::uint32_t null_allowed_trust_mask(void* /*self*/) {
+    return (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+}
+
 gn_security_provider_vtable_t make_null_vtable() {
     gn_security_provider_vtable_t v{};
     v.api_size              = sizeof(gn_security_provider_vtable_t);
@@ -141,6 +149,7 @@ gn_security_provider_vtable_t make_null_vtable() {
     v.rekey                 = &null_rekey;
     v.handshake_close       = &null_handshake_close;
     v.destroy               = &null_destroy;
+    v.allowed_trust_mask    = &null_allowed_trust_mask;
     return v;
 }
 

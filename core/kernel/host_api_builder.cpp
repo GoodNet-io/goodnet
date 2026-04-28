@@ -379,6 +379,17 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
 
+    /// Protocol-layer trust gate per `security-trust.md` §4: the
+    /// active layer declares which trust classes it may deframe;
+    /// reject the connection up front if the declared `trust` is
+    /// not in the layer's mask. The security-provider gate fires
+    /// later inside `Sessions::create` against the security mask.
+    if (auto* layer = pc->kernel->protocol_layer(); layer != nullptr) {
+        const std::uint32_t mask = layer->allowed_trust_mask();
+        const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
+        if ((mask & bit) == 0u) return GN_ERR_INVALID_ENVELOPE;
+    }
+
     ConnectionRecord rec;
     const gn_conn_id_t new_id = pc->kernel->connections().alloc_id();
     rec.id = new_id;

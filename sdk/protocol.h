@@ -99,7 +99,23 @@ typedef struct gn_protocol_layer_vtable_s {
      */
     void (*destroy)(void* self);
 
-    void* _reserved[4];
+    /**
+     * @brief Bitmask of `gn_trust_class_t` values this protocol may
+     *        serve.
+     *
+     * Bit `1u << GN_TRUST_<X>` set means this protocol may deframe a
+     * connection at class `<X>`. The kernel reads the mask at
+     * registration; per `security-trust.md` §4 the cartesian product
+     * across {transport-trust, security mask, protocol mask} is
+     * validated on Wire phase before any envelope rides.
+     *
+     * Examples:
+     *   - gnet-v1: `1u<<UNTRUSTED | 1u<<PEER | 1u<<LOOPBACK | 1u<<INTRA_NODE`
+     *   - raw-v1:  `1u<<LOOPBACK | 1u<<INTRA_NODE`
+     */
+    uint32_t (*allowed_trust_mask)(void* self);
+
+    void* _reserved[3];
 } gn_protocol_layer_vtable_t;
 
 #ifdef __cplusplus
