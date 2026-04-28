@@ -31,7 +31,12 @@ no plugin-side JSON parser.
 | Load | `Config::load_json(text)` parses the document. On success, replaces the current state; on failure, leaves the existing state unchanged |
 | Validate | `Config::validate(&reason)` checks cross-field invariants from `limits.md` §3 — fails the load on first invariant violation with the offending key in `reason` |
 | Runtime queries | plugins call `host_api->config_get_string(key, …)` / `config_get_int64(key, …)`; kernel resolves the dotted path under a shared lock |
-| Reload | a future `Config::reload(text)` re-runs load + validate; on success, fires the config-reload `SignalChannel` (`signal-channel.md`) so subscribed kernel components and extension-publishing plugins refresh their knobs |
+
+The kernel exposes a `SignalChannel<ConfigReloaded>` (per
+`signal-channel.md`) that fires when a future runtime-reload entry
+publishes a new state; subscribers refresh their knobs in their own
+callback. Until that entry lands the channel is allocated but
+silent — `Config` is a one-shot load on this release.
 
 Default-constructed `Config` is usable: every key lookup returns
 `GN_ERR_UNKNOWN_RECEIVER`, `limits()` returns the canonical defaults.
@@ -49,12 +54,12 @@ parser.
 {
     "version": 1,
     "limits": {
-        "max_connections":        65536,
-        "max_outbound_connections": 1024,
-        "max_handlers_per_msg_id":   16,
-        "max_extensions":           256,
-        "max_payload_bytes":      16384,
-        "max_frame_bytes":        65536
+        "max_connections":           4096,
+        "max_outbound_connections":  1024,
+        "max_handlers_per_msg_id":      8,
+        "max_extensions":             256,
+        "max_payload_bytes":        65522,
+        "max_frame_bytes":          65536
         // see limits.md §2 for the full list
     }
 }
