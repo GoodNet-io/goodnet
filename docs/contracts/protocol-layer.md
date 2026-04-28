@@ -92,21 +92,22 @@ mapped to the codes listed in §8.
 
 ### 3.1 `ConnectionContext`
 
-Per-connection state is passed to every `deframe`/`frame` call as
-`gn_connection_context_t`, declared in `sdk/connection.h`. The struct
-carries:
+Per-connection state is passed to every `deframe` / `frame` call as
+`gn_connection_context_t`, declared in `sdk/connection.h`. The
+struct is opaque; plugins read it through five accessors:
 
-| Field | Meaning |
+| Accessor | Returns |
 |---|---|
-| `local` | Local node identity (public key plus an opaque sign/verify handle held by the kernel). |
-| `remote` | Peer public key established by the security handshake. |
-| `conn_id` | Stable per-connection handle assigned by the kernel. |
-| `active_protocol_id` | The protocol that owns this connection. |
-| `plugin_state` | Plugin-private opaque pointer; kernel never inspects it. |
+| `gn_ctx_local_pk(ctx)` | borrowed pointer to the 32-byte local Ed25519 public key |
+| `gn_ctx_remote_pk(ctx)` | borrowed pointer to the 32-byte peer key; all-zero before the handshake completes |
+| `gn_ctx_conn_id(ctx)` | `gn_conn_id_t` allocated by the kernel |
+| `gn_ctx_trust(ctx)` | `gn_trust_class_t` per `security-trust.md` |
+| `gn_ctx_plugin_state(ctx)` / `gn_ctx_set_plugin_state(ctx, p)` | plugin-private scratch slot; kernel never inspects |
 
-For mesh-native direct connections the plugin reads `ctx.remote` →
-`sender_pk` (inbound) or `ctx.local.public_key` → `sender_pk` (outbound).
-For relay/broadcast plugins the public-key fields come from the wire.
+For mesh-native direct connections the plugin reads
+`gn_ctx_remote_pk(ctx)` → `sender_pk` (inbound) or
+`gn_ctx_local_pk(ctx)` → `sender_pk` (outbound). For relay /
+broadcast plugins the public-key fields come from the wire.
 
 ---
 
