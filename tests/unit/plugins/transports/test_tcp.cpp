@@ -91,7 +91,7 @@ host_api_t make_stub_api(StubHost& h) {
 /// enclosing test on timeout. Async transport completions land on
 /// the worker thread; the poller serialises observation via the
 /// supplied `StubHost`'s atomics.
-void wait_for(std::function<bool()> pred,
+void wait_for(const std::function<bool()>& pred,
               std::chrono::milliseconds timeout,
               const char* what) {
     const auto deadline = std::chrono::steady_clock::now() + timeout;
@@ -121,6 +121,17 @@ TEST(TcpTransport, ListenRejectsMalformedUri) {
     auto t = std::make_shared<TcpTransport>();
     EXPECT_NE(t->listen("garbage"), GN_OK);
     EXPECT_NE(t->listen("ipc:///tmp/sock"), GN_OK);  /// path-style mis-scheme
+}
+
+TEST(TcpTransport, ConnectRejectsZeroPort) {
+    auto t = std::make_shared<TcpTransport>();
+    StubHost h;
+    auto api = make_stub_api(h);
+    t->set_host_api(&api);
+    /// Listen accepts port 0 (ephemeral allocation); connect rejects
+    /// it at the application layer per `uri.md` §5.
+    EXPECT_NE(t->connect("tcp://127.0.0.1:0"), GN_OK);
+    t->shutdown();
 }
 
 TEST(TcpTransport, ShutdownIsIdempotent) {

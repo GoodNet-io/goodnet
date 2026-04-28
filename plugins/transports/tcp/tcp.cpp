@@ -336,6 +336,10 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
 
     const auto parts = ::gn::parse_uri(uri_sv);
     if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+    /// `connect`-side rejects port 0 per `uri.md` §5 — the parser
+    /// accepts it for ephemeral allocation on the listen path, but
+    /// a zero target port is never a real peer.
+    if (parts->port == 0) return GN_ERR_NULL_ARG;
 
     boost::system::error_code ec;
     const auto addr = boost::asio::ip::make_address(parts->host, ec);
