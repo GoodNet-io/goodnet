@@ -60,6 +60,25 @@ gn_result_t thunk_send(void* host_ctx,
     auto framed = layer->frame(ctx, env);
     if (!framed) return framed.error().code;
 
+    /// Encrypt the framed envelope through the connection's security
+    /// session when one is bound and has reached the transport phase.
+    /// During the handshake phase application data is rejected; the
+    /// no-session path (loopback / null-security per security-trust.md
+    /// §4) sends the framed bytes verbatim.
+    SecuritySession* session = pc->kernel->sessions().find(conn);
+    if (session != nullptr) {
+        if (session->phase() == SecurityPhase::Handshake) {
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        if (session->phase() == SecurityPhase::Transport) {
+            std::vector<std::uint8_t> cipher;
+            const gn_result_t rc = session->encrypt_transport(*framed, cipher);
+            if (rc != GN_OK) return rc;
+            return trans->vtable->send(trans->self, conn,
+                                        cipher.data(), cipher.size());
+        }
+    }
+
     return trans->vtable->send(trans->self, conn,
                                framed->data(), framed->size());
 }
@@ -213,6 +232,30 @@ void thunk_log(void* host_ctx, gn_log_level_t level, const char* fmt, ...) {
     ::gn::log::kernel().log(sp_lvl, "[{}] {}", pc->plugin_name, buf);
 }
 
+/// Send handshake-phase bytes raw via the transport vtable, bypassing
+/// the security and protocol layers. The bytes are produced by the
+/// security provider and already carry their own AEAD framing.
+gn_result_t send_raw_via_transport(PluginContext* pc,
+                                    gn_conn_id_t conn,
+                                    std::string_view scheme,
+                                    std::span<const std::uint8_t> bytes) {
+    if (bytes.empty()) return GN_OK;
+    auto trans = pc->kernel->transports().find_by_scheme(scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+    return trans->vtable->send(trans->self, conn, bytes.data(), bytes.size());
+}
+
+/// True iff @p pk has at least one non-zero byte; the kernel uses
+/// all-zero as the "unknown peer" sentinel on inbound connections.
+bool pk_is_known(const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]) noexcept {
+    for (std::size_t i = 0; i < GN_PUBLIC_KEY_BYTES; ++i) {
+        if (pk[i] != 0) return true;
+    }
+    return false;
+}
+
 gn_result_t thunk_notify_connect(void* host_ctx,
                                  const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                                  const char* uri,
@@ -237,6 +280,54 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     if (rc != GN_OK) return rc;
 
     *out_conn = new_id;
+
+    /// Spin up a security session if a provider is registered and the
+    /// kernel carries a NodeIdentity. Trust classes that bypass
+    /// encryption (Loopback / IntraNode with explicit opt-in per
+    /// security-trust.md §4) take the no-session path and fall through
+    /// to the bare protocol layer.
+    auto& sec = pc->kernel->security();
+    const auto* ident = pc->kernel->node_identity();
+    if (sec.is_active() && ident != nullptr) {
+        const auto entry = sec.current();
+        const auto& device = ident->device();
+        std::span<const std::uint8_t> rs_span;
+        if (pk_is_known(remote_pk)) {
+            rs_span = std::span<const std::uint8_t>(remote_pk, GN_PUBLIC_KEY_BYTES);
+        }
+
+        gn_result_t session_rc = GN_OK;
+        SecuritySession* session = pc->kernel->sessions().create(
+            new_id,
+            entry.vtable,
+            entry.self,
+            trust,
+            role,
+            device.secret_key_view(),
+            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(device.public_key()),
+            rs_span,
+            session_rc);
+        if (session_rc != GN_OK) {
+            (void)pc->kernel->connections().erase_with_index(new_id);
+            return session_rc;
+        }
+
+        /// Initiator drives the first handshake message; responder
+        /// waits for inbound bytes.
+        if (session && role == GN_ROLE_INITIATOR) {
+            std::vector<std::uint8_t> first;
+            const gn_result_t adv_rc = session->advance_handshake({}, first);
+            if (adv_rc != GN_OK) {
+                pc->kernel->sessions().destroy(new_id);
+                (void)pc->kernel->connections().erase_with_index(new_id);
+                return adv_rc;
+            }
+            if (!first.empty()) {
+                (void)send_raw_via_transport(pc, new_id, scheme, first);
+            }
+        }
+    }
+
     return GN_OK;
 }
 
@@ -251,6 +342,35 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
 
+    /// Route through the security session when one is bound to this
+    /// connection. Handshake-phase bytes drive `advance_handshake`;
+    /// transport-phase bytes are decrypted before reaching the
+    /// protocol layer. Connections without a session (loopback +
+    /// null-security stacks per security-trust.md §4) skip both
+    /// branches and fall through to the bare protocol layer.
+    SecuritySession* session = pc->kernel->sessions().find(conn);
+    std::vector<std::uint8_t> plaintext;
+    std::span<const std::uint8_t> wire_bytes{bytes, size};
+
+    if (session != nullptr) {
+        if (session->phase() == SecurityPhase::Handshake) {
+            std::vector<std::uint8_t> reply;
+            const gn_result_t rc = session->advance_handshake(wire_bytes, reply);
+            if (rc != GN_OK) return rc;
+            if (!reply.empty()) {
+                (void)send_raw_via_transport(pc, conn, rec->transport_scheme, reply);
+            }
+            /// Handshake bytes never carry application payload — the
+            /// protocol layer is not consulted until Transport phase.
+            return GN_OK;
+        }
+        if (session->phase() == SecurityPhase::Transport) {
+            const gn_result_t rc = session->decrypt_transport(wire_bytes, plaintext);
+            if (rc != GN_OK) return rc;
+            wire_bytes = std::span<const std::uint8_t>(plaintext);
+        }
+    }
+
     gn_connection_context_t ctx{};
     ctx.conn_id   = conn;
     ctx.trust     = rec->trust;
@@ -262,7 +382,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     auto* layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    auto deframed = layer->deframe(ctx, std::span<const std::uint8_t>{bytes, size});
+    auto deframed = layer->deframe(ctx, wire_bytes);
     if (!deframed.has_value()) return deframed.error().code;
 
     auto& router = pc->kernel->router();
@@ -277,6 +397,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
                                     gn_result_t /*reason*/) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    pc->kernel->sessions().destroy(conn);
     return pc->kernel->connections().erase_with_index(conn);
 }
 
