@@ -44,7 +44,7 @@ this lands, every later layer can rely on a working secured byte pipe.
 | IPC transport plugin | AF_UNIX socket with length-prefix stream framing, declares `Loopback` trust |
 | UDP transport plugin | datagram-mode with strand-bound receive path |
 | Raw protocol plugin | opaque-payload protocol layer for foreign-protocol-payload (`null+raw` on Loopback per security-trust.md §4) |
-| Heartbeat handler + `gn.heartbeat` extension | PING/PONG with RTT and observed-address reflection (STUN-on-the-wire) |
+| Heartbeat handler + `gn.heartbeat` extension | shipped — 88-byte PING/PONG payload with timestamp echo, per-peer RTT under injected clock per `clock.md` §2, observed-address reflection (STUN-on-the-wire) sourced from `host_api->get_endpoint`; extension `gn.heartbeat` v1.0.0 exports `get_stats` / `get_rtt` / `get_observed_address` |
 | End-to-end loopback test | shipped — two kernels with their own NodeIdentity + TcpTransport + Noise provider drive a real Noise XX handshake over a 127.0.0.1 socket and reach Transport phase with matching channel-binding hashes; ASan/TSan clean |
 
 ---

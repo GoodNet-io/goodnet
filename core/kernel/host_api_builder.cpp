@@ -83,6 +83,52 @@ gn_result_t thunk_send(void* host_ctx,
                                framed->data(), framed->size());
 }
 
+gn_result_t thunk_find_conn_by_pk(void* host_ctx,
+                                   const std::uint8_t pk[GN_PUBLIC_KEY_BYTES],
+                                   gn_conn_id_t* out_conn) {
+    if (!host_ctx || !pk || !out_conn) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    PublicKey key{};
+    std::memcpy(key.data(), pk, GN_PUBLIC_KEY_BYTES);
+    auto rec = pc->kernel->connections().find_by_pk(key);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    *out_conn = rec->id;
+    return GN_OK;
+}
+
+gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
+                                gn_endpoint_t* out) {
+    if (!host_ctx || !out) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    std::memset(out, 0, sizeof(*out));
+    out->conn_id = rec->id;
+    std::memcpy(out->remote_pk, rec->remote_pk.data(), GN_PUBLIC_KEY_BYTES);
+    out->trust = rec->trust;
+
+    const std::size_t uri_n =
+        std::min(rec->uri.size(), static_cast<std::size_t>(GN_ENDPOINT_URI_MAX - 1));
+    std::memcpy(out->uri, rec->uri.data(), uri_n);
+    out->uri[uri_n] = '\0';
+
+    const std::size_t scheme_n =
+        std::min(rec->transport_scheme.size(), sizeof(out->transport_scheme) - 1);
+    std::memcpy(out->transport_scheme, rec->transport_scheme.data(), scheme_n);
+    out->transport_scheme[scheme_n] = '\0';
+
+    out->bytes_in            = rec->bytes_in;
+    out->bytes_out           = rec->bytes_out;
+    out->frames_in           = rec->frames_in;
+    out->frames_out          = rec->frames_out;
+    out->pending_queue_bytes = rec->pending_queue_bytes;
+    out->last_rtt_us         = rec->last_rtt_us;
+    return GN_OK;
+}
+
 gn_result_t thunk_register_security(void* host_ctx,
                                      const char* provider_id,
                                      const gn_security_provider_vtable_t* vtable,
@@ -533,6 +579,9 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.register_security     = &thunk_register_security;
     a.unregister_security   = &thunk_unregister_security;
+
+    a.find_conn_by_pk       = &thunk_find_conn_by_pk;
+    a.get_endpoint          = &thunk_get_endpoint;
 
     a.inject_external_message = &thunk_inject_external_message;
     a.inject_frame            = &thunk_inject_frame;
