@@ -22,6 +22,7 @@
 
 #include <plugins/transports/tcp/tcp.hpp>
 
+#include <sdk/conn_events.h>
 #include <sdk/host_api.h>
 #include <sdk/limits.h>
 #include <sdk/types.h>
@@ -32,11 +33,13 @@ using gn::transport::tcp::TcpTransport;
 namespace {
 
 struct CapHost {
-    gn_limits_t                     limits{};
-    std::mutex                      mu;
-    std::atomic<int>                connects{0};
-    std::vector<gn_conn_id_t>       conns;
-    std::vector<gn_handshake_role_t> roles;
+    gn_limits_t                          limits{};
+    std::mutex                           mu;
+    std::atomic<int>                     connects{0};
+    std::vector<gn_conn_id_t>            conns;
+    std::vector<gn_handshake_role_t>     roles;
+    std::vector<gn_conn_event_kind_t>    bp_events;
+    std::vector<std::uint64_t>           bp_pending;
 
     static const gn_limits_t* on_limits(void* ctx) {
         return &static_cast<CapHost*>(ctx)->limits;
@@ -66,6 +69,15 @@ struct CapHost {
                                       gn_result_t) {
         return GN_OK;
     }
+    static gn_result_t on_backpressure(void* ctx, gn_conn_id_t /*conn*/,
+                                        gn_conn_event_kind_t kind,
+                                        std::uint64_t pending) {
+        auto* h = static_cast<CapHost*>(ctx);
+        std::lock_guard lk(h->mu);
+        h->bp_events.push_back(kind);
+        h->bp_pending.push_back(pending);
+        return GN_OK;
+    }
 
     host_api_t make_api() {
         host_api_t api{};
@@ -75,6 +87,7 @@ struct CapHost {
         api.notify_connect       = &on_connect;
         api.notify_inbound_bytes = &on_inbound;
         api.notify_disconnect    = &on_disconnect;
+        api.notify_backpressure  = &on_backpressure;
         return api;
     }
 };
@@ -190,6 +203,66 @@ TEST(BackpressureTcp, ZeroCapDisablesEnforcement) {
         }
     }
     EXPECT_TRUE(any_ok);
+
+    server->shutdown();
+    client->shutdown();
+}
+
+TEST(BackpressureTcp, FiresSoftEventOnRisingEdge) {
+    /// 1 KiB low / 2 KiB high / 8 KiB hard. A 4 KiB enqueue
+    /// crosses the high mark and must publish exactly one
+    /// `BACKPRESSURE_SOFT` event with `pending_bytes` reflecting
+    /// the post-enqueue depth. A second 4 KiB enqueue does not
+    /// fire again — the rising-edge model only signals once per
+    /// crossing per `backpressure.md` §3.
+    CapHost h;
+    h.limits.pending_queue_bytes_low  = 1024;
+    h.limits.pending_queue_bytes_high = 2048;
+    h.limits.pending_queue_bytes_hard = 8192;
+    auto api = h.make_api();
+
+    auto server = std::make_shared<TcpTransport>();
+    auto client = std::make_shared<TcpTransport>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+
+    ASSERT_EQ(server->listen("tcp://127.0.0.1:0"), GN_OK);
+    const auto port = server->listen_port();
+    ASSERT_EQ(client->connect("tcp://127.0.0.1:" + std::to_string(port)),
+              GN_OK);
+    ASSERT_TRUE(wait_for([&] { return h.connects.load() >= 2; }));
+
+    gn_conn_id_t server_conn = 0;
+    {
+        std::lock_guard lk(h.mu);
+        for (std::size_t i = 0; i < h.roles.size(); ++i) {
+            if (h.roles[i] == GN_ROLE_RESPONDER) {
+                server_conn = h.conns[i];
+                break;
+            }
+        }
+    }
+    ASSERT_NE(server_conn, 0u);
+
+    /// Crossing #1: 4 KiB enqueue past 2 KiB high mark.
+    std::vector<std::uint8_t> blob(4096, 0x33);
+    EXPECT_EQ(server->send(server_conn,
+                            std::span<const std::uint8_t>(blob)),
+              GN_OK);
+
+    /// SOFT may land before send returns (rising-edge fire is
+    /// synchronous on the caller's thread); allow a brief wait
+    /// for completeness if the loopback drained instantly.
+    ASSERT_TRUE(wait_for([&] {
+        std::lock_guard lk(h.mu);
+        return !h.bp_events.empty();
+    }));
+    {
+        std::lock_guard lk(h.mu);
+        ASSERT_GE(h.bp_events.size(), 1u);
+        EXPECT_EQ(h.bp_events.front(), GN_CONN_EVENT_BACKPRESSURE_SOFT);
+        EXPECT_GT(h.bp_pending.front(), 2048u);
+    }
 
     server->shutdown();
     client->shutdown();

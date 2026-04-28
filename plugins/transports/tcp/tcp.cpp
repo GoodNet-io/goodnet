@@ -81,7 +81,10 @@ public:
     void do_send(std::span<const std::uint8_t> data) {
         auto buf = std::make_shared<std::vector<std::uint8_t>>(
             data.begin(), data.end());
-        bytes_buffered_.fetch_add(buf->size(), std::memory_order_relaxed);
+        const auto added = buf->size();
+        const auto post = bytes_buffered_.fetch_add(
+            added, std::memory_order_relaxed) + added;
+        maybe_signal_soft(post);
         asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
@@ -101,7 +104,10 @@ public:
             std::memcpy(buf->data() + offset, f.data(), f.size());
             offset += f.size();
         }
-        bytes_buffered_.fetch_add(buf->size(), std::memory_order_relaxed);
+        const auto added = buf->size();
+        const auto post = bytes_buffered_.fetch_add(
+            added, std::memory_order_relaxed) + added;
+        maybe_signal_soft(post);
         asio::dispatch(strand_,
             [self = shared_from_this(), buf = std::move(buf)]() mutable {
                 self->write_queue_.push_back(std::move(buf));
@@ -114,6 +120,47 @@ public:
     /// fresh payload to enforce the `backpressure.md` §3 hard cap.
     [[nodiscard]] std::uint64_t bytes_buffered() const noexcept {
         return bytes_buffered_.load(std::memory_order_relaxed);
+    }
+
+    /// Rising-edge publisher for `BACKPRESSURE_SOFT`. Called by
+    /// `do_send` / `do_send_batch` after the bytes_buffered_
+    /// fetch_add so `post` is the post-enqueue depth. Atomic
+    /// `compare_exchange_strong` guarantees one fire per crossing
+    /// even if two senders cross the threshold concurrently.
+    void maybe_signal_soft(std::uint64_t post) {
+        auto t = transport_.lock();
+        if (!t) return;
+        if (t->pending_queue_bytes_high_ == 0) return;
+        if (post <= t->pending_queue_bytes_high_) return;
+        bool expected = false;
+        if (!soft_signaled_.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel)) {
+            return;  // someone else already published
+        }
+        if (t->api_ && t->api_->notify_backpressure) {
+            (void)t->api_->notify_backpressure(
+                t->api_->host_ctx, conn_id,
+                GN_CONN_EVENT_BACKPRESSURE_SOFT, post);
+        }
+    }
+
+    /// Falling-edge publisher for `BACKPRESSURE_CLEAR`. Called from
+    /// `maybe_start_write` after the drain `fetch_sub`.
+    void maybe_signal_clear(std::uint64_t post) {
+        auto t = transport_.lock();
+        if (!t) return;
+        if (t->pending_queue_bytes_low_ == 0) return;
+        if (post >= t->pending_queue_bytes_low_) return;
+        bool expected = true;
+        if (!soft_signaled_.compare_exchange_strong(
+                expected, false, std::memory_order_acq_rel)) {
+            return;  // either never crossed soft, or already cleared
+        }
+        if (t->api_ && t->api_->notify_backpressure) {
+            (void)t->api_->notify_backpressure(
+                t->api_->host_ctx, conn_id,
+                GN_CONN_EVENT_BACKPRESSURE_CLEAR, post);
+        }
     }
 
     /// Close on the strand so the reactor's per-descriptor cleanup
@@ -153,8 +200,9 @@ private:
                     /// still removes the buffer from the queue, so
                     /// the counter must drop by the same amount that
                     /// `do_send` added when it enqueued.
-                    self->bytes_buffered_.fetch_sub(
-                        buf_size, std::memory_order_relaxed);
+                    const auto post = self->bytes_buffered_.fetch_sub(
+                        buf_size, std::memory_order_relaxed) - buf_size;
+                    self->maybe_signal_clear(post);
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) {
@@ -179,6 +227,7 @@ private:
     std::deque<std::shared_ptr<std::vector<std::uint8_t>>>    write_queue_;
     bool                                                      write_in_flight_ = false;
     std::atomic<std::uint64_t>                                bytes_buffered_{0};
+    std::atomic<bool>                                         soft_signaled_{false};
 };
 
 // ── TcpTransport ────────────────────────────────────────────────────
@@ -214,13 +263,15 @@ TcpTransport::~TcpTransport() {
 
 void TcpTransport::set_host_api(const host_api_t* api) noexcept {
     api_ = api;
-    /// Cache the per-connection write-queue ceiling once the kernel
-    /// hands over its limits table. A null `limits` slot or zero
-    /// `pending_queue_bytes_hard` leaves enforcement off — the
-    /// transport behaves as before, the kernel just skipped the
-    /// configuration step.
+    /// Cache the per-connection write-queue trio once the kernel
+    /// hands over its limits table. A null `limits` slot leaves
+    /// every threshold at zero — hard reject and watermark
+    /// publishing both opt out, the transport behaves as before
+    /// `backpressure.md` shipped.
     if (api_ != nullptr && api_->limits != nullptr) {
         if (const auto* L = api_->limits(api_->host_ctx); L != nullptr) {
+            pending_queue_bytes_low_  = L->pending_queue_bytes_low;
+            pending_queue_bytes_high_ = L->pending_queue_bytes_high;
             pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
         }
     }

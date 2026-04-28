@@ -340,6 +340,35 @@ gn_result_t thunk_for_each_connection(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t thunk_notify_backpressure(void* host_ctx,
+                                       gn_conn_id_t conn,
+                                       gn_conn_event_kind_t kind,
+                                       std::uint64_t pending_bytes) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    /// Only transport-kind plugins own write queues, so only they
+    /// can produce truthful backpressure signals. Other plugin
+    /// kinds attempting to publish here are misconfigured.
+    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (kind != GN_CONN_EVENT_BACKPRESSURE_SOFT &&
+        kind != GN_CONN_EVENT_BACKPRESSURE_CLEAR) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    ConnEvent ev{};
+    ev.kind          = kind;
+    ev.conn          = conn;
+    ev.pending_bytes = pending_bytes;
+    /// Snapshot trust + pk from the registry so subscribers get
+    /// the same payload shape as the lifecycle events.
+    if (auto rec = pc->kernel->connections().find_by_id(conn)) {
+        ev.trust     = rec->trust;
+        ev.remote_pk = rec->remote_pk;
+    }
+    pc->kernel->on_conn_event().fire(ev);
+    return GN_OK;
+}
+
 gn_result_t thunk_register_transport(void* host_ctx,
                                      const char* scheme,
                                      const gn_transport_vtable_t* vtable,
@@ -818,6 +847,7 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.subscribe_conn_state    = &thunk_subscribe_conn_state;
     a.unsubscribe_conn_state  = &thunk_unsubscribe_conn_state;
     a.for_each_connection     = &thunk_for_each_connection;
+    a.notify_backpressure     = &thunk_notify_backpressure;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;

@@ -211,7 +211,10 @@ public:
             wire::build_binary_frame(payload,
                 /*mask=*/mode_ == Mode::Client,
                 make_mask_seed()));
-        bytes_buffered_.fetch_add(frame->size(), std::memory_order_relaxed);
+        const auto added = frame->size();
+        const auto post = bytes_buffered_.fetch_add(
+            added, std::memory_order_relaxed) + added;
+        maybe_signal_soft(post);
         asio::dispatch(strand_,
             [self = shared_from_this(), frame]() mutable {
                 self->write_queue_.push_back(std::move(frame));
@@ -221,6 +224,39 @@ public:
 
     [[nodiscard]] std::uint64_t bytes_buffered() const noexcept {
         return bytes_buffered_.load(std::memory_order_relaxed);
+    }
+
+    void maybe_signal_soft(std::uint64_t post) {
+        auto t = transport_.lock();
+        if (!t) return;
+        if (t->pending_queue_bytes_high_ == 0) return;
+        if (post <= t->pending_queue_bytes_high_) return;
+        bool expected = false;
+        if (!soft_signaled_.compare_exchange_strong(
+                expected, true, std::memory_order_acq_rel)) {
+            return;
+        }
+        if (t->api_ && t->api_->notify_backpressure) {
+            (void)t->api_->notify_backpressure(
+                t->api_->host_ctx, conn_id_,
+                GN_CONN_EVENT_BACKPRESSURE_SOFT, post);
+        }
+    }
+    void maybe_signal_clear(std::uint64_t post) {
+        auto t = transport_.lock();
+        if (!t) return;
+        if (t->pending_queue_bytes_low_ == 0) return;
+        if (post >= t->pending_queue_bytes_low_) return;
+        bool expected = true;
+        if (!soft_signaled_.compare_exchange_strong(
+                expected, false, std::memory_order_acq_rel)) {
+            return;
+        }
+        if (t->api_ && t->api_->notify_backpressure) {
+            (void)t->api_->notify_backpressure(
+                t->api_->host_ctx, conn_id_,
+                GN_CONN_EVENT_BACKPRESSURE_CLEAR, post);
+        }
     }
 
     void enqueue_close() {
@@ -471,8 +507,9 @@ private:
                     const std::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
-                    self->bytes_buffered_.fetch_sub(
-                        buf_size, std::memory_order_relaxed);
+                    const auto post = self->bytes_buffered_.fetch_sub(
+                        buf_size, std::memory_order_relaxed) - buf_size;
+                    self->maybe_signal_clear(post);
                     auto t = self->transport_.lock();
                     if (!t) return;
                     if (ec) { self->fail(); return; }
@@ -513,6 +550,7 @@ private:
     std::deque<std::shared_ptr<std::vector<std::uint8_t>>> write_queue_;
     bool                                                write_in_flight_ = false;
     std::atomic<std::uint64_t>                          bytes_buffered_{0};
+    std::atomic<bool>                                   soft_signaled_{false};
     std::string                                         nonce_;
 };
 
@@ -547,6 +585,8 @@ void WsTransport::set_host_api(const host_api_t* api) noexcept {
     api_ = api;
     if (api_ != nullptr && api_->limits != nullptr) {
         if (const auto* L = api_->limits(api_->host_ctx); L != nullptr) {
+            pending_queue_bytes_low_  = L->pending_queue_bytes_low;
+            pending_queue_bytes_high_ = L->pending_queue_bytes_high;
             pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
         }
     }
