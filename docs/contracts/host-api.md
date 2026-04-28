@@ -210,7 +210,6 @@ reachable from a plugin:
 - `_create_plugin_ctx` — kernel allocates the plugin context.
 - `_load_so` / `_unload_so` — `dlopen` / `dlclose` orchestration.
 - `_iterate_plugins` — kernel introspection over the plugin set.
-- Plugin manifest verification (`plugin-manifest.md` TBD).
 
 A plugin that needs cross-plugin communication uses extensions
 (`query_extension_checked`), not loader internals.
@@ -241,9 +240,6 @@ Plugins **must not**:
   Plugins register all handlers in `gn_plugin_register`, not lazily.
 - Issue calls to `api` from a thread other than the plugin's own
   io-context unless a slot is documented as cross-thread safe.
-
-The plugin lint pass (`tools/plugin_lint.py`, TBD) flags these
-statically.
 
 ---
 

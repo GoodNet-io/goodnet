@@ -145,4 +145,3 @@ the relay path.
   `fsm-events.md` §4.2.
 - Per-protocol payload max declared by the protocol implementation:
   `protocol-layer.md` §3.
-- Drop counters surfaced through metrics: `metrics.md` (TBD).

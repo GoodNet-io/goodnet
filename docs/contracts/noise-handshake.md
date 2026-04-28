@@ -2,8 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/security/noise/`
-**Implements:** `ISecurityProvider` (contract TBD in `security-provider.md`)
-**Last verified:** 2026-04-27
+**Implements:** `gn_security_provider_vtable_t` from `sdk/security.h`
 **Stability:** wire-incompatible changes require a new protocol-name suffix.
 
 ---

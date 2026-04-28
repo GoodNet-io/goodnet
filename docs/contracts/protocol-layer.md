@@ -258,9 +258,10 @@ the kernel may interpret them.
 
 ## 10. Cross-references
 
-- Wire details for the current mesh-framing implementation:
-  `docs/contracts/gnet-protocol.md`.
-- Security layer contract: `docs/contracts/security-provider.md` (TBD).
-- Transport contract: `docs/contracts/transport.md` (TBD).
-- Handler contract: `docs/contracts/handler.md` (TBD).
-- Architectural decision log: `docs/ROADMAP.md` Phase 0 entry.
+- Wire details for the canonical mesh-framing implementation:
+  `gnet-protocol.md`.
+- Noise security: `noise-handshake.md`.
+- Transport ABI: `transport.md`.
+- Handler registration: `handler-registration.md`.
+- Trust-class policy: `security-trust.md`.
+- Architectural roadmap: `docs/ROADMAP.md`.
