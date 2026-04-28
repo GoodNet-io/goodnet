@@ -8,7 +8,7 @@ ships before the contracts that govern it.
 
 ## v0.1.0 — Bring-up (current)
 
-The kernel skeleton, the plugin C ABI, and the canonical security
+The kernel core, the plugin C ABI, and the canonical security
 crypto. Enough surface to write plugins against; not yet enough to
 move bytes between two nodes.
 

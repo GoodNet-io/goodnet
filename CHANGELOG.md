@@ -62,7 +62,7 @@ ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28
 
-The bring-up release. The kernel skeleton, the plugin C ABI, and the
+The bring-up release. The kernel core, the plugin C ABI, and the
 canonical security crypto are in place. Real transports and the
 security pipeline that drives the handshake land in v0.2.0; see
 [`docs/ROADMAP.md`](docs/ROADMAP.md).

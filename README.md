@@ -61,11 +61,11 @@ The kernel does not pick a use case; the SDK and plugins do.
 
 ## Status
 
-`v0.1.0` — bring-up release. The kernel skeleton, the plugin C ABI, and
-the canonical security crypto have landed. Real transports, the
-security pipeline that drives the handshake, the NAT-traversal stack,
-and the multi-path scheduler are on the [roadmap](docs/ROADMAP.md) for
-v0.2.0 and beyond.
+`v0.1.0` — bring-up release. The kernel core, the plugin C ABI,
+and the canonical security crypto have landed. Real transports,
+the security pipeline that drives the handshake, the NAT-traversal
+stack, and the multi-path scheduler are on the [roadmap](docs/ROADMAP.md)
+for v0.2.0 and beyond.
 
 What is in v0.1.0:
 
