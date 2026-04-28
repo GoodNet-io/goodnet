@@ -155,13 +155,24 @@ gn_result_t thunk_send(void* host_ctx,
             std::vector<std::uint8_t> cipher;
             const gn_result_t rc = session->encrypt_transport(*framed, cipher);
             if (rc != GN_OK) return rc;
-            return trans->vtable->send(trans->self, conn,
-                                        cipher.data(), cipher.size());
+            const auto send_rc = trans->vtable->send(trans->self, conn,
+                                                      cipher.data(),
+                                                      cipher.size());
+            if (send_rc == GN_OK) {
+                pc->kernel->connections().add_outbound(
+                    conn, cipher.size(), 1);
+            }
+            return send_rc;
         }
     }
 
-    return trans->vtable->send(trans->self, conn,
-                               framed->data(), framed->size());
+    const auto send_rc = trans->vtable->send(trans->self, conn,
+                                              framed->data(), framed->size());
+    if (send_rc == GN_OK) {
+        pc->kernel->connections().add_outbound(
+            conn, framed->size(), 1);
+    }
+    return send_rc;
 }
 
 gn_result_t thunk_find_conn_by_pk(void* host_ctx,
@@ -365,6 +376,9 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
         ev.trust     = rec->trust;
         ev.remote_pk = rec->remote_pk;
     }
+    /// Persist the queue depth on the record so `get_endpoint`
+    /// surfaces the same value that just hit subscribers.
+    pc->kernel->connections().set_pending_bytes(conn, pending_bytes);
     pc->kernel->on_conn_event().fire(ev);
     return GN_OK;
 }
@@ -635,6 +649,12 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+
+    /// Account inbound traffic on the per-conn record; this counts
+    /// every transport-delivered byte regardless of whether the
+    /// payload is handshake noise, encrypted application data, or
+    /// plaintext for null-security stacks. One frame per call site.
+    pc->kernel->connections().add_inbound(conn, size, 1);
 
     /// Route through the security session when one is bound to this
     /// connection. Handshake-phase bytes drive `advance_handshake`;
