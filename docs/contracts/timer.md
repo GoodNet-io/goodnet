@@ -154,11 +154,11 @@ deployments expose abuse.
 
 ## 7. Error returns
 
-| Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` | `GN_ERR_UNKNOWN_RECEIVER` |
+| Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` | `GN_ERR_INVALID_STATE` |
 |---|---|---|---|---|
-| `set_timer` | scheduled | host_ctx / fn / out_id null | quota hit | — |
+| `set_timer` | scheduled | host_ctx / fn / out_id null | quota hit | registry already shut down |
 | `cancel_timer` | cancelled or already gone | host_ctx null, id == `GN_INVALID_TIMER_ID` | — | — |
-| `post_to_executor` | enqueued | host_ctx / fn null | quota hit | — |
+| `post_to_executor` | enqueued | host_ctx / fn null | quota hit | registry already shut down |
 
 `cancel_timer` collapses "not found" into `GN_OK` so plugins do not
 race against the self-cleanup path on natural firing.
