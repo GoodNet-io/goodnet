@@ -59,6 +59,14 @@ void SecuritySession::close() noexcept {
     }
     state_ = nullptr;
     phase_.store(SecurityPhase::Closed, std::memory_order_release);
+    /// Drop any plaintext that never made it through the handshake.
+    /// `Transport` already drained the queue via `take_pending`; this
+    /// path covers a session that closed mid-handshake.
+    {
+        std::lock_guard lock(pending_mu_);
+        pending_.clear();
+    }
+    pending_bytes_.store(0, std::memory_order_release);
     /// Keys remain available to callers that need the channel-binding
     /// hash after close; they are zeroised by the provider's
     /// handshake_close per `noise-handshake.md` §5, but the SDK copy
@@ -168,6 +176,42 @@ gn_result_t SecuritySession::encrypt_transport(
         enc_out.free_fn(enc_out.bytes);
     }
     return GN_OK;
+}
+
+gn_result_t SecuritySession::enqueue_pending(
+    std::vector<std::uint8_t>&& bytes,
+    std::uint64_t hard_cap_bytes)
+{
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Handshake) {
+        return GN_ERR_INVALID_STATE;
+    }
+    const auto incoming = static_cast<std::uint64_t>(bytes.size());
+    /// Pre-check against the cap before locking. The atomic load may
+    /// observe a stale value, so the post-lock branch confirms.
+    if (hard_cap_bytes > 0 &&
+        pending_bytes_.load(std::memory_order_relaxed) + incoming
+            > hard_cap_bytes) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    std::lock_guard lock(pending_mu_);
+    if (hard_cap_bytes > 0 &&
+        pending_bytes_.load(std::memory_order_relaxed) + incoming
+            > hard_cap_bytes) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    pending_bytes_.fetch_add(incoming, std::memory_order_relaxed);
+    pending_.push_back(std::move(bytes));
+    return GN_OK;
+}
+
+std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
+    std::vector<std::vector<std::uint8_t>> out;
+    {
+        std::lock_guard lock(pending_mu_);
+        out.swap(pending_);
+    }
+    pending_bytes_.store(0, std::memory_order_release);
+    return out;
 }
 
 gn_result_t SecuritySession::decrypt_transport(

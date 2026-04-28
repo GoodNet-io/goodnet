@@ -38,6 +38,7 @@ gn_limits_t default_limits() noexcept {
     L.max_extensions              = GN_LIMITS_DEFAULT_MAX_EXTENSIONS;
     L.max_timers                  = GN_LIMITS_DEFAULT_MAX_TIMERS;
     L.max_pending_tasks           = GN_LIMITS_DEFAULT_MAX_PENDING_TASKS;
+    L.pending_handshake_bytes     = GN_LIMITS_DEFAULT_PENDING_HANDSHAKE_BYTES;
     L.max_storage_table_entries   = GN_LIMITS_DEFAULT_MAX_STORAGE_TABLE_ENTRIES;
     L.max_storage_value_bytes     = L.max_payload_bytes;
     return L;
@@ -63,6 +64,7 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     L.max_relay_ttl             = pick_u32(obj, "max_relay_ttl",            L.max_relay_ttl);
     L.max_plugins               = pick_u32(obj, "max_plugins",              L.max_plugins);
     L.max_extensions            = pick_u32(obj, "max_extensions",           L.max_extensions);
+    L.pending_handshake_bytes   = pick_u32(obj, "pending_handshake_bytes",   L.pending_handshake_bytes);
     L.max_storage_table_entries = pick_u64(obj, "max_storage_table_entries", L.max_storage_table_entries);
     L.max_storage_value_bytes   = pick_u64(obj, "max_storage_value_bytes",   L.max_storage_value_bytes);
     return L;

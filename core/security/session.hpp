@@ -126,6 +126,29 @@ public:
         return keys_;
     }
 
+    /// Buffer one outbound plaintext frame while the session is in
+    /// `Handshake` phase. Returns `GN_ERR_LIMIT_REACHED` when the
+    /// already-buffered byte count would exceed @p hard_cap_bytes,
+    /// `GN_ERR_INVALID_STATE` when called outside `Handshake` (the
+    /// `Transport` path encrypts directly; a `Closed` session has
+    /// nothing to drain into). Per `backpressure.md` §8.
+    [[nodiscard]] gn_result_t enqueue_pending(
+        std::vector<std::uint8_t>&& bytes,
+        std::uint64_t hard_cap_bytes);
+
+    /// Atomically remove every buffered plaintext from the queue and
+    /// return them in arrival order. The kernel calls this once
+    /// `advance_handshake` has moved the session to `Transport` so
+    /// the buffered bytes can be encrypted and pushed through the
+    /// transport. Idempotent — a second call returns an empty vector.
+    [[nodiscard]] std::vector<std::vector<std::uint8_t>> take_pending();
+
+    /// Sum of bytes currently buffered. Useful for tests and the
+    /// observability surface.
+    [[nodiscard]] std::uint64_t pending_bytes() const noexcept {
+        return pending_bytes_.load(std::memory_order_relaxed);
+    }
+
 private:
     /// Borrowed; lifetime tied to the SecurityRegistry entry.
     const gn_security_provider_vtable_t* vtable_ = nullptr;
@@ -138,6 +161,15 @@ private:
     gn_conn_id_t                conn_id_ = GN_INVALID_ID;
 
     gn_handshake_keys_t keys_{};
+
+    /// Plaintext frames buffered while in `Handshake` phase. Drained
+    /// by `take_pending` once the session reaches `Transport`. Guarded
+    /// by `pending_mu_` because `enqueue_pending` (kernel send path)
+    /// and `take_pending` (kernel inbound path) may run on different
+    /// threads — see the contract note in §8 of `backpressure.md`.
+    mutable std::mutex pending_mu_;
+    std::vector<std::vector<std::uint8_t>> pending_;
+    std::atomic<std::uint64_t>             pending_bytes_{0};
 };
 
 

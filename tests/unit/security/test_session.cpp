@@ -223,6 +223,98 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
     EXPECT_NE(session.decrypt_transport({}, out), GN_OK);
 }
 
+// ── Pending handshake queue (backpressure.md §8) ───────────────────
+
+namespace {
+
+SecuritySession make_handshake_session(FakeProvider& prov,
+                                        const gn_security_provider_vtable_t& vt) {
+    SecuritySession session;
+    EXPECT_EQ(session.open(&vt, &prov, /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    return session;
+}
+
+}  // namespace
+
+TEST(SecuritySessionPending, EnqueueDuringHandshakeAccumulatesBytes) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    auto session = make_handshake_session(prov, vt);
+
+    EXPECT_EQ(session.enqueue_pending({1, 2, 3}, /*cap*/ 0), GN_OK);
+    EXPECT_EQ(session.enqueue_pending({4, 5}, /*cap*/ 0), GN_OK);
+    EXPECT_EQ(session.pending_bytes(), 5u);
+}
+
+TEST(SecuritySessionPending, EnqueueRespectsHardCap) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    auto session = make_handshake_session(prov, vt);
+
+    /// First enqueue fits under the cap; second pushes over and
+    /// must be rejected.
+    EXPECT_EQ(session.enqueue_pending(std::vector<std::uint8_t>(1024, 0xab),
+                                       /*cap*/ 1500),
+              GN_OK);
+    EXPECT_EQ(session.enqueue_pending(std::vector<std::uint8_t>(1024, 0xcd),
+                                       /*cap*/ 1500),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(session.pending_bytes(), 1024u);
+}
+
+TEST(SecuritySessionPending, EnqueueRejectedOutsideHandshake) {
+    FakeProvider prov;
+    prov.complete_immediately = true;
+    auto vt = make_vtable();
+    auto session = make_handshake_session(prov, vt);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+    ASSERT_EQ(session.phase(), SecurityPhase::Transport);
+
+    EXPECT_EQ(session.enqueue_pending({1, 2, 3}, /*cap*/ 0),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(SecuritySessionPending, TakePendingDrainsAndResetsCounter) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    auto session = make_handshake_session(prov, vt);
+
+    ASSERT_EQ(session.enqueue_pending({1, 2}, 0), GN_OK);
+    ASSERT_EQ(session.enqueue_pending({3, 4, 5}, 0), GN_OK);
+
+    auto drained = session.take_pending();
+    ASSERT_EQ(drained.size(), 2u);
+    EXPECT_EQ(drained[0], (std::vector<std::uint8_t>{1, 2}));
+    EXPECT_EQ(drained[1], (std::vector<std::uint8_t>{3, 4, 5}));
+    EXPECT_EQ(session.pending_bytes(), 0u);
+    /// Second call returns empty — `take_pending` is the destructive
+    /// drain.
+    EXPECT_TRUE(session.take_pending().empty());
+}
+
+TEST(SecuritySessionPending, CloseDropsBufferedBytes) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    auto session = make_handshake_session(prov, vt);
+
+    ASSERT_EQ(session.enqueue_pending({1, 2, 3}, 0), GN_OK);
+    EXPECT_EQ(session.pending_bytes(), 3u);
+
+    session.close();
+    EXPECT_EQ(session.pending_bytes(), 0u);
+    EXPECT_TRUE(session.take_pending().empty());
+}
+
 TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
     FakeProvider prov;
     auto vt = make_vtable();

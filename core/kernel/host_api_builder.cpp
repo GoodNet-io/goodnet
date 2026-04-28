@@ -143,13 +143,17 @@ gn_result_t thunk_send(void* host_ctx,
 
     /// Encrypt the framed envelope through the connection's security
     /// session when one is bound and has reached the transport phase.
-    /// During the handshake phase application data is rejected; the
-    /// no-session path (loopback / null-security per security-trust.md
-    /// §4) sends the framed bytes verbatim.
+    /// While the session is in Handshake the framed plaintext is
+    /// buffered on the session's pending queue and drained once the
+    /// transport keys come up (`backpressure.md` §8). The no-session
+    /// path (loopback / null-security per `security-trust.md` §4)
+    /// sends the framed bytes verbatim.
     auto session = pc->kernel->sessions().find(conn);
     if (session != nullptr) {
         if (session->phase() == SecurityPhase::Handshake) {
-            return GN_ERR_INVALID_ENVELOPE;
+            const auto cap = pc->kernel->limits().pending_handshake_bytes;
+            return session->enqueue_pending(std::move(*framed),
+                                             static_cast<std::uint64_t>(cap));
         }
         if (session->phase() == SecurityPhase::Transport) {
             std::vector<std::uint8_t> cipher;
@@ -502,6 +506,38 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
     return trans->vtable->send(trans->self, conn, bytes.data(), bytes.size());
 }
 
+/// Drain the session's pending-handshake queue once it has reached
+/// the Transport phase. Each buffered plaintext is encrypted and
+/// pushed through the transport in arrival order. Per-conn `add_outbound`
+/// is folded in for every byte that left the kernel; a transport
+/// hard-cap rejection (`GN_ERR_LIMIT_REACHED`) drops the frame on the
+/// floor — the producer already received `GN_OK` from `enqueue_pending`
+/// and observes the loss through the watermark events. Per
+/// `backpressure.md` §8.
+void drain_handshake_pending(PluginContext* pc,
+                              gn_conn_id_t conn,
+                              SecuritySession& session,
+                              std::string_view transport_scheme) {
+    auto pending = session.take_pending();
+    if (pending.empty()) return;
+
+    auto trans = pc->kernel->transports().find_by_scheme(transport_scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) {
+        return;
+    }
+    for (auto& plaintext : pending) {
+        std::vector<std::uint8_t> cipher;
+        if (session.encrypt_transport(plaintext, cipher) != GN_OK) {
+            continue;
+        }
+        const auto rc = trans->vtable->send(
+            trans->self, conn, cipher.data(), cipher.size());
+        if (rc == GN_OK) {
+            pc->kernel->connections().add_outbound(conn, cipher.size(), 1);
+        }
+    }
+}
+
 /// True iff @p pk has at least one non-zero byte; the kernel uses
 /// all-zero as the "unknown peer" sentinel on inbound connections.
 bool pk_is_known(const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]) noexcept {
@@ -634,6 +670,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
             }
             pc->kernel->on_conn_event().fire(ev);
         }
+        drain_handshake_pending(pc, conn, *session, rec->transport_scheme);
     }
     return GN_OK;
 }
@@ -693,6 +730,8 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                     }
                     pc->kernel->on_conn_event().fire(ev);
                 }
+                drain_handshake_pending(pc, conn, *session,
+                                         rec->transport_scheme);
             }
             /// Handshake bytes never carry application payload — the
             /// protocol layer is not consulted until Transport phase.
