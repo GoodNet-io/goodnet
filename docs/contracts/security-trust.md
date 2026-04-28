@@ -63,10 +63,12 @@ properties:
 |---|---|
 | TCP from public address | `Untrusted` |
 | TCP from `127.0.0.1` / `::1` | `Loopback` |
+| UDP from public address | `Untrusted` |
+| UDP from `127.0.0.1` / `::1` | `Loopback` |
 | IPC (Unix socket) | `Loopback` |
-| Loopback after Noise handshake | unchanged (`Loopback` already exceeds `Peer`) |
-| Public TCP after Noise handshake | upgrade to `Peer` |
 | Intra-process pipe | `IntraNode` |
+| `Untrusted` after Noise handshake | upgrade to `Peer` |
+| `Loopback` / `IntraNode` after handshake | unchanged — gate refuses any transition off these classes |
 
 The kernel verifies the upgrade path on every transition:
 
@@ -85,7 +87,7 @@ declared set of permitted TrustClass values at registration. The
 kernel enumerates the cartesian product on `Wire` phase and refuses
 unsafe combinations **before** reaching `Running`.
 
-The stack-policy descriptor (declared in `sdk/stack.h` Phase 3) carries:
+The stack-policy descriptor carries:
 
 | Field | Purpose |
 |---|---|
