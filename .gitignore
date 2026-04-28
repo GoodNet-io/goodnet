@@ -14,6 +14,9 @@
 !README.md
 !CHANGELOG.md
 
+# Git hooks (opt-in via `nix run .#install-hooks`)
+!.githooks/*
+
 # Editor configs
 !.vscode/*.json
 

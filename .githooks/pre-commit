@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+# Pre-commit hook: run clang-tidy strict on staged C++ files so CI's
+# `--warnings-as-errors=*` lint gate cannot surprise the author at PR
+# time. Bypass with `git commit --no-verify` if a staged change is
+# intentionally noisy (rare; prefer fixing the diagnostic).
+#
+# Wires through CMake's `compile_commands.json` from the `build/`
+# directory; `nix run .#dev` populates it.
+set -euo pipefail
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR \
+    | grep -E '\.(cpp|hpp|h|cc)$' || true)
+
+[ -z "$staged" ] && exit 0
+
+if [ ! -f build/compile_commands.json ]; then
+    echo "pre-commit: build/compile_commands.json missing — run \`nix run .#dev\` first" >&2
+    echo "pre-commit: bypass with \`git commit --no-verify\` if intentional" >&2
+    exit 1
+fi
+
+failed=0
+while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    if ! clang-tidy --quiet --warnings-as-errors='*' -p build "$f" 2>&1 \
+        | grep -E "error:|treated as errors"; then
+        :
+    else
+        echo "pre-commit: clang-tidy failed on $f" >&2
+        failed=$((failed + 1))
+    fi
+done <<< "$staged"
+
+if [ $failed -gt 0 ]; then
+    echo "" >&2
+    echo "pre-commit: $failed file(s) failed strict tidy. Fix or run with --no-verify." >&2
+    exit 1
+fi
+
+exit 0

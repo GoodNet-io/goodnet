@@ -89,15 +89,28 @@
             ' _ "$@"
           '';
 
+          # Opt-in: wire `.githooks/` into the local clone so
+          # `git commit` runs `clang-tidy --warnings-as-errors=*` on
+          # staged C++ files. Mirrors the CI strict lint gate at
+          # commit time so PR feedback never trips on a diagnostic
+          # the author already had in front of them.
+          gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
+            set -euo pipefail
+            git config core.hooksPath .githooks
+            echo ">>> hooks installed: .githooks/"
+            echo "    bypass any single commit with: git commit --no-verify"
+          '';
+
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
         in
         {
-          default   = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
-          dev       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
-          build     = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          test      = { type = "app"; program = "${gn-test}/bin/gn-test"; };
-          test-asan = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
-          test-tsan = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
+          default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
+          dev           = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
+          build         = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          test          = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          test-asan     = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
+          test-tsan     = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
+          install-hooks = { type = "app"; program = "${gn-install-hooks}/bin/gn-install-hooks"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -130,11 +143,12 @@
               cat <<'EOF'
 
 GoodNet devShell  (gcc15, C++23)
-  nix run .#         — Debug build (incremental)
-  nix run .#build    — Release build
-  nix run .#test     — Debug build + ctest
+  nix run .#               — Debug build (incremental)
+  nix run .#build          — Release build
+  nix run .#test           — Debug build + ctest
   nix run .#test-asan
   nix run .#test-tsan
+  nix run .#install-hooks  — wire .githooks/ into this clone
 
 EOF
             '';
