@@ -30,8 +30,13 @@ gn_result_t (*register_handler)(void* host_ctx,
 
 Rules:
 
-- `protocol_id` matches an active `IProtocolLayer::protocol_id()`. Otherwise
-  the registration is rejected with `GN_ERR_UNKNOWN_PROTOCOL`.
+- `protocol_id` is a non-empty string scoping the dispatch
+  namespace; a registration against an unloaded protocol is
+  accepted but its handlers never receive envelopes. An empty
+  string is rejected with `GN_ERR_NULL_ARG`. Chain capacity
+  exhaustion returns `GN_ERR_LIMIT_REACHED`; `msg_id == 0` is
+  reserved as the unset sentinel and rejected with
+  `GN_ERR_INVALID_ENVELOPE`.
 - `msg_id` is the per-protocol identifier; namespaces are isolated. The
   same `msg_id = 0x42` under `"gnet-v1"` and a future `"mesh-v2"` are
   unrelated.
