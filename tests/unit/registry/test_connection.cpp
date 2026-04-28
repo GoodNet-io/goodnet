@@ -85,11 +85,14 @@ TEST(ConnectionRegistry_Insert, IdRoundTrip) {
 
     auto fetched = reg.find_by_id(id);
     ASSERT_TRUE(fetched.has_value());
-    EXPECT_EQ(fetched->id, id);
-    EXPECT_EQ(fetched->uri, "tcp://10.0.0.1:5000");
-    EXPECT_EQ(fetched->remote_pk, pk);
-    EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
-    EXPECT_EQ(fetched->transport_scheme, "tcp");
+    if (fetched.has_value()) {
+        const auto& got = *fetched;
+        EXPECT_EQ(got.id, id);
+        EXPECT_EQ(got.uri, "tcp://10.0.0.1:5000");
+        EXPECT_EQ(got.remote_pk, pk);
+        EXPECT_EQ(got.trust, GN_TRUST_PEER);
+        EXPECT_EQ(got.transport_scheme, "tcp");
+    }
 }
 
 TEST(ConnectionRegistry_Insert, UriIndexRoundTrip) {
@@ -103,9 +106,13 @@ TEST(ConnectionRegistry_Insert, UriIndexRoundTrip) {
     ASSERT_TRUE(by_uri.has_value());
     auto by_id  = reg.find_by_id(id);
     ASSERT_TRUE(by_id.has_value());
-    EXPECT_EQ(by_uri->id, by_id->id);
-    EXPECT_EQ(by_uri->uri, by_id->uri);
-    EXPECT_EQ(by_uri->remote_pk, by_id->remote_pk);
+    if (by_uri.has_value() && by_id.has_value()) {
+        const auto& uri_rec = *by_uri;
+        const auto& id_rec  = *by_id;
+        EXPECT_EQ(uri_rec.id, id_rec.id);
+        EXPECT_EQ(uri_rec.uri, id_rec.uri);
+        EXPECT_EQ(uri_rec.remote_pk, id_rec.remote_pk);
+    }
 }
 
 TEST(ConnectionRegistry_Insert, PkIndexRoundTrip) {
@@ -119,9 +126,13 @@ TEST(ConnectionRegistry_Insert, PkIndexRoundTrip) {
     ASSERT_TRUE(by_pk.has_value());
     auto by_id = reg.find_by_id(id);
     ASSERT_TRUE(by_id.has_value());
-    EXPECT_EQ(by_pk->id, by_id->id);
-    EXPECT_EQ(by_pk->uri, by_id->uri);
-    EXPECT_EQ(by_pk->remote_pk, by_id->remote_pk);
+    if (by_pk.has_value() && by_id.has_value()) {
+        const auto& pk_rec = *by_pk;
+        const auto& id_rec = *by_id;
+        EXPECT_EQ(pk_rec.id, id_rec.id);
+        EXPECT_EQ(pk_rec.uri, id_rec.uri);
+        EXPECT_EQ(pk_rec.remote_pk, id_rec.remote_pk);
+    }
 }
 
 // ─── duplicate rejection (atomicity) ────────────────────────────────
@@ -313,14 +324,17 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
 // ─── pk hashing distribution ────────────────────────────────────────
 
 TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
-    constexpr int kCount = 1024;
+    constexpr std::size_t kCount = 1024;
     ConnectionRegistry reg;
 
-    std::mt19937_64 rng(0xC0FFEE);
+    /// Deterministic seed required for reproducible test failures: if a
+    /// hashing regression hits one specific key pattern we want CI to
+    /// reproduce the exact key set on every run.
+    std::mt19937_64 rng(0xC0FFEE);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
     std::vector<PublicKey> keys;
     keys.reserve(kCount);
 
-    for (int i = 0; i < kCount; ++i) {
+    for (std::size_t i = 0; i < kCount; ++i) {
         PublicKey pk{};
         for (auto& b : pk) b = static_cast<std::uint8_t>(rng() & 0xFF);
         const gn_conn_id_t id = reg.alloc_id();
@@ -330,13 +344,91 @@ TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
         keys.push_back(pk);
     }
 
-    EXPECT_EQ(reg.size(), static_cast<std::size_t>(kCount));
+    EXPECT_EQ(reg.size(), kCount);
 
     /// Every randomly generated pk must round-trip through the index.
-    for (int i = 0; i < kCount; ++i) {
+    for (std::size_t i = 0; i < kCount; ++i) {
         auto rec = reg.find_by_pk(keys[i]);
         ASSERT_TRUE(rec.has_value()) << "pk-lookup miss at iter " << i;
-        EXPECT_EQ(rec->remote_pk, keys[i]);
+        if (rec.has_value()) {
+            const auto& r = *rec;
+            EXPECT_EQ(r.remote_pk, keys[i]);
+        }
+    }
+}
+
+// ─── upgrade_trust ──────────────────────────────────────────────────
+
+TEST(ConnectionRegistry_UpgradeTrust, UnknownIdRejected) {
+    ConnectionRegistry reg;
+    EXPECT_EQ(reg.upgrade_trust(reg.alloc_id(), GN_TRUST_PEER),
+              GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(reg.upgrade_trust(GN_INVALID_ID, GN_TRUST_PEER),
+              GN_ERR_NULL_ARG);
+}
+
+TEST(ConnectionRegistry_UpgradeTrust, UntrustedToPeerSucceeds) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    auto rec = make_record(id, "tcp://1.2.3.4:9000", make_pk(0xAA));
+    rec.trust = GN_TRUST_UNTRUSTED;
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+
+    EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_PEER), GN_OK);
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
+    }
+}
+
+TEST(ConnectionRegistry_UpgradeTrust, IdentityIsNoOpSuccess) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    auto rec = make_record(id, "tcp://h:1", make_pk(1));
+    rec.trust = GN_TRUST_LOOPBACK;
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+
+    EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_LOOPBACK), GN_OK);
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->trust, GN_TRUST_LOOPBACK);
+    }
+}
+
+TEST(ConnectionRegistry_UpgradeTrust, LoopbackToPeerRejected) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    auto rec = make_record(id, "tcp://h:2", make_pk(2));
+    rec.trust = GN_TRUST_LOOPBACK;
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+
+    /// `gn_trust_can_upgrade(LOOPBACK, PEER) == 0` — registry leaves
+    /// the record untouched.
+    EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_PEER), GN_ERR_LIMIT_REACHED);
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->trust, GN_TRUST_LOOPBACK);
+    }
+}
+
+TEST(ConnectionRegistry_UpgradeTrust, PeerToUntrustedRejected) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    auto rec = make_record(id, "tcp://h:3", make_pk(3));
+    rec.trust = GN_TRUST_PEER;
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+
+    /// Downgrade is forbidden by contract; security weakening is a
+    /// closure event, never a registry mutation.
+    EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_UNTRUSTED),
+              GN_ERR_LIMIT_REACHED);
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
     }
 }
 
