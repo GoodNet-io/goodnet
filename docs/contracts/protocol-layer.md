@@ -57,8 +57,10 @@ typedef struct gn_message_t {
   implementing `frame` must guarantee the same on outbound.
 - `gn_message_t` itself lives on the stack of the dispatching thread; its
   pointer **must not** escape `handle_message`.
-- Cross-thread retention requires `gn_message_dup(const gn_message_t*)` (SDK
-  helper, allocates owned copy of payload + struct).
+- Cross-thread or async retention is the consumer's responsibility:
+  copy the `payload` bytes into a buffer the consumer owns before
+  yielding. The kernel does not extend `payload`'s lifetime past the
+  dispatch return.
 
 ### 2.3 ZERO `receiver_pk` (broadcast)
 

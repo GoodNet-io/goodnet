@@ -135,8 +135,10 @@ typedef enum gn_result_e {
  *
  * @par Lifetime
  * `payload` is *borrowed* for the duration of the synchronous handler
- * dispatch. Cross-thread retention requires copying via @ref gn_message_dup
- * (not implemented in this skeleton).
+ * dispatch. Handlers that need to retain the bytes past return — the
+ * cross-thread or async-pipeline case — copy them into a buffer they
+ * own before yielding. The kernel never extends `payload`'s
+ * lifetime past the dispatch return.
  *
  * @par Identity sourcing
  * Plugins populate the public-key fields from either the connection context

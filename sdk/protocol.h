@@ -37,7 +37,7 @@ typedef struct gn_deframe_result_s {
     const gn_message_t* messages;        /**< zero or more envelopes */
     size_t              count;
     size_t              bytes_consumed;  /**< wire bytes the kernel may discard */
-    void*               _reserved[2];
+    void*               _reserved[4];
 } gn_deframe_result_t;
 
 /**
