@@ -87,9 +87,12 @@ TEST(ParseUri, MissingPort) {
     EXPECT_FALSE(::gn::parse_uri("host:").has_value());
 }
 
-TEST(ParseUri, ZeroPortRejected) {
-    EXPECT_FALSE(::gn::parse_uri("tcp://127.0.0.1:0").has_value());
-    EXPECT_FALSE(::gn::parse_uri("h:0").has_value());
+TEST(ParseUri, ZeroPortAccepted) {
+    /// uri.md §5 — port 0 is syntactically valid for the parser;
+    /// `listen()` uses it for OS-allocated ephemeral ports.
+    auto r = ::gn::parse_uri("tcp://127.0.0.1:0");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->port, 0);
 }
 
 TEST(ParseUri, RejectsTrailingGarbage) {

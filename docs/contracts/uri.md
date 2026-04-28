@@ -97,7 +97,12 @@ inputs **must** fail:
 3. Query-only input: `?peer=abc`.
 4. Missing port on host:port form: `tcp://127.0.0.1`, `host:`,
    bare `host`.
-5. Port zero: `tcp://h:0`.
+5. Port zero is **accepted** by the parser. Port 0 has a real
+   meaning on the listen side — the OS allocates an ephemeral port
+   and the actual value is read back through the transport's
+   bound-socket query. The connect side treats port 0 as an error
+   per its own contract; the parser does not encode that policy
+   because it is application-level.
 6. Trailing garbage in the port segment: `tcp://h:9000x`,
    `tcp://h:xyz`. The query is split off first, so
    `tcp://h:9000?peer=...` is **valid** with port 9000.
