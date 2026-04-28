@@ -183,9 +183,22 @@ The kernel guarantees:
 - A plugin **must not** retain `api` past `gn_plugin_shutdown`. Posting
   a task that fires after shutdown and dereferences `api` would be a
   use-after-free.
+- A slot's presence in `api_size` does **not** imply a non-null
+  function pointer. Forward-looking entries that the current
+  release does not fulfil are zero-initialised; consumers gate
+  their call sites on `if (api->slot)` (or use the `GN_API_HAS`
+  macro from `sdk/abi.h` which combines size-prefix presence with
+  a null-pointer check).
 
 Per `plugin-lifetime.md` §4, async tasks capture a weak observer of the
 plugin's reference-counted handle and upgrade before using `api`.
+
+`unregister_extension` is intentionally not on `host_api_t`: the
+kernel reaps a plugin's extensions automatically on
+`gn_plugin_shutdown` so the C ABI does not need a separate
+withdrawal entry. Plugins that re-publish an extension under a
+different version string between sessions rely on that automatic
+reap, not a manual unregister.
 
 ---
 
