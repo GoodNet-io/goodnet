@@ -22,10 +22,16 @@ fi
 failed=0
 while IFS= read -r f; do
     [ -f "$f" ] || continue
-    if ! clang-tidy --quiet --warnings-as-errors='*' -p build "$f" 2>&1 \
-        | grep -E "error:|treated as errors"; then
-        :
-    else
+
+    # Capture clang-tidy output instead of piping through grep — under
+    # `set -o pipefail` clang-tidy's non-zero exit (warnings-as-errors
+    # tripped) makes the whole pipe non-zero even when grep matched, so
+    # the previous `! clang-tidy | grep` form silently fell into the
+    # success branch. Match against the captured buffer instead.
+    output=$(clang-tidy --quiet --warnings-as-errors='*' \
+                -p build "$f" 2>&1 || true)
+    if printf '%s\n' "$output" | grep -qE "error:|treated as errors"; then
+        printf '%s\n' "$output" >&2
         echo "pre-commit: clang-tidy failed on $f" >&2
         failed=$((failed + 1))
     fi
