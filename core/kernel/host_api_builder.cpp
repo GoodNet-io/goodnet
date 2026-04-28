@@ -40,6 +40,20 @@ namespace {
     return env;
 }
 
+/// Loader-side host-API entries — `notify_connect` /
+/// `notify_inbound_bytes` / `notify_disconnect` / `kick_handshake`
+/// — are reserved for transport plugins. A handler / security /
+/// protocol plugin attempting to call them must be rejected up
+/// front: a misbehaving handler that allocated phantom connection
+/// records would corrupt the registry. The descriptor's `kind`
+/// field declares the plugin's role; `Unknown` is permissive for
+/// legacy descriptors that predate the field.
+[[nodiscard]] bool transport_role(const PluginContext* pc) noexcept {
+    if (pc == nullptr) return false;
+    return pc->kind == GN_PLUGIN_KIND_TRANSPORT ||
+           pc->kind == GN_PLUGIN_KIND_UNKNOWN;
+}
+
 /// Stable name per `RouteOutcome` value for diagnostic logs.
 [[nodiscard]] const char* route_outcome_str(RouteOutcome o) noexcept {
     switch (o) {
@@ -378,6 +392,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
                                  gn_conn_id_t* out_conn) {
     if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
     /// active layer declares which trust classes it may deframe;
@@ -446,6 +461,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
 gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     auto session = pc->kernel->sessions().find(conn);
     if (!session) return GN_OK;  /// no security on this conn
@@ -481,6 +497,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                                        size_t size) {
     if (!host_ctx || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
@@ -640,6 +657,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
                                     gn_result_t /*reason*/) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
     pc->kernel->sessions().destroy(conn);
     return pc->kernel->connections().erase_with_index(conn);
 }

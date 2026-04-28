@@ -18,6 +18,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+
+#include <sdk/plugin.h>
 #include <vector>
 
 #include <sdk/types.h>
@@ -31,6 +33,7 @@ struct ServiceDescriptor {
     std::string              plugin_name;
     std::vector<std::string> ext_requires;
     std::vector<std::string> ext_provides;
+    gn_plugin_kind_t         kind{GN_PLUGIN_KIND_UNKNOWN};
 };
 
 class ServiceResolver {

@@ -70,6 +70,7 @@ ServiceDescriptor descriptor_from_symbol(const PluginSymbols& syms,
     if (syms.descriptor != nullptr) {
         if (const auto* d = syms.descriptor()) {
             sd.plugin_name = d->name ? d->name : path_fallback;
+            sd.kind        = d->kind;
             if (d->ext_requires) {
                 for (const char* const* p = d->ext_requires; *p != nullptr; ++p) {
                     sd.ext_requires.emplace_back(*p);
@@ -121,9 +122,10 @@ gn_result_t PluginManager::open_one(const std::string& path,
         return GN_ERR_VERSION_MISMATCH;
     }
 
-    out.descriptor = descriptor_from_symbol(syms, path);
+    out.descriptor      = descriptor_from_symbol(syms, path);
     out.ctx.plugin_name = out.descriptor.plugin_name;
-    out.ctx.kernel = &kernel_;
+    out.ctx.kind        = out.descriptor.kind;
+    out.ctx.kernel      = &kernel_;
     out.api = build_host_api(out.ctx);
     out.self = nullptr;
     out.registered = false;
@@ -177,8 +179,12 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         for (auto& inst : instances_) {
             if (inst.path.empty()) continue;
             if (inst.descriptor.plugin_name == d.plugin_name) {
-                reordered.push_back(std::move(inst));
+                /// Mark the slot consumed *before* the move so the
+                /// post-move access doesn't read a moved-from value.
+                /// `inst.path.clear()` is the sentinel that drives
+                /// the outer continue.
                 inst.path.clear();
+                reordered.push_back(std::move(inst));
                 break;
             }
         }

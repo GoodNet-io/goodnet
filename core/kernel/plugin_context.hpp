@@ -10,13 +10,16 @@
 
 #include <string>
 
+#include <sdk/plugin.h>
+
 namespace gn::core {
 
 class Kernel;
 
 struct PluginContext {
-    std::string plugin_name;   ///< stable identifier; e.g. `"libgoodnet_tcp"`
-    Kernel*     kernel{nullptr};
+    std::string      plugin_name;   ///< stable identifier; e.g. `"libgoodnet_tcp"`
+    gn_plugin_kind_t kind{GN_PLUGIN_KIND_UNKNOWN};
+    Kernel*          kernel{nullptr};
 };
 
 } // namespace gn::core
