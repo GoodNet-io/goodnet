@@ -39,6 +39,7 @@ target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
         GoodNet::protocol_gnet
+        GoodNet::protocol_raw
         goodnet_noise_objects
         goodnet_tcp_objects
         goodnet_ipc_objects
