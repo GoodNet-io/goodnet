@@ -96,6 +96,16 @@ typed extension API.
   transport). Self-contained TCP socket; full `wss://` support
   rides on top once the `gn.transport.tls` composer plugin
   ships.
+- **Service executor** — `core/kernel/timer_registry`. The kernel
+  owns a single-thread executor reserved for plugin service tasks.
+  Three new `host_api` slots route to it: `set_timer` (one-shot
+  callback after `delay_ms`), `cancel_timer` (idempotent), and
+  `post_to_executor` (run-now task). Every scheduled entry holds
+  a `weak_ptr<void>` of the calling plugin's quiescence sentinel
+  (`plugin-lifetime.md` §4); a callback whose plugin already
+  unloaded is dropped silently. `gn_limits_t::max_timers` and
+  `max_pending_tasks` (default `4096`) cap the queue. New
+  `docs/contracts/timer.md`. SDK_VERSION_MINOR bumped to 1.4.
 - **TLS transport** — `goodnet_transport_tls.so` registers `tls://`
   and the `gn.transport.tls` extension. Asio-on-OpenSSL
   `ssl::stream<tcp::socket>` with TLS 1.2 minimum, sslv2/sslv3/
@@ -118,7 +128,7 @@ typed extension API.
 
 ### Tests
 
-454 across unit, integration, scenario, and property suites.
+465 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

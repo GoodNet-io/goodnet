@@ -264,6 +264,31 @@ gn_result_t thunk_unregister_extension(void* host_ctx, const char* name) {
     return pc->kernel->extensions().unregister_extension(name);
 }
 
+gn_result_t thunk_set_timer(void* host_ctx,
+                             std::uint32_t delay_ms,
+                             gn_task_fn_t fn,
+                             void* user_data,
+                             gn_timer_id_t* out_id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->timers().set_timer(
+        delay_ms, fn, user_data, pc->plugin_anchor, out_id);
+}
+
+gn_result_t thunk_cancel_timer(void* host_ctx, gn_timer_id_t id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->timers().cancel_timer(id);
+}
+
+gn_result_t thunk_post_to_executor(void* host_ctx,
+                                    gn_task_fn_t fn,
+                                    void* user_data) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->timers().post(fn, user_data, pc->plugin_anchor);
+}
+
 gn_result_t thunk_register_transport(void* host_ctx,
                                      const char* scheme,
                                      const gn_transport_vtable_t* vtable,
@@ -690,6 +715,10 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.query_extension_checked = &thunk_query_extension_checked;
     a.register_extension      = &thunk_register_extension;
     a.unregister_extension    = &thunk_unregister_extension;
+
+    a.set_timer               = &thunk_set_timer;
+    a.cancel_timer            = &thunk_cancel_timer;
+    a.post_to_executor        = &thunk_post_to_executor;
 
     a.limits                = &thunk_limits;
     a.log                   = &thunk_log;

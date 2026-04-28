@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
 **Implements:** size-prefix evolution per `abi-evolution.md`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-04-28
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---
@@ -150,6 +150,17 @@ typedef struct host_api_s {
     /* under the freshly-allocated conn_id before bytes ride out. The    */
     /* transport calls kick_handshake once that registration is done.    */
     gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
+
+    /* ── Service executor (timer.md is the authoritative spec) ──────── */
+    gn_result_t (*set_timer)(void* host_ctx,
+                             uint32_t delay_ms,
+                             gn_task_fn_t fn,
+                             void* user_data,
+                             gn_timer_id_t* out_id);
+    gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
+    gn_result_t (*post_to_executor)(void* host_ctx,
+                                    gn_task_fn_t fn,
+                                    void* user_data);
 
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];
@@ -316,3 +327,24 @@ flags and the framing magic, and the kernel applies the same `msg_id
 
 Implementations live in `core/kernel/host_api_builder.cpp`; the rate
 limiter primitive is `core/util/token_bucket.hpp`.
+
+---
+
+## 9. Service executor
+
+The `set_timer`, `cancel_timer`, and `post_to_executor` slots route
+to a kernel-owned single-thread executor reserved for plugin
+service tasks. `timer.md` is the authoritative specification:
+
+- §2 — slot signatures and invariants
+- §3 — single-thread serialisation guarantee
+- §4 — lifetime safety, anchor-based dispatch, drain on plugin
+  unload
+- §5 — periodic work pattern (one-shot re-arm)
+- §6 — resource bounds (`gn_limits_t::max_timers`,
+  `max_pending_tasks`)
+- §7 — error returns
+
+A plugin **must** route its async work through these slots; private
+threads outliving `gn_plugin_shutdown` violate `plugin-lifetime.md`
+§8 and are not supported.

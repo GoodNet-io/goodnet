@@ -44,6 +44,10 @@ typedef struct gn_limits_s {
     uint32_t max_plugins;                /**< dlopen ceiling */
     uint32_t max_extensions;             /**< extension registry size */
 
+    /* Service executor (timer.md §6) */
+    uint32_t max_timers;                 /**< active one-shot timers */
+    uint32_t max_pending_tasks;          /**< queued post_to_executor tasks */
+
     /* Storage */
     uint64_t max_storage_table_entries;
     uint64_t max_storage_value_bytes;
@@ -66,6 +70,8 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_MAX_EXTENSIONS               256u
 #define GN_LIMITS_DEFAULT_MAX_STORAGE_TABLE_ENTRIES    10000ull
 #define GN_LIMITS_DEFAULT_MAX_RELAY_TTL_CEIL           8u
+#define GN_LIMITS_DEFAULT_MAX_TIMERS                   4096u
+#define GN_LIMITS_DEFAULT_MAX_PENDING_TASKS            4096u
 
 #ifdef __cplusplus
 } /* extern "C" */

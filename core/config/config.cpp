@@ -36,6 +36,8 @@ gn_limits_t default_limits() noexcept {
     L.max_relay_ttl               = GN_LIMITS_DEFAULT_MAX_RELAY_TTL;
     L.max_plugins                 = GN_LIMITS_DEFAULT_MAX_PLUGINS;
     L.max_extensions              = GN_LIMITS_DEFAULT_MAX_EXTENSIONS;
+    L.max_timers                  = GN_LIMITS_DEFAULT_MAX_TIMERS;
+    L.max_pending_tasks           = GN_LIMITS_DEFAULT_MAX_PENDING_TASKS;
     L.max_storage_table_entries   = GN_LIMITS_DEFAULT_MAX_STORAGE_TABLE_ENTRIES;
     L.max_storage_value_bytes     = L.max_payload_bytes;
     return L;

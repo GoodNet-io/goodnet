@@ -26,6 +26,7 @@
 #include "identity_set.hpp"
 #include "phase.hpp"
 #include "router.hpp"
+#include "timer_registry.hpp"
 
 #include <core/identity/node_identity.hpp>
 #include <core/security/session.hpp>
@@ -101,6 +102,7 @@ public:
     [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
+    [[nodiscard]] TimerRegistry&       timers()      noexcept { return timers_; }
     [[nodiscard]] util::RateLimiterMap<>& inject_rate_limiter() noexcept {
         return inject_rate_limiter_;
     }
@@ -165,6 +167,7 @@ private:
     Sessions             sessions_;
     ExtensionRegistry    extensions_;
     Router               router_{identities_, handlers_};
+    TimerRegistry        timers_;
 
     std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
     gn_limits_t                           limits_{};

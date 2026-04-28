@@ -16,6 +16,12 @@ void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noe
 
 void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     limits_ = limits;
+    if (limits_.max_timers != 0) {
+        timers_.set_max_timers(limits_.max_timers);
+    }
+    if (limits_.max_pending_tasks != 0) {
+        timers_.set_max_pending_tasks(limits_.max_pending_tasks);
+    }
 }
 
 void Kernel::set_node_identity(identity::NodeIdentity ident) noexcept {

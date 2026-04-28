@@ -17,6 +17,7 @@ add_library(goodnet_kernel STATIC
     kernel/connection_context.cpp
     kernel/host_api_builder.cpp
     kernel/service_resolver.cpp
+    kernel/timer_registry.cpp
     plugin/plugin_manager.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
@@ -29,6 +30,7 @@ target_link_libraries(goodnet_kernel
     PUBLIC
         GoodNet::sdk
         Threads::Threads
+        asio::asio
         spdlog::spdlog
         fmt::fmt
         nlohmann_json::nlohmann_json
