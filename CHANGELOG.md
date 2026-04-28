@@ -87,6 +87,16 @@ typed extension API.
   leaking the entry. Auto-wired through the
   `TRANSPORT_PLUGIN` macro.
 
+- **WebSocket transport** — `goodnet_transport_ws.so` registers
+  `ws://` and the `gn.transport.ws` extension via the
+  `TRANSPORT_PLUGIN` macro. RFC 6455 §5 binary framing with FIN
+  / opcode / mask handling, RFC 6455 §1.3 upgrade handshake
+  (inline SHA-1 + base64 — the algorithms the spec hard-codes,
+  not a security primitive: identity / Noise lives above the
+  transport). Self-contained TCP socket; full `wss://` support
+  rides on top once the `gn.transport.tls` composer plugin
+  ships.
+
 ### Changed
 
 - **Standalone Asio.** The networking dependency now ships as
@@ -99,7 +109,7 @@ typed extension API.
 
 ### Tests
 
-443 across unit, integration, scenario, and property suites.
+451 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

@@ -44,6 +44,7 @@ target_link_libraries(goodnet_unit_tests
         goodnet_tcp_objects
         goodnet_ipc_objects
         goodnet_udp_objects
+        goodnet_ws_objects
         goodnet_heartbeat_objects
         GTest::gtest
         GTest::gtest_main
