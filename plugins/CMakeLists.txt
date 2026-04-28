@@ -38,3 +38,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/heartbeat/CMakeLists.txt")
     add_subdirectory(handlers/heartbeat)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/ipc/CMakeLists.txt")
+    add_subdirectory(transports/ipc)
+endif()
