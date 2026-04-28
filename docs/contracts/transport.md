@@ -31,7 +31,7 @@ Declared in `sdk/transport.h` (Phase 3). Slot list:
 | `listen(self, uri)` | kernel → plugin | begin accepting connections matching scheme |
 | `connect(self, uri)` | kernel → plugin | initiate outbound; transport calls back via `host_api->notify_connect` once handshake completes |
 | `send(self, conn, bytes, size)` | kernel → plugin | bytes `@borrowed` for the call |
-| `send_batch(self, conn, span_array, count)` | kernel → plugin | scatter-gather; transport may use `writev`-style internal multiplex |
+| `send_batch(self, conn, batch, count)` | kernel → plugin | scatter-gather over `gn_byte_span_t batch[count]`; transport may use `writev`-style internal multiplex |
 | `disconnect(self, conn)` | kernel → plugin | idempotent; second call returns `GN_OK` no-op |
 | `extension_name(self)` | plugin → kernel | per-transport extension surface, e.g. `"gn.tcp.transport"` |
 | `extension_vtable(self)` | plugin → kernel | extension vtable for stats / runtime tweaks |

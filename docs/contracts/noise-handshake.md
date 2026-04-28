@@ -187,8 +187,14 @@ static.
 
 After a successful Noise handshake:
 
-1. The transport calls `host_api->notify_connect` with
-   `trust = GN_TRUST_PEER` per `security-trust.md` §3.
+1. The transport called `host_api->notify_connect` at the moment the
+   socket established, with `trust` derived from the address (per
+   `transport.md` §3 — `Loopback` for `127.0.0.1`/`::1`/AF_UNIX,
+   `Untrusted` for public). The kernel promotes the connection
+   record from `Untrusted` to `Peer` once the handshake reaches the
+   Transport phase, gated through `gn_trust_can_upgrade` in
+   `sdk/trust.h`. `Loopback` and `IntraNode` connections do not
+   upgrade — the gate refuses any other transition.
 2. The endpoint's `pk` is set to the peer's static public key,
    copied from the handshake-result structure.
 3. Subsequent envelopes from this connection carry that `pk` as

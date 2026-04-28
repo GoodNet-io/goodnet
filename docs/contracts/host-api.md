@@ -31,59 +31,33 @@ public headers.
 
 ## 2. `host_api_t` structure
 
+The full struct lives in `sdk/host_api.h`; this section names every
+slot in declaration order so plugin authors can write against the
+same surface without grepping the header.
+
 ```c
 typedef struct host_api_s {
     uint32_t api_size;             /* sizeof(host_api_t) at build time */
-
-    /**
-     * @brief Opaque kernel context. Pass back unchanged on every call.
-     *
-     * Set by the kernel before `gn_plugin_init` returns. The plugin
-     * retains the single `api*` pointer; convenience macros in
-     * `sdk/convenience.h` read `api->host_ctx` so that a call site
-     * stays one argument shorter than the raw vtable invocation.
-     */
-    void* host_ctx;
+    void*    host_ctx;             /* opaque, passed back unchanged */
 
     /* ── Messaging ───────────────────────────────────────────────────── */
-    /**
-     * @brief Send an envelope to a specific peer over an existing connection.
-     * @param payload @borrowed; copied internally before return.
-     */
-    gn_result_t (*send)(void* host_ctx,
-                        gn_conn_id_t conn,
+    gn_result_t (*send)(void* host_ctx, gn_conn_id_t conn,
                         uint32_t msg_id,
                         const uint8_t* payload, size_t payload_size);
 
-    /**
-     * @brief Send to a peer identified by URI; opens connection if needed.
-     */
-    gn_result_t (*send_uri)(void* host_ctx,
-                            const char* uri,
+    gn_result_t (*send_uri)(void* host_ctx, const char* uri,
                             uint32_t msg_id,
                             const uint8_t* payload, size_t payload_size);
 
-    /**
-     * @brief Broadcast to all currently-connected peers.
-     */
-    gn_result_t (*broadcast)(void* host_ctx,
-                             uint32_t msg_id,
+    gn_result_t (*broadcast)(void* host_ctx, uint32_t msg_id,
                              const uint8_t* payload, size_t payload_size);
 
-    /**
-     * @brief Close a connection; safe to call from any thread.
-     */
     gn_result_t (*disconnect)(void* host_ctx, gn_conn_id_t conn);
 
     /* ── Handler registration ────────────────────────────────────────── */
-    /**
-     * @brief Register a handler for a (protocol_id, msg_id) pair.
-     * @param vtable @borrowed; must remain valid until unregister.
-     */
     gn_result_t (*register_handler)(void* host_ctx,
                                     const char* protocol_id,
-                                    uint32_t msg_id,
-                                    uint8_t priority,
+                                    uint32_t msg_id, uint8_t priority,
                                     const gn_handler_vtable_t* vtable,
                                     void* handler_self,
                                     gn_handler_id_t* out_id);
@@ -97,108 +71,97 @@ typedef struct host_api_s {
                                       void* transport_self,
                                       gn_transport_id_t* out_id);
 
-    gn_result_t (*unregister_transport)(void* host_ctx, gn_transport_id_t id);
+    gn_result_t (*unregister_transport)(void* host_ctx,
+                                        gn_transport_id_t id);
 
     /* ── Registry queries ────────────────────────────────────────────── */
-    /**
-     * @brief Find a connection by remote public key.
-     * @return GN_OK if found, GN_ERR_UNKNOWN_RECEIVER otherwise.
-     */
     gn_result_t (*find_conn_by_pk)(void* host_ctx,
                                    const uint8_t pk[GN_PUBLIC_KEY_BYTES],
                                    gn_conn_id_t* out_conn);
 
-    /**
-     * @brief Read endpoint info for a known connection.
-     * @param out @in-out; caller allocates, kernel fills.
-     */
-    gn_result_t (*get_endpoint)(void* host_ctx,
-                                gn_conn_id_t conn,
+    gn_result_t (*get_endpoint)(void* host_ctx, gn_conn_id_t conn,
                                 gn_endpoint_t* out);
 
     /* ── Extension API ───────────────────────────────────────────────── */
-    /**
-     * @brief Look up an extension vtable, verifying its declared version.
-     * @param out_vtable @borrowed; lifetime tied to the extension provider.
-     */
     gn_result_t (*query_extension_checked)(void* host_ctx,
                                            const char* name,
                                            uint32_t version,
                                            const void** out_vtable);
 
-    gn_result_t (*register_extension)(void* host_ctx,
-                                      const char* name,
+    gn_result_t (*register_extension)(void* host_ctx, const char* name,
                                       uint32_t version,
                                       const void* vtable);
 
     /* ── Configuration ───────────────────────────────────────────────── */
-    /**
-     * @brief Read a typed config value. Type-suffix in name.
-     * @param out_str @owned; caller calls *out_free when done.
-     */
-    gn_result_t (*config_get_string)(void* host_ctx,
-                                     const char* key,
+    gn_result_t (*config_get_string)(void* host_ctx, const char* key,
                                      char** out_str,
                                      void (**out_free)(char*));
 
-    gn_result_t (*config_get_int64)(void* host_ctx,
-                                    const char* key,
+    gn_result_t (*config_get_int64)(void* host_ctx, const char* key,
                                     int64_t* out_value);
 
+    /* ── Limits ──────────────────────────────────────────────────────── */
+    /* Read-only borrow valid for the plugin's lifetime; see limits.md. */
+    const gn_limits_t* (*limits)(void* host_ctx);
+
     /* ── Logging ─────────────────────────────────────────────────────── */
-    void (*log)(void* host_ctx,
-                gn_log_level_t level,
+    void (*log)(void* host_ctx, gn_log_level_t level,
                 const char* fmt, ...);
 
     /* ── Transport-side notifications ────────────────────────────────── */
-    /**
-     * @brief Transport announces a fully-established connection.
-     *        Allocates a kernel-side `gn_conn_id_t`, returned via @p out_conn.
-     *        Per `transport.md` §3 the transport computes `trust` from
-     *        observable connection properties; per `transport.md` §3a it
-     *        also reports `role` — `GN_ROLE_INITIATOR` for outbound
-     *        (`connect(uri)`) and `GN_ROLE_RESPONDER` for inbound
-     *        (accepted on `listen`). The kernel forwards `role` to
-     *        `security_provider->handshake_open` so the handshake state
-     *        machine drives the correct side of the pattern.
-     */
+    /* `trust` and `role` are computed by the transport per             */
+    /* `transport.md` §3 and §3a; the kernel forwards both into the     */
+    /* security session.                                                 */
     gn_result_t (*notify_connect)(void* host_ctx,
                                   const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
-                                  const char* uri,
-                                  const char* scheme,
+                                  const char* uri, const char* scheme,
                                   gn_trust_class_t trust,
                                   gn_handshake_role_t role,
                                   gn_conn_id_t* out_conn);
 
-    /**
-     * @brief Push received bytes through the kernel pipeline:
-     *        security decrypt → protocol deframe → router dispatch.
-     *        `bytes` is `@borrowed` for the duration of the call.
-     */
-    gn_result_t (*notify_inbound_bytes)(void* host_ctx,
-                                        gn_conn_id_t conn,
-                                        const uint8_t* bytes,
-                                        size_t size);
+    gn_result_t (*notify_inbound_bytes)(void* host_ctx, gn_conn_id_t conn,
+                                        const uint8_t* bytes, size_t size);
 
-    /**
-     * @brief Transport announces a connection close.
-     *        `reason` is `GN_OK` on a clean close, otherwise the
-     *        `gn_result_t` value that triggered teardown.
-     */
-    gn_result_t (*notify_disconnect)(void* host_ctx,
-                                     gn_conn_id_t conn,
+    gn_result_t (*notify_disconnect)(void* host_ctx, gn_conn_id_t conn,
                                      gn_result_t reason);
+
+    /* ── Security registration ───────────────────────────────────────── */
+    gn_result_t (*register_security)(
+        void* host_ctx, const char* provider_id,
+        const struct gn_security_provider_vtable_s* vtable,
+        void* security_self);
+
+    gn_result_t (*unregister_security)(void* host_ctx,
+                                       const char* provider_id);
+
+    /* ── Foreign-payload injection (see §8) ──────────────────────────── */
+    gn_result_t (*inject_external_message)(void* host_ctx,
+                                           gn_conn_id_t source,
+                                           uint32_t msg_id,
+                                           const uint8_t* payload,
+                                           size_t payload_size);
+
+    gn_result_t (*inject_frame)(void* host_ctx, gn_conn_id_t source,
+                                const uint8_t* frame, size_t frame_size);
+
+    /* ── Handshake driver ────────────────────────────────────────────── */
+    /* Initiator's first wire message is deferred from notify_connect    */
+    /* to a separate kick so the transport can register its socket       */
+    /* under the freshly-allocated conn_id before bytes ride out. The    */
+    /* transport calls kick_handshake once that registration is done.    */
+    gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
 
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];
 } host_api_t;
 ```
 
-Plugins access fields via the version-checked helpers in `sdk/abi.h`:
+Plugins query a slot's presence through the size-prefix helpers in
+`sdk/abi.h` before calling into a tail entry:
 
 ```c
-if (GN_API_HAS(api, pin_handler)) {
-    api->pin_handler(host_ctx, conn, handler_id);
+if (GN_API_HAS(api, kick_handshake)) {
+    api->kick_handshake(host_ctx, conn);
 }
 ```
 
@@ -210,7 +173,12 @@ The kernel guarantees:
 
 - `api` and every function pointer in it remain valid from
   `gn_plugin_init` return until `gn_plugin_shutdown` returns.
-- Calls into `api` are thread-safe; the kernel serialises internally.
+- Each individual entry is reentrant: a plugin may invoke any slot
+  from any thread that owns a reference to `api`. The kernel does
+  **not** serialise *across* slots — concurrent `send` and
+  `register_handler` from two threads each hold their own
+  fine-grained lock and may interleave. Plugins that depend on a
+  cross-slot ordering provide it themselves.
 - `api->host_ctx` is opaque to the plugin; passed back unchanged.
 - A plugin **must not** retain `api` past `gn_plugin_shutdown`. Posting
   a task that fires after shutdown and dereferences `api` would be a
