@@ -96,6 +96,17 @@ typed extension API.
   transport). Self-contained TCP socket; full `wss://` support
   rides on top once the `gn.transport.tls` composer plugin
   ships.
+- **Backpressure watermark events** — every baseline transport now
+  publishes `GN_CONN_EVENT_BACKPRESSURE_SOFT` once a connection's
+  write queue crosses `pending_queue_bytes_high`, and
+  `GN_CONN_EVENT_BACKPRESSURE_CLEAR` when it drops below
+  `pending_queue_bytes_low`. Per-Session `soft_signaled_` atomic
+  enforces the rising / falling edge model from
+  `backpressure.md` §3, so a queue oscillating inside the
+  hysteresis band never floods the channel. The publisher slot
+  is the new `host_api->notify_backpressure(conn, kind, bytes)`,
+  guarded by the kind-based transport role gate so only
+  transport plugins can emit. SDK_VERSION_MINOR → 1.6.
 - **Backpressure hard cap** — TCP / IPC / WS / TLS transports now
   refuse fresh sends once the per-connection write queue holds
   more than `gn_limits_t::pending_queue_bytes_hard` bytes per
@@ -153,7 +164,7 @@ typed extension API.
 
 ### Tests
 
-474 across unit, integration, scenario, and property suites.
+475 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

@@ -371,6 +371,25 @@ typedef struct host_api_s {
                                         gn_conn_visitor_t visitor,
                                         void* user_data);
 
+    /**
+     * @brief Publish a backpressure transition for @p conn — soft
+     *        (queue crossed `pending_queue_bytes_high`) or clear
+     *        (queue dropped below `pending_queue_bytes_low`).
+     *        Transport plugins call this once per rising / falling
+     *        edge per `backpressure.md` §3. Restricted to
+     *        transport-role callers; other plugin kinds get
+     *        @ref GN_ERR_NOT_IMPLEMENTED.
+     *
+     * `kind` must be either
+     * @ref GN_CONN_EVENT_BACKPRESSURE_SOFT or
+     * @ref GN_CONN_EVENT_BACKPRESSURE_CLEAR; any other value is
+     * @ref GN_ERR_INVALID_ENVELOPE.
+     */
+    gn_result_t (*notify_backpressure)(void* host_ctx,
+                                        gn_conn_id_t conn,
+                                        gn_conn_event_kind_t kind,
+                                        uint64_t pending_bytes);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];
