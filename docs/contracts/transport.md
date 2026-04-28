@@ -175,9 +175,51 @@ the protocol layer performs on the context.
 
 ---
 
-## 8. Cross-references
+## 8. Per-transport extensions
+
+The `extension_name` and `extension_vtable` slots in §2 expose an
+optional per-transport extension surface. The naming convention is
+`gn.transport.<scheme>` — `gn.transport.tcp`, `gn.transport.udp`,
+`gn.transport.ipc`. Headers live in `sdk/extensions/<scheme>.h` and
+declare:
+
+- a stable string identifier (`#define GN_EXT_TRANSPORT_<X>
+  "gn.transport.<x>"`);
+- a `uint32_t` version macro composed as
+  `(major << 16) | (minor << 8) | patch`;
+- a vtable struct of typed function pointers plus a `void* ctx` and
+  a `void* _reserved[N]` tail for size-prefix evolution per
+  `abi-evolution.md` §3.
+
+The transport plugin returns its `(name, vtable)` pair from the two
+slots; the kernel publishes them through `register_extension`.
+Consumers query through `query_extension_checked(name, version,
+&out_vtable)` per `host-api.md` §2.
+
+Standard slot families per transport:
+
+| Family | Purpose |
+|---|---|
+| `get_stats(ctx, out)` | per-transport counters: bytes/frames in/out, active sessions |
+| `set_<knob>(ctx, value)` | runtime tweaks the operator wants without a config reload — e.g. `set_idle_timeout`, `set_mtu` |
+| `get_<knob>(ctx, out)` | read the live value of a tweakable knob |
+
+A transport with no extension returns `nullptr` from both slots —
+the v1 baseline plugins do this; the kernel treats absence as the
+transport opting out of the surface.
+
+`gn.transport.<scheme>` extensions are the slot for **transport
+composition** in future minor releases: an L2-over-L1 transport
+(WSS over TCP, ICE over UDP) discovers the L1 transport's vtable
+through `query_extension_checked` and passes bytes through
+without re-implementing socket bookkeeping.
+
+---
+
+## 9. Cross-references
 
 - Plugin lifetime + liveness probe rules: `plugin-lifetime.md`.
 - TrustClass policy: `security-trust.md`.
 - Connection registration semantics: `registry.md`.
 - Host API entries used: `host-api.md` §2.
+- Extension query semantics: `host-api.md` §2 (`query_extension_checked`).
