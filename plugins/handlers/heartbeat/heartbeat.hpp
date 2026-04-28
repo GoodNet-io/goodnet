@@ -10,11 +10,13 @@
 
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 #include <span>
 #include <string>
@@ -38,25 +40,49 @@ inline constexpr const char* kProtocolId = "gnet-v1";
 inline constexpr std::uint8_t kFlagPing = 0x00;
 inline constexpr std::uint8_t kFlagPong = 0x01;
 
-#pragma pack(push, 1)
-/// @brief Wire payload for PING/PONG.
+/// Heartbeat wire frame is 88 bytes, big-endian for every multi-byte
+/// integer. Layout:
+///
+/// | offset | size | field          |
+/// |--------|------|----------------|
+/// | 0      | 8    | timestamp_us   |
+/// | 8      | 4    | seq            |
+/// | 12     | 1    | flags          |
+/// | 13     | 3    | pad0           |
+/// | 16     | 64   | observed_addr  |
+/// | 80     | 2    | observed_port  |
+/// | 82     | 6    | pad1           |
+inline constexpr std::size_t kPayloadSize       = 88;
+inline constexpr std::size_t kObservedAddrBytes = 64;
+
+/// In-memory representation of a PING/PONG payload. Not directly
+/// `memcpy`'d to or from the wire — `serialize_payload` and
+/// `parse_payload` translate between this struct and the canonical
+/// big-endian byte layout above. The struct imposes no alignment,
+/// packing, or size constraint of its own; the wire is the
+/// authoritative shape.
 struct HeartbeatPayload {
-    std::uint64_t timestamp_us;          ///< monotonic-clock value at send
-    std::uint32_t seq;                   ///< per-peer monotonic counter
-    std::uint8_t  flags;                 ///< @ref kFlagPing / @ref kFlagPong
-    std::uint8_t  _pad0[3];              ///< zero on the wire
+    std::uint64_t timestamp_us = 0;
+    std::uint32_t seq          = 0;
+    std::uint8_t  flags        = kFlagPing;
 
     /// Reflected observation: the responder fills this with what it
     /// sees as the requester's address; the requester reads it back
     /// to learn its external endpoint (STUN-on-the-wire). Empty on
     /// PING; populated on PONG.
-    char          observed_addr[64];     ///< NUL-terminated host literal
-    std::uint16_t observed_port;         ///< 0 when observation absent
-    std::uint8_t  _pad1[6];              ///< zero on the wire
+    char          observed_addr[kObservedAddrBytes] = {};
+    std::uint16_t observed_port = 0;
 };
-#pragma pack(pop)
-static_assert(sizeof(HeartbeatPayload) == 88,
-              "HeartbeatPayload wire layout pinned at 88 bytes");
+
+/// Encode @p hb into the canonical wire layout. Multi-byte fields go
+/// big-endian; padding bytes are zeroed.
+[[nodiscard]] std::array<std::uint8_t, kPayloadSize>
+serialize_payload(const HeartbeatPayload& hb) noexcept;
+
+/// Decode the wire frame at @p src. Returns `nullopt` when the input
+/// length is not exactly `kPayloadSize`.
+[[nodiscard]] std::optional<HeartbeatPayload>
+parse_payload(std::span<const std::uint8_t> src) noexcept;
 
 /// Time source for RTT computation. Production binds to
 /// `steady_clock`; tests inject a deterministic mock per

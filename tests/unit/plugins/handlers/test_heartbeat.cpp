@@ -106,16 +106,33 @@ struct MockClock {
     void advance(std::uint64_t d) { now.fetch_add(d, std::memory_order_acq_rel); }
 };
 
-/// Build a `gn_message_t` describing a PING/PONG envelope sourced
-/// from a peer whose `sender_pk` first byte equals `marker`.
-gn_message_t make_envelope(std::uint8_t marker,
-                            const HeartbeatPayload& hb) {
-    gn_message_t env{};
-    env.msg_id       = kHeartbeatMsgId;
-    env.sender_pk[0] = marker;
-    env.payload      = reinterpret_cast<const std::uint8_t*>(&hb);
-    env.payload_size = sizeof(hb);
-    return env;
+/// Owning envelope: the on-wire byte buffer plus a `gn_message_t`
+/// pointing into it. Tests build this once per case so the wire
+/// bytes outlive `handle_message()`. The struct is non-movable
+/// because `msg.payload` aliases `wire.data()`; copying would leave
+/// a dangling pointer. `msg` is the conventional name so call sites
+/// read `hh.handle_message(&env->msg)` without the `&env->msg`
+/// stutter.
+struct WireEnvelope {
+    std::array<std::uint8_t, kPayloadSize> wire{};
+    gn_message_t msg{};
+
+    WireEnvelope() = default;
+    WireEnvelope(const WireEnvelope&)            = delete;
+    WireEnvelope& operator=(const WireEnvelope&) = delete;
+};
+
+/// Build a wire envelope describing a PING/PONG sourced from a peer
+/// whose `sender_pk` first byte equals @p marker.
+[[nodiscard]] std::unique_ptr<WireEnvelope>
+make_envelope(std::uint8_t marker, const HeartbeatPayload& hb) {
+    auto w = std::make_unique<WireEnvelope>();
+    w->wire = serialize_payload(hb);
+    w->msg.msg_id       = kHeartbeatMsgId;
+    w->msg.sender_pk[0] = marker;
+    w->msg.payload      = w->wire.data();
+    w->msg.payload_size = w->wire.size();
+    return w;
 }
 
 }  // namespace
@@ -137,21 +154,23 @@ TEST(Heartbeat, PingProducesPongWithObservedAddress) {
     ping.flags        = kFlagPing;
 
     auto env = make_envelope(0xAA, ping);
-    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
 
     ASSERT_EQ(host.send_calls.load(), 1);
     ASSERT_EQ(host.sent_conns.front(), 7u);
     ASSERT_EQ(host.sent_msg_ids.front(), kHeartbeatMsgId);
 
-    HeartbeatPayload reply{};
-    ASSERT_EQ(host.sent_payloads.front().size(), sizeof(reply));
-    std::memcpy(&reply, host.sent_payloads.front().data(), sizeof(reply));
-
-    EXPECT_EQ(reply.flags, kFlagPong);
-    EXPECT_EQ(reply.timestamp_us, 500'000u);  /// echoed
-    EXPECT_EQ(reply.seq, 42u);
-    EXPECT_STREQ(reply.observed_addr, "203.0.113.5");
-    EXPECT_EQ(reply.observed_port, 9000);
+    ASSERT_EQ(host.sent_payloads.front().size(), kPayloadSize);
+    const auto reply_opt = parse_payload(host.sent_payloads.front());
+    ASSERT_TRUE(reply_opt.has_value());
+    if (reply_opt) {
+        const auto& reply = *reply_opt;
+        EXPECT_EQ(reply.flags, kFlagPong);
+        EXPECT_EQ(reply.timestamp_us, 500'000u);  /// echoed
+        EXPECT_EQ(reply.seq, 42u);
+        EXPECT_STREQ(reply.observed_addr, "203.0.113.5");
+        EXPECT_EQ(reply.observed_port, 9000);
+    }
 }
 
 TEST(Heartbeat, PongRecordsRttAndObservation) {
@@ -166,11 +185,12 @@ TEST(Heartbeat, PongRecordsRttAndObservation) {
     HeartbeatPayload pong{};
     pong.timestamp_us = 1'500'000;     /// PING was 500 ms ago
     pong.flags        = kFlagPong;
-    std::strncpy(pong.observed_addr, "203.0.113.5", sizeof(pong.observed_addr));
+    std::strncpy(pong.observed_addr, "203.0.113.5",
+                 sizeof(pong.observed_addr) - 1);
     pong.observed_port = 9000;
 
     auto env = make_envelope(0xBB, pong);
-    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
 
     /// PONG path does not call send.
     EXPECT_EQ(host.send_calls.load(), 0);
@@ -206,7 +226,7 @@ TEST(Heartbeat, RttIsDeterministicUnderInjectedClock) {
         pong.timestamp_us = 0;
         clock.set(interval);
         auto env = make_envelope(0xCC, pong);
-        EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+        EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
 
         std::uint64_t rtt = 0;
         ASSERT_EQ(hh.get_rtt(3, &rtt), 0);
@@ -229,7 +249,7 @@ TEST(Heartbeat, MultiplePeersTrackedIndependently) {
         p.flags = kFlagPong;
         p.timestamp_us = 50;
         auto env = make_envelope(0xAA, p);
-        ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
     }
     {
         clock.set(1000);
@@ -237,7 +257,7 @@ TEST(Heartbeat, MultiplePeersTrackedIndependently) {
         p.flags = kFlagPong;
         p.timestamp_us = 100;
         auto env = make_envelope(0xBB, p);
-        ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
     }
 
     std::uint64_t r1 = 0, r2 = 0;
@@ -280,7 +300,7 @@ TEST(Heartbeat, UnknownSenderRejected) {
     HeartbeatPayload ping{};
     ping.flags = kFlagPing;
     auto env = make_envelope(0xFF, ping);
-    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONTINUE);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONTINUE);
     EXPECT_EQ(host.send_calls.load(), 0);
 }
 
@@ -297,15 +317,18 @@ TEST(Heartbeat, SendPingPopulatesPayloadFromClock) {
     EXPECT_EQ(hh.send_ping(/*conn*/ 5), GN_OK);
 
     ASSERT_EQ(host.send_calls.load(), 1);
-    ASSERT_EQ(host.sent_payloads.front().size(), sizeof(HeartbeatPayload));
+    ASSERT_EQ(host.sent_payloads.front().size(), kPayloadSize);
 
-    HeartbeatPayload ping{};
-    std::memcpy(&ping, host.sent_payloads.front().data(), sizeof(ping));
-    EXPECT_EQ(ping.flags, kFlagPing);
-    EXPECT_EQ(ping.timestamp_us, 123'456u);
-    EXPECT_EQ(ping.seq, 0u);  /// first ping uses seq 0
-    EXPECT_EQ(ping.observed_addr[0], '\0');  /// PING leaves it empty
-    EXPECT_EQ(ping.observed_port, 0);
+    const auto ping_opt = parse_payload(host.sent_payloads.front());
+    ASSERT_TRUE(ping_opt.has_value());
+    if (ping_opt) {
+        const auto& ping = *ping_opt;
+        EXPECT_EQ(ping.flags, kFlagPing);
+        EXPECT_EQ(ping.timestamp_us, 123'456u);
+        EXPECT_EQ(ping.seq, 0u);  /// first ping uses seq 0
+        EXPECT_EQ(ping.observed_addr[0], '\0');
+        EXPECT_EQ(ping.observed_port, 0);
+    }
 }
 
 TEST(Heartbeat, SendPingIncrementsSequence) {
@@ -320,13 +343,17 @@ TEST(Heartbeat, SendPingIncrementsSequence) {
     (void)hh.send_ping(5);
 
     ASSERT_EQ(host.send_calls.load(), 3);
-    HeartbeatPayload p0{}, p1{}, p2{};
-    std::memcpy(&p0, host.sent_payloads[0].data(), sizeof(p0));
-    std::memcpy(&p1, host.sent_payloads[1].data(), sizeof(p1));
-    std::memcpy(&p2, host.sent_payloads[2].data(), sizeof(p2));
-    EXPECT_EQ(p0.seq, 0u);
-    EXPECT_EQ(p1.seq, 1u);
-    EXPECT_EQ(p2.seq, 2u);
+    const auto p0 = parse_payload(host.sent_payloads[0]);
+    const auto p1 = parse_payload(host.sent_payloads[1]);
+    const auto p2 = parse_payload(host.sent_payloads[2]);
+    ASSERT_TRUE(p0.has_value());
+    ASSERT_TRUE(p1.has_value());
+    ASSERT_TRUE(p2.has_value());
+    if (p0 && p1 && p2) {
+        EXPECT_EQ(p0->seq, 0u);
+        EXPECT_EQ(p1->seq, 1u);
+        EXPECT_EQ(p2->seq, 2u);
+    }
 }
 
 // ── Extension API ──────────────────────────────────────────────────
@@ -343,7 +370,7 @@ TEST(Heartbeat, ExtensionVtablePopulatedAndFunctional) {
     pong.flags = kFlagPong;
     pong.timestamp_us = 1'500;
     auto env = make_envelope(0xAA, pong);
-    ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
 
     const auto& ext = hh.extension_vtable();
     ASSERT_NE(ext.get_rtt, nullptr);
@@ -382,10 +409,11 @@ TEST(Heartbeat, ExtensionGetObservedAddressTruncationReturnsError) {
     HeartbeatPayload pong{};
     pong.flags = kFlagPong;
     pong.timestamp_us = 0;
-    std::strncpy(pong.observed_addr, "192.0.2.42", sizeof(pong.observed_addr));
+    std::strncpy(pong.observed_addr, "192.0.2.42",
+                 sizeof(pong.observed_addr) - 1);
     pong.observed_port = 4242;
     auto env = make_envelope(0xAA, pong);
-    ASSERT_EQ(hh.handle_message(&env), GN_PROP_CONSUMED);
+    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
 
     char buf[3] = {};                 /// too small for "192.0.2.42"
     std::uint16_t port = 0;
