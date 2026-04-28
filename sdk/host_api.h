@@ -286,6 +286,21 @@ typedef struct host_api_s {
                                 const uint8_t* frame,
                                 size_t frame_size);
 
+    /**
+     * @brief Drive the local side of a security handshake into action.
+     *
+     * `notify_connect` allocates the connection record and creates the
+     * security session in `Handshake` phase but does **not** generate
+     * the initiator's first wire message: doing so synchronously would
+     * race the transport, which still needs to register its socket
+     * under the freshly-allocated `conn` before bytes can ride out.
+     * The transport calls `kick_handshake` once it has registered the
+     * connection — the kernel then drives initiator's first message
+     * (no-op for a responder, no-op for connections without a
+     * security session).
+     */
+    gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];

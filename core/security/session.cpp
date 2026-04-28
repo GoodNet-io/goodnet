@@ -12,13 +12,13 @@ SecuritySession::SecuritySession(SecuritySession&& other) noexcept
     : vtable_(other.vtable_),
       provider_self_(other.provider_self_),
       state_(other.state_),
-      phase_(other.phase_),
+      phase_(other.phase_.load(std::memory_order_acquire)),
       conn_id_(other.conn_id_),
       keys_(other.keys_) {
     other.vtable_        = nullptr;
     other.provider_self_ = nullptr;
     other.state_         = nullptr;
-    other.phase_         = SecurityPhase::Closed;
+    other.phase_.store(SecurityPhase::Closed, std::memory_order_release);
     other.conn_id_       = GN_INVALID_ID;
 }
 
@@ -28,13 +28,14 @@ SecuritySession& SecuritySession::operator=(SecuritySession&& other) noexcept {
         vtable_        = other.vtable_;
         provider_self_ = other.provider_self_;
         state_         = other.state_;
-        phase_         = other.phase_;
+        phase_.store(other.phase_.load(std::memory_order_acquire),
+                      std::memory_order_release);
         conn_id_       = other.conn_id_;
         keys_          = other.keys_;
         other.vtable_        = nullptr;
         other.provider_self_ = nullptr;
         other.state_         = nullptr;
-        other.phase_         = SecurityPhase::Closed;
+        other.phase_.store(SecurityPhase::Closed, std::memory_order_release);
         other.conn_id_       = GN_INVALID_ID;
     }
     return *this;
@@ -50,11 +51,14 @@ void SecuritySession::close() noexcept {
     /// `state == nullptr` case (some providers carry no per-conn
     /// state). Default-constructed sessions stay in `Closed` and so
     /// skip the call.
-    if (vtable_ && phase_ != SecurityPhase::Closed && vtable_->handshake_close) {
+    if (vtable_ &&
+        phase_.load(std::memory_order_acquire) != SecurityPhase::Closed &&
+        vtable_->handshake_close)
+    {
         vtable_->handshake_close(provider_self_, state_);
     }
     state_ = nullptr;
-    phase_ = SecurityPhase::Closed;
+    phase_.store(SecurityPhase::Closed, std::memory_order_release);
     /// Keys remain available to callers that need the channel-binding
     /// hash after close; they are zeroised by the provider's
     /// handshake_close per `noise-handshake.md` §5, but the SDK copy
@@ -91,11 +95,11 @@ gn_result_t SecuritySession::open(
         local_static_sk.data(), local_static_pk.data(),
         remote_pk_ptr, &state);
     if (rc != GN_OK) {
-        phase_ = SecurityPhase::Closed;
+        phase_.store(SecurityPhase::Closed, std::memory_order_release);
         return rc;
     }
     state_ = state;
-    phase_ = SecurityPhase::Handshake;
+    phase_.store(SecurityPhase::Handshake, std::memory_order_release);
     return GN_OK;
 }
 
@@ -103,7 +107,8 @@ gn_result_t SecuritySession::advance_handshake(
     std::span<const std::uint8_t> incoming,
     std::vector<std::uint8_t>& out_msg)
 {
-    if (phase_ != SecurityPhase::Handshake) return GN_ERR_INVALID_ENVELOPE;
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Handshake)
+        return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->handshake_step) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t step_out{};
@@ -134,7 +139,7 @@ gn_result_t SecuritySession::advance_handshake(
                 provider_self_, state_, &keys_);
             if (er != GN_OK) return er;
         }
-        phase_ = SecurityPhase::Transport;
+        phase_.store(SecurityPhase::Transport, std::memory_order_release);
     }
     return GN_OK;
 }
@@ -143,7 +148,8 @@ gn_result_t SecuritySession::encrypt_transport(
     std::span<const std::uint8_t> plaintext,
     std::vector<std::uint8_t>& out_cipher)
 {
-    if (phase_ != SecurityPhase::Transport) return GN_ERR_INVALID_ENVELOPE;
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
+        return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->encrypt) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t enc_out{};
@@ -168,7 +174,8 @@ gn_result_t SecuritySession::decrypt_transport(
     std::span<const std::uint8_t> ciphertext,
     std::vector<std::uint8_t>& out_plaintext)
 {
-    if (phase_ != SecurityPhase::Transport) return GN_ERR_INVALID_ENVELOPE;
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
+        return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->decrypt) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t dec_out{};
@@ -191,7 +198,7 @@ gn_result_t SecuritySession::decrypt_transport(
 
 // ── Sessions ────────────────────────────────────────────────────────
 
-SecuritySession* Sessions::create(
+std::shared_ptr<SecuritySession> Sessions::create(
     gn_conn_id_t conn,
     const gn_security_provider_vtable_t* vtable,
     void* provider_self,
@@ -202,30 +209,30 @@ SecuritySession* Sessions::create(
     std::span<const std::uint8_t> remote_static_pk_or_empty,
     gn_result_t& out_result)
 {
-    auto session = std::make_unique<SecuritySession>();
+    auto session = std::make_shared<SecuritySession>();
     out_result = session->open(vtable, provider_self, conn, trust, role,
                                 local_static_sk, local_static_pk,
                                 remote_static_pk_or_empty);
     if (out_result != GN_OK) {
         return nullptr;
     }
-
-    SecuritySession* raw = session.get();
     {
         std::unique_lock lock(mu_);
-        map_[conn] = std::move(session);
+        map_[conn] = session;
     }
-    return raw;
+    return session;
 }
 
-SecuritySession* Sessions::find(gn_conn_id_t conn) noexcept {
+std::shared_ptr<SecuritySession> Sessions::find(
+    gn_conn_id_t conn) const noexcept
+{
     std::shared_lock lock(mu_);
     auto it = map_.find(conn);
-    return (it == map_.end()) ? nullptr : it->second.get();
+    return (it == map_.end()) ? std::shared_ptr<SecuritySession>{} : it->second;
 }
 
 void Sessions::destroy(gn_conn_id_t conn) {
-    std::unique_ptr<SecuritySession> session;
+    std::shared_ptr<SecuritySession> session;
     {
         std::unique_lock lock(mu_);
         auto it = map_.find(conn);
@@ -233,7 +240,9 @@ void Sessions::destroy(gn_conn_id_t conn) {
         session = std::move(it->second);
         map_.erase(it);
     }
-    /// Destructor runs handshake_close while no lock is held.
+    /// `session` drops here; if other handles exist (in-flight
+    /// `phase()` / `encrypt_transport()`), the destructor waits for
+    /// them to release before running `handshake_close`.
 }
 
 std::size_t Sessions::size() const {

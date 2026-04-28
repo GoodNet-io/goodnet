@@ -329,6 +329,11 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
             session->conn_id = conn;
             t->register_session(conn, session);
             session->start_read();
+            /// Initiator: drive the first wire message now that the
+            /// session is reachable through `conn`.
+            if (t->api_->kick_handshake) {
+                (void)t->api_->kick_handshake(t->api_->host_ctx, conn);
+            }
         });
     return GN_OK;
 }
