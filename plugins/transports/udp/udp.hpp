@@ -38,6 +38,7 @@
 
 #include <core/util/token_bucket.hpp>
 
+#include <sdk/extensions/transport.h>
 #include <sdk/host_api.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -101,6 +102,19 @@ public:
         return mtu_.load(std::memory_order_relaxed);
     }
     void set_mtu(std::uint32_t bytes) noexcept;
+
+    struct Stats {
+        std::uint64_t bytes_in            = 0;
+        std::uint64_t bytes_out           = 0;
+        std::uint64_t frames_in           = 0;
+        std::uint64_t frames_out          = 0;
+        std::uint64_t active_connections  = 0;
+    };
+    [[nodiscard]] Stats stats() const noexcept;
+
+    /// Static descriptor for the `gn.transport.udp` extension.
+    /// The kernel snapshots this once at register time.
+    [[nodiscard]] static gn_transport_caps_t capabilities() noexcept;
 
 private:
     struct PeerEntry {
@@ -167,6 +181,11 @@ private:
     std::atomic<std::uint32_t>                                      mtu_{kDefaultMtu};
     ::gn::util::RateLimiterMap<>                                    new_conn_limiter_{
         kNewConnRate, kNewConnBurst};
+
+    std::atomic<std::uint64_t> bytes_in_{0};
+    std::atomic<std::uint64_t> bytes_out_{0};
+    std::atomic<std::uint64_t> frames_in_{0};
+    std::atomic<std::uint64_t> frames_out_{0};
 
     const host_api_t* api_ = nullptr;
 };

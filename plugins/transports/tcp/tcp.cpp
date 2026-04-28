@@ -61,10 +61,14 @@ public:
                         t->erase_session(self->conn_id);
                         return;
                     }
-                    if (t->api_ && t->api_->notify_inbound_bytes && n > 0) {
-                        t->api_->notify_inbound_bytes(
-                            t->api_->host_ctx, self->conn_id,
-                            self->read_buf_.data(), n);
+                    if (n > 0) {
+                        t->bytes_in_.fetch_add(n, std::memory_order_relaxed);
+                        t->frames_in_.fetch_add(1, std::memory_order_relaxed);
+                        if (t->api_ && t->api_->notify_inbound_bytes) {
+                            t->api_->notify_inbound_bytes(
+                                t->api_->host_ctx, self->conn_id,
+                                self->read_buf_.data(), n);
+                        }
                     }
                     self->start_read();
                 }));
@@ -131,7 +135,7 @@ private:
         boost::asio::async_write(socket_, boost::asio::buffer(*buf),
             boost::asio::bind_executor(strand_,
                 [self = shared_from_this(), buf](
-                    const boost::system::error_code& ec, std::size_t) {
+                    const boost::system::error_code& ec, std::size_t n) {
                     self->write_queue_.pop_front();
                     self->write_in_flight_ = false;
                     auto t = self->transport_.lock();
@@ -144,6 +148,8 @@ private:
                         t->erase_session(self->conn_id);
                         return;
                     }
+                    t->bytes_out_.fetch_add(n, std::memory_order_relaxed);
+                    t->frames_out_.fetch_add(1, std::memory_order_relaxed);
                     self->maybe_start_write();
                 }));
     }
@@ -199,6 +205,25 @@ std::uint16_t TcpTransport::listen_port() const noexcept {
 std::size_t TcpTransport::session_count() const noexcept {
     std::lock_guard lk(sessions_mu_);
     return sessions_.size();
+}
+
+TcpTransport::Stats TcpTransport::stats() const noexcept {
+    Stats s{};
+    s.bytes_in           = bytes_in_.load(std::memory_order_relaxed);
+    s.bytes_out          = bytes_out_.load(std::memory_order_relaxed);
+    s.frames_in          = frames_in_.load(std::memory_order_relaxed);
+    s.frames_out         = frames_out_.load(std::memory_order_relaxed);
+    s.active_connections = session_count();
+    return s;
+}
+
+gn_transport_caps_t TcpTransport::capabilities() noexcept {
+    gn_transport_caps_t c{};
+    c.flags       = GN_TRANSPORT_CAP_STREAM
+                  | GN_TRANSPORT_CAP_RELIABLE
+                  | GN_TRANSPORT_CAP_ORDERED;
+    c.max_payload = 0;  /// kernel limits.max_frame_bytes is the gate
+    return c;
 }
 
 gn_trust_class_t TcpTransport::resolve_trust(

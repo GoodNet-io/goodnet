@@ -64,10 +64,32 @@ typed extension API.
   structurally impossible — the snapshot keeps the .so mapped
   until the call returns. A bounded drain timeout falls through
   to `log warn + leak handle` rather than blocking shutdown.
+- **`gn.transport.<scheme>` extension API** — every baseline
+  transport publishes `gn_transport_api_t` from
+  `sdk/extensions/transport.h` with steady slots
+  (`get_stats`, `get_capabilities`, `send`, `send_batch`,
+  `close`) functional and composer slots
+  (`listen`, `connect`, `subscribe_data`, `unsubscribe_data`)
+  returning `GN_ERR_NOT_IMPLEMENTED` until the first
+  L2-over-L1 plugin (WSS, TLS) drives them. TCP / IPC / UDP
+  expose monotonic byte / frame / connection counters; UDP
+  surfaces its MTU through the capability descriptor.
+- **`TRANSPORT_PLUGIN(Class, "scheme")` macro** — collapses
+  per-transport `plugin_entry.cpp` boilerplate (five
+  `gn_plugin_*` exports, kernel-facing vtable, extension
+  vtable, descriptor) into a single one-line invocation in
+  `sdk/cpp/transport_plugin.hpp`. Every C thunk is `noexcept`
+  with a try/catch wrapper so a plugin exception never escapes
+  the C ABI boundary.
+- **`host_api->unregister_extension`** — paired with the
+  existing `register_extension` so plugins can drop their
+  extension registration on `gn_plugin_unregister` instead of
+  leaking the entry. Auto-wired through the
+  `TRANSPORT_PLUGIN` macro.
 
 ### Tests
 
-437 across unit, integration, scenario, and property suites.
+443 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan strict-clean.
 
 ## [0.1.0] — 2026-04-28

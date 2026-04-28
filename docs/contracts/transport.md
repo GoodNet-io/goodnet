@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/transports/*`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-04-28
 **Stability:** v1.x; new transports plug in without changing this contract.
 
 ---
@@ -177,42 +177,57 @@ the protocol layer performs on the context.
 
 ## 8. Per-transport extensions
 
-The `extension_name` and `extension_vtable` slots in §2 expose an
-optional per-transport extension surface. The naming convention is
-`gn.transport.<scheme>` — `gn.transport.tcp`, `gn.transport.udp`,
-`gn.transport.ipc`. Headers live in `sdk/extensions/<scheme>.h` and
-declare:
+The `extension_name` and `extension_vtable` slots in §2 expose a
+per-transport extension surface. Every baseline transport publishes
+the same shape under the convention prefix `gn.transport.<scheme>`
+— `gn.transport.tcp`, `gn.transport.udp`, `gn.transport.ipc`. The
+shape is declared in `sdk/extensions/transport.h` as
+`gn_transport_api_t` together with capability flags
+(`GN_TRANSPORT_CAP_*`), counter struct `gn_transport_stats_t`, and
+the receive-callback type `gn_transport_data_callback_t`.
 
-- a stable string identifier (`#define GN_EXT_TRANSPORT_<X>
-  "gn.transport.<x>"`);
-- a `uint32_t` version macro composed as
-  `(major << 16) | (minor << 8) | patch`;
-- a vtable struct of typed function pointers plus a `void* ctx` and
-  a `void* _reserved[N]` tail for size-prefix evolution per
-  `abi-evolution.md` §3.
+`gn_transport_api_t` carries every slot needed for an L2-over-L1
+composition (WSS-over-TCP, TLS-over-TCP, ICE-over-UDP):
 
-The transport plugin returns its `(name, vtable)` pair from the two
-slots; the kernel publishes them through `register_extension`.
-Consumers query through `query_extension_checked(name, version,
-&out_vtable)` per `host-api.md` §2.
+| Group | Slot | Direction | Notes |
+|---|---|---|---|
+| Steady | `get_stats` | producer → consumer | snapshot of monotonic counters |
+| Steady | `get_capabilities` | producer → consumer | static descriptor; cache once |
+| Steady | `send` / `send_batch` | consumer → producer | bytes on a kernel-managed `gn_conn_id_t` |
+| Steady | `close` | consumer → producer | idempotent; same shape as `disconnect` |
+| Composer | `listen` | consumer → producer | bind without engaging `notify_connect` |
+| Composer | `connect` | consumer → producer | open an L1 conn whose lifecycle the consumer owns |
+| Composer | `subscribe_data` / `unsubscribe_data` | consumer → producer | install a pull-style receive callback for L2 framing |
 
-Standard slot families per transport:
+Steady slots are functional in every baseline plugin in v1.0.x. The
+composer slots are reserved for the L2 family — WSS, TLS, ICE — and
+return `GN_ERR_NOT_IMPLEMENTED` on baseline transports until the
+first L2 composer plugin lands and the contract is exercised
+end-to-end. Implementations always provide every slot pointer;
+unimplemented behaviour surfaces through the return code, never
+through a NULL slot.
 
-| Family | Purpose |
+The plugin returns its `(name, vtable)` pair from the two
+`extension_*` slots in §2; the kernel publishes them through
+`register_extension`. Consumers query through
+`query_extension_checked(name, version, &out_vtable)` per
+`host-api.md` §2 and call `unregister_extension(name)` to release.
+
+Capability flags (low byte values, OR-able):
+
+| Flag | Meaning |
 |---|---|
-| `get_stats(ctx, out)` | per-transport counters: bytes/frames in/out, active sessions |
-| `set_<knob>(ctx, value)` | runtime tweaks the operator wants without a config reload — e.g. `set_idle_timeout`, `set_mtu` |
-| `get_<knob>(ctx, out)` | read the live value of a tweakable knob |
+| `GN_TRANSPORT_CAP_STREAM` | unframed byte stream; consumer imposes message boundaries |
+| `GN_TRANSPORT_CAP_DATAGRAM` | OS preserves each `send` as one delivery |
+| `GN_TRANSPORT_CAP_RELIABLE` | OS-level reliability (retransmit + ack) |
+| `GN_TRANSPORT_CAP_ORDERED` | OS-level ordering across the connection |
+| `GN_TRANSPORT_CAP_ENCRYPTED_PATH` | producer asserts the wire bytes are already encrypted |
+| `GN_TRANSPORT_CAP_LOCAL_ONLY` | producer refuses public addresses regardless of URI |
 
-A transport with no extension returns `nullptr` from both slots —
-the v1 baseline plugins do this; the kernel treats absence as the
-transport opting out of the surface.
-
-`gn.transport.<scheme>` extensions are the slot for **transport
-composition** in future minor releases: an L2-over-L1 transport
-(WSS over TCP, ICE over UDP) discovers the L1 transport's vtable
-through `query_extension_checked` and passes bytes through
-without re-implementing socket bookkeeping.
+Baseline assignments: TCP and IPC publish `Stream | Reliable |
+Ordered`; IPC adds `LocalOnly`. UDP publishes `Datagram` and a
+non-zero `max_payload` that mirrors the configured MTU. Composer
+plugins (WSS, TLS) compose by ORing into the producer's flags.
 
 ---
 

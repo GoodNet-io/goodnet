@@ -33,6 +33,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/strand.hpp>
 
+#include <sdk/extensions/transport.h>
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 #include <sdk/trust.h>
@@ -94,6 +95,20 @@ public:
     /// Number of live sessions; useful for tests.
     [[nodiscard]] std::size_t session_count() const noexcept;
 
+    /// Aggregate counters surfaced through the
+    /// `gn.transport.tcp` extension. All values are monotonic over
+    /// the transport's lifetime; consumers handle wrap themselves.
+    struct Stats {
+        std::uint64_t bytes_in            = 0;
+        std::uint64_t bytes_out           = 0;
+        std::uint64_t frames_in           = 0;
+        std::uint64_t frames_out          = 0;
+        std::uint64_t active_connections  = 0;
+    };
+    [[nodiscard]] Stats stats() const noexcept;
+
+    [[nodiscard]] static gn_transport_caps_t capabilities() noexcept;
+
 private:
     class Session;
 
@@ -132,6 +147,13 @@ private:
 
     mutable std::mutex                                                  sessions_mu_;
     std::unordered_map<gn_conn_id_t, std::shared_ptr<Session>>          sessions_;
+
+    /// Per-transport counters. Updated from the worker thread on each
+    /// completed read / write, snapshotted lock-free through `stats()`.
+    std::atomic<std::uint64_t> bytes_in_{0};
+    std::atomic<std::uint64_t> bytes_out_{0};
+    std::atomic<std::uint64_t> frames_in_{0};
+    std::atomic<std::uint64_t> frames_out_{0};
 
     const host_api_t* api_ = nullptr;
 };
