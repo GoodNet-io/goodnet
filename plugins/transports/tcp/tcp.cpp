@@ -1,0 +1,410 @@
+// SPDX-License-Identifier: MIT
+#include "tcp.hpp"
+
+#include <sdk/cpp/uri.hpp>
+
+#include <boost/asio/bind_executor.hpp>
+#include <boost/asio/buffer.hpp>
+#include <boost/asio/dispatch.hpp>
+#include <boost/asio/ip/v6_only.hpp>
+#include <boost/asio/post.hpp>
+#include <boost/asio/read.hpp>
+#include <boost/asio/write.hpp>
+#include <boost/system/error_code.hpp>
+
+#include <array>
+#include <cstring>
+#include <deque>
+#include <utility>
+
+namespace gn::transport::tcp {
+namespace {
+
+constexpr std::size_t kReadBufferSize = 16 * 1024;
+
+}  // namespace
+
+// ── Session ─────────────────────────────────────────────────────────
+
+class TcpTransport::Session : public std::enable_shared_from_this<Session> {
+public:
+    Session(boost::asio::ip::tcp::socket sock,
+             std::weak_ptr<TcpTransport> transport)
+        : socket_(std::move(sock)),
+          strand_(socket_.get_executor()),
+          transport_(std::move(transport)) {}
+
+    boost::asio::ip::tcp::socket& socket() noexcept { return socket_; }
+
+    gn_conn_id_t conn_id = GN_INVALID_ID;
+
+    /// Start the read loop. Each completion deposits bytes via
+    /// `host_api->notify_inbound_bytes` and re-arms; closure or error
+    /// posts `notify_disconnect`.
+    void start_read() {
+        socket_.async_read_some(
+            boost::asio::buffer(read_buf_),
+            boost::asio::bind_executor(strand_,
+                [self = shared_from_this()](
+                    const boost::system::error_code& ec, std::size_t n) {
+                    auto t = self->transport_.lock();
+                    if (!t) return;
+                    if (ec) {
+                        if (t->api_ && t->api_->notify_disconnect) {
+                            t->api_->notify_disconnect(
+                                t->api_->host_ctx, self->conn_id,
+                                ec == boost::asio::error::eof
+                                    ? GN_OK
+                                    : GN_ERR_NULL_ARG);
+                        }
+                        t->erase_session(self->conn_id);
+                        return;
+                    }
+                    if (t->api_ && t->api_->notify_inbound_bytes && n > 0) {
+                        t->api_->notify_inbound_bytes(
+                            t->api_->host_ctx, self->conn_id,
+                            self->read_buf_.data(), n);
+                    }
+                    self->start_read();
+                }));
+    }
+
+    /// Enqueue a payload onto the strand-bound write queue and kick
+    /// the writer. `boost::asio::async_write` cannot run concurrently
+    /// against the same socket: composed `async_write_some` calls
+    /// would otherwise interleave bytes on the wire.
+    void do_send(std::span<const std::uint8_t> data) {
+        auto buf = std::make_shared<std::vector<std::uint8_t>>(
+            data.begin(), data.end());
+        boost::asio::dispatch(strand_,
+            [self = shared_from_this(), buf = std::move(buf)] {
+                self->write_queue_.push_back(std::move(buf));
+                self->maybe_start_write();
+            });
+    }
+
+    /// Coalesce a scatter-gather batch into one buffer so the queue
+    /// stays scalar — the memcpy is dwarfed by socket I/O at any
+    /// link rate the project ships against.
+    void do_send_batch(std::span<const std::span<const std::uint8_t>> frames) {
+        std::size_t total = 0;
+        for (auto& f : frames) total += f.size();
+        auto buf = std::make_shared<std::vector<std::uint8_t>>(total);
+        std::size_t offset = 0;
+        for (auto& f : frames) {
+            std::memcpy(buf->data() + offset, f.data(), f.size());
+            offset += f.size();
+        }
+        boost::asio::dispatch(strand_,
+            [self = shared_from_this(), buf = std::move(buf)] {
+                self->write_queue_.push_back(std::move(buf));
+                self->maybe_start_write();
+            });
+    }
+
+    /// Close on the strand so the reactor's per-descriptor cleanup
+    /// runs without overlapping a pending `async_read_some`.
+    void do_close() {
+        boost::asio::dispatch(strand_, [self = shared_from_this()] {
+            boost::system::error_code ec;
+            (void)self->socket_.close(ec);
+        });
+    }
+
+private:
+    /// Strand-bound — caller is already on `strand_`.
+    void maybe_start_write() {
+        if (write_in_flight_ || write_queue_.empty()) return;
+        write_in_flight_ = true;
+        auto buf = write_queue_.front();
+        boost::asio::async_write(socket_, boost::asio::buffer(*buf),
+            boost::asio::bind_executor(strand_,
+                [self = shared_from_this(), buf](
+                    const boost::system::error_code& ec, std::size_t) {
+                    self->write_queue_.pop_front();
+                    self->write_in_flight_ = false;
+                    auto t = self->transport_.lock();
+                    if (!t) return;
+                    if (ec) {
+                        if (t->api_ && t->api_->notify_disconnect) {
+                            t->api_->notify_disconnect(
+                                t->api_->host_ctx, self->conn_id, GN_ERR_NULL_ARG);
+                        }
+                        t->erase_session(self->conn_id);
+                        return;
+                    }
+                    self->maybe_start_write();
+                }));
+    }
+
+    boost::asio::ip::tcp::socket                              socket_;
+    boost::asio::strand<boost::asio::any_io_executor>         strand_;
+    std::weak_ptr<TcpTransport>                               transport_;
+
+    std::array<std::uint8_t, kReadBufferSize>                 read_buf_{};
+    std::deque<std::shared_ptr<std::vector<std::uint8_t>>>    write_queue_;
+    bool                                                      write_in_flight_ = false;
+};
+
+// ── TcpTransport ────────────────────────────────────────────────────
+
+TcpTransport::TcpTransport()
+    : ioc_(),
+      work_(boost::asio::make_work_guard(ioc_)) {
+    worker_ = std::thread([this] { ioc_.run(); });
+}
+
+TcpTransport::~TcpTransport() {
+    shutdown();
+}
+
+void TcpTransport::set_host_api(const host_api_t* api) noexcept {
+    api_ = api;
+}
+
+std::uint16_t TcpTransport::listen_port() const noexcept {
+    return listen_port_.load(std::memory_order_acquire);
+}
+
+std::size_t TcpTransport::session_count() const noexcept {
+    std::lock_guard lk(sessions_mu_);
+    return sessions_.size();
+}
+
+gn_trust_class_t TcpTransport::resolve_trust(
+    const boost::asio::ip::tcp::endpoint& peer) const noexcept
+{
+    return peer.address().is_loopback() ? GN_TRUST_LOOPBACK
+                                          : GN_TRUST_UNTRUSTED;
+}
+
+std::string TcpTransport::endpoint_to_uri(
+    const boost::asio::ip::tcp::endpoint& ep)
+{
+    std::string uri = "tcp://";
+    if (ep.address().is_v6()) {
+        uri += '[';
+        uri += ep.address().to_string();
+        uri += ']';
+    } else {
+        uri += ep.address().to_string();
+    }
+    uri += ':';
+    uri += std::to_string(ep.port());
+    return uri;
+}
+
+gn_result_t TcpTransport::listen(std::string_view uri_sv) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(uri_sv);
+    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+
+    boost::system::error_code ec;
+    const auto addr = boost::asio::ip::make_address(parts->host, ec);
+    if (ec) return GN_ERR_NULL_ARG;
+    boost::asio::ip::tcp::endpoint ep(addr, parts->port);
+
+    try {
+        boost::asio::ip::tcp::acceptor acceptor(ioc_);
+        acceptor.open(ep.protocol());
+        /// IPv6 wildcard `::` — disable `IPV6_V6ONLY` so dual-stack
+        /// listens accept v4-mapped clients on Linux. Specific v6
+        /// literals stay v6-only by default.
+        if (addr.is_v6() && addr.is_unspecified()) {
+            boost::system::error_code v6_ec;
+            (void)acceptor.set_option(
+                boost::asio::ip::v6_only(false), v6_ec);
+        }
+        (void)acceptor.set_option(
+            boost::asio::ip::tcp::acceptor::reuse_address(true));
+        acceptor.bind(ep);
+        acceptor.listen();
+        listen_port_.store(acceptor.local_endpoint().port(),
+                            std::memory_order_release);
+        acceptor_.emplace(std::move(acceptor));
+    } catch (const std::exception&) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    start_accept();
+    return GN_OK;
+}
+
+void TcpTransport::start_accept() {
+    if (shutdown_.load(std::memory_order_acquire) || !acceptor_) return;
+
+    auto session = std::make_shared<Session>(
+        boost::asio::ip::tcp::socket(ioc_),
+        weak_from_this());
+
+    acceptor_->async_accept(session->socket(),
+        [weak = std::weak_ptr<TcpTransport>(shared_from_this()), session](
+            const boost::system::error_code& ec) {
+            if (auto t = weak.lock()) t->on_accept(session, ec);
+        });
+}
+
+void TcpTransport::on_accept(std::shared_ptr<Session> session,
+                              const boost::system::error_code& ec)
+{
+    if (ec || shutdown_.load(std::memory_order_acquire)) return;
+
+    boost::system::error_code re_ec;
+    const auto remote = session->socket().remote_endpoint(re_ec);
+    if (re_ec) {
+        session->do_close();
+        start_accept();
+        return;
+    }
+
+    if (api_ && api_->notify_connect) {
+        std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};  // unknown until handshake
+        gn_conn_id_t conn = GN_INVALID_ID;
+        const std::string uri = endpoint_to_uri(remote);
+        const gn_result_t rc = api_->notify_connect(
+            api_->host_ctx, remote_pk, uri.c_str(), "tcp",
+            resolve_trust(remote), GN_ROLE_RESPONDER, &conn);
+        if (rc == GN_OK && conn != GN_INVALID_ID) {
+            session->conn_id = conn;
+            register_session(conn, session);
+            session->start_read();
+        } else {
+            session->do_close();
+        }
+    } else {
+        session->do_close();
+    }
+
+    start_accept();
+}
+
+gn_result_t TcpTransport::connect(std::string_view uri_sv) {
+    if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
+
+    const auto parts = ::gn::parse_uri(uri_sv);
+    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+
+    boost::system::error_code ec;
+    const auto addr = boost::asio::ip::make_address(parts->host, ec);
+    if (ec) return GN_ERR_NULL_ARG;
+    boost::asio::ip::tcp::endpoint ep(addr, parts->port);
+
+    auto session = std::make_shared<Session>(
+        boost::asio::ip::tcp::socket(ioc_),
+        weak_from_this());
+
+    /// Open against the endpoint's protocol family before the
+    /// async_connect — a default-constructed socket carries no family,
+    /// and Linux silently never completes the connect for IPv6.
+    boost::system::error_code open_ec;
+    session->socket().open(ep.protocol(), open_ec);
+    if (open_ec) return GN_ERR_NULL_ARG;
+
+    const std::string canonical_uri(uri_sv);
+    session->socket().async_connect(ep,
+        [weak = std::weak_ptr<TcpTransport>(shared_from_this()),
+         session, canonical_uri, ep](
+            const boost::system::error_code& connect_ec) {
+            auto t = weak.lock();
+            if (!t || t->shutdown_.load(std::memory_order_acquire)) return;
+            if (connect_ec) {
+                /// Connect failure surfaces through the disconnect
+                /// notify path so the kernel's session map cleans up.
+                return;
+            }
+            if (!t->api_ || !t->api_->notify_connect) {
+                session->do_close();
+                return;
+            }
+            std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+            gn_conn_id_t conn = GN_INVALID_ID;
+            const gn_result_t rc = t->api_->notify_connect(
+                t->api_->host_ctx, remote_pk, canonical_uri.c_str(), "tcp",
+                t->resolve_trust(ep), GN_ROLE_INITIATOR, &conn);
+            if (rc != GN_OK || conn == GN_INVALID_ID) {
+                session->do_close();
+                return;
+            }
+            session->conn_id = conn;
+            t->register_session(conn, session);
+            session->start_read();
+        });
+    return GN_OK;
+}
+
+gn_result_t TcpTransport::send(gn_conn_id_t conn,
+                                std::span<const std::uint8_t> bytes)
+{
+    auto session = find_session(conn);
+    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    session->do_send(bytes);
+    return GN_OK;
+}
+
+gn_result_t TcpTransport::send_batch(
+    gn_conn_id_t conn,
+    std::span<const std::span<const std::uint8_t>> frames)
+{
+    if (frames.empty()) return GN_OK;
+    if (frames.size() == 1) return send(conn, frames[0]);
+
+    auto session = find_session(conn);
+    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    session->do_send_batch(frames);
+    return GN_OK;
+}
+
+gn_result_t TcpTransport::disconnect(gn_conn_id_t conn) {
+    std::shared_ptr<Session> session;
+    {
+        std::lock_guard lk(sessions_mu_);
+        auto it = sessions_.find(conn);
+        if (it == sessions_.end()) return GN_OK;  /// idempotent
+        session = std::move(it->second);
+        sessions_.erase(it);
+    }
+    session->do_close();
+    return GN_OK;
+}
+
+void TcpTransport::register_session(gn_conn_id_t id,
+                                     std::shared_ptr<Session> s)
+{
+    std::lock_guard lk(sessions_mu_);
+    sessions_[id] = std::move(s);
+}
+
+void TcpTransport::erase_session(gn_conn_id_t id) {
+    std::lock_guard lk(sessions_mu_);
+    sessions_.erase(id);
+}
+
+std::shared_ptr<TcpTransport::Session>
+TcpTransport::find_session(gn_conn_id_t id) const {
+    std::lock_guard lk(sessions_mu_);
+    auto it = sessions_.find(id);
+    return (it == sessions_.end()) ? nullptr : it->second;
+}
+
+void TcpTransport::shutdown() {
+    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
+
+    if (acceptor_) {
+        boost::system::error_code ec;
+        (void)acceptor_->close(ec);
+        acceptor_.reset();
+    }
+
+    {
+        std::lock_guard lk(sessions_mu_);
+        for (auto& [_, s] : sessions_) s->do_close();
+        sessions_.clear();
+    }
+
+    work_.reset();
+    ioc_.stop();
+    if (worker_.joinable()) worker_.join();
+}
+
+} // namespace gn::transport::tcp

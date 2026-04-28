@@ -40,6 +40,7 @@ target_link_libraries(goodnet_unit_tests
         goodnet_kernel
         GoodNet::protocol_gnet
         goodnet_noise_objects
+        goodnet_tcp_objects
         GTest::gtest
         GTest::gtest_main
         rapidcheck

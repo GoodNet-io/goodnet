@@ -119,10 +119,12 @@ parse_uri(std::string_view uri) {
     std::uint16_t port = 0;
     const auto [ptr, ec] = std::from_chars(
         port_sv.data(), port_sv.data() + port_sv.size(), port);
-    /// Strict: reject trailing garbage and port 0 — both must fail.
+    /// Strict: reject trailing garbage. Port 0 is syntactically
+    /// valid — `listen` uses it for ephemeral-port allocation; the
+    /// `connect` side rejects it at the application layer
+    /// (uri.md §5).
     if (ec != std::errc{} ||
-        ptr != port_sv.data() + port_sv.size() ||
-        port == 0)
+        ptr != port_sv.data() + port_sv.size())
     {
         return std::nullopt;
     }

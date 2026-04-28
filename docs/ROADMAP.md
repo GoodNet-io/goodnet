@@ -40,7 +40,7 @@ this lands, every later layer can rely on a working secured byte pipe.
 |---|---|
 | URI parser foundation | shipped — `sdk/cpp/uri.hpp` (header-only, no libsodium) + `core/util/uri_query.hpp` (libsodium peer-pk decode); 33 unit + property tests; contract `docs/contracts/uri.md` |
 | Kernel injection API | shipped — `host_api->inject_external_message` + `inject_frame` per `host-api.md` §8; per-source `RateLimiterMap` with `Clock`-injection token bucket per `clock.md` §2 |
-| TCP transport plugin | Boost.Asio-based, single-writer-per-conn invariant, address-based listen and connect |
+| TCP transport plugin | shipped — Boost.Asio with strand-per-session writes (`transport.md` §4 single-writer), idempotent `shutdown_.exchange(true)`, IPv6 wildcard `IPV6_V6ONLY=false` for dual-stack listens; OBJECT lib for in-tree tests + `goodnet_transport_tcp.so` plugin entry |
 | IPC transport plugin | AF_UNIX socket with length-prefix stream framing, declares `Loopback` trust |
 | UDP transport plugin | datagram-mode with strand-bound receive path |
 | Raw protocol plugin | opaque-payload protocol layer for foreign-protocol-payload (`null+raw` on Loopback per security-trust.md §4) |

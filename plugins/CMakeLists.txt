@@ -30,3 +30,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/noise/CMakeLists.txt")
     add_subdirectory(security/noise)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/transports/tcp/CMakeLists.txt")
+    add_subdirectory(transports/tcp)
+endif()
