@@ -140,6 +140,23 @@ public:
         lru_.clear();
     }
 
+    /// Atomically swap @p rate, @p burst, and @p max_entries. Drops
+    /// every existing per-key bucket and clears the LRU under one
+    /// mutex acquire. The kernel calls this from `set_limits` so a
+    /// fresh `gn_limits_t` install propagates straight into the
+    /// running limiter without a kernel restart. Differs from
+    /// `reset` only in that the LRU cap moves alongside the bucket
+    /// shape.
+    void reconfigure(double rate, double burst,
+                      std::size_t max_entries) noexcept {
+        std::lock_guard<std::mutex> lk(mu_);
+        rate_        = rate;
+        burst_       = burst;
+        max_entries_ = max_entries;
+        map_.clear();
+        lru_.clear();
+    }
+
     [[nodiscard]] std::size_t size() const {
         std::lock_guard<std::mutex> lk(mu_);
         return map_.size();

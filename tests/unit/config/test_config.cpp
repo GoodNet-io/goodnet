@@ -64,8 +64,14 @@ TEST(Config_LoadJson, NonObjectRootRejected) {
 
 TEST(Config_LoadJson, ParseFailurePreservesPriorState) {
     Config c;
-    /// First, install a known-good state.
-    const char* good = R"({"limits": {"max_connections": 999}, "alpha": "first"})";
+    /// First, install a known-good state. The new state lowers
+    /// `max_connections` and `max_outbound_connections` together so
+    /// the auto-validate path inside `load_json` does not reject
+    /// the install on the cross-field invariant.
+    const char* good = R"({"limits": {
+        "max_connections": 999,
+        "max_outbound_connections": 256
+    }, "alpha": "first"})";
     ASSERT_EQ(c.load_json(good), GN_OK);
     EXPECT_EQ(c.limits().max_connections, 999u);
     std::string s;
@@ -84,6 +90,35 @@ TEST(Config_LoadJson, ParseFailurePreservesPriorState) {
     EXPECT_EQ(c.limits().max_connections, 999u);
 }
 
+TEST(Config_LoadJson, ValidationFailurePreservesPriorState) {
+    /// `load_json` runs `validate_limits` on the parsed limits before
+    /// installing them; an invariant violation rolls the kernel
+    /// state back to the prior load. This is the principal
+    /// behaviour change versus the legacy split (`load_json`
+    /// accepts → caller invokes `validate`): the kernel never
+    /// executes against an invariant-violating limits set.
+    Config c;
+    const char* good = R"({"limits": {
+        "max_connections": 1024,
+        "max_outbound_connections": 256
+    }, "marker": "ok"})";
+    ASSERT_EQ(c.load_json(good), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 1024u);
+
+    /// Push a config that violates an invariant.
+    const char* bad = R"({"limits": {
+        "max_connections": 100,
+        "max_outbound_connections": 200
+    }, "marker": "tampered"})";
+    EXPECT_EQ(c.load_json(bad), GN_ERR_LIMIT_REACHED);
+
+    /// Prior state survives.
+    EXPECT_EQ(c.limits().max_connections, 1024u);
+    std::string s;
+    ASSERT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "ok");
+}
+
 // ─── validate: cross-field invariants from limits.md §3 ─────────────
 
 TEST(Config_Validate, DefaultsPass) {
@@ -93,62 +128,49 @@ TEST(Config_Validate, DefaultsPass) {
     EXPECT_TRUE(reason.empty());
 }
 
-TEST(Config_Validate, OutboundExceedsTotalRejected) {
+TEST(Config_Validate, OutboundExceedsTotalRejectedAtLoad) {
+    /// `load_json` auto-validates; an invariant-violating doc fails
+    /// the load directly with `GN_ERR_LIMIT_REACHED`. The legacy
+    /// "load succeeds, validate fails later" path is gone — the
+    /// kernel never accepts a config it would reject.
     Config c;
     const char* doc = R"({"limits": {
         "max_connections": 100,
         "max_outbound_connections": 200
     }})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_FALSE(reason.empty());
-    EXPECT_NE(reason.find("max_outbound_connections"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
-TEST(Config_Validate, WatermarkInversionRejected) {
-    /// low must be strictly less than high.
+TEST(Config_Validate, WatermarkInversionRejectedAtLoad) {
     Config c;
     const char* doc = R"({"limits": {
         "pending_queue_bytes_low":  4096,
         "pending_queue_bytes_high": 1024,
         "pending_queue_bytes_hard": 8192
     }})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_NE(reason.find("pending_queue_bytes_low"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
-TEST(Config_Validate, HardCapBelowSoftCapRejected) {
+TEST(Config_Validate, HardCapBelowSoftCapRejectedAtLoad) {
     Config c;
     const char* doc = R"({"limits": {
         "pending_queue_bytes_low":  1024,
         "pending_queue_bytes_high": 8192,
         "pending_queue_bytes_hard": 4096
     }})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_NE(reason.find("pending_queue_bytes_high"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
-TEST(Config_Validate, RelayTtlZeroRejected) {
+TEST(Config_Validate, RelayTtlZeroRejectedAtLoad) {
     Config c;
     const char* doc = R"({"limits": {"max_relay_ttl": 0}})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_NE(reason.find("max_relay_ttl"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
-TEST(Config_Validate, RelayTtlAboveCeilRejected) {
+TEST(Config_Validate, RelayTtlAboveCeilRejectedAtLoad) {
     Config c;
     const char* doc = R"({"limits": {"max_relay_ttl": 9}})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_NE(reason.find("max_relay_ttl"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
 TEST(Config_Validate, RelayTtlAtCeilAccepted) {
@@ -158,26 +180,52 @@ TEST(Config_Validate, RelayTtlAtCeilAccepted) {
     EXPECT_EQ(c.validate(), GN_OK);
 }
 
-TEST(Config_Validate, StorageValueExceedsPayloadRejected) {
+TEST(Config_Validate, StorageValueExceedsPayloadRejectedAtLoad) {
+    /// `max_payload_bytes` lowered to 1024 also trips the
+    /// `max_payload_bytes + 14 > max_frame_bytes` invariant unless
+    /// frame size shrinks alongside it; we override both so the
+    /// rejection isolates on the storage / payload comparison.
     Config c;
-    /// Set storage > payload to trip the §3 invariant.
     const char* doc = R"({"limits": {
         "max_payload_bytes": 1024,
+        "max_frame_bytes":   1100,
         "max_storage_value_bytes": 8192
     }})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    std::string reason;
-    EXPECT_EQ(c.validate(&reason), GN_ERR_LIMIT_REACHED);
-    EXPECT_NE(reason.find("max_storage_value_bytes"), std::string::npos);
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
 }
 
-TEST(Config_Validate, NullReasonAccepted) {
-    /// `validate` must tolerate a nullptr `out_reason` even when
-    /// reporting a violation.
+TEST(Config_Validate, ValidateStandaloneStillUsable) {
+    /// The public `validate` remains usable for paths that re-check
+    /// after a manual mutation — e.g. a future hot-reload signal
+    /// might let an operator inspect the live limits without going
+    /// through `load_json` again.
     Config c;
-    const char* doc = R"({"limits": {"max_relay_ttl": 0}})";
-    ASSERT_EQ(c.load_json(doc), GN_OK);
-    EXPECT_EQ(c.validate(nullptr), GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(c.validate(nullptr), GN_OK)
+        << "default-constructed Config must satisfy every invariant";
+}
+
+TEST(Config_Validate, InjectRateBurstUnderHalfRateRejectedAtLoad) {
+    /// New invariant: a token bucket whose burst is below half the
+    /// refill rate cannot absorb a momentary spike — the burst
+    /// must give the legitimate caller at least 0.5s of headroom.
+    Config c;
+    const char* doc = R"({"limits": {
+        "inject_rate_per_source": 100,
+        "inject_rate_burst": 30
+    }})";
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
+}
+
+TEST(Config_Validate, InjectRateZeroRateAcceptedAnyBurst) {
+    /// A zero refill rate is a valid "drain only" choice that the
+    /// integration tests use to make a tight, non-refilling bucket.
+    /// The burst-vs-rate guard short-circuits in that case.
+    Config c;
+    const char* doc = R"({"limits": {
+        "inject_rate_per_source": 0,
+        "inject_rate_burst": 1
+    }})";
+    EXPECT_EQ(c.load_json(doc), GN_OK);
 }
 
 // ─── get_string ─────────────────────────────────────────────────────

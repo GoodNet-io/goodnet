@@ -40,7 +40,22 @@ public:
     /// Validate cross-field invariants from `limits.md` §3. Returns
     /// `GN_ERR_LIMIT_REACHED` when any invariant fails; the offending
     /// field name is appended to @p out_reason if non-null.
+    ///
+    /// `load_json` runs this implicitly on the new limits before
+    /// installing them, so a successful load is necessarily a
+    /// validated load — the kernel never executes against an
+    /// invariant-violating limits set. Callers retain access to the
+    /// public `validate` for paths that re-check after a manual
+    /// `set_limits`.
     [[nodiscard]] gn_result_t validate(std::string* out_reason = nullptr) const;
+
+    /// Validate a free-standing `gn_limits_t` against the same
+    /// invariants. Used by `load_json` to gate the install of newly
+    /// parsed limits without going through the lock once for parse
+    /// and again for validate.
+    [[nodiscard]] static gn_result_t validate_limits(
+        const gn_limits_t& limits,
+        std::string*       out_reason);
 
     /// Lookup a string value by dotted path. Returns `GN_ERR_UNKNOWN_RECEIVER`
     /// when the key is missing.

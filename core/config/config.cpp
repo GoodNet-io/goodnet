@@ -10,17 +10,28 @@ namespace gn::core {
 namespace {
 
 /// Read a uint32_t field from a JSON object, falling back to @p def
-/// when the field is missing or not a number.
+/// on a missing field, on a non-integer value, on a negative number,
+/// or on a value that overflows the uint32_t range. The range checks
+/// run at the int64 level so a JSON literal of e.g. `2^33` is
+/// rejected here rather than thrown out of `nlohmann::json::get`.
 std::uint32_t pick_u32(const nlohmann::json& obj, const char* field, std::uint32_t def) {
     auto it = obj.find(field);
     if (it == obj.end() || !it->is_number_integer()) return def;
-    return it->get<std::uint32_t>();
+    const std::int64_t v = it->get<std::int64_t>();
+    if (v < 0 || v > static_cast<std::int64_t>(UINT32_MAX)) return def;
+    return static_cast<std::uint32_t>(v);
 }
 
 std::uint64_t pick_u64(const nlohmann::json& obj, const char* field, std::uint64_t def) {
     auto it = obj.find(field);
     if (it == obj.end() || !it->is_number_integer()) return def;
-    return it->get<std::uint64_t>();
+    /// `nlohmann::json` stores an integer as `int64_t`; a value that
+    /// overflows that range is parsed as a float and `is_number_integer`
+    /// returns false. Negative values reach us only via the int path
+    /// and must reject — uint64_t fields are inherently non-negative.
+    const std::int64_t v = it->get<std::int64_t>();
+    if (v < 0) return def;
+    return static_cast<std::uint64_t>(v);
 }
 
 gn_limits_t default_limits() noexcept {
@@ -41,6 +52,9 @@ gn_limits_t default_limits() noexcept {
     L.pending_handshake_bytes     = GN_LIMITS_DEFAULT_PENDING_HANDSHAKE_BYTES;
     L.max_storage_table_entries   = GN_LIMITS_DEFAULT_MAX_STORAGE_TABLE_ENTRIES;
     L.max_storage_value_bytes     = L.max_payload_bytes;
+    L.inject_rate_per_source      = GN_LIMITS_DEFAULT_INJECT_RATE_PER_SOURCE;
+    L.inject_rate_burst           = GN_LIMITS_DEFAULT_INJECT_RATE_BURST;
+    L.inject_rate_lru_cap         = GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP;
     return L;
 }
 
@@ -67,6 +81,9 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     L.pending_handshake_bytes   = pick_u32(obj, "pending_handshake_bytes",   L.pending_handshake_bytes);
     L.max_storage_table_entries = pick_u64(obj, "max_storage_table_entries", L.max_storage_table_entries);
     L.max_storage_value_bytes   = pick_u64(obj, "max_storage_value_bytes",   L.max_storage_value_bytes);
+    L.inject_rate_per_source    = pick_u32(obj, "inject_rate_per_source",    L.inject_rate_per_source);
+    L.inject_rate_burst         = pick_u32(obj, "inject_rate_burst",         L.inject_rate_burst);
+    L.inject_rate_lru_cap       = pick_u32(obj, "inject_rate_lru_cap",       L.inject_rate_lru_cap);
     return L;
 }
 
@@ -81,6 +98,17 @@ gn_result_t Config::load_json(std::string_view json) {
 
     auto new_limits = parse_limits(parsed);
 
+    /// Cross-field validation runs here, on the *new* limits the
+    /// load is about to install — failure rolls the kernel state
+    /// back to whatever the previous `load_json` left, so an
+    /// operator who pushed a malformed config never sees the kernel
+    /// running on it. The legacy split (`load_json` accepts → caller
+    /// invokes `validate` → caller decides whether to recover) was
+    /// brittle: nothing inside the kernel guaranteed the call.
+    if (auto rc = validate_limits(new_limits, nullptr); rc != GN_OK) {
+        return rc;
+    }
+
     std::unique_lock lock(mu_);
     json_   = std::move(parsed);
     limits_ = new_limits;
@@ -89,15 +117,20 @@ gn_result_t Config::load_json(std::string_view json) {
 
 gn_result_t Config::validate(std::string* out_reason) const {
     std::shared_lock lock(mu_);
+    return validate_limits(limits_, out_reason);
+}
+
+gn_result_t Config::validate_limits(const gn_limits_t& L,
+                                     std::string* out_reason) {
     auto note = [&](const char* msg) {
         if (out_reason) *out_reason = msg;
     };
 
-    if (limits_.max_outbound_connections > limits_.max_connections) {
+    if (L.max_outbound_connections > L.max_connections) {
         note("limits.max_outbound_connections > limits.max_connections");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (limits_.pending_queue_bytes_low == 0) {
+    if (L.pending_queue_bytes_low == 0) {
         /// `low == 0` makes the falling-edge `BACKPRESSURE_CLEAR`
         /// publisher in every transport unable to fire — `post >= 0`
         /// is always true, so subscribers stay paused forever after
@@ -106,20 +139,20 @@ gn_result_t Config::validate(std::string* out_reason) const {
         note("limits.pending_queue_bytes_low must be > 0");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (limits_.pending_queue_bytes_low >= limits_.pending_queue_bytes_high) {
+    if (L.pending_queue_bytes_low >= L.pending_queue_bytes_high) {
         note("limits.pending_queue_bytes_low >= pending_queue_bytes_high");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (limits_.pending_queue_bytes_high > limits_.pending_queue_bytes_hard) {
+    if (L.pending_queue_bytes_high > L.pending_queue_bytes_hard) {
         note("limits.pending_queue_bytes_high > pending_queue_bytes_hard");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (limits_.max_relay_ttl == 0 ||
-        limits_.max_relay_ttl > GN_LIMITS_DEFAULT_MAX_RELAY_TTL_CEIL) {
+    if (L.max_relay_ttl == 0 ||
+        L.max_relay_ttl > GN_LIMITS_DEFAULT_MAX_RELAY_TTL_CEIL) {
         note("limits.max_relay_ttl out of range");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (limits_.max_storage_value_bytes > limits_.max_payload_bytes) {
+    if (L.max_storage_value_bytes > L.max_payload_bytes) {
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
@@ -128,9 +161,24 @@ gn_result_t Config::validate(std::string* out_reason) const {
     /// payload accepted at the inject path produces a frame that
     /// the deframer rejects.
     constexpr std::uint32_t kGnetFixedHeaderBytes = 14;
-    if (limits_.max_payload_bytes >
-        limits_.max_frame_bytes - kGnetFixedHeaderBytes) {
+    if (L.max_payload_bytes >
+        L.max_frame_bytes - kGnetFixedHeaderBytes) {
         note("limits.max_payload_bytes + 14 > max_frame_bytes");
+        return GN_ERR_LIMIT_REACHED;
+    }
+    /// Inject rate limiter: burst must cover at least half a second
+    /// of refill so a momentary spike never starves the legitimate
+    /// caller. With `rate=0` the bucket never refills (a valid
+    /// "drain only" choice for tests) so the rate>0 guard is the
+    /// right gate.
+    if (L.inject_rate_per_source != 0 &&
+        L.inject_rate_burst <
+            (L.inject_rate_per_source + 1) / 2) {
+        note("limits.inject_rate_burst < inject_rate_per_source / 2");
+        return GN_ERR_LIMIT_REACHED;
+    }
+    if (L.inject_rate_per_source != 0 && L.inject_rate_burst == 0) {
+        note("limits.inject_rate_burst must be > 0 when rate > 0");
         return GN_ERR_LIMIT_REACHED;
     }
     return GN_OK;
