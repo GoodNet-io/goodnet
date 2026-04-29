@@ -23,6 +23,7 @@
 #include <sdk/cpp/protocol_layer.hpp>
 #include <sdk/limits.h>
 
+#include "attestation_dispatcher.hpp"
 #include "conn_event.hpp"
 #include "identity_set.hpp"
 #include "phase.hpp"
@@ -110,6 +111,9 @@ public:
     [[nodiscard]] util::RateLimiterMap<>& inject_rate_limiter() noexcept {
         return inject_rate_limiter_;
     }
+    [[nodiscard]] AttestationDispatcher& attestation_dispatcher() noexcept {
+        return attestation_dispatcher_;
+    }
 
     /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
     /// Set once before `Wire` phase; cannot be replaced afterwards.
@@ -186,6 +190,12 @@ private:
     /// `host-api.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
     util::RateLimiterMap<>                inject_rate_limiter_{
         100.0, 50.0, 4096};
+
+    /// Kernel-internal attestation flow per `attestation.md`. Owns
+    /// per-connection `our_sent` / `their_received_valid` flags and
+    /// fires the `Untrusted → Peer` upgrade once both halves of the
+    /// mutual exchange complete.
+    AttestationDispatcher                 attestation_dispatcher_;
 };
 
 } // namespace gn::core

@@ -12,6 +12,7 @@
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
+#include "system_handler_ids.hpp"
 
 namespace gn::core {
 
@@ -674,23 +675,15 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
 
     /// IK-style patterns can complete the handshake on the initiator's
     /// first message. If `advance_handshake` already moved the session
-    /// to Transport, gate-promote `Untrusted → Peer` per
-    /// `security-trust.md` §3. Loopback / Peer connections take the
-    /// helper's no-op path; `LIMIT_REACHED` from the gate is the
-    /// "policy says no" return and is not propagated — the connection
-    /// is still functional, just at its declared trust class.
+    /// to Transport, hand off to the kernel-internal attestation
+    /// dispatcher per `attestation.md` §4: the dispatcher sends the
+    /// local attestation payload over the secured channel; the trust
+    /// upgrade `Untrusted → Peer` fires only after the peer's
+    /// attestation has verified back. Loopback / IntraNode sessions
+    /// take the dispatcher's no-op path (see `attestation.md` §4).
     if (session->phase() == SecurityPhase::Transport) {
-        if (pc->kernel->connections().upgrade_trust(conn, GN_TRUST_PEER) == GN_OK) {
-            ConnEvent ev{};
-            ev.kind  = GN_CONN_EVENT_TRUST_UPGRADED;
-            ev.conn  = conn;
-            ev.trust = GN_TRUST_PEER;
-            if (auto upgraded =
-                    pc->kernel->connections().find_by_id(conn)) {
-                ev.remote_pk = upgraded->remote_pk;
-            }
-            pc->kernel->on_conn_event().fire(ev);
-        }
+        pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
+                                                        conn, *session);
         drain_handshake_pending(pc, conn, *session, rec->transport_scheme);
     }
     return GN_OK;
@@ -733,24 +726,14 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                 (void)send_raw_via_transport(pc, conn, rec->transport_scheme, reply);
             }
             /// `advance_handshake` may have moved the session to
-            /// Transport on this byte run. Gate-promote `Untrusted →
-            /// Peer` per `security-trust.md` §3; the helper rejects
-            /// any other transition with `LIMIT_REACHED`, which we
-            /// silently absorb — the connection continues at its
-            /// declared trust class.
+            /// Transport on this byte run. Hand off to the kernel-
+            /// internal attestation dispatcher per `attestation.md`
+            /// §4: the trust upgrade fires only after the mutual
+            /// exchange completes. Loopback / IntraNode sessions
+            /// take the dispatcher's no-op path.
             if (session->phase() == SecurityPhase::Transport) {
-                if (pc->kernel->connections().upgrade_trust(
-                        conn, GN_TRUST_PEER) == GN_OK) {
-                    ConnEvent ev{};
-                    ev.kind  = GN_CONN_EVENT_TRUST_UPGRADED;
-                    ev.conn  = conn;
-                    ev.trust = GN_TRUST_PEER;
-                    if (auto rec_after =
-                            pc->kernel->connections().find_by_id(conn)) {
-                        ev.remote_pk = rec_after->remote_pk;
-                    }
-                    pc->kernel->on_conn_event().fire(ev);
-                }
+                pc->kernel->attestation_dispatcher().send_self(
+                    *pc->kernel, conn, *session);
                 drain_handshake_pending(pc, conn, *session,
                                          rec->transport_scheme);
             }
@@ -780,6 +763,23 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     if (!deframed.has_value()) return deframed.error().code;
 
     for (const auto& env : deframed->messages) {
+        /// Reserved system msg_ids are intercepted before the
+        /// regular dispatch chain. `0x11` (attestation) per
+        /// `attestation.md` §3 routes to the kernel-internal
+        /// dispatcher; the envelope never reaches plugin
+        /// handlers regardless of any registration.
+        if (env.msg_id == kAttestationMsgId) {
+            std::shared_ptr<SecuritySession> session_for_inbound =
+                pc->kernel->sessions().find(conn);
+            if (session_for_inbound != nullptr) {
+                std::span<const std::uint8_t> payload_span{
+                    env.payload, env.payload_size};
+                (void)pc->kernel->attestation_dispatcher().on_inbound(
+                    *pc->kernel, conn, *session_for_inbound,
+                    payload_span);
+            }
+            continue;
+        }
         route_one_envelope(*pc->kernel, layer->protocol_id(), env);
     }
     return GN_OK;
@@ -888,6 +888,12 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     /// `GN_ERR_UNKNOWN_RECEIVER` without publishing.
     pc->kernel->sessions().destroy(conn);
     auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+
+    /// Drop kernel-internal per-connection state before publishing
+    /// the event. A subscriber that re-uses the numeric id (after
+    /// kernel id reuse) on a fresh connection should not inherit
+    /// stale attestation flags per `attestation.md` §7.
+    pc->kernel->attestation_dispatcher().on_disconnect(conn);
 
     if (!snapshot) {
         return GN_ERR_UNKNOWN_RECEIVER;

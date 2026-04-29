@@ -6,6 +6,8 @@
 #include <algorithm>
 #include <mutex>
 
+#include <core/kernel/system_handler_ids.hpp>
+
 namespace gn::core {
 
 gn_result_t HandlerRegistry::register_handler(std::string_view           protocol_id,
@@ -21,6 +23,11 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
     if (msg_id == 0) {
         /// `0` is reserved as the unset sentinel — registrations against
         /// it would shadow legitimate dispatches.
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    if (is_reserved_system_msg_id(msg_id)) {
+        /// Per `handler-registration.md` §2a — kernel-internal
+        /// dispatch ids are not exposed to plugin registrations.
         return GN_ERR_INVALID_ENVELOPE;
     }
 

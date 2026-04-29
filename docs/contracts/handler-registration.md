@@ -57,6 +57,30 @@ back during dispatch.
 
 ---
 
+## 2a. Reserved msg_id values
+
+Some msg_ids are reserved for kernel-internal dispatch and may not
+be registered through this surface. `register_handler` rejects
+registrations against these ids with `GN_ERR_INVALID_ENVELOPE`;
+the failed call has no effect on registry state.
+
+| msg_id | Reserved for | Specification |
+|---|---|---|
+| `0x00` | unset sentinel | this section |
+| `0x11` | attestation dispatcher | `attestation.md` §3 |
+
+Kernel-internal handlers do not use the registry described in this
+contract. Their dispatch path runs ahead of the registry chain
+lookup — the kernel intercepts envelopes carrying a reserved
+msg_id after the protocol layer's `deframe` step and routes them
+directly to the owning subsystem (`attestation.md` §3 specifies
+the interception point for `0x11`). A plugin handler accidentally
+chained against a reserved msg_id, were the registration not
+rejected at registration time, would never see traffic — the
+rejection here gives the plugin author a loud, immediate signal.
+
+---
+
 ## 3. Dispatch chain
 
 ```cpp

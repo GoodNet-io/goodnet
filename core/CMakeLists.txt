@@ -18,6 +18,7 @@ add_library(goodnet_kernel STATIC
     kernel/host_api_builder.cpp
     kernel/service_resolver.cpp
     kernel/timer_registry.cpp
+    kernel/attestation_dispatcher.cpp
     plugin/plugin_manager.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)

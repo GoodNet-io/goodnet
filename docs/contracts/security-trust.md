@@ -67,7 +67,7 @@ properties:
 | UDP from `127.0.0.1` / `::1` | `Loopback` |
 | IPC (Unix socket) | `Loopback` |
 | Intra-process pipe | `IntraNode` |
-| `Untrusted` after Noise handshake | upgrade to `Peer` |
+| `Untrusted` after Noise handshake **and successful mutual attestation** | upgrade to `Peer` |
 | `Loopback` / `IntraNode` after handshake | unchanged — gate refuses any transition off these classes |
 
 The kernel verifies the upgrade path on every transition:
@@ -77,6 +77,19 @@ can_upgrade(from, to):
     if from == Untrusted and to == Peer: return true
     return from == to                          # any other change rejected
 ```
+
+Promotion to `Peer` is **gated on attestation**: the kernel does
+not call `upgrade_trust` when the security session reaches
+`Transport`. Instead, both peers first exchange a 232-byte
+attestation payload over the secured channel (per
+`attestation.md`); the kernel-internal attestation dispatcher
+holds the trust class at `Untrusted` until the local side has
+sent and the remote side's payload has verified. A peer that
+completes Noise but fails to provide a valid attestation stays
+at `Untrusted`. `Loopback` and `IntraNode` connections do not
+require attestation — their trust class is final at
+`notify_connect` and the gate refuses any other transition
+regardless.
 
 ---
 
