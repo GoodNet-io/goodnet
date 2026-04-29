@@ -54,6 +54,25 @@ public:
     /// leaves the existing state unchanged in every case.
     [[nodiscard]] gn_result_t load_file(const std::string& path);
 
+    /// Deep-merge @p overlay JSON on top of the current state.
+    /// Nested objects merge field-by-field per RFC 7396 JSON Merge
+    /// Patch — `{"limits": {"max_connections": 100}}` overlaid on
+    /// `{"limits": {"max_connections": 4096, "max_timers": 4096}}`
+    /// yields `{"limits": {"max_connections": 100, "max_timers":
+    /// 4096}}`. Scalars and arrays in the overlay replace the
+    /// matching key wholesale.
+    ///
+    /// The intended pattern is layered config: an embedding
+    /// application calls `load_json` (or `load_file`) for the
+    /// canonical defaults, then `merge_json` once for the site
+    /// override, then `merge_json` again for the per-deploy
+    /// override — the kernel sees one validated state at the end.
+    ///
+    /// Same parse / invariant atomicity as `load_json`: a parse
+    /// failure or invariant violation rolls the kernel state back
+    /// to whatever the previous successful load / merge left.
+    [[nodiscard]] gn_result_t merge_json(std::string_view overlay);
+
     /// Validate cross-field invariants from `limits.md` §3. Returns
     /// `GN_ERR_LIMIT_REACHED` when any invariant fails; the offending
     /// field name is appended to @p out_reason if non-null.
