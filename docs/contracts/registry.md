@@ -57,9 +57,13 @@ Sequencing rules:
 4. Release all locks.
 
 The registry honours `gn_limits_t::max_connections` (`limits.md` §4a):
-when the live record count already equals the cap, the insert returns
-`GN_ERR_LIMIT_REACHED` before step 1 — no locks are taken, no key
-slot is consumed.
+when the live record count is already at the cap, the insert returns
+`GN_ERR_LIMIT_REACHED`. The check fires twice — first before any lock
+is taken (fast-path rejection), then again under the triple lock to
+close the race against a concurrent inserter that may have bumped the
+counter between the pre-check and the lock acquisition. On rejection
+no locks remain held, no key slot is consumed, the live count stays
+unchanged.
 
 Properties:
 
