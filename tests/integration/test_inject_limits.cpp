@@ -173,3 +173,50 @@ TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
                                   frame_bytes.data(), frame_bytes.size()),
               GN_ERR_LIMIT_REACHED);
 }
+
+// ── per-pk keyed bucket (host-api.md §8): a bridge that disconnects ──
+// ── and re-opens the connection cannot skip the rate limit by ──────
+// ── acquiring a fresh `gn_conn_id_t`. ──────────────────────────────
+
+TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
+    InjectHarness h;
+
+    PublicKey peer_pk;
+    peer_pk.fill(0xEF);
+    const gn_conn_id_t first_source =
+        h.install_source(peer_pk, "test://inject-reopen-1");
+
+    /// Tight bucket: drain it through `first_source`.
+    h.install_tight_bucket(/*rate*/ 0.0, /*burst*/ 3.0);
+
+    const std::uint8_t payload[] = {0xAA};
+    constexpr std::uint32_t kMsgId = 0x55;
+
+    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+                                             kMsgId, payload, sizeof(payload)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+                                             kMsgId, payload, sizeof(payload)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+                                             kMsgId, payload, sizeof(payload)),
+              GN_OK);
+
+    /// Simulate disconnect: erase the registry record. The peer's pk
+    /// is unchanged — only the `gn_conn_id_t` is gone.
+    EXPECT_EQ(h.kernel->connections().erase_with_index(first_source),
+              GN_OK);
+
+    /// Reopen under the same `peer_pk`. A bucket keyed on `conn_id`
+    /// would now be a fresh, full bucket; the per-pk implementation
+    /// must remember the drained state for this peer identity.
+    const gn_conn_id_t second_source =
+        h.install_source(peer_pk, "test://inject-reopen-2");
+    ASSERT_NE(second_source, first_source)
+        << "alloc_id is monotonic; reopened conn must not reuse the id";
+
+    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, second_source,
+                                             kMsgId, payload, sizeof(payload)),
+              GN_ERR_LIMIT_REACHED)
+        << "bucket keyed on remote_pk must persist across conn_id reuse";
+}
