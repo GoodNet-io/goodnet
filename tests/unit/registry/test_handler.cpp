@@ -88,6 +88,23 @@ TEST(HandlerRegistry_Args, RejectsZeroMsgId) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
+TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
+    /// Per `handler-registration.md` §2a — `0x11` is reserved for
+    /// the kernel-internal attestation dispatcher
+    /// (`attestation.md` §3). Plugin registration must be rejected
+    /// regardless of `protocol_id`.
+    HandlerRegistry reg;
+    gn_handler_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler("gnet-v1", 0x11, 128,
+                                   dummy_vtable(), nullptr, &id),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(id, GN_INVALID_ID);
+    EXPECT_EQ(reg.register_handler("any-other-proto", 0x11, 200,
+                                   dummy_vtable(), nullptr, &id),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(reg.size(), 0u);
+}
+
 // ─── register / lookup ──────────────────────────────────────────────
 
 TEST(HandlerRegistry_Lookup, RegistersAndLooksUp) {
@@ -318,7 +335,8 @@ TEST(HandlerRegistry_Concurrency, FourThreadsRegisterUnregister) {
     std::atomic<int>  unreg_ok{0};
     std::mutex        ids_mu;
     std::vector<gn_handler_id_t> all_ids;
-    all_ids.reserve(static_cast<std::size_t>(kThreads * kPerThread));
+    all_ids.reserve(static_cast<std::size_t>(kThreads) *
+                    static_cast<std::size_t>(kPerThread));
 
     auto worker = [&](int tid) {
         std::vector<gn_handler_id_t> mine;
@@ -329,7 +347,8 @@ TEST(HandlerRegistry_Concurrency, FourThreadsRegisterUnregister) {
             const std::uint32_t msg_id =
                 static_cast<std::uint32_t>((tid << 16) | (i + 1));
             const std::uint8_t prio =
-                static_cast<std::uint8_t>((i * 17) & 0xFFu);
+                static_cast<std::uint8_t>(
+                    (static_cast<unsigned>(i) * 17u) & 0xFFu);
 
             if (reg.register_handler("gnet-v1", msg_id, prio,
                                      dummy_vtable(), nullptr, &id) == GN_OK) {

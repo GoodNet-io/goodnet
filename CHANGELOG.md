@@ -325,10 +325,34 @@ typed extension API.
   OpenSSL still picks TLS 1.3 cipher suites automatically; the
   minimum is enforced by exclusion. Existing loopback test
   passes — both ends negotiate 1.3.
+- **Attestation gate for `Untrusted → Peer` upgrade
+  (`attestation.md`, `security-trust.md` §3,
+  `handler-registration.md` §2a).** Trust no longer promotes
+  automatically when a Noise session reaches Transport phase.
+  The kernel-internal `AttestationDispatcher` exchanges a
+  232-byte payload on system msg_id `0x11` over the secured
+  channel — 136-byte attestation cert (per `identity.md` §4) +
+  32-byte session `handshake_hash` binding + 64-byte Ed25519
+  signature pinning the cert to this session. Both peers must
+  send their own and verify the other's before
+  `connections.upgrade_trust` runs and
+  `GN_CONN_EVENT_TRUST_UPGRADED` fires. A peer that completes
+  Noise but fails to provide a valid attestation stays at
+  `Untrusted`. Loopback / IntraNode connections skip the
+  exchange (their trust class is final at `notify_connect`).
+  The `notify_inbound_bytes` thunk intercepts `0x11` envelopes
+  after the protocol layer's `deframe` step and routes them to
+  the dispatcher — plugin handlers never see attestation
+  traffic, and `HandlerRegistry::register_handler` rejects the
+  reserved id with `GN_ERR_INVALID_ENVELOPE`. Per-step verify
+  failures (size / replay / parse / signature / expiry) drop
+  the envelope, increment the named drop metric, and
+  disconnect the connection. Per-conn dispatcher state clears
+  on `notify_disconnect`.
 
 ### Tests
 
-526 across unit, integration, scenario, and property suites.
+554 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan / clang-tidy strict-clean. The
 `ConnectionRegistry_SnapshotAndErase` suite covers the §4a
 atomicity claim (cross-shard non-deadlock and
@@ -337,6 +361,16 @@ exactly-one-winner under same-id contention); the
 (`GN_OK` / `GN_ERR_UNKNOWN_RECEIVER` / `GN_ERR_NULL_ARG` /
 `GN_ERR_NOT_IMPLEMENTED`), the idempotent + concurrent
 double-call cases, and the re-entrant-from-callback path.
+The `AttestationDispatcher_Verify` suite pins the
+`compose_payload` layout and exercises every per-step
+rejection path of `verify_payload` (`BadSize`,
+`BindingMismatch`, tampered cert, tampered signature, expired
+cert); the `AttestationDispatcher_Mutual` suite covers the
+upgrade-fires-once contract under both flags, the no-upgrade
+paths under each flag alone, the `Loopback`-class no-upgrade
+case, and the `on_disconnect` state-clear claim. The
+`HandlerRegistry_Args.RejectsReservedAttestationMsgId` test
+covers `handler-registration.md` §2a's plugin-side rejection.
 
 ## [0.1.0] — 2026-04-28
 
