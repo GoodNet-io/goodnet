@@ -433,7 +433,7 @@ buffer to the structured logger as a literal payload.
 | Payload | `msg` is a NUL-terminated UTF-8 buffer the plugin formatted on its own stack |
 | Concurrency | safe from any thread owning a reference to `api` |
 | Delivery | best-effort; messages below the live level threshold are dropped without I/O |
-| Truncation | the plugin's local formatter chooses the cap (the bundled `gn_log_*` macros use 1024 bytes); the kernel does not re-truncate |
+| Truncation | the plugin's local formatter chooses the cap (the bundled `gn_log_*` macros use 2048 bytes); the kernel does not re-truncate. Plugins formatting larger messages allocate their own buffer and call the slot directly |
 
 The contract rules out the format-string class of attack against
 the kernel. A compromised plugin cannot smuggle `%n` writes,

@@ -137,10 +137,12 @@ static inline const void* gn_query_ext_checked_value(
  * abuse `%n` or width specifiers to corrupt kernel memory, because
  * `vsnprintf` only ever sees buffers the plugin built itself.
  *
- * Truncates at 1024 bytes; longer messages lose the tail.
+ * Truncates at 2048 bytes; longer messages lose the tail. A plugin
+ * that needs more space allocates its own buffer and calls
+ * `api->log(api->host_ctx, level, buf)` directly.
  */
 #define gn_log(api, level, ...) do {                                          \
-    char gn_log_buf__[1024];                                                  \
+    char gn_log_buf__[2048];                                                  \
     (void)snprintf(gn_log_buf__, sizeof(gn_log_buf__), __VA_ARGS__);          \
     (api)->log((api)->host_ctx, (level), gn_log_buf__);                       \
 } while (0)

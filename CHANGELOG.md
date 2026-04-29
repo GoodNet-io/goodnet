@@ -11,6 +11,20 @@ pipe, and the first handler. The kernel moves encrypted bytes
 between two processes over a real socket and surfaces RTT through a
 typed extension API.
 
+### Changed
+
+- **`host_api->log` slot signature** — variadic `(level, fmt, ...)`
+  → single buffer `(level, const char* msg)`. The kernel never
+  invokes `vsnprintf` on plugin-supplied bytes, closing the
+  format-string class of attack against the kernel address space
+  (a compromised plugin cannot smuggle `%n` writes or
+  `%s`-without-arg dereferences across the C ABI). Plugins format
+  on their own stack — `sdk/convenience.h` provides
+  `gn_log_<level>(api, "fmt", args…)` macros that build the
+  message with `snprintf` (2048-byte cap) and call the slot.
+  Bundled transport plugins migrated to the macros. Per
+  `host-api.md` §11.
+
 ### Added
 
 - **Cooperative cancellation for plugins** — every plugin owns a
