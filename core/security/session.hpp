@@ -25,6 +25,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <core/registry/security.hpp>
 #include <sdk/security.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -72,8 +73,12 @@ public:
 
     /// Open a session against the active security provider.
     ///
-    /// @param vtable          provider vtable held by the SecurityRegistry
-    /// @param provider_self   provider's `self` pointer (paired with vtable)
+    /// @param entry           snapshot of the active security provider
+    ///                        from `SecurityRegistry::current()`. Carries
+    ///                        the vtable pointer, the provider `self`,
+    ///                        and a `lifetime_anchor` whose strong ref
+    ///                        the session holds for the duration of
+    ///                        every encrypt/decrypt that follows.
     /// @param conn            kernel connection id
     /// @param trust           trust class declared by the transport
     /// @param role            initiator/responder, from `notify_connect`
@@ -82,9 +87,7 @@ public:
     /// @param remote_static_pk peer Ed25519 pk if known up-front (IK
     ///                         initiator); pass empty span otherwise
     [[nodiscard]] gn_result_t open(
-        const gn_security_provider_vtable_t* vtable,
-        void* provider_self,
-        std::shared_ptr<void> security_anchor,
+        const SecurityEntry& entry,
         gn_conn_id_t conn,
         gn_trust_class_t trust,
         gn_handshake_role_t role,
@@ -207,9 +210,7 @@ public:
     /// `phase()` / `encrypt_transport()` cannot race a free.
     [[nodiscard]] std::shared_ptr<SecuritySession> create(
         gn_conn_id_t conn,
-        const gn_security_provider_vtable_t* vtable,
-        void* provider_self,
-        std::shared_ptr<void> security_anchor,
+        const SecurityEntry& entry,
         gn_trust_class_t trust,
         gn_handshake_role_t role,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
