@@ -13,6 +13,19 @@ typed extension API.
 
 ### Added
 
+- **Cooperative cancellation for plugins** — every plugin owns a
+  `PluginAnchor` carrying an in-flight counter and a
+  `shutdown_requested` flag. Async dispatch sites (timer fire,
+  posted task, connection-event subscriber) open each callback
+  through a `GateGuard` that refuses entries published after
+  rollback began, so a callback scheduled before shutdown but
+  fired after is dropped without entering plugin code. Plugins
+  poll the new `host_api->is_shutdown_requested(host_ctx)` slot
+  from inside long-running async work and exit cooperatively
+  before the kernel's drain timeout. Drain logs the in-flight
+  count alongside the timeout warning, attributing leaked work to
+  the misbehaving plugin. Per `plugin-lifetime.md` §4 + §8 and
+  `host-api.md` §10.
 - **`nix run .#demo` quickstart** — `examples/two_node` ships a
   single-process binary, `goodnet-demo`, that owns both ends of a
   conversation: two `Kernel` instances each with a fresh
