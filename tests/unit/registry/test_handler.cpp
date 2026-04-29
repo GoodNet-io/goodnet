@@ -350,6 +350,25 @@ TEST(HandlerRegistry_Cap, ThirdRegistrationRejectedAtCap2) {
     EXPECT_EQ(reg.size(), 2u);
 }
 
+TEST(HandlerRegistry_Cap, ZeroDisablesEnforcement) {
+    /// Per `limits.md §4a`: a cap of zero disables the check.
+    HandlerRegistry reg;
+    reg.set_max_chain_length(0);
+    EXPECT_EQ(reg.max_chain_length(), 0u);
+
+    /// Register sixteen handlers on the same key. None should
+    /// be rejected when the cap is disabled.
+    for (int i = 0; i < 16; ++i) {
+        gn_handler_id_t id = GN_INVALID_ID;
+        ASSERT_EQ(reg.register_handler("gnet-v1", 1, 128,
+                                       dummy_vtable(), nullptr, &id),
+                  GN_OK)
+            << "registration #" << i << " rejected with cap=0";
+        EXPECT_NE(id, GN_INVALID_ID);
+    }
+    EXPECT_EQ(reg.lookup("gnet-v1", 1).size(), 16u);
+}
+
 TEST(HandlerRegistry_Cap, IsPerKeyNotGlobal) {
     HandlerRegistry reg;
     reg.set_max_chain_length(1);
