@@ -18,6 +18,15 @@ gn_result_t TransportRegistry::register_transport(
         return GN_ERR_NULL_ARG;
     }
 
+    /// `abi-evolution.md` §3a: defensive size-prefix check on the
+    /// plugin-provided vtable. A vtable that declares a smaller
+    /// size than the kernel's known minimum is from an SDK older
+    /// than the slots the kernel intends to call — reject before
+    /// any slot lookup.
+    if (vtable->api_size < sizeof(gn_transport_vtable_t)) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
     std::unique_lock lock(mu_);
     std::string scheme_str{scheme};
 

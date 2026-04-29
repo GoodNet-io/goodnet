@@ -16,6 +16,7 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <mutex>
 #include <shared_mutex>
@@ -30,13 +31,20 @@ public:
     using Handler = std::function<void(const Event&)>;
     using Token   = std::uint64_t;
 
+    /// Sentinel returned from `subscribe` when the handler is empty;
+    /// matches `GN_INVALID_SUBSCRIPTION_ID` in `conn-events.md` §3.
+    static constexpr Token kInvalidToken = 0;
+
     SignalChannel()                                = default;
     SignalChannel(const SignalChannel&)            = delete;
     SignalChannel& operator=(const SignalChannel&) = delete;
 
     /// Register @p handler. Returns a token the caller hands back to
-    /// `unsubscribe`.
+    /// `unsubscribe`. An empty `std::function` (default-constructed
+    /// or wrapping a NULL C function pointer) returns `kInvalidToken`
+    /// per `signal-channel.md` §6.1; the subscriber list is unchanged.
     [[nodiscard]] Token subscribe(Handler handler) {
+        if (!handler) return kInvalidToken;
         std::unique_lock lock(mu_);
         Token t = next_token_++;
         subs_.push_back(Sub{t, std::move(handler)});
@@ -53,7 +61,10 @@ public:
     /// Fire @p event to every current subscriber. Snapshot under the
     /// lock, drop the lock, then invoke handlers — so handlers may
     /// subscribe or unsubscribe inside their own callback without
-    /// deadlocking against the channel.
+    /// deadlocking against the channel. A handler that raises is
+    /// caught per `signal-channel.md` §6.2: the exception is
+    /// discarded and remaining snapshot subscribers still receive
+    /// the event.
     void fire(const Event& event) {
         std::vector<Handler> snapshot;
         {
@@ -61,7 +72,20 @@ public:
             snapshot.reserve(subs_.size());
             for (const auto& s : subs_) snapshot.push_back(s.handler);
         }
-        for (auto& h : snapshot) h(event);
+        for (auto& h : snapshot) {
+            try {
+                h(event);
+            } catch (...) {
+                /// Per `signal-channel.md` §6.2: capture the exception
+                /// pointer so the catch is non-empty (silencing
+                /// `bugprone-empty-catch`) and immediately drop it —
+                /// one bad subscriber must not starve the rest. Plugin
+                /// authors catch internally before returning across
+                /// the C ABI boundary.
+                std::exception_ptr discarded = std::current_exception();
+                (void)discarded;
+            }
+        }
     }
 
     /// Number of currently subscribed handlers. Useful for tests.

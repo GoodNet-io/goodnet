@@ -14,6 +14,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <stdexcept>
 #include <thread>
 #include <vector>
 
@@ -229,6 +230,52 @@ TEST(SignalChannel_Concurrency, MultipleProducersOneConsumer) {
     EXPECT_GT(total.load(), 0);
 
     ch.unsubscribe(t);
+}
+
+// ─── §6 subscriber failure modes ───────────────────────────────────
+
+TEST(SignalChannel_NullHandler, ReturnsInvalidToken) {
+    SignalChannel<ConfigReload> ch;
+    /// Empty std::function — `signal-channel.md` §6.1 returns the
+    /// invalid-token sentinel and leaves the subscriber list empty.
+    SignalChannel<ConfigReload>::Handler empty;
+    const auto t = ch.subscribe(empty);
+    EXPECT_EQ(t, SignalChannel<ConfigReload>::kInvalidToken);
+    EXPECT_EQ(ch.subscriber_count(), 0u);
+}
+
+TEST(SignalChannel_HandlerThrows, OtherSubscribersStillReceive) {
+    SignalChannel<ConfigReload> ch;
+    std::atomic<int> good_a{0};
+    std::atomic<int> good_b{0};
+
+    /// First subscriber raises on every fire. Per §6.2 the channel
+    /// catches the exception and continues with the rest of the
+    /// snapshot.
+    const auto t_throw = ch.subscribe([](const ConfigReload&) {
+        throw std::runtime_error("subscriber failure");
+    });
+    const auto t_good_a = ch.subscribe([&](const ConfigReload&) {
+        good_a.fetch_add(1, std::memory_order_relaxed);
+    });
+    const auto t_good_b = ch.subscribe([&](const ConfigReload&) {
+        good_b.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    EXPECT_NE(t_throw,  SignalChannel<ConfigReload>::kInvalidToken);
+    EXPECT_NE(t_good_a, SignalChannel<ConfigReload>::kInvalidToken);
+    EXPECT_NE(t_good_b, SignalChannel<ConfigReload>::kInvalidToken);
+
+    ch.fire(ConfigReload{1});
+    ch.fire(ConfigReload{2});
+    ch.fire(ConfigReload{3});
+
+    EXPECT_EQ(good_a.load(), 3);
+    EXPECT_EQ(good_b.load(), 3);
+
+    ch.unsubscribe(t_throw);
+    ch.unsubscribe(t_good_a);
+    ch.unsubscribe(t_good_b);
 }
 
 }  // namespace

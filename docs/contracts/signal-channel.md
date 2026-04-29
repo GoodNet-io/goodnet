@@ -92,9 +92,57 @@ chosen executor.
 
 ---
 
-## 6. Cross-references
+## 6. Subscriber failure modes
+
+### 6.1 NULL handler
+
+`subscribe` rejects a handler that is empty (default-constructed
+`std::function`, or a `nullptr` C function pointer wrapped through
+the C ABI bridge). The rejection returns an invalid token (zero,
+matching the `GN_INVALID_SUBSCRIPTION_ID` sentinel from
+`conn-events.md` §3) and does not append to the subscriber list.
+Plugins that pass NULL get a no-op subscription rather than a
+fire-time crash.
+
+### 6.2 Handler raises during `fire`
+
+A handler that raises an exception during `fire` is caught by the
+channel; the remaining subscribers in the snapshot still receive
+the event. The channel discards the exception silently — no
+re-throw past the `fire` call boundary, no kernel state mutation
+beyond what the handler had already done before raising.
+
+C ABI plugin authors **must not** allow C++ exceptions to escape
+their callback through the C ABI boundary; the catch inside
+`fire` is a kernel-side defence, not a contract that plugins may
+raise. A C callback that wraps a higher-level language with an
+exception model owns the catch and translates the exception into
+a return code or a logged error.
+
+### 6.3 Handler mutates other kernel state
+
+A handler is free to call back into kernel registries
+(`ConnectionRegistry`, `HandlerRegistry`, etc.) during `fire`;
+those have their own locks and admit re-entry by design. The
+exception is `for_each_connection` (`conn-events.md` §4): the
+visitor holds a per-shard read lock and self-deadlocks on any
+mutating call to the connection registry.
+
+### 6.4 Handler blocks
+
+`fire` is synchronous (§5) — a blocking handler holds up every
+subscriber that follows it in the snapshot. Subscribers that
+need to defer slow work hand `fire` an enqueueing wrapper; the
+contract here pins fire-and-forget delivery, not bounded
+runtime per handler.
+
+---
+
+## 7. Cross-references
 
 - FSM phase events that do **not** flow through `SignalChannel`:
   `fsm-events.md` §7.
 - Extension surfaces a plugin would use instead:
   `host-api.md` §2 (`register_extension`, `query_extension_checked`).
+- C ABI vtable size validation: `abi-evolution.md` §3 (consumer
+  responsibility) and §3a (kernel-side defensive check).

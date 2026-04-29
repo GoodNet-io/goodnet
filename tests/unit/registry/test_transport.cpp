@@ -81,10 +81,12 @@ TEST(TransportRegistry_Register, RoundTripById) {
 
     auto by_id = r.find_by_id(id);
     ASSERT_TRUE(by_id.has_value());
-    EXPECT_EQ(by_id->id,     id);
-    EXPECT_EQ(by_id->scheme, "tcp");
-    EXPECT_EQ(by_id->vtable, make_dummy_vtable());
-    EXPECT_EQ(by_id->self,   &dummy_self);
+    if (by_id.has_value()) {
+        EXPECT_EQ(by_id->id,     id);
+        EXPECT_EQ(by_id->scheme, "tcp");
+        EXPECT_EQ(by_id->vtable, make_dummy_vtable());
+        EXPECT_EQ(by_id->self,   &dummy_self);
+    }
 }
 
 TEST(TransportRegistry_Register, RoundTripByScheme) {
@@ -96,8 +98,10 @@ TEST(TransportRegistry_Register, RoundTripByScheme) {
               GN_OK);
     auto by_scheme = r.find_by_scheme("udp");
     ASSERT_TRUE(by_scheme.has_value());
-    EXPECT_EQ(by_scheme->id, id);
-    EXPECT_EQ(by_scheme->scheme, "udp");
+    if (by_scheme.has_value()) {
+        EXPECT_EQ(by_scheme->id, id);
+        EXPECT_EQ(by_scheme->scheme, "udp");
+    }
 }
 
 TEST(TransportRegistry_Register, DuplicateSchemeRejected) {
@@ -117,7 +121,9 @@ TEST(TransportRegistry_Register, DuplicateSchemeRejected) {
     /// Original entry untouched.
     auto found = r.find_by_id(id1);
     ASSERT_TRUE(found.has_value());
-    EXPECT_EQ(found->self, &va);
+    if (found.has_value()) {
+        EXPECT_EQ(found->self, &va);
+    }
 }
 
 TEST(TransportRegistry_Register, DistinctSchemesGetDistinctIds) {
@@ -235,6 +241,44 @@ TEST(TransportRegistry_Concurrency, FourThreadsRegisterUnregister) {
     EXPECT_GT(unreg_ok.load(), 0);
     EXPECT_EQ(r.size(),
               static_cast<std::size_t>(reg_ok.load() - unreg_ok.load()));
+}
+
+// ─── §3a vtable api_size validation ─────────────────────────────────
+
+TEST(TransportRegistry_VtableApiSize, RejectsZeroApiSize) {
+    /// `abi-evolution.md` §3a: a vtable that declares an api_size
+    /// smaller than the kernel's known minimum is from an SDK older
+    /// than the slots the kernel intends to call. Reject before any
+    /// slot lookup.
+    TransportRegistry r;
+    gn_transport_vtable_t vt{};  /// api_size left at zero
+    gn_transport_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(r.register_transport("tcp", &vt, nullptr, &id),
+              GN_ERR_VERSION_MISMATCH);
+    EXPECT_EQ(id, GN_INVALID_ID);
+    EXPECT_EQ(r.size(), 0u);
+}
+
+TEST(TransportRegistry_VtableApiSize, RejectsTruncatedVtable) {
+    TransportRegistry r;
+    gn_transport_vtable_t vt{};
+    /// Producer claims it is older than even the minimum kernel
+    /// build; one byte short is enough to fail the §3a check.
+    vt.api_size = static_cast<std::uint32_t>(
+        sizeof(gn_transport_vtable_t) - 1);
+    gn_transport_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(r.register_transport("tcp", &vt, nullptr, &id),
+              GN_ERR_VERSION_MISMATCH);
+    EXPECT_EQ(id, GN_INVALID_ID);
+}
+
+TEST(TransportRegistry_VtableApiSize, AcceptsExactlyMinimumApiSize) {
+    TransportRegistry r;
+    gn_transport_vtable_t vt{};
+    vt.api_size = sizeof(gn_transport_vtable_t);
+    gn_transport_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(r.register_transport("tcp", &vt, nullptr, &id), GN_OK);
+    EXPECT_NE(id, GN_INVALID_ID);
 }
 
 }  // namespace
