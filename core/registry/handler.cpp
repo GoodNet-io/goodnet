@@ -47,12 +47,15 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
 
     std::unique_lock lock(mu_);
 
-    /// Check capacity before mutating the map. `chains_[key]` would
-    /// default-create an empty chain on miss; checking via find first
-    /// avoids the legitimate-chain erase trap when the cap is reached.
-    if (auto it = chains_.find(key); it != chains_.end() &&
-                                     it->second.size() >= cap) {
-        return GN_ERR_LIMIT_REACHED;
+    /// `chains_[key]` default-creates an empty chain on miss;
+    /// the find lookup keeps a rejected registration from
+    /// leaving an orphan entry behind. A cap of zero disables
+    /// enforcement per `limits.md §4a`.
+    if (cap != 0) {
+        if (auto it = chains_.find(key); it != chains_.end() &&
+                                         it->second.size() >= cap) {
+            return GN_ERR_LIMIT_REACHED;
+        }
     }
 
     auto& chain = chains_[key];
