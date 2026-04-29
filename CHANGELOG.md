@@ -27,6 +27,21 @@ typed extension API.
 
 ### Added
 
+- **Typed config slots beyond string + int64** — five new
+  `host_api->config_get_*` entries: `bool`, `double`, `array_size`,
+  `array_string`, `array_int64`. Plugins reach the same configurable
+  knob whether the operator wrote `1` or `1.0`; arrays surface
+  through a size-then-index pair so DHT bootstrap lists and similar
+  legacy schemas land naturally. `config_get_string` /
+  `config_get_int64` continue to do exactly what they did. Per
+  `host-api.md` §2.
+- **`Config::load_file(path)` + JSON5 comments** — the kernel itself
+  remains library-linkable without a filesystem dependency, but the
+  common single-binary deployment now has a one-call entry to read
+  the bytes off disk. The JSON parser strips `//` and `/* */`
+  comments at parse time so operators can annotate config with
+  rationale without losing strict-JSON compatibility for existing
+  files.
 - **Inject rate limiter is configurable** — three new `gn_limits_t`
   fields (`inject_rate_per_source`, `inject_rate_burst`,
   `inject_rate_lru_cap`) replace the hard-coded constants the
