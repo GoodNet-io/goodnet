@@ -163,6 +163,9 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     L.pending_handshake_bytes   = pick_u32(obj, "pending_handshake_bytes",   L.pending_handshake_bytes);
     L.max_storage_table_entries = pick_u64(obj, "max_storage_table_entries", L.max_storage_table_entries);
     L.max_storage_value_bytes   = pick_u64(obj, "max_storage_value_bytes",   L.max_storage_value_bytes);
+    L.max_timers                = pick_u32(obj, "max_timers",                L.max_timers);
+    L.max_pending_tasks         = pick_u32(obj, "max_pending_tasks",         L.max_pending_tasks);
+    L.max_timers_per_plugin     = pick_u32(obj, "max_timers_per_plugin",     L.max_timers_per_plugin);
     L.inject_rate_per_source    = pick_u32(obj, "inject_rate_per_source",    L.inject_rate_per_source);
     L.inject_rate_burst         = pick_u32(obj, "inject_rate_burst",         L.inject_rate_burst);
     L.inject_rate_lru_cap       = pick_u32(obj, "inject_rate_lru_cap",       L.inject_rate_lru_cap);
@@ -376,6 +379,42 @@ gn_limits_t Config::limits() const noexcept {
 std::string Config::dump(int indent) const {
     std::shared_lock lock(mu_);
     return json_.dump(indent);
+}
+
+gn_result_t Config::merge_json(std::string_view overlay) {
+    nlohmann::json patch;
+    try {
+        patch = nlohmann::json::parse(
+            overlay.begin(), overlay.end(),
+            /*cb*/ nullptr,
+            /*allow_exceptions*/ true,
+            /*ignore_comments*/ true);
+    } catch (const nlohmann::json::parse_error&) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    if (!patch.is_object()) return GN_ERR_INVALID_ENVELOPE;
+
+    /// Build the merged document outside the lock so the parse +
+    /// validate + limits-build cycle does not block readers. The
+    /// `merge_patch` runs RFC 7396 deep-merge semantics: nested
+    /// objects merge field-by-field, scalars and arrays replace
+    /// the matching key wholesale.
+    nlohmann::json merged;
+    {
+        std::shared_lock lock(mu_);
+        merged = json_;
+    }
+    merged.merge_patch(patch);
+
+    auto new_limits = parse_limits(merged);
+    if (auto rc = validate_limits(new_limits, nullptr); rc != GN_OK) {
+        return rc;
+    }
+
+    std::unique_lock lock(mu_);
+    json_   = std::move(merged);
+    limits_ = new_limits;
+    return GN_OK;
 }
 
 gn_result_t Config::load_file(const std::string& path) {

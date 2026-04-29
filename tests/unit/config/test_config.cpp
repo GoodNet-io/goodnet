@@ -471,6 +471,112 @@ TEST(Config_GetArray, IntegerArray) {
     EXPECT_EQ(v, 9001);
 }
 
+// ─── merge_json (layered config) ─────────────────────────────────
+
+TEST(Config_Merge, OverlayKeepsBaseFields) {
+    /// Layered config pattern: defaults → site override. Fields
+    /// the overlay does not mention survive from the base.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"limits": {
+        "max_connections": 4096,
+        "max_outbound_connections": 1024,
+        "max_timers": 4096
+    }, "marker": "base"})"), GN_OK);
+
+    ASSERT_EQ(c.merge_json(R"({"marker": "site"})"), GN_OK);
+
+    /// `marker` came from the overlay; limits survived intact.
+    std::string s;
+    EXPECT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "site");
+    EXPECT_EQ(c.limits().max_connections, 4096u);
+    EXPECT_EQ(c.limits().max_timers,      4096u);
+}
+
+TEST(Config_Merge, NestedObjectFieldsMergeFieldByField) {
+    /// `limits` object exists in both — RFC 7396 deep-merge means
+    /// only the overlay's named fields replace; the base's other
+    /// fields stay.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"limits": {
+        "max_connections": 4096,
+        "max_outbound_connections": 1024,
+        "max_timers": 2048
+    }})"), GN_OK);
+
+    ASSERT_EQ(c.merge_json(R"({"limits": {"max_timers": 256}})"),
+              GN_OK);
+
+    EXPECT_EQ(c.limits().max_connections,        4096u);
+    EXPECT_EQ(c.limits().max_outbound_connections, 1024u);
+    EXPECT_EQ(c.limits().max_timers,              256u);
+}
+
+TEST(Config_Merge, OverlayReplacesArrays) {
+    /// Arrays replace wholesale per RFC 7396 — operators that
+    /// want to extend an array re-write the full list at the
+    /// merge site.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"peers": ["a", "b", "c"]})"), GN_OK);
+    ASSERT_EQ(c.merge_json(R"({"peers": ["x"]})"), GN_OK);
+
+    std::size_t n = 0;
+    EXPECT_EQ(c.get_array_size("peers", n), GN_OK);
+    EXPECT_EQ(n, 1u);
+    std::string s;
+    EXPECT_EQ(c.get_array_string("peers", 0, s), GN_OK);
+    EXPECT_EQ(s, "x");
+}
+
+TEST(Config_Merge, MalformedOverlayPreservesPriorState) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"marker": "base"})"), GN_OK);
+    EXPECT_EQ(c.merge_json("[bad json"), GN_ERR_INVALID_ENVELOPE);
+
+    std::string s;
+    EXPECT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "base");
+}
+
+TEST(Config_Merge, OverlayThatViolatesInvariantRollsBack) {
+    /// Auto-validate covers merge too. An overlay that lowers
+    /// `max_connections` below `max_outbound_connections` rolls
+    /// the kernel state back to the prior successful load.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"limits": {
+        "max_connections": 1024,
+        "max_outbound_connections": 256
+    }, "marker": "ok"})"), GN_OK);
+
+    EXPECT_EQ(c.merge_json(R"({"limits": {"max_connections": 100}})"),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Prior state intact.
+    EXPECT_EQ(c.limits().max_connections, 1024u);
+    std::string s;
+    EXPECT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "ok");
+}
+
+TEST(Config_Merge, ChainedMergesYieldExpectedFinalState) {
+    /// Three-layer pattern from docs §1: defaults → site → deploy.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"limits": {
+        "max_connections": 4096,
+        "max_outbound_connections": 1024,
+        "max_timers": 2048
+    }})"), GN_OK);
+
+    ASSERT_EQ(c.merge_json(R"({"limits": {"max_timers": 1024}})"),
+              GN_OK);
+    ASSERT_EQ(c.merge_json(R"({"limits": {"max_outbound_connections": 256}})"),
+              GN_OK);
+
+    EXPECT_EQ(c.limits().max_connections,         4096u);
+    EXPECT_EQ(c.limits().max_outbound_connections, 256u);  // deploy
+    EXPECT_EQ(c.limits().max_timers,              1024u);  // site
+}
+
 // ─── profiles ────────────────────────────────────────────────────
 
 TEST(Config_Profile, NameParserAcceptsKnown) {
