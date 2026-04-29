@@ -22,6 +22,7 @@ add_library(goodnet_kernel STATIC
     kernel/metrics_registry.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
+    util/log.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 
