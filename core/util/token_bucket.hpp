@@ -126,6 +126,20 @@ public:
         return allow(key, Clock::now());
     }
 
+    /// Replace the active @p rate and @p burst, drop every existing
+    /// per-key bucket, and clear the LRU. Subsequent `allow` calls
+    /// observe the new policy from a fresh state. Mirrors
+    /// `TokenBucket::reset` at map scope; the kernel reuses this when
+    /// reload-time policy changes invalidate the prior buckets and
+    /// tests use it to install a deterministic, tight bucket.
+    void reset(double rate, double burst) noexcept {
+        std::lock_guard<std::mutex> lk(mu_);
+        rate_  = rate;
+        burst_ = burst;
+        map_.clear();
+        lru_.clear();
+    }
+
     [[nodiscard]] std::size_t size() const {
         std::lock_guard<std::mutex> lk(mu_);
         return map_.size();
