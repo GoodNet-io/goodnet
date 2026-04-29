@@ -107,9 +107,26 @@ rekey():
     recv_cipher.nonce = 0
 ```
 
-Both ciphers rekey atomically with paired nonce reset. The pre-RC
-test suite includes a stress run that triggers `rekey()` on both
-ends within microseconds of each other and asserts continued decrypt.
+Both ciphers rekey atomically with paired nonce reset.
+
+### 4.1 Auto-trigger inside encrypt / decrypt
+
+The provider checks the threshold inside every `encrypt` and
+`decrypt` call after advancing the nonce. When either CipherState
+crosses `REKEY_INTERVAL` the provider runs `rekey()` on the
+`TransportState` before returning, so the next call to the same
+slot sees the fresh keys and reset nonces.
+
+Both peers reach the threshold symmetrically — every encrypt by
+the local side advances the peer's recv counter by one, and the
+recv counter rekeys at the same point. The two sides converge
+without an out-of-band signal and without a kernel-managed
+scheduler.
+
+The `NoiseTransportRekey.SymmetricThresholdRekeyKeepsInterop`
+test pushes both counters to one short of the threshold,
+exchanges a frame on each direction, and asserts continued
+decrypt against the fresh keys.
 
 ---
 

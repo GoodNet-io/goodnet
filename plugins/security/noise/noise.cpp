@@ -243,6 +243,15 @@ gn_result_t noise_encrypt(void* /*self*/,
 
     auto cipher = s->transport.encrypt(
         std::span<const std::uint8_t>(plaintext, plaintext_size));
+    /// Both sides reach the same nonce per `noise-handshake.md` §4
+    /// because send/recv counters mirror — every encrypt by the
+    /// local side increments the peer's recv counter symmetrically.
+    /// Triggering rekey at the threshold on every encrypt/decrypt
+    /// keeps the two CipherStates in sync without out-of-band
+    /// signalling.
+    if (s->transport.needs_rekey()) {
+        s->transport.rekey();
+    }
     return emit_buffer(std::move(cipher), out);
 }
 
@@ -258,6 +267,9 @@ gn_result_t noise_decrypt(void* /*self*/,
     auto plain = s->transport.decrypt(
         std::span<const std::uint8_t>(ciphertext, ciphertext_size));
     if (!plain) return GN_ERR_INVALID_ENVELOPE;
+    if (s->transport.needs_rekey()) {
+        s->transport.rekey();
+    }
     return emit_buffer(std::move(*plain), out);
 }
 
