@@ -3,6 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/config/`
 **Header:** `core/config/config.hpp`
+**Last verified:** 2026-04-29
 **Stability:** stable for v1.x; key paths land at semver-minor
 boundaries with the corresponding limit / feature.
 
@@ -12,14 +13,30 @@ boundaries with the corresponding limit / feature.
 
 Kernel-side JSON document accessed by plugins through the typed
 `config_get_string` / `config_get_int64` slots in `host-api.md` §2.
-One holder per running kernel; loaded from disk at startup,
-optionally reloaded at runtime. Plugins read; the kernel writes.
+One holder per running kernel. The kernel writes through
+`Config::load_json(text)`; plugins read through the host-API
+slots. The kernel does **not** itself touch the filesystem — the
+embedding application reads the bytes off whatever source the
+operator picks (disk, environment variable, network fetch) and
+hands them to `load_json`. That separation lets the kernel
+binary stay linkable as a library: the surrounding deployment
+owns its config-source story.
 
 The structure is flat at the top level with **dotted-path nesting**
-for namespaces — `limits.max_connections`,
-`tcp.idle_timeout_s`. Plugins receive paths verbatim through the
-`config_get_*` slots and resolve them inside the kernel; there is
-no plugin-side JSON parser.
+for namespaces — `limits.max_connections` is the canonical
+example; transports and handlers register their own namespaces
+(`transports.tls.cert_path`, `relay.dedup_capacity`) when they
+begin reading from config. Plugins receive paths verbatim through
+the `config_get_*` slots and resolve them inside the kernel;
+there is no plugin-side JSON parser.
+
+Runtime reload is **deferred to v1.1**. v1 ships a one-shot load
+at kernel startup; the surrounding application that needs hot
+reload restarts the kernel against the new document. The full
+pipeline (file watcher + kernel-side reload trigger + plugin
+re-read callbacks) lands as a separate contract revision once
+the in-tree consumers (TLS cert rotation, heartbeat interval
+re-read, etc.) drive a concrete API shape.
 
 ---
 
@@ -28,18 +45,22 @@ no plugin-side JSON parser.
 | Step | Action |
 |---|---|
 | Kernel startup | construct `Config` with default `gn_limits_t`; empty JSON object behind it |
-| Load | `Config::load_json(text)` parses the document. On success, replaces the current state; on failure, leaves the existing state unchanged |
-| Validate | `Config::validate(&reason)` checks cross-field invariants from `limits.md` §3 — fails the load on first invariant violation with the offending key in `reason` |
-| Runtime queries | plugins call `host_api->config_get_string(key, …)` / `config_get_int64(key, …)`; kernel resolves the dotted path under a shared lock |
+| Load | embedding application reads bytes off the operator's source; calls `Config::load_json(text)` |
+| Auto-validate | `load_json` parses, then runs `validate_limits` on the new `gn_limits_t` before installing it. Parse failure returns `GN_ERR_INVALID_ENVELOPE`; invariant failure returns `GN_ERR_LIMIT_REACHED` with the offending key in `out_reason` (when supplied through the public `validate`). On either failure the kernel state is **rolled back** to whatever the previous successful load left — the kernel never executes against an invariant-violating limits set |
+| Propagate | the embedding application (or `Kernel::set_limits`) hands the `gn_limits_t` snapshot to every kernel-owned registry that enforces a cap (timer, handler, connection, extension); `Kernel::set_limits` runs the propagation |
+| Runtime queries | plugins call `host_api->config_get_string(key, …)` / `config_get_int64(key, …)`; the kernel resolves the dotted path under a shared lock |
 
-The kernel exposes a `SignalChannel<ConfigReloaded>` (per
-`signal-channel.md`) that fires when a future runtime-reload entry
-publishes a new state; subscribers refresh their knobs in their own
-callback. Until that entry lands the channel is allocated but
-silent — `Config` is a one-shot load on this release.
+`Config::load_json` is the only mutation entry. v1 has no
+`reload`-style API; an embedding that wants to re-read config
+constructs a fresh `Config`, loads, validates, swaps it with the
+running instance, and re-runs `Kernel::set_limits` against the
+new `gn_limits_t`. That dance is the application's responsibility
+in v1; v1.1 will absorb it into a kernel-side `Config::reload`
+entry plus a plugin-facing reload signal.
 
 Default-constructed `Config` is usable: every key lookup returns
-`GN_ERR_UNKNOWN_RECEIVER`, `limits()` returns the canonical defaults.
+`GN_ERR_UNKNOWN_RECEIVER`, `limits()` returns the canonical defaults
+from `sdk/limits.h` (the `GN_LIMITS_DEFAULT_*` macros).
 
 ---
 
@@ -54,20 +75,72 @@ parser.
 {
     "version": 1,
     "limits": {
-        "max_connections":           4096,
-        "max_outbound_connections":  1024,
-        "max_handlers_per_msg_id":      8,
-        "max_extensions":             256,
-        "max_payload_bytes":        65522,
-        "max_frame_bytes":          65536
-        // see limits.md §2 for the full list
+        // Connections (limits.md §2)
+        "max_connections":             4096,
+        "max_outbound_connections":    1024,
+
+        // Per-connection send queue (backpressure.md §3)
+        "pending_queue_bytes_high":  1048576,   //  1 MiB
+        "pending_queue_bytes_low":    262144,   //  256 KiB
+        "pending_queue_bytes_hard":  4194304,   //  4 MiB
+        "pending_handshake_bytes":    262144,   //  256 KiB
+
+        // Framing (gnet-protocol.md §2)
+        "max_payload_bytes":            65522,
+        "max_frame_bytes":              65536,
+
+        // Handlers + relay (handler-registration.md §3)
+        "max_handlers_per_msg_id":          8,
+        "max_relay_ttl":                    4,
+
+        // Plugin bounds (plugin-lifetime.md §5, plugin-manifest.md)
+        "max_plugins":                     64,
+        "max_extensions":                 256,
+
+        // Service executor (timer.md §6)
+        "max_timers":                    4096,
+        "max_pending_tasks":              4096,
+        "max_timers_per_plugin":             0, // 0 = no per-plugin sub-quota
+
+        // Foreign-payload injection (host-api.md §8)
+        "inject_rate_per_source":          100, // tokens/sec per remote_pk
+        "inject_rate_burst":                50,
+        "inject_rate_lru_cap":            4096,
+
+        // Storage (sync.md, defer to v1.1 plugins)
+        "max_storage_table_entries":     10000,
+        "max_storage_value_bytes":       65522
     }
 }
 ```
 
-`limits` is the only currently required block; transports register
-their own namespace (`tcp`, `udp`, …) when they begin reading from
-config — until then they accept the canonical defaults.
+`limits` is the only block the kernel parses; everything outside
+it is opaque JSON the kernel hands back through `config_get_*`
+without interpretation. Plugins that read from config publish
+their namespace conventions in their own contract: TLS reads
+`transports.tls.cert_path` / `transports.tls.key_path` per the
+`plugins/transports/tls/` README; future relay / DHT / sync
+plugins will register `relay.*` / `dht.*` / `sync.*` similarly.
+
+The embedding application is free to seed any plugin namespace
+before that plugin is loaded; the kernel ignores unrecognised
+top-level keys. A `version` field is conventionally `1` — the
+kernel does not enforce it in v1, but operators include it so a
+future v2 binary can detect the legacy shape.
+
+Cross-field invariants land in `limits.md` §3 and are enforced
+inside `load_json` (auto-validate). Every load that returns
+`GN_OK` has passed:
+
+- `max_outbound_connections ≤ max_connections`
+- `pending_queue_bytes_low > 0`
+- `pending_queue_bytes_low < pending_queue_bytes_high`
+- `pending_queue_bytes_high ≤ pending_queue_bytes_hard`
+- `0 < max_relay_ttl ≤ GN_LIMITS_DEFAULT_MAX_RELAY_TTL_CEIL` (8)
+- `max_storage_value_bytes ≤ max_payload_bytes`
+- `max_payload_bytes + 14 ≤ max_frame_bytes` (GNET fixed header)
+- `inject_rate_per_source == 0 || inject_rate_burst ≥ inject_rate_per_source / 2`
+- `inject_rate_per_source == 0 || inject_rate_burst > 0`
 
 ---
 
@@ -112,16 +185,63 @@ caller's local copy.
 
 ## 6. Source
 
-The default load source is a JSON document at a path provided to
-the kernel binary (mechanism out of contract scope; the kernel is
-linkable as a library). Plugins do not read files; everything
-they need flows through the host API slots. The kernel is the
-single point that touches the filesystem for config bytes.
+The kernel does not itself touch the filesystem. The embedding
+application reads the bytes off whatever source the operator
+picks — a JSON file under `/etc/`, a Kubernetes ConfigMap, an
+environment variable, a network fetch — and calls
+`Config::load_json(text)` once at startup with the resulting
+buffer. Plugins do not read files either; everything they need
+flows through the host-API slots.
+
+The split is deliberate: the kernel binary is linkable as a
+library. A demo binary, a service supervisor, a unit-test
+harness all pick their own bytes-source without dragging the
+kernel into a path-handling argument.
 
 ---
 
-## 7. Cross-references
+## 7. Out of scope at v1
 
-- Limit field semantics: `limits.md`.
+- **Runtime reload.** v1 ships a one-shot load. An application
+  that needs hot reload constructs a fresh `Config`, loads,
+  validates, swaps it with the running instance, and re-runs
+  `Kernel::set_limits`. v1.1 will absorb the dance into a
+  kernel-side `Config::reload` entry plus a plugin-facing
+  reload signal channel.
+- **Layered config.** Defaults → site override → per-deploy
+  override merge is the embedding application's responsibility
+  in v1 — the application composes the JSON document before
+  calling `load_json`. v1.1 may surface a layered API if real
+  deployments drive one.
+- **Per-plugin schema discovery.** Plugins do not register the
+  keys they read. A typo in an operator's config silently maps
+  to a `GN_ERR_UNKNOWN_RECEIVER` and the plugin falls through to
+  its built-in default — the operator gets no warning. v1.1
+  adds a `reads_config` whitelist in `plugin-manifest.md` so
+  the kernel logs unknown-key warnings at load time and gates
+  per-section reads against the plugin's declared scope.
+- **Capability gate for sensitive values.** Any loaded plugin
+  can read every `config_get_*` slot; nothing in v1 prevents a
+  malicious plugin from reading `transports.tls.key_path`. The
+  same `reads_config` mechanism above is the v1.1 fix. v1
+  assumes the plugins directory is operator-controlled and
+  every loaded plugin is trusted (see `plugin-manifest.md` §3).
+- **Typed slots beyond `string` / `int64`.** Plugins that need
+  bool / double / array values parse them out of strings the
+  config holds. v1.1 adds `config_get_bool`, `config_get_double`,
+  `config_get_array_*` slots additively (size-prefix evolution
+  per `abi-evolution.md`).
+- **Save / round-trip.** v1 is read-only. A configuration the
+  embedding application built up in code is not serialisable
+  back through this surface — that is the embedding's own
+  responsibility.
+
+---
+
+## 8. Cross-references
+
+- Limit field semantics + cross-field invariants: `limits.md`.
 - Plugin-facing `config_get_*` slots: `host-api.md` §2.
-- Reload notification primitive: `signal-channel.md`.
+- Live propagation of limits through registries:
+  `Kernel::set_limits` in `core/kernel/kernel.cpp`.
+- Plugin trust + integrity: `plugin-manifest.md`.

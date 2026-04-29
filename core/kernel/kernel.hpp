@@ -139,13 +139,6 @@ public:
     [[nodiscard]] Config& config() noexcept { return config_; }
     [[nodiscard]] const Config& config() const noexcept { return config_; }
 
-    /// Pub/sub channel that fires after every successful
-    /// `Config::load_json` so plugins refresh their cached values.
-    /// Wired by the surrounding orchestrator at config-reload time.
-    [[nodiscard]] signal::SignalChannel<signal::Empty>& on_config_reload() noexcept {
-        return on_config_reload_;
-    }
-
     /// Install the kernel's `NodeIdentity` for the security pipeline.
     /// Must be called before reaching `Wire` phase so the security
     /// session has the local Ed25519 keypair available at handshake
@@ -199,7 +192,6 @@ private:
     gn_limits_t                           limits_{};
     Config                                config_;
 
-    signal::SignalChannel<signal::Empty>  on_config_reload_;
     signal::SignalChannel<ConnEvent>      on_conn_event_;
 
     /// Atomic-shared like `protocol_layer_`: secrets stay alive for
