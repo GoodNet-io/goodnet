@@ -317,6 +317,14 @@ typed extension API.
   every entry must be enumerable. Generic TLV codec
   (`sdk/cpp/capability_tlv.hpp`) is unchanged; the
   category-specific encoders ride on top of it.
+- **TLS plugin: minimum protocol version bumped to 1.3.** Both
+  server and client SSL contexts in `plugins/transports/tls/`
+  now disable TLSv1.2 explicitly in addition to TLSv1.0 and
+  TLSv1.1. A peer that only speaks pre-1.3 fails the handshake
+  at hello rather than silently negotiating an obsolete suite.
+  OpenSSL still picks TLS 1.3 cipher suites automatically; the
+  minimum is enforced by exclusion. Existing loopback test
+  passes — both ends negotiate 1.3.
 
 ### Tests
 
