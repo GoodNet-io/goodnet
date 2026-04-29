@@ -73,6 +73,39 @@ gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
     return GN_OK;
 }
 
+std::optional<ConnectionRecord>
+ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
+    if (id == GN_INVALID_ID) return std::nullopt;
+    Shard& s = shard_for(id);
+
+    std::scoped_lock lock(s.mu, uri_mu_, pk_mu_);
+
+    auto it = s.records.find(id);
+    if (it == s.records.end()) return std::nullopt;
+
+    /// `insert_with_index` always emplaces a counter slot beside the
+    /// record under the same scoped_lock, so an existing record
+    /// always has a live counter slot.
+    ConnectionRecord snapshot = std::move(it->second);
+    auto cit = s.counters.find(id);
+    const auto& c = *cit->second;
+    snapshot.bytes_in            = c.bytes_in.load(std::memory_order_relaxed);
+    snapshot.bytes_out           = c.bytes_out.load(std::memory_order_relaxed);
+    snapshot.frames_in           = c.frames_in.load(std::memory_order_relaxed);
+    snapshot.frames_out          = c.frames_out.load(std::memory_order_relaxed);
+    snapshot.pending_queue_bytes =
+        c.pending_queue_bytes.load(std::memory_order_relaxed);
+    snapshot.last_rtt_us         = c.last_rtt_us.load(std::memory_order_relaxed);
+
+    /// `snapshot` owns a copy of `uri` and `remote_pk` after the move,
+    /// so the index erases below are safe even after the shard erase.
+    uri_index_.erase(snapshot.uri);
+    pk_index_.erase(snapshot.remote_pk);
+    s.counters.erase(id);
+    s.records.erase(it);
+    return snapshot;
+}
+
 std::optional<ConnectionRecord> ConnectionRegistry::find_by_id(gn_conn_id_t id) const {
     if (id == GN_INVALID_ID) return std::nullopt;
     const Shard& s = shard_for(id);

@@ -234,11 +234,37 @@ typed extension API.
   Boost.Atomic; the source compiles unchanged after a
   mechanical `boost::asio::` → `asio::` rename. Build is
   header-only end-to-end.
+- **Connection registry — atomic snapshot variant
+  (`registry.md` §4a).** `ConnectionRegistry` exposes a
+  snapshot-and-erase primitive that captures the pre-erase
+  record (the `gn_endpoint_t` view plus `§8` per-connection
+  counters) and removes the entry from all three indexes
+  inside one critical section. The snapshot owns its uri /
+  pk bytes; kernel-side storage holds no reference past the
+  call.
+- **`notify_disconnect` — DISCONNECTED ordering and at-most-once
+  semantics (`conn-events.md` §2a).** The thunk drops the
+  security session, then runs the atomic snapshot+erase, then
+  publishes one DISCONNECTED whose payload is the captured
+  pre-removal record state. A call against an absent or
+  already-removed id returns `GN_ERR_UNKNOWN_RECEIVER` and
+  publishes nothing; concurrent calls converge on one publisher
+  and the rest report unknown. Subscriber callbacks may
+  re-enter `notify_disconnect` against the same conn — the
+  re-entrant call observes the record gone and emits no second
+  event. The `reason` parameter is reserved at v1.
 
 ### Tests
 
-475 across unit, integration, scenario, and property suites.
-ASan / UBSan / TSan strict-clean.
+526 across unit, integration, scenario, and property suites.
+ASan / UBSan / TSan / clang-tidy strict-clean. The
+`ConnectionRegistry_SnapshotAndErase` suite covers the §4a
+atomicity claim (cross-shard non-deadlock and
+exactly-one-winner under same-id contention); the
+`HostApiNotifyDisconnect` suite covers the §2a Returns table
+(`GN_OK` / `GN_ERR_UNKNOWN_RECEIVER` / `GN_ERR_NULL_ARG` /
+`GN_ERR_NOT_IMPLEMENTED`), the idempotent + concurrent
+double-call cases, and the re-entrant-from-callback path.
 
 ## [0.1.0] — 2026-04-28
 

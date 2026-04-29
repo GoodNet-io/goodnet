@@ -10,10 +10,10 @@
 ///     the mask (`GN_ERR_INVALID_ENVELOPE`). Refused calls leak
 ///     neither a registry record nor a `CONNECTED` event.
 ///
-///   * `notify_disconnect` snapshots the connection record (trust +
-///     remote_pk) before erasing it, so the published
-///     `DISCONNECTED` event payload reflects the just-departed conn
-///     and not a default-zero record.
+///   * `notify_disconnect` snapshots and erases the connection
+///     record atomically, so the published `DISCONNECTED` event
+///     payload carries the snapshotted trust class and remote_pk
+///     per `conn-events.md` §2a.
 
 #include <gtest/gtest.h>
 
@@ -42,8 +42,7 @@ using gn::core::build_host_api;
 
 namespace {
 
-/// Minimal subscriber sink. Mirrors the EventBag pattern from
-/// `tests/integration/test_conn_events.cpp`.
+/// Minimal subscriber sink for `gn_conn_event_t` deliveries.
 struct EventBag {
     std::mutex                   mu;
     std::vector<gn_conn_event_t> events;
@@ -64,10 +63,19 @@ PluginContext make_transport_ctx(Kernel& k) {
     return ctx;
 }
 
+PluginContext make_handler_ctx(Kernel& k) {
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    ctx.kind          = GN_PLUGIN_KIND_HANDLER;
+    ctx.plugin_name   = "test-handler";
+    ctx.plugin_anchor = std::make_shared<int>(0);
+    return ctx;
+}
+
 /// Stub protocol layer that admits only Loopback and IntraNode trust
-/// classes. Deframe / frame are unreachable in these tests — the trust
-/// gate fires inside `thunk_notify_connect` before any wire bytes
-/// move — so the stubs return a no-op error if ever invoked.
+/// classes. `deframe` / `frame` return `GN_ERR_NOT_IMPLEMENTED`; the
+/// trust gate in `thunk_notify_connect` rejects unsupported trust
+/// classes before any wire bytes flow.
 class LoopbackOnlyProtocol final : public ::gn::IProtocolLayer {
 public:
     [[nodiscard]] std::string_view protocol_id() const noexcept override {
@@ -208,19 +216,212 @@ TEST(HostApiNotifyDisconnect, MissingConnReturnsUnknownReceiver) {
     ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
               GN_OK);
 
-    /// Disconnect of a never-inserted id propagates the registry's
-    /// `GN_ERR_UNKNOWN_RECEIVER`. The thunk still publishes a
-    /// `DISCONNECTED` event so subscribers see one terminal signal
-    /// per `notify_disconnect` call regardless of whether the
-    /// transport's view of the conn matched the registry's.
+    /// Disconnect of a never-inserted id reports
+    /// `GN_ERR_UNKNOWN_RECEIVER` and fires no event — per
+    /// `conn-events.md` §2 each event must correspond to a real
+    /// lifecycle transition; an id that was never registered has
+    /// none.
     constexpr gn_conn_id_t kUnknownConn = 99999;
     EXPECT_EQ(api.notify_disconnect(&ctx, kUnknownConn, GN_OK),
               GN_ERR_UNKNOWN_RECEIVER);
 
     std::lock_guard lk(bag.mu);
-    ASSERT_EQ(bag.events.size(), 1u);
-    EXPECT_EQ(bag.events[0].kind, GN_CONN_EVENT_DISCONNECTED);
-    EXPECT_EQ(bag.events[0].conn, kUnknownConn);
-    EXPECT_EQ(bag.events[0].trust, GN_TRUST_UNTRUSTED)
-        << "no record snapshot ⇒ default-zero trust class";
+    EXPECT_TRUE(bag.events.empty())
+        << "unknown id ⇒ no DISCONNECTED event; channel publishes one "
+           "event per real transition";
+}
+
+TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EventBag bag;
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB};
+    gn_conn_id_t conn = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9100",
+                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_ROLE_RESPONDER, &conn), GN_OK);
+
+    /// First disconnect: removes the record, fires DISCONNECTED.
+    EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
+
+    /// Second disconnect on the same id: record is gone, registry
+    /// reports `GN_ERR_UNKNOWN_RECEIVER`, channel stays silent.
+    EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK),
+              GN_ERR_UNKNOWN_RECEIVER);
+
+    std::lock_guard lk(bag.mu);
+    ASSERT_EQ(bag.events.size(), 2u)
+        << "exactly one CONNECTED + one DISCONNECTED";
+    EXPECT_EQ(bag.events[0].kind, GN_CONN_EVENT_CONNECTED);
+    EXPECT_EQ(bag.events[1].kind, GN_CONN_EVENT_DISCONNECTED);
+}
+
+/// Two threads race the same `notify_disconnect(conn)` through the C
+/// ABI. Per `conn-events.md` §2a the channel publishes exactly one
+/// DISCONNECTED for the single underlying lifecycle transition; the
+/// losing thread reports `GN_ERR_UNKNOWN_RECEIVER`.
+TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
+    constexpr int kRounds = 64;
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EventBag bag;
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+              GN_OK);
+
+    for (int round = 0; round < kRounds; ++round) {
+        std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {};
+        pk[0] = static_cast<std::uint8_t>(round);
+        gn_conn_id_t conn = GN_INVALID_ID;
+        const std::string uri = "tcp://127.0.0.1:" + std::to_string(20000 + round);
+        ASSERT_EQ(api.notify_connect(&ctx, pk, uri.c_str(), "tcp",
+                                      GN_TRUST_LOOPBACK,
+                                      GN_ROLE_RESPONDER, &conn), GN_OK);
+
+        std::atomic<int>  ready{0};
+        std::atomic<bool> go{false};
+        std::atomic<int>  ok_count{0};
+        std::atomic<int>  unknown_count{0};
+
+        auto worker = [&] {
+            ready.fetch_add(1, std::memory_order_release);
+            while (!go.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            const auto rc = api.notify_disconnect(&ctx, conn, GN_OK);
+            if (rc == GN_OK) {
+                ok_count.fetch_add(1, std::memory_order_relaxed);
+            } else if (rc == GN_ERR_UNKNOWN_RECEIVER) {
+                unknown_count.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                ADD_FAILURE() << "unexpected rc " << rc;
+            }
+        };
+
+        std::thread t1(worker);
+        std::thread t2(worker);
+        while (ready.load(std::memory_order_acquire) < 2) {
+            std::this_thread::yield();
+        }
+        go.store(true, std::memory_order_release);
+        t1.join();
+        t2.join();
+
+        ASSERT_EQ(ok_count.load(),      1) << "round " << round;
+        ASSERT_EQ(unknown_count.load(), 1) << "round " << round;
+    }
+
+    std::lock_guard lk(bag.mu);
+    int connected = 0, disconnected = 0;
+    for (const auto& ev : bag.events) {
+        if (ev.kind == GN_CONN_EVENT_CONNECTED)    ++connected;
+        if (ev.kind == GN_CONN_EVENT_DISCONNECTED) ++disconnected;
+    }
+    EXPECT_EQ(connected,    kRounds)
+        << "one CONNECTED per insert";
+    EXPECT_EQ(disconnected, kRounds)
+        << "one DISCONNECTED per real removal, regardless of contention";
+}
+
+/// `conn-events.md` §2a Returns row: `conn == GN_INVALID_ID`
+/// collapses to `GN_ERR_UNKNOWN_RECEIVER` (no record matches the
+/// sentinel id).
+TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsUnknownReceiver) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+    EXPECT_EQ(api.notify_disconnect(&ctx, GN_INVALID_ID, GN_OK),
+              GN_ERR_UNKNOWN_RECEIVER);
+}
+
+/// `conn-events.md` §2a Returns row: NULL host_ctx returns
+/// `GN_ERR_NULL_ARG` and changes no state.
+TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+    EXPECT_EQ(api.notify_disconnect(nullptr, 1, GN_OK), GN_ERR_NULL_ARG);
+}
+
+/// `conn-events.md` §2a Returns row: a non-transport plugin
+/// receives `GN_ERR_NOT_IMPLEMENTED` from `notify_disconnect`
+/// (host-api.md kind gate).
+TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
+    Kernel k;
+    auto handler_ctx = make_handler_ctx(k);
+    auto api = build_host_api(handler_ctx);
+    EXPECT_EQ(api.notify_disconnect(&handler_ctx, 1, GN_OK),
+              GN_ERR_NOT_IMPLEMENTED);
+}
+
+/// `conn-events.md` §2a Concurrency clause: a subscriber callback
+/// may invoke `notify_disconnect` against the same `conn`
+/// re-entrantly. The re-entrant call observes the record already
+/// removed and reports `GN_ERR_UNKNOWN_RECEIVER` without
+/// publishing a second DISCONNECTED.
+TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EventBag bag;
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xCC};
+    gn_conn_id_t conn = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9200",
+                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_ROLE_RESPONDER, &conn), GN_OK);
+
+    /// Replace the subscriber sink with a re-entrant variant that
+    /// fires `notify_disconnect(conn)` from inside the DISCONNECTED
+    /// callback. The same EventBag still records.
+    struct Reenter {
+        host_api_t*              api;
+        PluginContext*           ctx;
+        gn_conn_id_t             conn;
+        EventBag*                bag;
+        std::atomic<gn_result_t> reentrant_rc{GN_ERR_NOT_IMPLEMENTED};
+    };
+    Reenter re{&api, &ctx, conn, &bag};
+
+    auto reentrant_cb = +[](void* ud, const gn_conn_event_t* ev) {
+        auto* r = static_cast<Reenter*>(ud);
+        {
+            std::lock_guard lk(r->bag->mu);
+            r->bag->events.push_back(*ev);
+        }
+        if (ev->kind == GN_CONN_EVENT_DISCONNECTED) {
+            r->reentrant_rc.store(
+                r->api->notify_disconnect(r->ctx, r->conn, GN_OK),
+                std::memory_order_release);
+        }
+    };
+
+    ASSERT_EQ(api.unsubscribe_conn_state(&ctx, sub), GN_OK);
+    sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe_conn_state(&ctx, reentrant_cb, &re, &sub),
+              GN_OK);
+
+    EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
+
+    EXPECT_EQ(re.reentrant_rc.load(), GN_ERR_UNKNOWN_RECEIVER);
+
+    std::lock_guard lk(bag.mu);
+    int disconnected = 0;
+    for (const auto& ev : bag.events) {
+        if (ev.kind == GN_CONN_EVENT_DISCONNECTED) ++disconnected;
+    }
+    EXPECT_EQ(disconnected, 1)
+        << "re-entrant call publishes nothing; one DISCONNECTED total";
 }
