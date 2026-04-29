@@ -104,7 +104,7 @@ metric, and leave registry state untouched.
 |---|---|---|---|
 | `max_connections` | 4096 | `ConnectionRegistry::insert_with_index` | live record count would exceed cap |
 | `max_extensions` | 256 | `ExtensionRegistry::register_extension` | live entry count would exceed cap |
-| `max_plugins` | 64 | `PluginManager::load` | already-loaded + about-to-load count would exceed cap |
+| `max_plugins` | 64 | `PluginManager::load` | `paths.size()` of the load batch would exceed cap (`PluginManager::load` accepts one batch per kernel lifetime; the active-guard prevents a second load) |
 | `max_handlers_per_msg_id` | 8 | `HandlerRegistry::register_handler` | per-pair chain length would exceed cap (§7) |
 
 Recovery is automatic: a successful `erase_with_index`,

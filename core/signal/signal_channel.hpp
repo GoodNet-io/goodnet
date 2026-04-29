@@ -75,15 +75,12 @@ public:
         for (auto& h : snapshot) {
             try {
                 h(event);
-            } catch (...) {
-                /// Per `signal-channel.md` §6.2: capture the exception
-                /// pointer so the catch is non-empty (silencing
-                /// `bugprone-empty-catch`) and immediately drop it —
-                /// one bad subscriber must not starve the rest. Plugin
-                /// authors catch internally before returning across
-                /// the C ABI boundary.
-                std::exception_ptr discarded = std::current_exception();
-                (void)discarded;
+            } catch (...) {  // NOLINT(bugprone-empty-catch)
+                /// Per `signal-channel.md` §6.2: drop the exception so
+                /// one bad subscriber cannot starve the rest. Plugin
+                /// authors catch internally before returning across the
+                /// C ABI boundary; `std::current_exception` is avoided
+                /// so `fire` stays no-throw even under memory pressure.
             }
         }
     }
