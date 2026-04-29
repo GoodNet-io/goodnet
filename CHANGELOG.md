@@ -13,6 +13,16 @@ typed extension API.
 
 ### Added
 
+- **`nix run .#demo` quickstart** — `examples/two_node` ships a
+  single-process binary, `goodnet-demo`, that owns both ends of a
+  conversation: two `Kernel` instances each with a fresh
+  `NodeIdentity`, the noise security `.so` loaded through `dlopen`,
+  the TCP transport listening on a 127.0.0.1 ephemeral port, and a
+  message handler on Alice that prints what Bob sent. The
+  `nix run .#demo` flake target configures with
+  `GOODNET_BUILD_EXAMPLES=ON`, builds, and runs the binary; output
+  is line-per-step so the user can read the handshake +
+  round-trip without parsing logs.
 - **URI parser** — header-only `sdk/cpp/uri.hpp` with `parse_uri`
   and `uri_query_value`, plus libsodium-backed
   `core/util/uri_query.hpp` for `?peer=<hex>` decode. Contract

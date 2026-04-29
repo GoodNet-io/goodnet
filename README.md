@@ -102,6 +102,13 @@ nix run .#build
 nix run .#test
 ```
 
+The shortest path from clone to "two endpoints exchanged a frame
+over a Noise-secured TCP channel":
+
+```bash
+nix run .#demo        # two in-process kernels, real socket, real Noise
+```
+
 Sanitiser CI gates:
 
 ```bash
