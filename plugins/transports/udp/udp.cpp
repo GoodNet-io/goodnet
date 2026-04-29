@@ -39,39 +39,78 @@ UdpTransport::~UdpTransport() {
     shutdown();
 }
 
-void UdpTransport::set_host_api(const host_api_t* api) noexcept {
-    api_ = api;
-    /// Reconfigure the per-source-IP new-conn limiter from config.
-    /// Operator-tunable knobs replace the historical hard-coded
-    /// `kNewConnRate=10/sec`, `kNewConnBurst=50` ceilings — a
-    /// legitimate flood from a mobile peer behind carrier NAT
-    /// (different observed IPs per packet) used to clip at 10/s,
-    /// now scales by deploy. Each key is independently optional;
-    /// a missing key keeps the current default. Negative or zero
-    /// values fall back so an obvious typo never disables the
-    /// limiter outright.
-    if (api_ != nullptr && api_->config_get_int64) {
-        double      rate         = kNewConnRate;
-        double      burst        = kNewConnBurst;
-        std::size_t lru_cap      = 4096;
-        std::int64_t v           = 0;
-        if (api_->config_get_int64(api_->host_ctx,
-                                    "udp.new_conn_rate", &v) == GN_OK
-            && v > 0) {
-            rate = static_cast<double>(v);
-        }
-        if (api_->config_get_int64(api_->host_ctx,
-                                    "udp.new_conn_burst", &v) == GN_OK
-            && v > 0) {
-            burst = static_cast<double>(v);
-        }
-        if (api_->config_get_int64(api_->host_ctx,
-                                    "udp.new_conn_lru_cap", &v) == GN_OK
-            && v > 0) {
-            lru_cap = static_cast<std::size_t>(v);
-        }
-        new_conn_limiter_.reconfigure(rate, burst, lru_cap);
+/// Read `udp.new_conn_*` from config and reconfigure the
+/// per-source-IP new-connection limiter. Idempotent: missing or
+/// non-positive values fall back to the current defaults so a
+/// reload that drops the section silently never disables the
+/// limiter outright. Pulled out of `set_host_api` so the
+/// `subscribe_config_reload` callback can re-run it on every
+/// kernel-fired reload.
+namespace {
+void apply_udp_config(::gn::transport::udp::UdpTransport* self,
+                      const host_api_t*                   api) noexcept {
+    if (api == nullptr || api->config_get_int64 == nullptr) return;
+    double      rate    = ::gn::transport::udp::kNewConnRate;
+    double      burst   = ::gn::transport::udp::kNewConnBurst;
+    std::size_t lru_cap = 4096;
+    std::int64_t v      = 0;
+    if (api->config_get_int64(api->host_ctx,
+                                "udp.new_conn_rate", &v) == GN_OK
+        && v > 0) {
+        rate = static_cast<double>(v);
     }
+    if (api->config_get_int64(api->host_ctx,
+                                "udp.new_conn_burst", &v) == GN_OK
+        && v > 0) {
+        burst = static_cast<double>(v);
+    }
+    if (api->config_get_int64(api->host_ctx,
+                                "udp.new_conn_lru_cap", &v) == GN_OK
+        && v > 0) {
+        lru_cap = static_cast<std::size_t>(v);
+    }
+    self->reconfigure_new_conn_limiter(rate, burst, lru_cap);
+}
+}  // namespace
+
+void UdpTransport::set_host_api(const host_api_t* api) noexcept {
+    /// Drop any prior reload subscription before swapping the api
+    /// pointer — every install of a fresh api needs to subscribe
+    /// against the new kernel, so the previous subscription
+    /// against a (possibly different) kernel must go first.
+    if (api_ != nullptr && api_->unsubscribe_config_reload != nullptr
+        && reload_sub_id_ != 0) {
+        (void)api_->unsubscribe_config_reload(api_->host_ctx,
+                                                reload_sub_id_);
+        reload_sub_id_ = 0;
+    }
+
+    api_ = api;
+    apply_udp_config(this, api_);
+
+    /// Subscribe to config-reload events so the limiter shape
+    /// re-reads on every operator-initiated reload, not just at
+    /// initial set_host_api time.
+    if (api_ != nullptr && api_->subscribe_config_reload != nullptr) {
+        std::uint64_t token = 0;
+        const auto rc = api_->subscribe_config_reload(
+            api_->host_ctx,
+            +[](void* user_data) {
+                auto* self =
+                    static_cast<UdpTransport*>(user_data);
+                apply_udp_config(self, self->api_);
+            },
+            this,
+            &token);
+        if (rc == GN_OK) {
+            reload_sub_id_ = token;
+        }
+    }
+}
+
+void UdpTransport::reconfigure_new_conn_limiter(
+    double rate, double burst, std::size_t lru_cap) noexcept {
+    new_conn_limiter_.reconfigure(rate, burst, lru_cap);
 }
 
 std::size_t UdpTransport::session_count() const noexcept {

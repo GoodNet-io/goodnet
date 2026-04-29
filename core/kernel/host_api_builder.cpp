@@ -341,6 +341,42 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t thunk_subscribe_config_reload(void* host_ctx,
+                                           void (*cb)(void* user_data),
+                                           void* user_data,
+                                           uint64_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+    auto token = pc->kernel->on_config_reload().subscribe(
+        [cb, user_data, anchor_weak, anchor_set](const signal::Empty&) {
+            /// Same lifetime gate as `subscribe_conn_state`: refuse
+            /// the dispatch if the plugin's anchor expired or
+            /// rollback published `shutdown_requested`. A plugin
+            /// being unloaded must not see one last reload event
+            /// after its `gn_plugin_shutdown` returned.
+            if (anchor_set) {
+                auto guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+                cb(user_data);
+            } else {
+                cb(user_data);
+            }
+        });
+    *out_id = static_cast<std::uint64_t>(token);
+    return GN_OK;
+}
+
+gn_result_t thunk_unsubscribe_config_reload(void* host_ctx,
+                                              uint64_t id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    pc->kernel->on_config_reload().unsubscribe(
+        static_cast<signal::SignalChannel<signal::Empty>::Token>(id));
+    return GN_OK;
+}
+
 int32_t thunk_is_shutdown_requested(void* host_ctx) {
     if (!host_ctx) return 0;
     auto* pc = static_cast<PluginContext*>(host_ctx);
@@ -1065,6 +1101,9 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.kick_handshake          = &thunk_kick_handshake;
 
     a.is_shutdown_requested   = &thunk_is_shutdown_requested;
+
+    a.subscribe_config_reload   = &thunk_subscribe_config_reload;
+    a.unsubscribe_config_reload = &thunk_unsubscribe_config_reload;
 
     a.emit_counter            = &thunk_emit_counter;
     a.iterate_counters        = &thunk_iterate_counters;

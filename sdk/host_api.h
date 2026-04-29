@@ -486,6 +486,37 @@ typedef struct host_api_s {
                                   gn_counter_visitor_t visitor,
                                   void* user_data);
 
+    /* ── Config reload subscription (config.md §2) ─────────────────────── */
+
+    /**
+     * @brief Subscribe to `on_config_reload` events.
+     *
+     * `cb(user_data)` fires synchronously after every successful
+     * `Kernel::reload_config` / `Kernel::reload_config_merge`. The
+     * subscriber re-reads its own knobs through `config_get_*` in
+     * the callback and applies any changes; the kernel itself
+     * has already updated `limits()` and propagated to its own
+     * registries before the callback runs.
+     *
+     * The kernel pairs the subscription with the calling plugin's
+     * lifetime anchor: a callback whose plugin already unloaded
+     * is dropped silently (same shape as `subscribe_conn_state`).
+     *
+     * @param out_id  the subscription token; the plugin hands it
+     *                back on `unsubscribe_config_reload`.
+     */
+    gn_result_t (*subscribe_config_reload)(void* host_ctx,
+                                            void (*cb)(void* user_data),
+                                            void* user_data,
+                                            uint64_t* out_id);
+
+    /**
+     * @brief Drop a subscription. Idempotent: removing an
+     *        already-gone id returns `GN_OK`.
+     */
+    gn_result_t (*unsubscribe_config_reload)(void* host_ctx,
+                                              uint64_t id);
+
     /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
 
     /**

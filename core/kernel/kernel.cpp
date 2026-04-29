@@ -7,7 +7,15 @@
 
 namespace gn::core {
 
-Kernel::Kernel() noexcept = default;
+Kernel::Kernel() noexcept {
+    /// `limits_` is zero-initialised by the field declaration's
+    /// `{}`, but the kernel's running state should default to the
+    /// canonical limits the Config holder uses. An embedding that
+    /// never calls `set_limits` (or never loads a config) thereby
+    /// runs against a sensible baseline rather than zero ceilings
+    /// that would reject every operation.
+    limits_ = config_.limits();
+}
 Kernel::~Kernel() = default;
 
 void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
@@ -58,6 +66,29 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     if (limits_.max_handlers_per_msg_id != 0) {
         handlers_.set_max_chain_length(limits_.max_handlers_per_msg_id);
     }
+}
+
+gn_result_t Kernel::reload_config(std::string_view text) {
+    /// Atomic-from-the-outside: load_json is itself
+    /// rollback-on-failure, so a parse / invariant error leaves
+    /// the live config and limits unchanged. Only on success do
+    /// we propagate the new limits into kernel-owned registries
+    /// and notify subscribers.
+    if (auto rc = config_.load_json(text); rc != GN_OK) {
+        return rc;
+    }
+    set_limits(config_.limits());
+    on_config_reload_.fire(signal::Empty{});
+    return GN_OK;
+}
+
+gn_result_t Kernel::reload_config_merge(std::string_view overlay) {
+    if (auto rc = config_.merge_json(overlay); rc != GN_OK) {
+        return rc;
+    }
+    set_limits(config_.limits());
+    on_config_reload_.fire(signal::Empty{});
+    return GN_OK;
 }
 
 void Kernel::set_node_identity(identity::NodeIdentity ident) {
