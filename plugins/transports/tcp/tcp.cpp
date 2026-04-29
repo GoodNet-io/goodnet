@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "tcp.hpp"
 
+#include <sdk/convenience.h>
 #include <sdk/cpp/dns.hpp>
 #include <sdk/cpp/uri.hpp>
 
@@ -175,7 +176,7 @@ public:
             if (self->socket_.close(ec)) {
                 if (auto t = self->transport_.lock();
                     t && t->api_ && t->api_->log) {
-                    t->api_->log(t->api_->host_ctx, GN_LOG_DEBUG,
+                    gn_log_debug(t->api_,
                                  "tcp: close failed: %s",
                                  ec.message().c_str());
                 }
@@ -251,12 +252,12 @@ TcpTransport::~TcpTransport() {
         shutdown();
     } catch (const std::exception& e) {
         if (api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_WARN,
+            gn_log_warn(api_,
                       "tcp: shutdown threw: %s", e.what());
         }
     } catch (...) {
         if (api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_WARN,
+            gn_log_warn(api_,
                       "tcp: shutdown threw non-std exception");
         }
     }
@@ -353,7 +354,7 @@ gn_result_t TcpTransport::listen(std::string_view uri_sv) {
             if (acceptor.set_option(
                     asio::ip::v6_only(false), v6_ec) &&
                 api_ && api_->log) {
-                api_->log(api_->host_ctx, GN_LOG_DEBUG,
+                gn_log_debug(api_,
                           "tcp: v6_only(false) failed: %s",
                           v6_ec.message().c_str());
             }
@@ -363,7 +364,7 @@ gn_result_t TcpTransport::listen(std::string_view uri_sv) {
                 asio::ip::tcp::acceptor::reuse_address(true),
                 reuse_ec) &&
             api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+            gn_log_debug(api_,
                       "tcp: reuse_address(true) failed: %s",
                       reuse_ec.message().c_str());
         }
@@ -589,7 +590,7 @@ void TcpTransport::shutdown() {
         /// either way. Surface the error through `api_->log` if the
         /// host bound one, otherwise discard.
         if (acceptor_->close(ec) && api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+            gn_log_debug(api_,
                       "tcp: acceptor close failed: %s",
                       ec.message().c_str());
         }

@@ -24,6 +24,8 @@
 #ifndef GOODNET_SDK_CONVENIENCE_H
 #define GOODNET_SDK_CONVENIENCE_H
 
+#include <stdio.h>
+
 #include <sdk/host_api.h>
 
 #ifdef __cplusplus
@@ -124,12 +126,31 @@ static inline const void* gn_query_ext_checked_value(
 
 /* ── Logging ─────────────────────────────────────────────────────────────── */
 
-#define gn_log_trace(api, ...)    (api)->log((api)->host_ctx, GN_LOG_TRACE, __VA_ARGS__)
-#define gn_log_debug(api, ...)    (api)->log((api)->host_ctx, GN_LOG_DEBUG, __VA_ARGS__)
-#define gn_log_info(api, ...)     (api)->log((api)->host_ctx, GN_LOG_INFO,  __VA_ARGS__)
-#define gn_log_warn(api, ...)     (api)->log((api)->host_ctx, GN_LOG_WARN,  __VA_ARGS__)
-#define gn_log_error(api, ...)    (api)->log((api)->host_ctx, GN_LOG_ERROR, __VA_ARGS__)
-#define gn_log_fatal(api, ...)    (api)->log((api)->host_ctx, GN_LOG_FATAL, __VA_ARGS__)
+/**
+ * @brief Render a log line on the plugin's stack, then hand the
+ *        formatted bytes to the kernel.
+ *
+ * The kernel's `log` slot does not accept format strings — every
+ * formatting decision happens here, in the plugin's own address
+ * space. Per `host-api.md` §11 this rules out the format-string
+ * class of attack against the kernel: a compromised plugin cannot
+ * abuse `%n` or width specifiers to corrupt kernel memory, because
+ * `vsnprintf` only ever sees buffers the plugin built itself.
+ *
+ * Truncates at 1024 bytes; longer messages lose the tail.
+ */
+#define gn_log(api, level, ...) do {                                          \
+    char gn_log_buf__[1024];                                                  \
+    (void)snprintf(gn_log_buf__, sizeof(gn_log_buf__), __VA_ARGS__);          \
+    (api)->log((api)->host_ctx, (level), gn_log_buf__);                       \
+} while (0)
+
+#define gn_log_trace(api, ...)    gn_log((api), GN_LOG_TRACE, __VA_ARGS__)
+#define gn_log_debug(api, ...)    gn_log((api), GN_LOG_DEBUG, __VA_ARGS__)
+#define gn_log_info(api, ...)     gn_log((api), GN_LOG_INFO,  __VA_ARGS__)
+#define gn_log_warn(api, ...)     gn_log((api), GN_LOG_WARN,  __VA_ARGS__)
+#define gn_log_error(api, ...)    gn_log((api), GN_LOG_ERROR, __VA_ARGS__)
+#define gn_log_fatal(api, ...)    gn_log((api), GN_LOG_FATAL, __VA_ARGS__)
 
 #ifdef __cplusplus
 } /* extern "C" */
