@@ -390,6 +390,28 @@ typedef struct host_api_s {
                                         gn_conn_event_kind_t kind,
                                         uint64_t pending_bytes);
 
+    /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
+
+    /**
+     * @brief Non-zero once the kernel begins teardown for this plugin.
+     *
+     * Set the moment `PluginManager::rollback` enters the per-plugin
+     * teardown path: before `gn_plugin_unregister` is called, before
+     * pending timers are cancelled, before the drain wait. Plugins that
+     * run long-lived async work — periodic timers that re-arm
+     * themselves, multi-step posted tasks — poll this from inside the
+     * loop and exit cooperatively rather than relying on the kernel's
+     * drain timeout to leak the `dlclose` handle.
+     *
+     * @return 0 if shutdown has not been requested; non-zero otherwise.
+     *         Always 0 for in-tree fixtures whose context has no anchor.
+     *
+     * Safe to call from any callback dispatched by the kernel for this
+     * plugin (timer / posted task / signal subscriber). Calling it
+     * after `gn_plugin_shutdown` returns is undefined.
+     */
+    int32_t (*is_shutdown_requested)(void* host_ctx);
+
     /* ── Reserved for future extension ─────────────────────────────────── */
 
     void* _reserved[8];

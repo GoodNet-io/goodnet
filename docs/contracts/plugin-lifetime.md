@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every plugin
-**Last verified:** 2026-04-28
+**Last verified:** 2026-04-29
 **Stability:** v1.x; lifecycle phases stable, hooks are size-prefix-evolvable
 
 ---
@@ -109,18 +109,38 @@ quiescence sentinel. Dispatch-time snapshots (`HandlerRegistry::lookup`,
 snapshot's anchor copy keeps the sentinel's reference count above zero
 for the duration of the call.
 
-`PluginManager` observes the sentinel through a `weak_ptr` between
-`gn_plugin_unregister` / `gn_plugin_shutdown` and `dlclose`:
+`PluginManager` observes the sentinel through a weak observer between
+the start of teardown and `dlclose`:
 
-1. `gn_plugin_unregister` — registry entries drop their anchor copies.
-2. `gn_plugin_shutdown` — plugin's `self` is destroyed.
-3. Manager promotes its strong ref to a weak observer and drops the
-   ref, leaving only in-flight dispatch snapshots holding anchors.
-4. Wait until `weak_ptr::expired()` returns true (bounded; default 1s).
-5. `dlclose` — safe; no snapshot is dereferencing plugin .text.
+1. **Publish `shutdown_requested = true` on the sentinel.** The flag is
+   visible to two consumers: async-callback gates inside the kernel (a
+   gate that observes the flag refuses the dispatch instead of entering
+   plugin code), and the plugin itself through the
+   `is_shutdown_requested` host_api slot (§ Cooperative cancellation).
+   Publishing the flag first lets cooperating plugins finish work
+   early; it does not by itself wait for anything.
+2. `gn_plugin_unregister` — registry entries drop their anchor copies.
+3. Cancel still-pending timers and posted tasks for this anchor so the
+   drain wait is not extended by entries the plugin did not cooperatively
+   cancel itself (`timer.md` §4 #3).
+4. `gn_plugin_shutdown` — plugin's `self` is destroyed.
+5. Manager promotes its strong ref to a weak observer and drops the
+   ref, leaving only in-flight dispatch snapshots and not-yet-released
+   gate guards holding anchors.
+6. Wait until the weak observer reports the sentinel has expired
+   (bounded; default 1s).
+7. `dlclose` — safe; no snapshot is dereferencing plugin .text and no
+   async callback is in plugin code.
+
+The sentinel carries a counter the kernel maintains for diagnostics:
+every async callback gate increments on entry and decrements on exit,
+so the count of callbacks still inside plugin code at the drain
+deadline is observable and logged alongside the timeout warning.
 
 On timeout — a plugin that spawned a worker outlasting `shutdown` per
-§8 — the manager logs a warning and **leaks the dlclose handle**. The
+§ "What plugins must not do", or a long-running async loop that did
+not poll `is_shutdown_requested` — the manager logs a warning that
+includes the in-flight count and **leaks the dlclose handle**. The
 .so stays mapped; the leftover work dereferences live code rather than
 unmapped memory. Loud accounting (`PluginManager::leaked_handles()`)
 makes the leak observable instead of silent.
@@ -210,7 +230,43 @@ Omitting an ownership tag is a code-review failure pre-RC.
 
 ---
 
-## 8. What plugins must **not** do
+## 8. Cooperative cancellation
+
+A plugin that schedules long-running async work — a periodic timer
+that re-arms itself, a multi-step posted task — observes shutdown
+through `host_api->is_shutdown_requested(host_ctx)`. The slot
+returns non-zero as soon as the kernel begins teardown for this
+plugin, and stays non-zero through the drain.
+
+The plugin polls the slot from inside the loop and exits early when
+the flag is set:
+
+- Periodic timers stop re-arming.
+- Posted multi-step tasks return without scheduling the next step.
+- Stateful workers that drain a queue treat the flag as the loop's
+  exit predicate.
+
+Cooperation is observable. A plugin that polls the flag drains in
+microseconds because the kernel is not waiting for anything; a
+plugin that ignores it consumes the bounded drain budget and, on
+timeout, costs the kernel one leaked `dlclose` handle plus a logged
+in-flight-count. The flag is the contract between the plugin and
+the kernel for "you have until the drain deadline; please return
+yourself".
+
+The flag is **advisory**, not mandatory. Async callbacks that arrive
+after the flag was published are dropped by the kernel-side gate
+before they enter plugin code, so a plugin that never polls the flag
+is still safe — it just costs more on shutdown. The point of polling
+is to be a good neighbour, not to be correct.
+
+For in-tree fixtures whose context has no anchor the slot always
+returns 0; the plugin's logic is exercised the same way under test
+as under a live kernel.
+
+---
+
+## 9. What plugins must **not** do
 
 - Spawn a worker that outlives `gn_plugin_shutdown`. The kernel does
   not know about it; `dlclose` will yank the code under it.
@@ -226,7 +282,7 @@ Omitting an ownership tag is a code-review failure pre-RC.
 
 ---
 
-## 9. Cross-references
+## 10. Cross-references
 
 - C ABI evolution: `abi-evolution.md` §3.
 - The host vtable used at registration: `host-api.md`.

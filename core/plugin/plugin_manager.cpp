@@ -136,13 +136,15 @@ gn_result_t PluginManager::open_one(const std::string& path,
     out.ctx->kind        = out.descriptor.kind;
     out.ctx->kernel      = &kernel_;
 
-    /// The quiescence sentinel. A trivial heap allocation whose
-    /// reference count tracks `(this manager) + (this ctx) +
-    /// (every registry entry the plugin installs) + (every dispatch
-    /// snapshot in flight)`. Choosing a non-null sentinel value
-    /// keeps shared_ptr's empty-state semantics out of play —
-    /// `weak_ptr::expired()` is the single source of truth.
-    out.ctx->plugin_anchor = std::make_shared<int>(0);
+    /// The quiescence sentinel. The shared_ptr's reference count
+    /// tracks `(this ctx) + (every registry entry the plugin
+    /// installs) + (every dispatch snapshot in flight) + (every
+    /// async callback currently in plugin code via GateGuard)`.
+    /// `weak_ptr::expired()` is the drain-side observable; the
+    /// embedded `shutdown_requested` flag is the cooperative-
+    /// cancellation signal published to async callbacks and to the
+    /// plugin itself through `is_shutdown_requested`.
+    out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
 
     out.api  = build_host_api(*out.ctx);
     out.self = nullptr;
@@ -249,31 +251,46 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 }
 
 bool PluginManager::drain_anchor(PluginInstance& inst,
-                                  const std::weak_ptr<void>& watch) {
+                                  const std::weak_ptr<PluginAnchor>& watch) {
     /// Spin-wait with a short backoff. Most async callbacks complete
     /// in the microsecond range; the timeout exists to catch stuck
-    /// workers that the plugin never told us about (a §8 violation).
+    /// workers that the plugin never told us about (a §9 violation).
     /// The interval grows from 100µs to 1ms so a fast quiescence
     /// pays no perceptible cost while a slow one yields the CPU.
     using clock = std::chrono::steady_clock;
     const auto deadline = clock::now() + quiescence_timeout_;
     auto interval = std::chrono::microseconds{100};
-    while (!watch.expired()) {
+    while (true) {
+        /// Lock the weak observer once per iteration. A null lock
+        /// means every strong holder dropped — registries, snapshots,
+        /// and gate guards — and `dlclose` is safe. Reading
+        /// `in_flight` through the same locked strong ref avoids the
+        /// race where a separate `expired()` check passes but the
+        /// subsequent `lock()` for the warning log returns null and
+        /// the operator sees `in_flight=0` even though leaked work
+        /// just finished racing the deadline.
+        auto strong = watch.lock();
+        if (!strong) return true;
+
         if (clock::now() >= deadline) {
+            const std::uint64_t in_flight = strong->in_flight.load(
+                std::memory_order_acquire);
             ::gn::log::warn(
-                "plugin '{}' did not quiesce within {}ms; "
-                "leaking dlclose handle to keep async callbacks safe",
+                "plugin '{}' did not quiesce within {}ms "
+                "(in_flight={}); leaking dlclose handle to keep "
+                "async callbacks safe",
                 inst.descriptor.plugin_name,
-                quiescence_timeout_.count());
+                quiescence_timeout_.count(),
+                in_flight);
             ++leaked_handles_;
             return false;
         }
+        strong.reset();
         std::this_thread::sleep_for(interval);
         if (interval < std::chrono::milliseconds{1}) {
             interval *= 2;
         }
     }
-    return true;
 }
 
 void PluginManager::rollback() {
@@ -288,6 +305,18 @@ void PluginManager::rollback() {
     /// in-flight dispatch snapshot — we wait for it to release the
     /// anchor before unmapping the .text section behind its vtable.
     for (auto it = instances_.rbegin(); it != instances_.rend(); ++it) {
+        /// Publish `shutdown_requested = true` before any plugin
+        /// entry runs in the rollback path. Async callbacks scheduled
+        /// after this point refuse to enter plugin code through
+        /// `GateGuard::acquire`; long-running plugin loops that poll
+        /// `is_shutdown_requested` see the flag and exit cooperatively
+        /// during `gn_plugin_unregister` / `gn_plugin_shutdown`
+        /// (`plugin-lifetime.md` §8).
+        if (it->ctx && it->ctx->plugin_anchor) {
+            it->ctx->plugin_anchor->shutdown_requested.store(
+                true, std::memory_order_release);
+        }
+
         if (it->registered && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
                     ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
@@ -295,6 +324,19 @@ void PluginManager::rollback() {
             }
             it->registered = false;
         }
+
+        /// Cancel still-pending timers / posted tasks for this anchor
+        /// **between** unregister and shutdown per `plugin-lifetime.md`
+        /// §4 step 3. The plugin's `self` is still alive here, so any
+        /// timer caught mid-flight finishes against a live plugin —
+        /// after `gn_plugin_shutdown` returns, `self` is gone and a
+        /// pending callback dereferencing `user_data = &self->state`
+        /// would point at freed memory even though the gate keeps the
+        /// `.text` mapped.
+        if (it->ctx && it->ctx->plugin_anchor) {
+            kernel_.timers().cancel_for_anchor(it->ctx->plugin_anchor);
+        }
+
         if (it->self && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
                     ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
@@ -305,18 +347,11 @@ void PluginManager::rollback() {
 
         if (it->so_handle) {
             /// Promote the kernel-side strong reference to a weak
-            /// observer, then drop both strong refs (manager-held
-            /// and ctx-held) so only in-flight snapshots remain.
-            std::weak_ptr<void> watch;
+            /// observer, then drop the ctx-held strong ref so only
+            /// in-flight snapshots and not-yet-released gate guards
+            /// remain.
+            std::weak_ptr<PluginAnchor> watch;
             if (it->ctx) {
-                /// Cancel any still-pending timers / posted tasks
-                /// queued by this plugin before dropping the anchor.
-                /// Without the cancel the drain spin would wait for
-                /// every long-delay timer to fire its lifetime gate;
-                /// per `timer.md` §4 #3 the rollback path is the
-                /// place that keeps `dlclose` from blocking on those
-                /// queued entries.
-                kernel_.timers().cancel_for_anchor(it->ctx->plugin_anchor);
                 watch = it->ctx->plugin_anchor;
                 it->ctx->plugin_anchor.reset();
             }

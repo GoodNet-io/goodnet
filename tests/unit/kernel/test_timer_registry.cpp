@@ -88,7 +88,7 @@ TEST(TimerRegistry_Schedule, RejectsNullCallback) {
 
 TEST(TimerRegistry_Anchor, ExpiredAnchorDropsCallback) {
     TimerRegistry r;
-    auto anchor = std::make_shared<int>(0);
+    auto anchor = std::make_shared<PluginAnchor>();
 
     std::atomic<int> hits{0};
     gn_timer_id_t id = GN_INVALID_TIMER_ID;
@@ -107,7 +107,7 @@ TEST(TimerRegistry_Anchor, ExpiredAnchorDropsCallback) {
 
 TEST(TimerRegistry_Anchor, LiveAnchorDispatches) {
     TimerRegistry r;
-    auto anchor = std::make_shared<int>(0);
+    auto anchor = std::make_shared<PluginAnchor>();
 
     std::atomic<int> hits{0};
     gn_timer_id_t id = GN_INVALID_TIMER_ID;
@@ -120,8 +120,8 @@ TEST(TimerRegistry_Anchor, LiveAnchorDispatches) {
 
 TEST(TimerRegistry_Anchor, CancelForAnchorRemovesMatchingTimers) {
     TimerRegistry r;
-    auto a = std::make_shared<int>(0);
-    auto b = std::make_shared<int>(0);
+    auto a = std::make_shared<PluginAnchor>();
+    auto b = std::make_shared<PluginAnchor>();
 
     gn_timer_id_t id1 = GN_INVALID_TIMER_ID;
     gn_timer_id_t id2 = GN_INVALID_TIMER_ID;
@@ -149,12 +149,12 @@ TEST(TimerRegistry_Post, RunsOnServiceExecutor) {
 
 TEST(TimerRegistry_Post, AnchorExpiredSkips) {
     TimerRegistry r;
-    auto anchor = std::make_shared<int>(0);
+    auto anchor = std::make_shared<PluginAnchor>();
     std::atomic<int> hits{0};
 
     /// Drop anchor before posting so the queued task observes
     /// expired weak observer.
-    auto weak_only = std::weak_ptr<void>(anchor);
+    auto weak_only = std::weak_ptr<PluginAnchor>(anchor);
     /// Re-create anchor strong only inside post call (move-by-copy).
     EXPECT_EQ(r.post([](void* p) {
         static_cast<std::atomic<int>*>(p)->fetch_add(1);

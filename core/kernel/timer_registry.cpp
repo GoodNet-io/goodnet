@@ -46,7 +46,7 @@ std::size_t TimerRegistry::pending_tasks() const noexcept {
 gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
                                        gn_task_fn_t   fn,
                                        void*          user_data,
-                                       const std::shared_ptr<void>& anchor,
+                                       const std::shared_ptr<PluginAnchor>& anchor,
                                        gn_timer_id_t* out_id) noexcept {
     if (fn == nullptr || out_id == nullptr) return GN_ERR_NULL_ARG;
     if (shutdown_.load(std::memory_order_acquire)) {
@@ -67,11 +67,10 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             ioc_, std::chrono::milliseconds{delay_ms});
 
         TimerEntry entry;
-        entry.timer      = timer;
-        entry.anchor     = anchor;
-        entry.fn         = fn;
-        entry.user_data  = user_data;
-        entry.anchor_set = static_cast<bool>(anchor);
+        entry.timer     = timer;
+        entry.anchor    = anchor;
+        entry.fn        = fn;
+        entry.user_data = user_data;
 
         {
             std::lock_guard lk(mu_);
@@ -79,7 +78,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
         }
 
         timer->async_wait([this, id, fn, user_data,
-                           anchor_weak = std::weak_ptr<void>(anchor),
+                           anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
                            anchor_set = static_cast<bool>(anchor)](
             const std::error_code& ec) {
             TimerEntry consumed;
@@ -96,19 +95,20 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             if (!found) return;          // cancelled before fire
             if (ec)     return;          // operation_aborted, etc.
 
-            /// Lifetime gate: lock the weak anchor into a strong
-            /// reference for the duration of the dispatch. Holding
-            /// the strong ref through `fn(user_data)` blocks the
-            /// `PluginManager::drain_anchor` spin from observing
-            /// quiescence and thus from running `dlclose` while
-            /// the callback is still in the plugin's `.text`.
-            /// Anchor-less timers (in-tree fixtures) skip the gate.
-            std::shared_ptr<void> strong;
+            /// Cancellation gate: open a `GateGuard` for the
+            /// duration of the dispatch. Acquire fails if the
+            /// anchor expired or the rollback path already published
+            /// `shutdown_requested = true`; the guard's destructor
+            /// drops the in-flight counter and wakes the drain CV
+            /// on the last release. Anchor-less timers (in-tree
+            /// fixtures) skip the gate.
             if (anchor_set) {
-                strong = anchor_weak.lock();
-                if (!strong) return;
+                auto guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+                fn(user_data);
+            } else {
+                fn(user_data);
             }
-            fn(user_data);
         });
 
         *out_id = id;
@@ -143,7 +143,7 @@ gn_result_t TimerRegistry::cancel_timer(gn_timer_id_t id) noexcept {
 
 gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
                                  void*                        user_data,
-                                 const std::shared_ptr<void>& anchor) noexcept {
+                                 const std::shared_ptr<PluginAnchor>& anchor) noexcept {
     if (fn == nullptr) return GN_ERR_NULL_ARG;
     if (shutdown_.load(std::memory_order_acquire)) {
         return GN_ERR_INVALID_STATE;
@@ -157,18 +157,20 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
         pending_tasks_.fetch_add(1, std::memory_order_relaxed);
         asio::post(ioc_,
             [this, fn, user_data,
-             anchor_weak = std::weak_ptr<void>(anchor),
+             anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
              anchor_set = static_cast<bool>(anchor)] {
                 pending_tasks_.fetch_sub(1, std::memory_order_relaxed);
-                /// See `set_timer` for the strong-lock rationale —
-                /// holding the strong ref blocks drain_anchor from
-                /// observing quiescence during the dispatch.
-                std::shared_ptr<void> strong;
+                /// See `set_timer` for the cancellation-gate
+                /// rationale — the GateGuard's `in_flight` bump
+                /// blocks `drain_anchor` from running `dlclose`
+                /// while the dispatch is still in plugin code.
                 if (anchor_set) {
-                    strong = anchor_weak.lock();
-                    if (!strong) return;
+                    auto guard = GateGuard::acquire(anchor_weak);
+                    if (!guard) return;
+                    fn(user_data);
+                } else {
+                    fn(user_data);
                 }
-                fn(user_data);
             });
         return GN_OK;
     } catch (const std::bad_alloc&) {
@@ -181,7 +183,7 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
 }
 
 void TimerRegistry::cancel_for_anchor(
-    const std::shared_ptr<void>& anchor) noexcept {
+    const std::shared_ptr<PluginAnchor>& anchor) noexcept {
     if (!anchor) return;
     try {
         std::vector<std::shared_ptr<asio::steady_timer>> doomed;
