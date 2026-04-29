@@ -92,6 +92,13 @@ public:
     [[nodiscard]] gn_result_t disconnect(gn_conn_id_t conn);
 
     void set_host_api(const host_api_t* api) noexcept;
+
+    /// Reconfigure the per-source-IP new-connection limiter live.
+    /// Public so the config-reload callback in the .cpp can call
+    /// it from a free function without going through internals.
+    void reconfigure_new_conn_limiter(double      rate,
+                                       double      burst,
+                                       std::size_t lru_cap) noexcept;
     void shutdown();
 
     [[nodiscard]] std::uint16_t listen_port() const noexcept {
@@ -181,6 +188,10 @@ private:
     std::atomic<std::uint32_t>                                      mtu_{kDefaultMtu};
     ::gn::util::RateLimiterMap<>                                    new_conn_limiter_{
         kNewConnRate, kNewConnBurst};
+    /// Token issued by `subscribe_config_reload`; reset on
+    /// `set_host_api(nullptr)` and on dtor so the kernel's
+    /// signal channel doesn't fire into a freed `this`.
+    std::uint64_t                                                   reload_sub_id_{0};
 
     std::atomic<std::uint64_t> bytes_in_{0};
     std::atomic<std::uint64_t> bytes_out_{0};

@@ -139,6 +139,32 @@ public:
     [[nodiscard]] Config& config() noexcept { return config_; }
     [[nodiscard]] const Config& config() const noexcept { return config_; }
 
+    /// Pub/sub channel that fires after every successful config
+    /// mutation through `reload_config` / `reload_config_merge`.
+    /// Subscribers (typically plugins via `host_api->
+    /// subscribe_config_reload`) re-read their knobs in their own
+    /// callback. The channel is dormant for the initial `load`
+    /// path — `Kernel::set_limits` propagates that one synchronously
+    /// — and only fires on operator-initiated reloads.
+    [[nodiscard]] signal::SignalChannel<signal::Empty>& on_config_reload() noexcept {
+        return on_config_reload_;
+    }
+
+    /// Apply @p text as the new config document, replacing the
+    /// current state. On success fires `on_config_reload` so
+    /// subscribed plugins re-read their knobs and runs
+    /// `set_limits` on the new `gn_limits_t` so kernel-owned
+    /// registries see the propagation. Returns the same error
+    /// codes as `Config::load_json`; on failure the kernel state
+    /// is unchanged.
+    [[nodiscard]] gn_result_t reload_config(std::string_view text);
+
+    /// Same shape as `reload_config` but uses `Config::merge_json`
+    /// (RFC 7396 deep-merge) instead of wholesale replace —
+    /// operator pushes a per-deploy override on top of the running
+    /// state without re-stating every base field.
+    [[nodiscard]] gn_result_t reload_config_merge(std::string_view overlay);
+
     /// Install the kernel's `NodeIdentity` for the security pipeline.
     /// Must be called before reaching `Wire` phase so the security
     /// session has the local Ed25519 keypair available at handshake
@@ -192,6 +218,7 @@ private:
     gn_limits_t                           limits_{};
     Config                                config_;
 
+    signal::SignalChannel<signal::Empty>  on_config_reload_;
     signal::SignalChannel<ConnEvent>      on_conn_event_;
 
     /// Atomic-shared like `protocol_layer_`: secrets stay alive for

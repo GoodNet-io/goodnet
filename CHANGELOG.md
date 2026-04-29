@@ -27,6 +27,29 @@ typed extension API.
 
 ### Added
 
+- **Hot config reload** — `Kernel::reload_config(text)` and
+  `reload_config_merge(overlay)` swap the live state atomically,
+  propagate the new `gn_limits_t` to every kernel-owned registry
+  through `set_limits`, then fire `on_config_reload` so subscribed
+  plugins re-read their knobs. Plugins subscribe via two new
+  host_api slots: `subscribe_config_reload(cb, user_data, *out_id)`
+  and `unsubscribe_config_reload(id)`. The bundled UDP transport
+  re-reads its `udp.new_conn_*` rate limiter on every reload as
+  the canonical reference subscriber. A failed reload (parse or
+  invariant violation) leaves the kernel state unchanged and does
+  not fire the signal — every `on_config_reload` event corresponds
+  to a successful state change.
+- **Tuning profiles** — `server` / `embedded` / `desktop` baselines
+  selected via the top-level `"profile": "..."` JSON field. The
+  `limits` block overrides individual fields on top of the chosen
+  baseline. Embedded shrinks every dimension (64 conns, 8 KiB
+  frame, 256 timers); Desktop sits between Embedded and Server.
+- **Layered config** — `Config::merge_json(overlay)` deep-merges
+  per RFC 7396 so an embedding can compose
+  defaults → site override → per-deploy override without
+  reassembling the merged JSON itself. Atomicity carries through:
+  a parse failure or invariant violation in any layer rolls back
+  to the last good state.
 - **Typed config slots beyond string + int64** — five new
   `host_api->config_get_*` entries: `bool`, `double`, `array_size`,
   `array_string`, `array_int64`. Plugins reach the same configurable
