@@ -81,6 +81,17 @@ public:
     /// Remove the handler with id @p id from whichever chain holds it.
     [[nodiscard]] gn_result_t unregister_handler(gn_handler_id_t id) noexcept;
 
+    /// Atomic snapshot of one dispatch chain plus the registry-wide
+    /// generation counter at the moment the lookup ran. Returned by
+    /// `lookup_with_generation` so a dispatcher that wants to detect
+    /// mid-walk registry mutations (registrations or unregistrations
+    /// landing concurrently) can compare `generation` against the
+    /// live counter without a second lookup.
+    struct LookupResult {
+        std::vector<HandlerEntry> chain;
+        std::uint64_t             generation = 0;
+    };
+
     /// Return the dispatch chain for `(protocol_id, msg_id)` ordered
     /// from highest priority to lowest. Empty vector if no handlers
     /// are registered for the pair.
@@ -90,6 +101,20 @@ public:
     /// plugin's `unregister` returns.
     [[nodiscard]] std::vector<HandlerEntry> lookup(std::string_view protocol_id,
                                                    std::uint32_t    msg_id) const;
+
+    /// Same shape as `lookup`, but returns the chain together with
+    /// the generation counter the registry recorded inside the same
+    /// shared-lock window. Per `handler-registration.md` §6 the
+    /// generation increments on every successful register and
+    /// unregister; a dispatcher that wants to short-circuit on a
+    /// stale chain compares `LookupResult::generation` against
+    /// `HandlerRegistry::generation()` post-invoke. Returning the
+    /// pair atomically avoids a TOCTOU between the lookup and a
+    /// separate `generation()` call where a concurrent registration
+    /// could land.
+    [[nodiscard]] LookupResult lookup_with_generation(
+        std::string_view protocol_id,
+        std::uint32_t    msg_id) const;
 
     /// Per-pair chain length cap. Mirrors `gn_limits_t::max_handlers_per_msg_id`.
     void set_max_chain_length(std::size_t cap) noexcept;

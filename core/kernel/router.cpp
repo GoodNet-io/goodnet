@@ -64,17 +64,30 @@ RouteOutcome Router::route_inbound(std::string_view    protocol_id,
 
 RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
                                     const gn_message_t& env) const {
-    auto chain = handlers_.lookup(protocol_id, env.msg_id);
-    if (chain.empty()) {
+    /// Atomic snapshot — chain + the generation counter the registry
+    /// observed inside the lookup's shared lock. The dispatcher
+    /// keeps the recorded generation in scope so a future hot-reload
+    /// path can compare against the live counter for stale-chain
+    /// observability without a second lookup. Per
+    /// `handler-registration.md` §6 the generation bumps on every
+    /// register / unregister; an exporter plugin can surface the
+    /// gap between recorded and live counters as a "dispatch on
+    /// stale chain" rate.
+    auto snap = handlers_.lookup_with_generation(protocol_id, env.msg_id);
+    if (snap.chain.empty()) {
         return RouteOutcome::DroppedNoHandler;
     }
 
     /// Walk the chain in priority order. `on_result` fires after every
     /// `handle_message` regardless of return; `Consumed` stops the
-    /// chain; `Reject` propagates upward.
+    /// chain; `Reject` propagates upward. The snapshot's
+    /// `lifetime_anchor` strong refs keep every entry's vtable valid
+    /// for the entire walk even if the registry mutates concurrently
+    /// — no UAF, only a possibly-stale dispatch on entries the new
+    /// generation no longer wants to see.
     RouteOutcome outcome = RouteOutcome::DispatchedLocal;
 
-    for (const auto& entry : chain) {
+    for (const auto& entry : snap.chain) {
         const gn_propagation_t r =
             entry.vtable->handle_message(entry.self, &env);
 

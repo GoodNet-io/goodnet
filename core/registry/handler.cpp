@@ -106,6 +106,25 @@ std::vector<HandlerEntry> HandlerRegistry::lookup(std::string_view protocol_id,
     return it->second;  // value-type copy is the snapshot
 }
 
+HandlerRegistry::LookupResult HandlerRegistry::lookup_with_generation(
+    std::string_view protocol_id,
+    std::uint32_t    msg_id) const {
+    /// Capture the generation counter under the same shared lock as
+    /// the chain copy. Without that pairing, a writer landing
+    /// between the lookup-side `find` and a follow-up
+    /// `generation()` read would slip an in-between bump past the
+    /// caller — making the returned counter unreliable for mid-walk
+    /// stale-detection.
+    Key key{std::string{protocol_id}, msg_id};
+    std::shared_lock lock(mu_);
+    LookupResult out;
+    out.generation = generation_.load(std::memory_order_acquire);
+    if (auto it = chains_.find(key); it != chains_.end()) {
+        out.chain = it->second;
+    }
+    return out;
+}
+
 void HandlerRegistry::set_max_chain_length(std::size_t cap) noexcept {
     max_chain_length_.store(cap, std::memory_order_relaxed);
 }

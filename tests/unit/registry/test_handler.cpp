@@ -282,6 +282,50 @@ TEST(HandlerRegistry_Generation, FailedRegisterKeepsGeneration) {
     EXPECT_EQ(reg.generation(), before);
 }
 
+TEST(HandlerRegistry_Generation, LookupWithGenerationReturnsAtomicPair) {
+    HandlerRegistry reg;
+    reg_or_die(reg, "gnet-v1", 7, 128);
+
+    const auto snap = reg.lookup_with_generation("gnet-v1", 7);
+    EXPECT_EQ(snap.chain.size(), 1u);
+    EXPECT_EQ(snap.generation, reg.generation())
+        << "atomic pair: generation captured at lookup must match the "
+           "live counter while no concurrent mutation has run";
+}
+
+TEST(HandlerRegistry_Generation, GenerationStaleAfterConcurrentMutation) {
+    /// `lookup_with_generation` returns a snapshot of the chain
+    /// alongside the generation counter inside the same shared
+    /// lock; after another writer lands, `r.generation()` exceeds
+    /// the recorded value. A future hot-reload dispatcher uses
+    /// that gap to decide whether to re-fetch the chain.
+    HandlerRegistry reg;
+    reg_or_die(reg, "gnet-v1", 9, 128);
+
+    const auto snap = reg.lookup_with_generation("gnet-v1", 9);
+    const std::uint64_t recorded = snap.generation;
+
+    /// Land a second registration on the same key.
+    reg_or_die(reg, "gnet-v1", 9, 64);
+
+    EXPECT_GT(reg.generation(), recorded)
+        << "post-mutation live generation must exceed the snapshot's";
+    /// The snapshot's chain still reflects the pre-mutation state —
+    /// the dispatcher walks a consistent view even though the
+    /// registry has moved on.
+    EXPECT_EQ(snap.chain.size(), 1u);
+}
+
+TEST(HandlerRegistry_Generation, EmptyChainStillCarriesGeneration) {
+    HandlerRegistry reg;
+    /// Even a lookup that hits no chain returns the live generation
+    /// counter so a dispatcher's first call after startup gets a
+    /// reference value to compare against.
+    const auto snap = reg.lookup_with_generation("never-registered", 42);
+    EXPECT_TRUE(snap.chain.empty());
+    EXPECT_EQ(snap.generation, reg.generation());
+}
+
 // ─── max_chain_length cap ───────────────────────────────────────────
 
 TEST(HandlerRegistry_Cap, ThirdRegistrationRejectedAtCap2) {
