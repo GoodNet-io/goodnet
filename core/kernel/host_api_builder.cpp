@@ -578,6 +578,19 @@ bool pk_is_known(const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]) noexcept {
     return false;
 }
 
+/// 64-bit key for the per-source rate limiter on `inject_*` thunks.
+/// Ed25519 public keys are uniformly distributed, so the leading
+/// eight bytes give a sound hash without further mixing — collision
+/// rate is 1 in 2^64. Using `remote_pk` rather than `gn_conn_id_t`
+/// keeps the bucket attached to the originating peer identity, so a
+/// bridge plugin that disconnects and re-opens the connection does
+/// not skip the rate limit by acquiring a fresh `conn_id`.
+[[nodiscard]] std::uint64_t inject_rate_key(const PublicKey& pk) noexcept {
+    std::uint64_t key = 0;
+    std::memcpy(&key, pk.data(), sizeof(key));
+    return key;
+}
+
 gn_result_t thunk_notify_connect(void* host_ctx,
                                  const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                                  const char* uri,
@@ -815,7 +828,7 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
     }
 
     if (!pc->kernel->inject_rate_limiter().allow(
-            static_cast<std::uint64_t>(source))) {
+            inject_rate_key(rec->remote_pk))) {
         return GN_ERR_LIMIT_REACHED;
     }
 
@@ -853,7 +866,7 @@ gn_result_t thunk_inject_frame(void* host_ctx,
     }
 
     if (!pc->kernel->inject_rate_limiter().allow(
-            static_cast<std::uint64_t>(source))) {
+            inject_rate_key(rec->remote_pk))) {
         return GN_ERR_LIMIT_REACHED;
     }
 
