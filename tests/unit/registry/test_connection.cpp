@@ -228,6 +228,173 @@ TEST(ConnectionRegistry_Erase, FreesKeysForReuse) {
               GN_OK);
 }
 
+// ─── snapshot_and_erase ─────────────────────────────────────────────
+
+TEST(ConnectionRegistry_SnapshotAndErase, MissingIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.snapshot_and_erase(99999u).has_value());
+}
+
+TEST(ConnectionRegistry_SnapshotAndErase, InvalidIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.snapshot_and_erase(GN_INVALID_ID).has_value());
+}
+
+TEST(ConnectionRegistry_SnapshotAndErase, ReturnsRecordAndDropsAllIndexes) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey    pk = make_pk(0xABCDEF);
+    ASSERT_EQ(reg.insert_with_index(make_record(id, "tcp://snap", pk)), GN_OK);
+
+    auto snap = reg.snapshot_and_erase(id);
+    ASSERT_TRUE(snap.has_value());
+    if (snap.has_value()) {
+        const auto& s = *snap;
+        EXPECT_EQ(s.id,        id);
+        EXPECT_EQ(s.uri,       "tcp://snap");
+        EXPECT_EQ(s.remote_pk, pk);
+        EXPECT_EQ(s.trust,     GN_TRUST_PEER);
+    }
+
+    EXPECT_FALSE(reg.find_by_id(id).has_value());
+    EXPECT_FALSE(reg.find_by_uri("tcp://snap").has_value());
+    EXPECT_FALSE(reg.find_by_pk(pk).has_value());
+    EXPECT_EQ(reg.size(), 0u);
+    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_UNKNOWN_RECEIVER);
+}
+
+TEST(ConnectionRegistry_SnapshotAndErase, FoldsPerConnectionCounters) {
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+                  make_record(id, "tcp://ctrs", make_pk(1))), GN_OK);
+
+    reg.add_inbound(id,  /*bytes=*/4096, /*frames=*/8);
+    reg.add_outbound(id, /*bytes=*/2048, /*frames=*/4);
+    reg.set_pending_bytes(id, 512);
+
+    auto snap = reg.snapshot_and_erase(id);
+    ASSERT_TRUE(snap.has_value());
+    if (snap.has_value()) {
+        const auto& s = *snap;
+        EXPECT_EQ(s.bytes_in,            4096u);
+        EXPECT_EQ(s.bytes_out,           2048u);
+        EXPECT_EQ(s.frames_in,           8u);
+        EXPECT_EQ(s.frames_out,          4u);
+        EXPECT_EQ(s.pending_queue_bytes, 512u);
+    }
+}
+
+/// Cross-shard non-deadlock under contention: two threads each hold
+/// the snapshot+erase critical section on a different shard. The
+/// `scoped_lock` deadlock-avoidance from `registry.md` §3 must hold
+/// for the new path too.
+TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentCrossShardNoDeadlock) {
+    constexpr int kRounds = 64;
+    ConnectionRegistry reg;
+
+    auto id_for_shard = [&](unsigned shard) {
+        for (;;) {
+            const gn_conn_id_t id = reg.alloc_id();
+            if ((id % 16u) == shard) return id;
+        }
+    };
+
+    for (int round = 0; round < kRounds; ++round) {
+        const std::uint64_t r64  = static_cast<std::uint64_t>(round);
+        const gn_conn_id_t  id_a = id_for_shard(3u);
+        const gn_conn_id_t  id_b = id_for_shard(11u);
+        ASSERT_EQ(reg.insert_with_index(make_record(
+                      id_a, "tcp://a-" + std::to_string(round),
+                      make_pk(0xA00000ULL | r64))), GN_OK);
+        ASSERT_EQ(reg.insert_with_index(make_record(
+                      id_b, "tcp://b-" + std::to_string(round),
+                      make_pk(0xB00000ULL | r64))), GN_OK);
+
+        std::atomic<bool> go{false};
+        std::atomic<int>  ready{0};
+        std::atomic<int>  done{0};
+
+        auto worker = [&](gn_conn_id_t id) {
+            ready.fetch_add(1, std::memory_order_release);
+            while (!go.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            EXPECT_TRUE(reg.snapshot_and_erase(id).has_value());
+            done.fetch_add(1, std::memory_order_release);
+        };
+
+        std::thread t1(worker, id_a);
+        std::thread t2(worker, id_b);
+        while (ready.load(std::memory_order_acquire) < 2) {
+            std::this_thread::yield();
+        }
+        const auto start = std::chrono::steady_clock::now();
+        go.store(true, std::memory_order_release);
+        while (done.load(std::memory_order_acquire) < 2) {
+            ASSERT_LT(std::chrono::steady_clock::now() - start,
+                      std::chrono::seconds(5))
+                << "round " << round << ": cross-shard deadlock suspected";
+            std::this_thread::yield();
+        }
+        t1.join();
+        t2.join();
+    }
+
+    EXPECT_EQ(reg.size(), 0u);
+}
+
+/// Two threads race snapshot+erase against the same id. Exactly
+/// one observes the record; the other returns `nullopt`. Holds
+/// the `registry.md` §4a atomicity guarantee under contention.
+TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentSameIdExactlyOneSucceeds) {
+    constexpr int kRounds = 256;
+    ConnectionRegistry reg;
+
+    std::atomic<int> total_hits{0};
+    std::atomic<int> total_miss{0};
+
+    for (int round = 0; round < kRounds; ++round) {
+        const gn_conn_id_t id = reg.alloc_id();
+        ASSERT_EQ(reg.insert_with_index(make_record(
+                      id, "tcp://race-" + std::to_string(round),
+                      make_pk(static_cast<std::uint64_t>(round)))), GN_OK);
+
+        std::atomic<int> ready{0};
+        std::atomic<bool> go{false};
+        std::atomic<int> hits{0};
+
+        auto worker = [&] {
+            ready.fetch_add(1, std::memory_order_release);
+            while (!go.load(std::memory_order_acquire)) {
+                std::this_thread::yield();
+            }
+            if (reg.snapshot_and_erase(id).has_value()) {
+                hits.fetch_add(1, std::memory_order_relaxed);
+            }
+        };
+
+        std::thread t1(worker);
+        std::thread t2(worker);
+        while (ready.load(std::memory_order_acquire) < 2) {
+            std::this_thread::yield();
+        }
+        go.store(true, std::memory_order_release);
+        t1.join();
+        t2.join();
+
+        const int h = hits.load(std::memory_order_relaxed);
+        ASSERT_EQ(h, 1) << "round " << round
+                        << ": expected exactly one snapshot winner";
+        total_hits.fetch_add(h, std::memory_order_relaxed);
+        total_miss.fetch_add(2 - h, std::memory_order_relaxed);
+    }
+
+    EXPECT_EQ(total_hits.load(), kRounds);
+    EXPECT_EQ(total_miss.load(), kRounds);
+    EXPECT_EQ(reg.size(), 0u);
+}
+
 // ─── size() ─────────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_Size, ReflectsInsertEraseSequence) {
@@ -278,9 +445,9 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
             if (reg.insert_with_index(make_record(id, uri, pk)) == GN_OK) {
                 ++insert_ok;
 
-                /// Cross-check all three indexes agree on the same record
-                /// while we hold no external lock — this is the contract
-                /// claim that's most worth catching breakage on.
+                /// All three indexes return the same record without
+                /// external synchronisation — `registry.md` §3
+                /// invariant.
                 auto by_id  = reg.find_by_id(id);
                 auto by_uri = reg.find_by_uri(uri);
                 auto by_pk  = reg.find_by_pk(pk);
@@ -293,8 +460,9 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
                     EXPECT_EQ(by_pk->id,  id);
                 }
 
-                /// Erase half — this exercises the same scoped_lock
-                /// path against concurrent inserters.
+                /// Erase half of the inserted records concurrently;
+                /// `erase_with_index` and `insert_with_index` take the
+                /// same scoped_lock.
                 if ((i % 2) == 0) {
                     if (reg.erase_with_index(id) == GN_OK) ++erase_ok;
                 }
@@ -302,8 +470,8 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
         }
     };
 
-    /// Cap the test at a generous wall-clock limit; if we deadlock we
-    /// want a clean failure instead of CTest hanging forever.
+    /// Wall-clock guard converts a deadlock into a test failure
+    /// rather than an infinite hang.
     std::vector<std::thread> threads;
     threads.reserve(kThreads);
     const auto start = std::chrono::steady_clock::now();
@@ -318,7 +486,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
               static_cast<std::size_t>(insert_ok.load() - erase_ok.load()));
 
     EXPECT_LT(elapsed, std::chrono::seconds(30))
-        << "concurrent stress took unexpectedly long; possible deadlock or contention bug";
+        << "concurrent stress exceeded budget; deadlock or contention suspected";
 }
 
 // ─── pk hashing distribution ────────────────────────────────────────
@@ -327,9 +495,8 @@ TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
     constexpr std::size_t kCount = 1024;
     ConnectionRegistry reg;
 
-    /// Deterministic seed required for reproducible test failures: if a
-    /// hashing regression hits one specific key pattern we want CI to
-    /// reproduce the exact key set on every run.
+    /// Deterministic seed: a hash failure on one specific key pattern
+    /// reproduces under CI on every run.
     std::mt19937_64 rng(0xC0FFEE);  // NOLINT(cert-msc32-c,cert-msc51-cpp)
     std::vector<PublicKey> keys;
     keys.reserve(kCount);

@@ -84,6 +84,13 @@ public:
     /// Remove the record with id @p id from all three indexes.
     [[nodiscard]] gn_result_t erase_with_index(gn_conn_id_t id) noexcept;
 
+    /// Implements `registry.md` §4a atomic snapshot variant: returns
+    /// the pre-erase record (per-connection counters folded in) and
+    /// removes it from all three indexes under one critical section;
+    /// `nullopt` when the id was not present.
+    [[nodiscard]] std::optional<ConnectionRecord>
+    snapshot_and_erase(gn_conn_id_t id) noexcept;
+
     /// Snapshot lookup by id.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_id(gn_conn_id_t id) const;
 
@@ -102,7 +109,7 @@ public:
     /// Snapshot lookup by remote public key.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_pk(const PublicKey& pk) const;
 
-    /// Number of records currently held; useful for tests.
+    /// Number of records currently held.
     [[nodiscard]] std::size_t size() const noexcept;
 
     /// Iterate every record under per-shard read locks. The visitor

@@ -73,13 +73,75 @@ Properties:
 
 1. Acquire the same triple of mutexes in the same order.
 2. Look up the record by id in the shard. If absent, release and
-   return `GN_ERR_UNKNOWN`.
+   return `GN_ERR_UNKNOWN_RECEIVER`.
 3. Remove from URI index, pk index, then shard.
 4. Release.
 
 The erase operation publishes a deletion-generation increment on the
 `gn_endpoint_t` snapshot stream so that plugin-side cached endpoint
 references can detect that they refer to a deleted record.
+
+The erase primitive also exposes an atomic snapshot variant
+(§4a) for callers that must publish a terminal lifecycle event
+whose payload reflects the just-departed record state — chiefly
+`notify_disconnect` (`conn-events.md` §2a).
+
+---
+
+## 4a. Atomic snapshot variant — specification
+
+**Operation.** Atomic snapshot-and-erase of a record by id,
+sharing the same triple-locked critical section as the atomic
+erase of §4.
+
+**Pre-conditions.** A caller-provided `gn_conn_id_t`. No prior
+lookup is required and any prior `find_*` result must not be
+relied upon — the variant performs its own lookup inside the
+critical section.
+
+**Effect.** Acquires the same triple of mutexes in the same
+order as §3/§4. If the record is present, captures its
+`gn_endpoint_t` view (`id`, `trust`, `remote_pk`, `uri`,
+`transport_scheme`) and the per-connection counters from §8
+into caller-owned storage, then removes the record from all
+three indexes and the counter slot. Releases.
+
+**Outcome.** This primitive is a kernel-internal C++ method, not
+a C ABI surface (the registry is opaque to plugins per §2). Two
+outcomes:
+
+| Outcome | Meaning |
+|---|---|
+| snapshot populated | record was present; snapshot captured; record removed from all three keys |
+| no record | no record matched `id` when the critical section started; registry state unchanged; snapshot buffer left untouched |
+
+**Snapshot ownership.** The returned snapshot owns its own copy
+of the URI string and the public-key bytes — kernel-side storage
+holds no reference that outlives the call. Callers may retain
+the snapshot freely after the registry record is gone.
+
+**Atomicity.** Atomic with respect to any concurrent
+`insert_with_index`, `erase_with_index`, atomic-snapshot, or
+indexed read on the same id: between the start of the snapshot
+capture and the completion of the erase, no other observer
+finds the record under any of its three keys. Readers whose
+lookup completed before the critical section started return
+their captured snapshot normally.
+
+**Counter consistency.** Counter loads are sequenced after every
+counter write (§8) whose mutex release happened-before the
+critical section's lock acquisition. Writes that completed
+before the critical section started are observed; writes that
+completed afterward are not (their target slot is removed). At
+v1 the `last_rtt_us` field is written only when the heartbeat
+handler is loaded — if it is not, the snapshot's `last_rtt_us`
+is zero.
+
+**Cross-shard concurrency.** Concurrent atomic-snapshot calls
+against ids on different shards (`id mod 16`) overlap on the
+shard step; both still serialise on the global URI and pk index
+mutexes for the index erase. The fixed lock order from §3
+prevents deadlock across all combinations.
 
 ---
 

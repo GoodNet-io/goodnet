@@ -882,22 +882,24 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
-    /// Snapshot record before erase so the event payload reflects
-    /// the just-departed conn's trust + pk. The kernel has not yet
-    /// reaped the registry by this point.
-    ConnEvent ev{};
-    ev.kind = GN_CONN_EVENT_DISCONNECTED;
-    ev.conn = conn;
-    if (auto rec = pc->kernel->connections().find_by_id(conn)) {
-        ev.trust     = rec->trust;
-        ev.remote_pk = rec->remote_pk;
+    /// Implements `conn-events.md` §2a: drop the security session,
+    /// then atomic snapshot+erase from `registry.md` §4a, then publish
+    /// DISCONNECTED only on a real removal; on no-op return
+    /// `GN_ERR_UNKNOWN_RECEIVER` without publishing.
+    pc->kernel->sessions().destroy(conn);
+    auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+
+    if (!snapshot) {
+        return GN_ERR_UNKNOWN_RECEIVER;
     }
 
-    pc->kernel->sessions().destroy(conn);
-    const auto erase_rc = pc->kernel->connections().erase_with_index(conn);
-
+    ConnEvent ev{};
+    ev.kind      = GN_CONN_EVENT_DISCONNECTED;
+    ev.conn      = conn;
+    ev.trust     = snapshot->trust;
+    ev.remote_pk = snapshot->remote_pk;
     pc->kernel->on_conn_event().fire(ev);
-    return erase_rc;
+    return GN_OK;
 }
 
 } // namespace

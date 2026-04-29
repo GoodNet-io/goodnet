@@ -55,9 +55,8 @@ Semantics:
 - `CONNECTED` — fired by `notify_connect`. `remote_pk` may be all-
   zero when the responder side has not yet observed a public key
   through the security handshake.
-- `DISCONNECTED` — fired by `notify_disconnect`. The kernel has
-  already removed the conn from its registry by the time
-  subscribers run.
+- `DISCONNECTED` — fired by `notify_disconnect` when the call
+  removes a real registry record. Full specification in §2a.
 - `TRUST_UPGRADED` — fired when a connection transitions from
   `Untrusted` to `Peer` (see `security-trust.md` §3 one-way upgrade).
 - `BACKPRESSURE_SOFT` — fired when a transport's send-queue
@@ -75,6 +74,79 @@ fires those kinds, subscribers simply never see them.
 
 `pending_bytes` carries the current queued byte count for the
 backpressure events; ignored (zero) for the lifecycle kinds.
+
+---
+
+## 2a. `DISCONNECTED` — specification
+
+**Producer.** `notify_disconnect(host_ctx, conn, reason)` is the
+single legitimate publisher. No other host-API slot, no internal
+cleanup path, and no plugin code constructs a DISCONNECTED event.
+
+**Effect.** Drops the security session for `conn`, blocking
+until any in-flight session handle has been released, then
+removes the registry record for `conn` atomically with the
+payload snapshot (`registry.md` §4a), then publishes one
+DISCONNECTED event whose payload reflects the captured
+pre-removal record state. Subscriber callbacks fire
+synchronously on the calling thread before the call returns;
+`GN_OK` means every subscriber registered before the registry
+critical section started has been invoked exactly once. A
+subscriber that registers after the publish does not receive a
+synthetic re-delivery.
+
+**Returns.**
+
+| Status | Meaning | Side effects |
+|---|---|---|
+| `GN_OK` | record removed and event published | security session destroyed; record erased from all three keys (`registry.md` §1); every existing subscriber invoked once before return |
+| `GN_ERR_UNKNOWN_RECEIVER` | no record matched `conn` at the moment the registry critical section started; also returned when `conn == GN_INVALID_ID` | session-destroy attempt is idempotent; no event published; no registry state changed |
+| `GN_ERR_NULL_ARG` | `host_ctx == NULL` | none |
+| `GN_ERR_NOT_IMPLEMENTED` | calling plugin's kind is not `GN_PLUGIN_KIND_TRANSPORT` (`sdk/plugin.h` `gn_plugin_kind_t`); `GN_PLUGIN_KIND_UNKNOWN` is permitted as a legacy carve-out for descriptors that predate the `kind` field | none |
+
+No other return code is legal; an implementation that emits one
+is non-conformant.
+
+**`reason` parameter.** Reserved at v1: ignored by the kernel,
+not surfaced to subscribers, not logged. All bit patterns are
+legal at v1. Future versions may route it into the event payload
+or a kernel-side log without an ABI break.
+
+**Payload.**
+
+| Field | Value |
+|---|---|
+| `kind` | `GN_CONN_EVENT_DISCONNECTED` |
+| `conn` | the input `conn` |
+| `trust` | the conn's trust class captured at removal |
+| `remote_pk` | the last public key the security handshake observed for `conn`; all-zero on responders that completed the call before any handshake message arrived |
+| `pending_bytes` | zero (used only by `BACKPRESSURE_*`) |
+| `_reserved[*]` | zero |
+
+The per-connection counters from `registry.md` §8 are not
+surfaced through this event. Consumers that need them read
+`get_endpoint` while the conn is alive; after removal, the conn
+is gone by design and the counters with it.
+
+**Concurrency.**
+
+- Concurrent `notify_disconnect(_, conn, _)` against the same
+  `conn`: at most one call returns `GN_OK` and publishes the
+  event; the rest return `GN_ERR_UNKNOWN_RECEIVER` and publish
+  nothing.
+- Between the snapshot capture inside the registry critical
+  section and the event publish, no other observer finds the
+  record under any of the three keys (`registry.md` §1).
+  Readers whose lookup completed before the critical section
+  return their captured snapshot normally.
+- A subscriber callback may invoke `notify_disconnect` against
+  the same `conn` re-entrantly. The re-entrant call observes
+  the record already removed and returns
+  `GN_ERR_UNKNOWN_RECEIVER` without publishing a second event.
+
+**Delivery.** Per §5 (Ordering and dropped events): one event
+per real removal, fire-and-forget, no synthetic re-delivery for
+subscribers that register after the publish.
 
 ---
 
