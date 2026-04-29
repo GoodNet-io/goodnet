@@ -107,8 +107,14 @@ typedef struct host_api_s {
     const gn_limits_t* (*limits)(void* host_ctx);
 
     /* ── Logging ─────────────────────────────────────────────────────── */
+    /* The `log` slot accepts a fully-formatted message buffer, not a   */
+    /* format string. The kernel never invokes `vsnprintf` on plugin-   */
+    /* supplied bytes — the format-string class of attack against the  */
+    /* kernel address space is closed. Plugins format on their own      */
+    /* stack via `sdk/convenience.h::gn_log_<level>` macros. See §11    */
+    /* for the full security invariant.                                 */
     void (*log)(void* host_ctx, gn_log_level_t level,
-                const char* fmt, ...);
+                const char* msg);
 
     /* ── Transport-side notifications ────────────────────────────────── */
     /* `trust` and `role` are computed by the transport per             */

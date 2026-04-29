@@ -14,7 +14,7 @@
 /// Plugin code never includes this header. Plugins log through
 /// `host_api->log` so messages cross the C ABI uniformly. The kernel
 /// bridges those plugin calls back into this same singleton logger
-/// (see the `core/kernel/host_api_log.cpp` glue).
+/// in `core/kernel/host_api_builder.cpp::thunk_log`.
 
 #pragma once
 
