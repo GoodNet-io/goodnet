@@ -294,6 +294,11 @@ gn_limits_t Config::limits() const noexcept {
     return limits_;
 }
 
+std::string Config::dump(int indent) const {
+    std::shared_lock lock(mu_);
+    return json_.dump(indent);
+}
+
 gn_result_t Config::load_file(const std::string& path) {
     /// Stream the file in once, hand the buffer to `load_json`.
     /// `std::ifstream` translation of file-open failure to a

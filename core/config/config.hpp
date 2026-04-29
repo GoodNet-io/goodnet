@@ -118,6 +118,18 @@ public:
     /// shared lock for the duration of the call.
     [[nodiscard]] gn_limits_t limits() const noexcept;
 
+    /// Serialise the live document back to JSON text. Used by
+    /// debugging tooling, by audit pipelines that diff effective
+    /// config against the on-disk source, and by tests that pin
+    /// round-trip behaviour.
+    ///
+    /// `indent < 0` produces compact output (no whitespace);
+    /// `indent >= 0` pretty-prints with that many spaces per level.
+    /// The kernel does not run the result through `validate` again
+    /// — `dump` is a read-only observation of state already
+    /// validated at load time.
+    [[nodiscard]] std::string dump(int indent = -1) const;
+
 private:
     [[nodiscard]] static gn_limits_t parse_limits(const nlohmann::json& root);
 
