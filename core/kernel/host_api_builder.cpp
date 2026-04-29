@@ -657,24 +657,50 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
     return trans->vtable->send(trans->self, conn, bytes.data(), bytes.size());
 }
 
+/// Kernel-side teardown for a connection that the kernel itself
+/// closes (no plugin-driven `notify_disconnect` upstream). Drops
+/// the security session, atomic snapshot+erases the registry
+/// record, clears the attestation per-conn state, and publishes a
+/// single `GN_CONN_EVENT_DISCONNECTED` carrying the captured
+/// snapshot's trust class and `remote_pk`. Idempotent on already-
+/// erased ids.
+void publish_kernel_disconnect(PluginContext* pc, gn_conn_id_t conn) {
+    pc->kernel->sessions().destroy(conn);
+    auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+    pc->kernel->attestation_dispatcher().on_disconnect(conn);
+    if (!snapshot) return;
+    ConnEvent ev{};
+    ev.kind      = GN_CONN_EVENT_DISCONNECTED;
+    ev.conn      = conn;
+    ev.trust     = snapshot->trust;
+    ev.remote_pk = snapshot->remote_pk;
+    pc->kernel->on_conn_event().fire(ev);
+}
+
 /// Drain the session's pending-handshake queue once it has reached
-/// the Transport phase. The transport vtable lookup runs **before**
-/// `take_pending` so a missing transport leaves the queue intact —
-/// `session.close()` clears it on disconnect with a single visible
-/// loss event, not a silent mid-drain drop.
+/// the Transport phase.
+///
+/// A transport vtable that disappears between `enqueue_pending` and
+/// drain would otherwise strand the bytes inside the session
+/// without a visible signal. The kernel publishes
+/// `GN_CONN_EVENT_DISCONNECTED` for the connection, atomic-erases
+/// the registry record, and tears the session down so the producer
+/// observes one loss event instead of silent buffering.
 ///
 /// Per-frame failures (encrypt error or transport hard-cap rejection)
-/// disconnect the connection. The producer already received `GN_OK`
-/// from `enqueue_pending`; once the AEAD nonce advances on the first
-/// successful encrypt, partial completion is unrecoverable. Closing
-/// the conn surfaces the loss as `GN_CONN_EVENT_DISCONNECTED` so a
-/// subscriber can retry on a fresh session. Per `backpressure.md` §8.
+/// disconnect the connection through the transport plugin's
+/// `disconnect` slot; the plugin's own `notify_disconnect` chain
+/// publishes the event. The producer already received `GN_OK` from
+/// `enqueue_pending`; once the AEAD nonce advances on the first
+/// successful encrypt, partial completion is unrecoverable. Per
+/// `backpressure.md` §8.
 void drain_handshake_pending(PluginContext* pc,
                               gn_conn_id_t conn,
                               SecuritySession& session,
                               std::string_view transport_scheme) {
     auto trans = pc->kernel->transports().find_by_scheme(transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
+        publish_kernel_disconnect(pc, conn);
         return;
     }
 
