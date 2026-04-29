@@ -101,6 +101,27 @@
             echo "    bypass any single commit with: git commit --no-verify"
           '';
 
+          # `nix run .#demo` — the shortest path from `git clone` to
+          # "two endpoints exchanged a frame over a Noise-secured TCP
+          # channel". The build flips `GOODNET_BUILD_EXAMPLES=ON` and
+          # produces a single `goodnet-demo` binary that owns both
+          # ends of the conversation, so the user does not need a
+          # peer to run.
+          gn-demo = pkgs.writeShellScriptBin "gn-demo" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build-demo"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring demo build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DGOODNET_BUILD_EXAMPLES=ON \
+                  -DGOODNET_BUILD_TESTS=OFF
+              fi
+              cmake --build "$BUILD_DIR" --target goodnet_demo -j"$(nproc)"
+              "$BUILD_DIR/bin/goodnet-demo"
+            ' _ "$@"
+          '';
+
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
         in
         {
@@ -111,6 +132,7 @@
           test-asan     = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
           test-tsan     = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
           install-hooks = { type = "app"; program = "${gn-install-hooks}/bin/gn-install-hooks"; };
+          demo          = { type = "app"; program = "${gn-demo}/bin/gn-demo"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -148,6 +170,7 @@ GoodNet devShell  (gcc15, C++23)
   nix run .#test           — Debug build + ctest
   nix run .#test-asan
   nix run .#test-tsan
+  nix run .#demo           — two-node Noise-over-TCP quickstart
   nix run .#install-hooks  — wire .githooks/ into this clone
 
 EOF
