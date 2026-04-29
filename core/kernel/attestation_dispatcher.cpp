@@ -37,11 +37,24 @@ static_assert(
 /// `attestation.md` §8: destroy session, snapshot+erase the
 /// registry record, publish one DISCONNECTED event with the
 /// captured payload.
-void disconnect_on_consumer_failure(Kernel&         kernel,
+[[nodiscard]] const char* drop_reason_label(gn_drop_reason_t reason) noexcept {
+    switch (reason) {
+    case GN_DROP_ATTESTATION_BAD_SIZE:           return "attestation.bad_size";
+    case GN_DROP_ATTESTATION_REPLAY:             return "attestation.replay";
+    case GN_DROP_ATTESTATION_PARSE_FAILED:       return "attestation.parse_failed";
+    case GN_DROP_ATTESTATION_BAD_SIGNATURE:      return "attestation.bad_signature";
+    case GN_DROP_ATTESTATION_EXPIRED_OR_INVALID: return "attestation.expired_or_invalid";
+    case GN_DROP_ATTESTATION_IDENTITY_CHANGE:    return "attestation.identity_change";
+    default:                                     return "attestation.unknown";
+    }
+}
+
+void disconnect_on_consumer_failure(Kernel&          kernel,
                                      gn_conn_id_t    conn,
-                                     const char*     metric_label) noexcept {
+                                     gn_drop_reason_t reason) noexcept {
     ::gn::log::warn("attestation: consumer step failed — conn={} reason={}",
-                    static_cast<std::uint64_t>(conn), metric_label);
+                    static_cast<std::uint64_t>(conn),
+                    drop_reason_label(reason));
     kernel.sessions().destroy(conn);
     auto removed = kernel.connections().snapshot_and_erase(conn);
     if (removed.has_value()) {
@@ -233,25 +246,25 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
     const Outcome outcome = verify_payload(payload, binding, now,
                                             user_pk, device_pk);
 
-    auto disconnect = [&](const char* label) {
-        disconnect_on_consumer_failure(kernel, conn, label);
+    auto disconnect = [&](gn_drop_reason_t reason) {
+        disconnect_on_consumer_failure(kernel, conn, reason);
     };
 
     switch (outcome) {
     case Outcome::BadSize:
-        disconnect("attestation.bad_size");
+        disconnect(GN_DROP_ATTESTATION_BAD_SIZE);
         return static_cast<int>(outcome);
     case Outcome::BindingMismatch:
-        disconnect("attestation.replay");
+        disconnect(GN_DROP_ATTESTATION_REPLAY);
         return static_cast<int>(outcome);
     case Outcome::ParseFailed:
-        disconnect("attestation.parse_failed");
+        disconnect(GN_DROP_ATTESTATION_PARSE_FAILED);
         return static_cast<int>(outcome);
     case Outcome::BadSignature:
-        disconnect("attestation.bad_signature");
+        disconnect(GN_DROP_ATTESTATION_BAD_SIGNATURE);
         return static_cast<int>(outcome);
     case Outcome::ExpiredOrInvalidCert:
-        disconnect("attestation.expired_or_invalid");
+        disconnect(GN_DROP_ATTESTATION_EXPIRED_OR_INVALID);
         return static_cast<int>(outcome);
     case Outcome::Ok:
     case Outcome::IdentityChange:
@@ -292,7 +305,7 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
 
     if (identity_changed) {
         disconnect_on_consumer_failure(kernel, conn,
-                                        "attestation.identity_change");
+                                        GN_DROP_ATTESTATION_IDENTITY_CHANGE);
         return static_cast<int>(Outcome::IdentityChange);
     }
 

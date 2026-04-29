@@ -138,11 +138,25 @@ and the connection is closed:
 Step 8 runs only on the first valid attestation; subsequent
 attestations with the same key skip step 8 and return.
 
-Metric labels in steps 1–7 are emitted as structured log fields at
-warn level. The v1 release does not lift them to a kernel-managed
-counter surface; a future minor release may bind them to a
-`gn_drop_reason_t` enum entry once the cross-cutting drop-metrics
-counter design lands.
+Each consumer-step rejection maps to a `gn_drop_reason_t` enum
+value declared in `sdk/types.h`:
+
+| Step | Outcome | `gn_drop_reason_t` |
+|---|---|---|
+| 1 | size != 232 | `GN_DROP_ATTESTATION_BAD_SIZE` |
+| 3 | binding mismatch | `GN_DROP_ATTESTATION_REPLAY` |
+| 4 | cert parse failed | `GN_DROP_ATTESTATION_PARSE_FAILED` |
+| 5 | signature verify failed | `GN_DROP_ATTESTATION_BAD_SIGNATURE` |
+| 6 | cert expired or invalid | `GN_DROP_ATTESTATION_EXPIRED_OR_INVALID` |
+| 7 | device_pk swap | `GN_DROP_ATTESTATION_IDENTITY_CHANGE` |
+
+The dispatcher emits these as structured log fields at warn level
+and passes the enum through `disconnect_on_consumer_failure`. v1
+does not lift the enum to a kernel-managed counter surface; the
+counter wiring lands when the cross-cutting drop-metrics design
+ships (`limits.md` §5 names the same `gn_drop_reason_t` as the
+intended counter key, but the surface is reserved for a future
+minor release).
 
 ---
 
