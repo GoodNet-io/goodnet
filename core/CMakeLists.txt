@@ -19,6 +19,7 @@ add_library(goodnet_kernel STATIC
     kernel/service_resolver.cpp
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
+    kernel/metrics_registry.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
 )

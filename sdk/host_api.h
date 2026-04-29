@@ -25,6 +25,7 @@
 #include <sdk/handler.h>
 #include <sdk/limits.h>
 #include <sdk/endpoint.h>
+#include <sdk/metrics.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -405,6 +406,38 @@ typedef struct host_api_s {
                                         gn_conn_id_t conn,
                                         gn_conn_event_kind_t kind,
                                         uint64_t pending_bytes);
+
+    /* ── Metrics (metrics.md) ──────────────────────────────────────────── */
+
+    /**
+     * @brief Bump the kernel-side counter at @p name by one.
+     *
+     * The kernel store is a flat map of monotonic UTF-8-named
+     * 64-bit counters. Plugins emit cross-cutting telemetry
+     * (relay forwards, cache hits, retries) through this slot
+     * rather than spinning up their own metrics infrastructure;
+     * an out-of-tree exporter plugin walks the merged set through
+     * `iterate_counters` and serves whatever wire format the
+     * operator picks. The kernel itself is wire-format agnostic.
+     *
+     * Names are convention-only: the kernel does not validate
+     * shape or charset. Recommended pattern:
+     * `<subsystem>.<event>.<reason>` (e.g. `relay.forward.ok`).
+     */
+    void (*emit_counter)(void* host_ctx, const char* name);
+
+    /**
+     * @brief Walk every registered counter; @p visitor is invoked
+     *        once per `(name, value)` pair.
+     *
+     * The visitor's `name` borrows from the kernel's store and is
+     * valid only for the call. A non-zero return from the visitor
+     * stops iteration early. The kernel returns the number of
+     * counters visited.
+     */
+    uint64_t (*iterate_counters)(void* host_ctx,
+                                  gn_counter_visitor_t visitor,
+                                  void* user_data);
 
     /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
 

@@ -73,14 +73,17 @@ namespace {
 /// `(void)`-cast at every dispatch site, so a handler returning
 /// `Rejected` or a malformed envelope hitting `DroppedZeroSender`
 /// produced no kernel-side trace. Per `fsm-events.md`, every
-/// callback return is consumed; here we consume by logging. Reject
-/// is a handler-policy signal — kernel does not auto-disconnect on
-/// it (that decision belongs to a future policy layer), but the
-/// operator now sees it.
+/// callback return is consumed; here we consume by logging **and**
+/// by bumping the corresponding `route.outcome.*` counter so an
+/// out-of-tree exporter plugin can scrape envelope-loss totals
+/// (`metrics.md` §4). Reject is a handler-policy signal — kernel
+/// does not auto-disconnect on it, but the operator now sees the
+/// rate alongside every other drop reason on the same surface.
 void route_one_envelope(Kernel& kernel,
                         std::string_view protocol_id,
                         const gn_message_t& env) {
     const auto outcome = kernel.router().route_inbound(protocol_id, env);
+    kernel.metrics().increment_route_outcome(outcome);
     switch (outcome) {
         case RouteOutcome::DispatchedLocal:
         case RouteOutcome::DispatchedBroadcast:
@@ -344,6 +347,20 @@ int32_t thunk_is_shutdown_requested(void* host_ctx) {
     if (!pc->plugin_anchor) return 0;
     return pc->plugin_anchor->shutdown_requested.load(
         std::memory_order_acquire) ? 1 : 0;
+}
+
+void thunk_emit_counter(void* host_ctx, const char* name) {
+    if (!host_ctx || !name) return;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    pc->kernel->metrics().increment(name);
+}
+
+std::uint64_t thunk_iterate_counters(void* host_ctx,
+                                      gn_counter_visitor_t visitor,
+                                      void* user_data) {
+    if (!host_ctx || !visitor) return 0;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    return pc->kernel->metrics().iterate(visitor, user_data);
 }
 
 gn_result_t thunk_unsubscribe_conn_state(void* host_ctx,
@@ -976,6 +993,9 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.kick_handshake          = &thunk_kick_handshake;
 
     a.is_shutdown_requested   = &thunk_is_shutdown_requested;
+
+    a.emit_counter            = &thunk_emit_counter;
+    a.iterate_counters        = &thunk_iterate_counters;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

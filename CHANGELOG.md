@@ -27,6 +27,16 @@ typed extension API.
 
 ### Added
 
+- **Counter surface for kernel and plugin metrics** —
+  `host_api->emit_counter(name)` and `iterate_counters(visitor)`
+  expose a flat map of named monotonic 64-bit counters. The
+  router emits `route.outcome.*` for every dispatched envelope
+  and the kernel surfaces `drop.*` for every `gn_drop_reason_t`;
+  plugins extend the surface with their own
+  `<subsystem>.<event>.<reason>` names. Wire format / scrape
+  protocol live in an exporter plugin — the kernel never carries
+  HTTP serving or Prometheus rendering code. New header
+  `sdk/metrics.h`. Per `metrics.md` (new contract).
 - **Plugin integrity manifest** — `PluginManager::set_manifest`
   installs a SHA-256 allowlist that gates every `dlopen`. An empty
   manifest is the developer-mode default (every plugin loads); a
