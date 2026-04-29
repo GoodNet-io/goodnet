@@ -21,7 +21,7 @@ extern "C" {
 /* ── ABI versioning ─────────────────────────────────────────────────────── */
 
 #define GN_SDK_VERSION_MAJOR 1   /**< incompatible ABI changes */
-#define GN_SDK_VERSION_MINOR 8   /**< additive (size-prefix-protected) */
+#define GN_SDK_VERSION_MINOR 9   /**< additive (size-prefix-protected) */
 #define GN_SDK_VERSION_PATCH 0   /**< documentation / non-binary fixes */
 
 /* ── Identity sizing ────────────────────────────────────────────────────── */
