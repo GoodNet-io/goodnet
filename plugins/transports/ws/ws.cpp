@@ -573,7 +573,7 @@ WsTransport::~WsTransport() {
     try {
         shutdown();
     } catch (const std::exception& e) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_debug(api_, "ws: shutdown threw: %s", e.what());
         }
     }

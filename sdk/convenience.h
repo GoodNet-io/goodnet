@@ -130,21 +130,30 @@ static inline const void* gn_query_ext_checked_value(
  * @brief Render a log line on the plugin's stack, then hand the
  *        formatted bytes to the kernel.
  *
- * The kernel's `log` slot does not accept format strings — every
- * formatting decision happens here, in the plugin's own address
- * space. Per `host-api.md` §11 this rules out the format-string
- * class of attack against the kernel: a compromised plugin cannot
- * abuse `%n` or width specifiers to corrupt kernel memory, because
- * `vsnprintf` only ever sees buffers the plugin built itself.
+ * `should_log` short-circuits the local `snprintf` when the level
+ * is filtered out, so a hot dispatch path that emits
+ * `gn_log_debug(...)` while the operator runs at INFO does not
+ * pay for formatting a message nobody will see.
  *
- * Truncates at 2048 bytes; longer messages lose the tail. A plugin
- * that needs more space allocates its own buffer and calls
- * `api->log(api->host_ctx, level, buf)` directly.
+ * `__FILE__` and `__LINE__` are captured at macro expansion site
+ * so the kernel records the plugin's call-site source location.
+ *
+ * The kernel's `emit` slot accepts a fully-formatted buffer and
+ * does not parse format specifiers — the format-string class of
+ * attack against the kernel address space is closed.
+ *
+ * Truncates at 2048 bytes; longer messages lose the tail.
  */
 #define gn_log(api, level, ...) do {                                          \
-    char gn_log_buf__[2048];                                                  \
-    (void)snprintf(gn_log_buf__, sizeof(gn_log_buf__), __VA_ARGS__);          \
-    (api)->log((api)->host_ctx, (level), gn_log_buf__);                       \
+    const host_api_t* gn_log_api__ = (api);                                   \
+    if (gn_log_api__ && gn_log_api__->log.should_log &&                       \
+        gn_log_api__->log.emit &&                                             \
+        gn_log_api__->log.should_log(gn_log_api__->host_ctx, (level))) {      \
+        char gn_log_buf__[2048];                                              \
+        (void)snprintf(gn_log_buf__, sizeof(gn_log_buf__), __VA_ARGS__);      \
+        gn_log_api__->log.emit(gn_log_api__->host_ctx, (level),               \
+                               __FILE__, __LINE__, gn_log_buf__);             \
+    }                                                                         \
 } while (0)
 
 #define gn_log_trace(api, ...)    gn_log((api), GN_LOG_TRACE, __VA_ARGS__)

@@ -601,28 +601,45 @@ gn_result_t thunk_config_get_array_int64(void* host_ctx,
     return GN_OK;
 }
 
-void thunk_log(void* host_ctx, gn_log_level_t level, const char* msg) {
+[[nodiscard]] ::spdlog::level::level_enum
+map_log_level(gn_log_level_t level) noexcept {
+    switch (level) {
+        case GN_LOG_TRACE: return ::spdlog::level::trace;
+        case GN_LOG_DEBUG: return ::spdlog::level::debug;
+        case GN_LOG_INFO:  return ::spdlog::level::info;
+        case GN_LOG_WARN:  return ::spdlog::level::warn;
+        case GN_LOG_ERROR: return ::spdlog::level::err;
+        case GN_LOG_FATAL: return ::spdlog::level::critical;
+    }
+    return ::spdlog::level::off;
+}
+
+int32_t thunk_log_should_log(void* host_ctx, gn_log_level_t level) {
+    if (!host_ctx) return 0;
+    const auto sp_lvl = map_log_level(level);
+    if (sp_lvl == ::spdlog::level::off) return 0;
+    return ::gn::log::kernel().should_log(sp_lvl) ? 1 : 0;
+}
+
+void thunk_log_emit(void* host_ctx, gn_log_level_t level,
+                     const char* file, int32_t line, const char* msg) {
     if (!host_ctx || !msg) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
 
-    /// Map the C ABI level to spdlog's enum.
-    auto sp_lvl = ::spdlog::level::info;
-    switch (level) {
-        case GN_LOG_TRACE: sp_lvl = ::spdlog::level::trace;    break;
-        case GN_LOG_DEBUG: sp_lvl = ::spdlog::level::debug;    break;
-        case GN_LOG_INFO:  sp_lvl = ::spdlog::level::info;     break;
-        case GN_LOG_WARN:  sp_lvl = ::spdlog::level::warn;     break;
-        case GN_LOG_ERROR: sp_lvl = ::spdlog::level::err;      break;
-        case GN_LOG_FATAL: sp_lvl = ::spdlog::level::critical; break;
-    }
+    const auto sp_lvl = map_log_level(level);
+    if (sp_lvl == ::spdlog::level::off) return;
     if (!::gn::log::kernel().should_log(sp_lvl)) return;
 
-    /// `msg` is a pre-formatted, NUL-terminated string from the plugin's
-    /// own `snprintf`. The kernel passes it to spdlog as a literal so
-    /// no format specifiers in `msg` are interpreted — `host-api.md`
-    /// §11 makes this an explicit security invariant: plugin-controlled
-    /// format strings never reach `vsnprintf` on the kernel side.
-    ::gn::log::kernel().log(sp_lvl, "[{}] {}", pc->plugin_name, msg);
+    /// `msg` reaches spdlog as a literal `{}` argument. The kernel
+    /// never invokes vsnprintf on plugin bytes — format-string
+    /// attack against the kernel address space is closed.
+    const ::spdlog::source_loc loc{file ? file : "", line, ""};
+    if (pc->plugin_name.empty()) {
+        ::gn::log::kernel().log(loc, sp_lvl, "{}", msg);
+    } else {
+        ::gn::log::kernel().log(loc, sp_lvl,
+                                "[{}] {}", pc->plugin_name, msg);
+    }
 }
 
 /// Send handshake-phase bytes raw via the transport vtable, bypassing
@@ -1076,7 +1093,10 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.notify_backpressure     = &thunk_notify_backpressure;
 
     a.limits                = &thunk_limits;
-    a.log                   = &thunk_log;
+
+    a.log.api_size          = sizeof(gn_log_api_t);
+    a.log.should_log        = &thunk_log_should_log;
+    a.log.emit              = &thunk_log_emit;
 
     a.config_get_string     = &thunk_config_get_string;
     a.config_get_int64      = &thunk_config_get_int64;

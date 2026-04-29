@@ -25,6 +25,7 @@
 #include <sdk/handler.h>
 #include <sdk/limits.h>
 #include <sdk/endpoint.h>
+#include <sdk/log.h>
 #include <sdk/metrics.h>
 
 #ifdef __cplusplus
@@ -220,27 +221,15 @@ typedef struct host_api_s {
      */
     const gn_limits_t* (*limits)(void* host_ctx);
 
-    /* ── Logging ───────────────────────────────────────────────────────── */
+    /* ── Logging (sdk/log.h, host-api.md §11) ──────────────────────────── */
 
     /**
-     * @brief Emit @p msg at @p level into the kernel's structured logger.
-     *
-     * @p msg is a fully-formatted, NUL-terminated string. The kernel
-     * does **not** parse format specifiers — it never invokes
-     * `vsnprintf` on plugin-supplied bytes. This rules out the
-     * format-string class of attack: a compromised plugin cannot
-     * smuggle `%n`, `%s`-without-arg, or excessive width specifiers
-     * into kernel address space, because the kernel's only operation
-     * on the buffer is to forward it to spdlog as a literal payload.
-     *
-     * Plugins format locally — `sdk/convenience.h` provides
-     * `gn_log_<level>(api, "fmt", args...)` macros that build the
-     * message on the plugin's stack with `snprintf` and then call
-     * this slot with the resulting buffer.
+     * @brief Plugin-facing logging vtable. `should_log` short-
+     *        circuits hot-path formatting; `emit` accepts a
+     *        pre-formatted message buffer plus the call-site
+     *        source location.
      */
-    void (*log)(void* host_ctx,
-                gn_log_level_t level,
-                const char* msg);
+    gn_log_api_t log;
 
     /* ── Transport-side notifications ──────────────────────────────────── */
 
