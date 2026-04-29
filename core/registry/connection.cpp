@@ -156,7 +156,8 @@ std::optional<ConnectionRecord> ConnectionRegistry::find_by_id(gn_conn_id_t id) 
 }
 
 gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
-                                              gn_trust_class_t target) noexcept {
+                                              gn_trust_class_t target,
+                                              ConnectionRecord* out_record) noexcept {
     if (id == GN_INVALID_ID) return GN_ERR_NULL_ARG;
     Shard& s = shard_for(id);
     std::unique_lock lock(s.mu);
@@ -170,6 +171,9 @@ gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
         return GN_ERR_LIMIT_REACHED;
     }
     it->second.trust = target;
+    if (out_record != nullptr) {
+        *out_record = it->second;
+    }
     return GN_OK;
 }
 
