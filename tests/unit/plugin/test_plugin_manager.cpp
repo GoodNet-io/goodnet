@@ -128,10 +128,54 @@ TEST(PluginManager_Quiescence, TimeoutLeaksHandleSafely) {
     EXPECT_EQ(pm.leaked_handles(), 1u)
         << "one plugin's dlclose must be leaked when the snapshot is held";
 
+    /// Persistent counter on the kernel's metrics surface tracks
+    /// the cumulative figure across the kernel's lifetime —
+    /// `leaked_handles()` is per-rollback, the metric is total.
+    /// Per `metrics.md` §3.
+    EXPECT_EQ(k.metrics().value("plugin.leak.dlclose_skipped"), 1u)
+        << "metric counter must record every leak event";
+
     /// Releasing the snapshot now (after dlclose was skipped) is the
     /// last reference; the control block disappears cleanly. The
     /// .so stays mapped — that's the safe-leak property.
     snap = SecurityEntry{};
+}
+
+TEST(PluginManager_Quiescence, MetricCounterAccumulatesAcrossRollbacks) {
+    /// `leaked_handles_` resets at the start of every `rollback()`,
+    /// but the metrics counter is persistent for the kernel's
+    /// lifetime. Two consecutive timeouts must increment it twice
+    /// even though `leaked_handles()` reports `1` after each.
+    Kernel k;
+
+    /// First rollback — leak one handle.
+    {
+        PluginManager pm(k);
+        ASSERT_EQ(pm.load(just_null_plugin()), GN_OK);
+        SecurityEntry snap = k.security().current();
+        ASSERT_NE(snap.lifetime_anchor.get(), nullptr);
+        pm.set_quiescence_timeout(std::chrono::milliseconds{30});
+        pm.shutdown();
+        EXPECT_EQ(pm.leaked_handles(), 1u);
+        snap = SecurityEntry{};
+    }
+
+    /// Second rollback in a fresh manager against the same kernel.
+    {
+        PluginManager pm(k);
+        ASSERT_EQ(pm.load(just_null_plugin()), GN_OK);
+        SecurityEntry snap = k.security().current();
+        ASSERT_NE(snap.lifetime_anchor.get(), nullptr);
+        pm.set_quiescence_timeout(std::chrono::milliseconds{30});
+        pm.shutdown();
+        EXPECT_EQ(pm.leaked_handles(), 1u)
+            << "per-rollback counter resets at the start of every rollback";
+        snap = SecurityEntry{};
+    }
+
+    EXPECT_EQ(k.metrics().value("plugin.leak.dlclose_skipped"), 2u)
+        << "metric must accumulate across rollbacks for an operator's "
+           "rate-graph view";
 }
 
 /// `limits.md` §4a: `gn_limits_t::max_plugins` cap blocks loads

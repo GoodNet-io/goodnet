@@ -301,6 +301,14 @@ bool PluginManager::drain_anchor(PluginInstance& inst,
                 quiescence_timeout_.count(),
                 in_flight);
             ++leaked_handles_;
+            /// Persistent counter on the kernel's metrics surface
+            /// (`metrics.md` §3). `leaked_handles_` resets at the
+            /// start of every `rollback()` so the in-test API only
+            /// reports the most recent rollback's count; the metric
+            /// keeps the cumulative figure across the kernel's
+            /// entire lifetime so an operator can graph leak rate
+            /// alongside the matching log line.
+            kernel_.metrics().increment("plugin.leak.dlclose_skipped");
             return false;
         }
         strong.reset();
