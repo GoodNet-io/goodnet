@@ -147,6 +147,9 @@ public:
     /// time. The kernel takes ownership; the wrapped instance is
     /// destroyed (and its secrets zeroised through the keypair's
     /// `wipe()` path) when the last shared reference goes away.
+    /// Throws `std::bad_alloc` if the wrapping `make_shared`
+    /// allocation fails — startup-time only call site, fatal if it
+    /// hits.
     void set_node_identity(identity::NodeIdentity identity);
 
     [[nodiscard]] bool has_node_identity() const noexcept {
