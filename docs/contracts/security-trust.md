@@ -93,6 +93,84 @@ regardless.
 
 ---
 
+## 3a. `gn_security_provider_vtable_t` layout
+
+A security provider implements the vtable declared in
+`sdk/security.h`. The first field carries `api_size` so the kernel
+gates additive evolution per `abi-evolution.md` §3.
+
+```c
+typedef struct gn_security_provider_vtable_s {
+    uint32_t api_size;
+
+    const char* (*provider_id)(void* self);
+
+    gn_result_t (*handshake_open)(void* self,
+                                  gn_conn_id_t conn,
+                                  gn_trust_class_t trust,
+                                  gn_handshake_role_t role,
+                                  const uint8_t local_static_sk[GN_PRIVATE_KEY_BYTES],
+                                  const uint8_t local_static_pk[GN_PUBLIC_KEY_BYTES],
+                                  const uint8_t* remote_static_pk,
+                                  void** out_state);
+
+    gn_result_t (*handshake_step)(void* self,
+                                  void* state,
+                                  const uint8_t* incoming, size_t incoming_size,
+                                  gn_secure_buffer_t* out_message);
+
+    int         (*handshake_complete)(void* self, void* state);
+
+    gn_result_t (*export_transport_keys)(void* self,
+                                         void* state,
+                                         gn_handshake_keys_t* out_keys);
+
+    gn_result_t (*encrypt)(void* self,
+                           void* state,
+                           const uint8_t* plaintext, size_t plaintext_size,
+                           gn_secure_buffer_t* out);
+
+    gn_result_t (*decrypt)(void* self,
+                           void* state,
+                           const uint8_t* ciphertext, size_t ciphertext_size,
+                           gn_secure_buffer_t* out);
+
+    gn_result_t (*rekey)(void* self, void* state);
+
+    void        (*handshake_close)(void* self, void* state);
+
+    void        (*destroy)(void* self);
+
+    uint32_t    (*allowed_trust_mask)(void* self);
+
+    void* _reserved[4];
+} gn_security_provider_vtable_t;
+```
+
+| Slot | Lifetime / ownership |
+|---|---|
+| `provider_id` | returned `const char*` outlives the plugin |
+| `handshake_open`/`local_static_sk` | borrowed for the call; the provider derives its own X25519 / sign material before return |
+| `handshake_open`/`out_state` | provider-allocated; kernel returns it on every subsequent call until `handshake_close` |
+| `handshake_step`/`incoming` | borrowed for the call |
+| `handshake_step`/`out_message` | provider-owned via `gn_secure_buffer_t`; kernel calls `out_message->free_fn(out_message->bytes)` after committing |
+| `export_transport_keys`/`out_keys` | caller-allocated; provider zeroises its own copy after a successful export |
+| `encrypt`/`decrypt` | `out` follows the same `gn_secure_buffer_t` ownership |
+| `handshake_close` | zeroises remaining key material; subsequent encrypt/decrypt on the closed state returns `GN_ERR_INVALID_STATE` |
+| `allowed_trust_mask` | bitmap of `1u << GN_TRUST_<X>` admitted by the provider; checked by the kernel on every `Sessions::create` per §4 |
+| `_reserved[4]` | NULL on init; `api_size` carries the producer-build size, consumers read no further |
+
+`gn_secure_buffer_t` (declared alongside the vtable) carries the
+ownership pair for variable-length security output:
+
+```c
+typedef struct gn_secure_buffer_s {
+    uint8_t* bytes;
+    size_t   size;
+    void  (*free_fn)(uint8_t* bytes);
+} gn_secure_buffer_t;
+```
+
 ## 4. Stack policy validation at construction time
 
 A stack is `{transport, security, protocol}`. Each combination has a

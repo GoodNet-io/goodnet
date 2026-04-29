@@ -196,17 +196,48 @@ would be O(N) per relay frame and would dominate cost at scale.
 
 ---
 
-## 8. Per-connection counters
+## 8. `gn_endpoint_t` layout and counters
 
-The `gn_endpoint_t` snapshot exposes per-connection counters via the
-host API:
+`get_endpoint(conn, &out)` writes a caller-allocated snapshot:
 
-| Counter | Source |
-|---|---|
-| `bytes_in`, `bytes_out` | producer-site atomic update |
-| `frames_in`, `frames_out` | producer-site atomic update |
-| `pending_queue_bytes` | maintained by the send queue (see `limits.md` §6) |
-| `last_rtt_us` | written by the heartbeat handler |
+```c
+#define GN_ENDPOINT_URI_MAX 256
+
+typedef struct gn_endpoint_s {
+    gn_conn_id_t      conn_id;
+    uint8_t           remote_pk[GN_PUBLIC_KEY_BYTES];
+    gn_trust_class_t  trust;
+    char              uri[GN_ENDPOINT_URI_MAX];
+    char              transport_scheme[16];
+
+    uint64_t          bytes_in;
+    uint64_t          bytes_out;
+    uint64_t          frames_in;
+    uint64_t          frames_out;
+    uint64_t          pending_queue_bytes;
+    uint64_t          last_rtt_us;
+
+    void*             _reserved[4];
+} gn_endpoint_t;
+```
+
+| Field | Width / contents | Source |
+|---|---|---|
+| `conn_id` | u64 — same as the lookup id | registry insertion |
+| `remote_pk` | 32 bytes — peer's Ed25519 public key | `notify_connect` argument |
+| `trust` | enum — current trust class | live; reflects upgrade state per `security-trust.md` §3 |
+| `uri` | NUL-terminated, ≤ 255 bytes | transport-supplied at `notify_connect`; longer URIs truncate at the boundary |
+| `transport_scheme` | NUL-terminated, ≤ 15 bytes | scheme provided by the transport plugin (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, …) |
+| `bytes_in`, `bytes_out` | u64 — atomic snapshot | producer-site atomic update |
+| `frames_in`, `frames_out` | u64 — atomic snapshot | producer-site atomic update |
+| `pending_queue_bytes` | u64 — atomic snapshot | maintained by the send queue (see `limits.md` §6) |
+| `last_rtt_us` | u64 — atomic snapshot | written by the heartbeat handler |
+| `_reserved[4]` | NULL on call | size-prefix evolution per `abi-evolution.md` §4 |
+
+The struct is caller-allocated and held inline; the kernel writes
+the URI into the buffer rather than handing back a pointer into
+registry storage. Pointers inside the struct (none in v1) would
+follow the same caller-frame lifetime rule.
 
 All counters are O(1) at the producer site. Aggregation paths read
 them non-blockingly; no walk of any queue is required.

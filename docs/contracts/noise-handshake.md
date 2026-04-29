@@ -135,6 +135,40 @@ process memory after the documented destruction point.
 
 ---
 
+## 5a. `gn_handshake_keys_t` layout
+
+The provider populates this struct in `export_transport_keys` and
+zeroises its own copy on return. The caller reads the values once
+to seed the transport-phase cipher state. The struct is
+caller-allocated; the provider never retains a pointer past the
+export call.
+
+```c
+#define GN_CIPHER_KEY_BYTES   32  /* ChaCha20 key */
+#define GN_HASH_BYTES         32  /* channel-binding hash */
+#define GN_PUBLIC_KEY_BYTES   32  /* peer Ed25519 public key */
+
+typedef struct gn_handshake_keys_s {
+    uint8_t  send_cipher_key[GN_CIPHER_KEY_BYTES];
+    uint8_t  recv_cipher_key[GN_CIPHER_KEY_BYTES];
+    uint64_t initial_send_nonce;
+    uint64_t initial_recv_nonce;
+    uint8_t  handshake_hash[GN_HASH_BYTES];
+    uint8_t  peer_static_pk[GN_PUBLIC_KEY_BYTES];
+    void*    _reserved[4];
+} gn_handshake_keys_t;
+```
+
+| Field | Width | Purpose |
+|---|---|---|
+| `send_cipher_key` | 32 bytes | symmetric ChaCha20 key for outgoing frames |
+| `recv_cipher_key` | 32 bytes | symmetric ChaCha20 key for incoming frames |
+| `initial_send_nonce` | u64 | first nonce the inline-crypto path uses on send |
+| `initial_recv_nonce` | u64 | first nonce the inline-crypto path expects on receive |
+| `handshake_hash` | 32 bytes | channel-binding (BLAKE2b-256 over the symmetric-state `h` per §2); attestation §2 binds against this value |
+| `peer_static_pk` | 32 bytes | peer's Ed25519 public key learned during handshake; the kernel uses it for routing decisions and trust upgrade |
+| `_reserved[4]` | 32 bytes | NULL on init; size-prefix evolution per `abi-evolution.md` §4 |
+
 ## 6. Nonce initialisation
 
 Inline-crypto state initialises send and receive nonces from

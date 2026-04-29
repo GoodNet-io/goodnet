@@ -92,6 +92,44 @@ The vtable carries four entry points:
 descriptor; see `sdk/protocol.h` for exact field layout. Errors are
 mapped to the codes listed in §8.
 
+### 3.0 `gn_protocol_layer_vtable_t` layout
+
+```c
+typedef struct gn_protocol_layer_vtable_s {
+    const char* (*protocol_id)(void* self);
+    gn_result_t (*deframe)(void* self,
+                           gn_connection_context_t* ctx,
+                           const uint8_t* bytes, size_t bytes_size,
+                           gn_deframe_result_t* out);
+    gn_result_t (*frame)(void* self,
+                         gn_connection_context_t* ctx,
+                         const gn_message_t* msg,
+                         uint8_t** out_bytes, size_t* out_size,
+                         void (**out_free)(uint8_t*));
+    size_t      (*max_payload_size)(void* self);
+    void        (*destroy)(void* self);
+    uint32_t    (*allowed_trust_mask)(void* self);
+    void* _reserved[4];
+} gn_protocol_layer_vtable_t;
+
+typedef struct gn_deframe_result_s {
+    const gn_message_t* messages;        /* zero or more envelopes */
+    size_t              count;
+    size_t              bytes_consumed;  /* wire bytes the kernel may discard */
+    void*               _reserved[4];
+} gn_deframe_result_t;
+```
+
+Slot ownership and lifetime:
+
+| Slot | Buffer ownership |
+|---|---|
+| `deframe`/`out->messages` | plugin-owned storage; `payload` pointers borrow from `bytes` for the dispatch cycle |
+| `frame`/`out_bytes` + `out_free` | plugin allocates; kernel calls `out_free(out_bytes)` once the bytes commit to the security layer |
+| `protocol_id` returned `const char*` | outlives the plugin |
+| `allowed_trust_mask` | bitmap of `1u << GN_TRUST_<X>` per `security-trust.md` §4 |
+| `_reserved[4]` | NULL on init; size-prefix evolution per `abi-evolution.md` §3a |
+
 ### 3.1 `ConnectionContext`
 
 Per-connection state is passed to every `deframe` / `frame` call as
