@@ -33,6 +33,9 @@ void TimerRegistry::set_max_timers(std::uint32_t v) noexcept {
 void TimerRegistry::set_max_pending_tasks(std::uint32_t v) noexcept {
     max_pending_tasks_.store(v, std::memory_order_relaxed);
 }
+void TimerRegistry::set_max_timers_per_plugin(std::uint32_t v) noexcept {
+    max_timers_per_plugin_.store(v, std::memory_order_relaxed);
+}
 
 std::size_t TimerRegistry::active_timers() const noexcept {
     std::lock_guard lk(mu_);
@@ -62,6 +65,39 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             }
         }
 
+        /// Per-plugin sub-quota (`limits.md` §4a /
+        /// `max_timers_per_plugin`). The counter is always
+        /// maintained when an anchor is supplied — the cap is
+        /// consulted at admit time, but the fetch_sub at the head
+        /// of every fire / cancel callback expects a fetch_add to
+        /// pair with regardless of whether the cap was zero at
+        /// admission. That keeps the count consistent if the
+        /// operator raises the cap mid-flight from zero to a
+        /// non-zero value, and lets diagnostics surface the live
+        /// per-plugin timer pressure even before a cap is set.
+        ///
+        /// The compare-and-exchange loop guards against two
+        /// concurrent admits both squeaking past the cap; the cap
+        /// of zero is rendered as "no upper bound" via the
+        /// `max == 0 || cur < max` predicate.
+        if (anchor) {
+            const std::uint32_t per_plugin_cap =
+                max_timers_per_plugin_.load(std::memory_order_relaxed);
+            std::uint32_t cur =
+                anchor->active_timers.load(std::memory_order_relaxed);
+            while (true) {
+                if (per_plugin_cap != 0 && cur >= per_plugin_cap) {
+                    return GN_ERR_LIMIT_REACHED;
+                }
+                if (anchor->active_timers.compare_exchange_weak(
+                        cur, cur + 1,
+                        std::memory_order_acq_rel,
+                        std::memory_order_relaxed)) {
+                    break;
+                }
+            }
+        }
+
         const auto id = next_id_.fetch_add(1, std::memory_order_relaxed);
         auto timer = std::make_shared<asio::steady_timer>(
             ioc_, std::chrono::milliseconds{delay_ms});
@@ -81,6 +117,19 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
                            anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
                            anchor_set = static_cast<bool>(anchor)](
             const std::error_code& ec) {
+            /// Refund the per-plugin timer quota at the head of the
+            /// callback so every dispatch path — natural fire,
+            /// cancel-before-fire, anchor-expired drop — credits
+            /// the slot back. Without this the cancel path would
+            /// leak the increment and the plugin would slowly
+            /// exhaust its budget.
+            if (anchor_set) {
+                if (auto strong = anchor_weak.lock()) {
+                    strong->active_timers.fetch_sub(
+                        1, std::memory_order_acq_rel);
+                }
+            }
+
             TimerEntry consumed;
             bool found = false;
             {

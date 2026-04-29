@@ -47,6 +47,13 @@ typedef struct gn_limits_s {
     /* Service executor (timer.md §6) */
     uint32_t max_timers;                 /**< active one-shot timers */
     uint32_t max_pending_tasks;          /**< queued post_to_executor tasks */
+    uint32_t max_timers_per_plugin;      /**< per-anchor timer cap; 0 = no
+                                              per-plugin sub-quota, only the
+                                              global `max_timers` ceiling
+                                              applies. Closes the DoS where a
+                                              single misbehaving plugin
+                                              exhausts the kernel's global
+                                              budget and starves siblings. */
 
     /* Handshake-phase send buffer (backpressure.md §8) */
     uint32_t pending_handshake_bytes;    /**< per-conn cap on app data

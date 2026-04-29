@@ -80,6 +80,14 @@ public:
     void set_max_timers(std::uint32_t v) noexcept;
     void set_max_pending_tasks(std::uint32_t v) noexcept;
 
+    /// Per-plugin cap on simultaneously-pending timers. `0` (the
+    /// default) keeps the historical "global cap only" behaviour;
+    /// any non-zero value adds an extra check at `set_timer`
+    /// admission time that compares the calling plugin's anchor
+    /// `active_timers` count against the cap. Mirrors
+    /// `gn_limits_t::max_timers_per_plugin`.
+    void set_max_timers_per_plugin(std::uint32_t v) noexcept;
+
     /// Cancel every still-pending timer whose anchor refers to the
     /// same control block as @p anchor. Used by `PluginManager`
     /// during rollback so a quiescing plugin's drain loop is not
@@ -112,6 +120,7 @@ private:
     std::atomic<gn_timer_id_t>                          next_id_{1};
     std::atomic<std::uint32_t>                          max_timers_{4096};
     std::atomic<std::uint32_t>                          max_pending_tasks_{4096};
+    std::atomic<std::uint32_t>                          max_timers_per_plugin_{0};
     std::atomic<std::uint32_t>                          pending_tasks_{0};
     std::atomic<std::uint32_t>                          shutdown_throws_{0};
 };
