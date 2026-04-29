@@ -22,6 +22,19 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     if (limits_.max_pending_tasks != 0) {
         timers_.set_max_pending_tasks(limits_.max_pending_tasks);
     }
+    /// `limits.md` §4 — wire every cap that lives on a kernel-owned
+    /// registry so a single `gn_limits_t` is the source of truth.
+    /// `PluginManager` is not kernel-owned; it reads `kernel.limits()`
+    /// directly when applying `max_plugins` inside `load`.
+    if (limits_.max_connections != 0) {
+        connections_.set_max_connections(limits_.max_connections);
+    }
+    if (limits_.max_extensions != 0) {
+        extensions_.set_max_extensions(limits_.max_extensions);
+    }
+    if (limits_.max_handlers_per_msg_id != 0) {
+        handlers_.set_max_chain_length(limits_.max_handlers_per_msg_id);
+    }
 }
 
 void Kernel::set_node_identity(identity::NodeIdentity ident) noexcept {

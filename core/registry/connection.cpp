@@ -24,6 +24,15 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
         return GN_ERR_INVALID_ENVELOPE;
     }
 
+    /// `limits.md` §4a cap pre-check before locks: zero means
+    /// "unlimited"; non-zero rejects when the live count is already
+    /// at the cap.
+    const std::uint32_t cap = max_connections_.load(std::memory_order_relaxed);
+    if (cap != 0 &&
+        live_count_.load(std::memory_order_relaxed) >= cap) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
     Shard& s = shard_for(rec.id);
 
     /// Lock all three mutexes in a fixed total order. `scoped_lock`
@@ -35,6 +44,14 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     if (uri_index_.contains(rec.uri))           return GN_ERR_LIMIT_REACHED;
     if (pk_index_.contains(rec.remote_pk))      return GN_ERR_LIMIT_REACHED;
 
+    /// Re-check under the lock to close the race between the
+    /// pre-lock load and a concurrent inserter that bumps the
+    /// counter to the cap.
+    if (cap != 0 &&
+        live_count_.load(std::memory_order_relaxed) >= cap) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
     const gn_conn_id_t id    = rec.id;
     const std::string  uri   = rec.uri;
     const PublicKey    pk    = rec.remote_pk;
@@ -43,8 +60,13 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     s.counters.emplace(id, std::make_unique<AtomicCounters>());
     uri_index_.emplace(uri, id);
     pk_index_.emplace(pk, id);
+    live_count_.fetch_add(1, std::memory_order_relaxed);
 
     return GN_OK;
+}
+
+void ConnectionRegistry::set_max_connections(std::uint32_t cap) noexcept {
+    max_connections_.store(cap, std::memory_order_relaxed);
 }
 
 gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
@@ -70,6 +92,7 @@ gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
     pk_index_.erase(pk);
     s.counters.erase(id);
     s.records.erase(it);
+    live_count_.fetch_sub(1, std::memory_order_relaxed);
     return GN_OK;
 }
 
@@ -103,6 +126,7 @@ ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
     pk_index_.erase(snapshot.remote_pk);
     s.counters.erase(id);
     s.records.erase(it);
+    live_count_.fetch_sub(1, std::memory_order_relaxed);
     return snapshot;
 }
 

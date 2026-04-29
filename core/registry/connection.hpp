@@ -78,8 +78,15 @@ public:
     /// Insert @p rec under all three indexes atomically.
     ///
     /// Fails with `GN_ERR_LIMIT_REACHED` if any index already contains
-    /// the proposed key. No partial state becomes visible on failure.
+    /// the proposed key OR the live record count already equals the
+    /// `set_max_connections` cap (`limits.md` §4a). No partial state
+    /// becomes visible on failure.
     [[nodiscard]] gn_result_t insert_with_index(ConnectionRecord rec) noexcept;
+
+    /// Set the live-record cap (`gn_limits_t::max_connections`). A
+    /// cap of zero disables the check; non-zero values reject inserts
+    /// whose acceptance would push the live count above @p cap.
+    void set_max_connections(std::uint32_t cap) noexcept;
 
     /// Remove the record with id @p id from all three indexes.
     [[nodiscard]] gn_result_t erase_with_index(gn_conn_id_t id) noexcept;
@@ -166,6 +173,12 @@ private:
     /// Monotonic id allocator. `GN_INVALID_ID == 0` is reserved, so
     /// the counter starts at 1.
     std::atomic<gn_conn_id_t> next_id_{1};
+
+    /// Live record count + cap (`limits.md` §4a). `live_count_` is
+    /// incremented on successful insert and decremented on any erase
+    /// path. Zero `max_connections_` disables the cap check.
+    std::atomic<std::uint32_t> live_count_{0};
+    std::atomic<std::uint32_t> max_connections_{0};
 };
 
 } // namespace gn::core
