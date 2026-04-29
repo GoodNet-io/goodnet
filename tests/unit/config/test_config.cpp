@@ -11,6 +11,8 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <string>
 
 #include <core/config/config.hpp>
@@ -349,6 +351,91 @@ TEST(Config_GetInt64, EmptySegmentRejected) {
     EXPECT_EQ(c.get_int64("", out), GN_ERR_UNKNOWN_RECEIVER);
     EXPECT_EQ(c.get_int64(".", out), GN_ERR_UNKNOWN_RECEIVER);
     EXPECT_EQ(c.get_int64("k.", out), GN_ERR_UNKNOWN_RECEIVER);
+}
+
+// ─── JSON5-style comments ─────────────────────────────────────────
+
+TEST(Config_LoadJson, AcceptsLineComments) {
+    /// Operators annotate config files routinely; a strict parser
+    /// turns the convenience into hostility. Both `//` and `/* */`
+    /// styles are stripped at parse-time.
+    Config c;
+    const char* doc = R"(
+        {
+            // top-level annotation
+            "limits": {
+                "max_connections": 4096   // matches default explicitly
+            }
+        }
+    )";
+    EXPECT_EQ(c.load_json(doc), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 4096u);
+}
+
+TEST(Config_LoadJson, AcceptsBlockComments) {
+    Config c;
+    const char* doc = R"(
+        {
+            /* multi-line
+               annotation */
+            "marker": "ok"
+        }
+    )";
+    ASSERT_EQ(c.load_json(doc), GN_OK);
+    std::string s;
+    EXPECT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "ok");
+}
+
+// ─── load_file ────────────────────────────────────────────────────
+
+TEST(Config_LoadFile, ReadsExistingFile) {
+    /// Write a temp file with a known config; load it through the
+    /// convenience entry; verify limits round-trip from disk to
+    /// the parsed `gn_limits_t`.
+    namespace fs = std::filesystem;
+    const auto path = fs::temp_directory_path() / "gn_config_load_file.json";
+    {
+        std::ofstream out(path);
+        out << R"({
+            "limits": {
+                "max_connections": 8192,
+                "max_outbound_connections": 1024
+            }
+        })";
+    }
+
+    Config c;
+    EXPECT_EQ(c.load_file(path.string()), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 8192u);
+    fs::remove(path);
+}
+
+TEST(Config_LoadFile, MissingFileReportsUnknownReceiver) {
+    Config c;
+    EXPECT_EQ(c.load_file("/nonexistent/missing-config.json"),
+              GN_ERR_UNKNOWN_RECEIVER);
+}
+
+TEST(Config_LoadFile, MalformedFilePreservesPriorState) {
+    /// Same atomicity guarantee as `load_json`: a malformed file
+    /// leaves the previous good state intact.
+    namespace fs = std::filesystem;
+
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"marker": "first"})"), GN_OK);
+
+    const auto path = fs::temp_directory_path() / "gn_config_bad.json";
+    {
+        std::ofstream out(path);
+        out << "{not json";
+    }
+
+    EXPECT_EQ(c.load_file(path.string()), GN_ERR_INVALID_ENVELOPE);
+    std::string s;
+    EXPECT_EQ(c.get_string("marker", s), GN_OK);
+    EXPECT_EQ(s, "first");
+    fs::remove(path);
 }
 
 }  // namespace

@@ -3,7 +3,10 @@
 
 #include "config.hpp"
 
+#include <cstdio>
+#include <fstream>
 #include <mutex>
+#include <sstream>
 
 namespace gn::core {
 
@@ -90,7 +93,16 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
 gn_result_t Config::load_json(std::string_view json) {
     nlohmann::json parsed;
     try {
-        parsed = nlohmann::json::parse(json);
+        /// nlohmann's `parse` accepts `(begin, end, callback,
+        /// allow_exceptions, ignore_comments)`. The trailing flag
+        /// strips `//` and `/* */` comments before structure
+        /// validation — operators annotate config files routinely
+        /// and a comment-strict parser is hostile to that.
+        parsed = nlohmann::json::parse(
+            json.begin(), json.end(),
+            /*cb*/ nullptr,
+            /*allow_exceptions*/ true,
+            /*ignore_comments*/ true);
     } catch (const nlohmann::json::parse_error&) {
         return GN_ERR_INVALID_ENVELOPE;
     }
@@ -225,6 +237,24 @@ gn_result_t Config::get_int64(std::string_view key, std::int64_t& out) const {
 gn_limits_t Config::limits() const noexcept {
     std::shared_lock lock(mu_);
     return limits_;
+}
+
+gn_result_t Config::load_file(const std::string& path) {
+    /// Stream the file in once, hand the buffer to `load_json`.
+    /// `std::ifstream` translation of file-open failure to a
+    /// `fail()` flag avoids the throw-on-fail noise of the
+    /// `exceptions(badbit)` configuration; the explicit `is_open`
+    /// branch surfaces the missing-file case cleanly.
+    std::ifstream in(path, std::ios::binary);
+    if (!in.is_open()) {
+        return GN_ERR_UNKNOWN_RECEIVER;
+    }
+    std::ostringstream buf;
+    buf << in.rdbuf();
+    if (in.bad()) {
+        return GN_ERR_UNKNOWN_RECEIVER;
+    }
+    return load_json(buf.str());
 }
 
 } // namespace gn::core

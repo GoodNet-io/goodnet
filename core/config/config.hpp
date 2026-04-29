@@ -32,10 +32,27 @@ public:
 
     /// Load a JSON document from raw text. Replaces the current
     /// state on success; leaves the existing state unchanged on
-    /// parse failure (returns `GN_ERR_INVALID_ENVELOPE` repurposed
-    /// as parse-failure indicator until a dedicated drop reason
-    /// lands).
+    /// parse failure (returns `GN_ERR_INVALID_ENVELOPE`) or on
+    /// invariant-failure (`GN_ERR_LIMIT_REACHED`).
+    ///
+    /// The JSON parser tolerates `//`-style and `/* */` comments
+    /// in the document — operators routinely annotate config files
+    /// with rationale, and a strict parser turns the convenience
+    /// into hostility.
     [[nodiscard]] gn_result_t load_json(std::string_view json);
+
+    /// Convenience: read the file at @p path off the filesystem,
+    /// then hand the bytes to `load_json`. The kernel itself is
+    /// linkable as a library and does not assume an embedding
+    /// application; this entry exists for the common case where
+    /// the deployment is a single binary that picks its config
+    /// off disk at startup.
+    ///
+    /// Returns `GN_ERR_UNKNOWN_RECEIVER` if the file cannot be
+    /// opened (missing path, permission denied), the same parse /
+    /// invariant codes `load_json` would return otherwise. Failure
+    /// leaves the existing state unchanged in every case.
+    [[nodiscard]] gn_result_t load_file(const std::string& path);
 
     /// Validate cross-field invariants from `limits.md` §3. Returns
     /// `GN_ERR_LIMIT_REACHED` when any invariant fails; the offending
