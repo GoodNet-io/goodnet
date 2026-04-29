@@ -14,6 +14,11 @@ gn_result_t SecurityRegistry::register_provider(
 
     if (provider_id.empty() || vtable == nullptr) return GN_ERR_NULL_ARG;
 
+    /// `abi-evolution.md` §3a: defensive size-prefix check.
+    if (vtable->api_size < sizeof(gn_security_provider_vtable_t)) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
     std::unique_lock lock(mu_);
     if (active_) return GN_ERR_LIMIT_REACHED;
 

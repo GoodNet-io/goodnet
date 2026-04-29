@@ -92,6 +92,37 @@ already-compiled plugin to rebuild.
 
 ---
 
+## 3a. Kernel-side validation of plugin-provided vtables
+
+The size-prefix rule (§3) is symmetric: when a **plugin** registers
+a vtable with the kernel — `gn_transport_vtable_t`,
+`gn_security_provider_vtable_t`, and any future plugin-provided
+table — the kernel is the consumer and the plugin is the producer.
+The kernel validates `api_size` defensively before invoking any
+slot:
+
+```
+on register_transport(vtable):
+    if vtable == NULL                        return GN_ERR_NULL_ARG
+    if vtable->api_size < sizeof(min_struct) return GN_ERR_VERSION_MISMATCH
+    accept; subsequent slot calls are GN_API_HAS-checked
+```
+
+`min_struct` is the minimum vtable shape the kernel knows about —
+the producer's structure may be larger (newer SDK with more
+slots), but never smaller (older SDK with no `api_size` would zero
+the field and crash the kernel on first slot lookup). A plugin
+that fails the check is rejected at registration; no partial
+state survives.
+
+The handler vtable (`gn_handler_vtable_t`) is fixed-shape at v1
+and does not carry `api_size`; it grows by `_reserved` slot
+promotion (§4) instead of size-prefix appending. Future versions
+that need to append slots will introduce `api_size` as a `MINOR`
+bump.
+
+---
+
 ## 4. `_reserved` slots in value-type structs
 
 Plain data structures that the kernel passes to plugins by value or

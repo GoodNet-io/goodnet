@@ -34,13 +34,21 @@ const gn_handler_vtable_t* dummy_handler_vtable() {
 }
 
 const gn_transport_vtable_t* dummy_transport_vtable() {
-    static const gn_transport_vtable_t v{};
-    return &v;
+    static const gn_transport_vtable_t vt = []() {
+        gn_transport_vtable_t v{};
+        v.api_size = sizeof(gn_transport_vtable_t);
+        return v;
+    }();
+    return &vt;
 }
 
 const gn_security_provider_vtable_t* dummy_security_vtable() {
-    static const gn_security_provider_vtable_t v{};
-    return &v;
+    static const gn_security_provider_vtable_t vt = []() {
+        gn_security_provider_vtable_t v{};
+        v.api_size = sizeof(gn_security_provider_vtable_t);
+        return v;
+    }();
+    return &vt;
 }
 
 } // namespace

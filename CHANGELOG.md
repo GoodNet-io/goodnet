@@ -227,6 +227,24 @@ typed extension API.
 
 ### Changed
 
+- **FFI spec: subscriber failure modes (`signal-channel.md` §6).**
+  `SignalChannel::subscribe` now rejects an empty `std::function`
+  and returns the invalid-token sentinel; the subscriber list is
+  unchanged. `SignalChannel::fire` wraps each handler invocation
+  in `try/catch (...)` so a raising subscriber no longer starves
+  the rest of the snapshot — the exception is captured and
+  dropped. Plugin authors crossing the C ABI must catch
+  internally; the kernel-side catch is a defensive net, not a
+  contract that callbacks may raise. Tests cover the null-handler
+  path and the multi-subscriber-with-thrower path.
+- **FFI spec: kernel-side validation of plugin-provided vtables
+  (`abi-evolution.md` §3a).** `TransportRegistry::register_transport`
+  and `SecurityRegistry::register_provider` now reject vtables
+  whose `api_size` is smaller than the minimum the kernel knows
+  about; the rejection returns `GN_ERR_VERSION_MISMATCH` before
+  any slot lookup. Handler vtable is fixed-shape at v1 and does
+  not carry `api_size` (documented in §3a). Tests cover the
+  zero-`api_size`, truncated, and exactly-minimum cases.
 - **Registry-wide caps from `gn_limits_t` are now enforced
   (`limits.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
   `ExtensionRegistry::register_extension`, `PluginManager::load`, and

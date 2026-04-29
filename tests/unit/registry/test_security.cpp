@@ -138,5 +138,26 @@ TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
     EXPECT_EQ(cur.self, nullptr);
 }
 
+// ─── §3a vtable api_size validation ─────────────────────────────────
+
+TEST(SecurityRegistry_VtableApiSize, RejectsZeroApiSize) {
+    /// `abi-evolution.md` §3a: zero-init vtable carries an api_size
+    /// of zero, smaller than the kernel's minimum; reject before
+    /// activation.
+    SecurityRegistry r;
+    gn_security_provider_vtable_t vt{};
+    EXPECT_EQ(r.register_provider("noise", &vt, nullptr),
+              GN_ERR_VERSION_MISMATCH);
+    EXPECT_FALSE(r.is_active());
+}
+
+TEST(SecurityRegistry_VtableApiSize, AcceptsExactlyMinimumApiSize) {
+    SecurityRegistry r;
+    gn_security_provider_vtable_t vt{};
+    vt.api_size = sizeof(gn_security_provider_vtable_t);
+    EXPECT_EQ(r.register_provider("noise", &vt, nullptr), GN_OK);
+    EXPECT_TRUE(r.is_active());
+}
+
 }  // namespace
 }  // namespace gn::core
