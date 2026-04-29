@@ -47,12 +47,19 @@ public:
     ExtensionRegistry& operator=(const ExtensionRegistry&) = delete;
 
     /// Register a vtable under @p name with @p version. Fails with
-    /// `GN_ERR_LIMIT_REACHED` if @p name is already taken.
+    /// `GN_ERR_LIMIT_REACHED` if @p name is already taken OR the live
+    /// entry count already equals the `set_max_extensions` cap
+    /// (`limits.md` §4a).
     /// @p lifetime_anchor mirrors `HandlerRegistry::register_handler`.
     [[nodiscard]] gn_result_t register_extension(std::string_view name,
                                                  std::uint32_t version,
                                                  const void* vtable,
                                                  std::shared_ptr<void> lifetime_anchor = {}) noexcept;
+
+    /// Set the live-entry cap (`gn_limits_t::max_extensions`). A cap
+    /// of zero disables the check; non-zero values reject registrations
+    /// whose acceptance would push the live count above @p cap.
+    void set_max_extensions(std::uint32_t cap) noexcept;
 
     /// Remove an extension by name.
     [[nodiscard]] gn_result_t unregister_extension(std::string_view name) noexcept;
@@ -77,6 +84,7 @@ public:
 private:
     mutable std::shared_mutex                       mu_;
     std::unordered_map<std::string, ExtensionEntry> entries_;
+    std::uint32_t                                   max_entries_ = 0;
 };
 
 } // namespace gn::core

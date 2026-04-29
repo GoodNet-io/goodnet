@@ -56,6 +56,11 @@ Sequencing rules:
    point the pk index at it.
 4. Release all locks.
 
+The registry honours `gn_limits_t::max_connections` (`limits.md` §4a):
+when the live record count already equals the cap, the insert returns
+`GN_ERR_LIMIT_REACHED` before step 1 — no locks are taken, no key
+slot is consumed.
+
 Properties:
 
 - **All-or-nothing.** Any insert that would collide on any key fails

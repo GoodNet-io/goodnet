@@ -287,7 +287,7 @@ TEST(ExtensionRegistry_Concurrency, FourThreadsRegisterQuery) {
     const auto start = std::chrono::steady_clock::now();
     for (int t = 0; t < kThreads; ++t) threads.emplace_back(writer, t);
     threads.emplace_back(reader);
-    for (int t = 0; t < kThreads; ++t) threads[t].join();
+    for (int t = 0; t < kThreads; ++t) threads[static_cast<std::size_t>(t)].join();
     stop.store(true, std::memory_order_relaxed);
     threads.back().join();
     const auto elapsed = std::chrono::steady_clock::now() - start;
@@ -299,6 +299,35 @@ TEST(ExtensionRegistry_Concurrency, FourThreadsRegisterQuery) {
     EXPECT_GT(query_ok.load(), 0);
     EXPECT_EQ(r.size(),
               static_cast<std::size_t>(reg_ok.load() - unreg_ok.load()));
+}
+
+// ─── max_extensions cap (limits.md §4a) ────────────────────────────
+
+TEST(ExtensionRegistry_MaxExtensions, ZeroMeansUnlimited) {
+    ExtensionRegistry r;
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_EQ(r.register_extension(
+            "gn.test.unlimited" + std::to_string(i), 0x010000, &kDummyVtable),
+            GN_OK);
+    }
+    EXPECT_EQ(r.size(), 32u);
+}
+
+TEST(ExtensionRegistry_MaxExtensions, RejectsBeyondCap) {
+    ExtensionRegistry r;
+    r.set_max_extensions(3);
+
+    EXPECT_EQ(r.register_extension("gn.test.a", 0x010000, &kDummyVtable), GN_OK);
+    EXPECT_EQ(r.register_extension("gn.test.b", 0x010000, &kDummyVtable), GN_OK);
+    EXPECT_EQ(r.register_extension("gn.test.c", 0x010000, &kDummyVtable), GN_OK);
+    EXPECT_EQ(r.register_extension("gn.test.d", 0x010000, &kDummyVtable),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(r.size(), 3u);
+
+    /// Unregister frees a slot.
+    EXPECT_EQ(r.unregister_extension("gn.test.b"), GN_OK);
+    EXPECT_EQ(r.register_extension("gn.test.d", 0x010000, &kDummyVtable), GN_OK);
+    EXPECT_EQ(r.size(), 3u);
 }
 
 }  // namespace

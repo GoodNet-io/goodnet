@@ -133,3 +133,36 @@ TEST(PluginManager_Quiescence, TimeoutLeaksHandleSafely) {
     /// .so stays mapped — that's the safe-leak property.
     snap = SecurityEntry{};
 }
+
+/// `limits.md` §4a: `gn_limits_t::max_plugins` cap blocks loads
+/// whose path count exceeds it. Read directly from `kernel.limits()`
+/// inside `PluginManager::load`, the single source of truth.
+TEST(PluginManager_MaxPlugins, RejectsBeyondCap) {
+    Kernel k;
+    gn_limits_t limits{};
+    limits.max_plugins = 1;
+    k.set_limits(limits);
+
+    /// One path with cap 1 — succeeds.
+    PluginManager pm(k);
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    pm.shutdown();
+}
+
+TEST(PluginManager_MaxPlugins, ZeroPathsAboveCapRejected) {
+    Kernel k;
+    gn_limits_t limits{};
+    limits.max_plugins = 1;
+    k.set_limits(limits);
+
+    /// Two paths, cap 1 — load fails with LIMIT_REACHED before
+    /// touching the filesystem; diagnostic mentions the cap field.
+    std::vector<std::string> two = {GOODNET_NULL_PLUGIN_PATH,
+                                    GOODNET_NULL_PLUGIN_PATH};
+    PluginManager pm(k);
+    std::string diag;
+    EXPECT_EQ(pm.load(two, &diag), GN_ERR_LIMIT_REACHED);
+    EXPECT_NE(diag.find("max_plugins"), std::string::npos) << diag;
+    EXPECT_EQ(pm.size(), 0u);
+}

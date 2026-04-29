@@ -419,6 +419,66 @@ TEST(ConnectionRegistry_Size, ReflectsInsertEraseSequence) {
     EXPECT_EQ(reg.size(), 2u);
 }
 
+// ─── max_connections cap ────────────────────────────────────────────
+
+TEST(ConnectionRegistry_MaxConnections, ZeroMeansUnlimited) {
+    ConnectionRegistry reg;
+    /// Default cap is zero; insert beyond any small bound succeeds.
+    for (int i = 0; i < 32; ++i) {
+        const gn_conn_id_t id = reg.alloc_id();
+        ASSERT_EQ(reg.insert_with_index(make_record(
+            id, "tcp://nolimit-" + std::to_string(i),
+            make_pk(static_cast<std::uint64_t>(i + 9000)))), GN_OK);
+    }
+    EXPECT_EQ(reg.size(), 32u);
+}
+
+TEST(ConnectionRegistry_MaxConnections, RejectsBeyondCap) {
+    ConnectionRegistry reg;
+    reg.set_max_connections(4);
+
+    for (int i = 0; i < 4; ++i) {
+        const gn_conn_id_t id = reg.alloc_id();
+        ASSERT_EQ(reg.insert_with_index(make_record(
+            id, "tcp://capped-" + std::to_string(i),
+            make_pk(static_cast<std::uint64_t>(i + 8000)))), GN_OK);
+    }
+    EXPECT_EQ(reg.size(), 4u);
+
+    /// Fifth insert exceeds cap → LIMIT_REACHED, no slot consumed.
+    const gn_conn_id_t over_id = reg.alloc_id();
+    EXPECT_EQ(reg.insert_with_index(make_record(
+        over_id, "tcp://capped-overflow",
+        make_pk(0xDEADBEEFull))), GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(reg.size(), 4u);
+    EXPECT_FALSE(reg.find_by_uri("tcp://capped-overflow").has_value());
+}
+
+TEST(ConnectionRegistry_MaxConnections, ErasureFreesSlot) {
+    ConnectionRegistry reg;
+    reg.set_max_connections(2);
+
+    const gn_conn_id_t id_a = reg.alloc_id();
+    const gn_conn_id_t id_b = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(make_record(id_a, "tcp://a", make_pk(0xAA))), GN_OK);
+    ASSERT_EQ(reg.insert_with_index(make_record(id_b, "tcp://b", make_pk(0xBB))), GN_OK);
+
+    const gn_conn_id_t id_c = reg.alloc_id();
+    EXPECT_EQ(reg.insert_with_index(make_record(id_c, "tcp://c", make_pk(0xCC))),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Erase one — next insert succeeds.
+    ASSERT_EQ(reg.erase_with_index(id_a), GN_OK);
+    EXPECT_EQ(reg.insert_with_index(make_record(id_c, "tcp://c", make_pk(0xCC))), GN_OK);
+    EXPECT_EQ(reg.size(), 2u);
+
+    /// snapshot_and_erase also frees a slot.
+    auto snap = reg.snapshot_and_erase(id_b);
+    ASSERT_TRUE(snap.has_value());
+    const gn_conn_id_t id_d = reg.alloc_id();
+    EXPECT_EQ(reg.insert_with_index(make_record(id_d, "tcp://d", make_pk(0xDD))), GN_OK);
+}
+
 // ─── concurrency ─────────────────────────────────────────────────────
 
 /// Hammer the registry from multiple threads doing interleaved

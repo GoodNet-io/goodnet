@@ -227,6 +227,21 @@ typed extension API.
 
 ### Changed
 
+- **Registry-wide caps from `gn_limits_t` are now enforced
+  (`limits.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
+  `ExtensionRegistry::register_extension`, `PluginManager::load`, and
+  `HandlerRegistry::register_handler` reject registrations that
+  would push the live count past `max_connections`,
+  `max_extensions`, `max_plugins`, and `max_handlers_per_msg_id`
+  respectively. `Kernel::set_limits` wires the kernel-owned
+  registries directly; `PluginManager` reads
+  `kernel.limits().max_plugins` inside `load`. Cap of zero
+  preserves the prior unlimited behaviour for backward
+  compatibility; production configs always set non-zero values
+  through the loaded `gn_limits_t`. The §4 paragraph that
+  promised "every check-site reads from live `gn_limits_t`" no
+  longer overpromises — the new §4a enumerates exactly which
+  registries enforce which cap.
 - **Registry contract honesty (`registry.md` §4).** The §4 paragraph
   that promised a deletion-generation increment on a
   `gn_endpoint_t` snapshot stream is replaced with a description

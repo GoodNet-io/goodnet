@@ -161,6 +161,16 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         if (out_diagnostic) *out_diagnostic = m;
     };
 
+    /// `limits.md` §4a: reject the whole load if it would push the
+    /// loaded-plugin count above the cap. Zero means "unlimited".
+    /// Read from `Kernel::limits()` rather than a local copy so
+    /// `gn_limits_t::max_plugins` stays the single source of truth.
+    const std::uint32_t max_plugins = kernel_.limits().max_plugins;
+    if (max_plugins != 0 && paths.size() > max_plugins) {
+        note("plugin count exceeds gn_limits_t::max_plugins");
+        return GN_ERR_LIMIT_REACHED;
+    }
+
     /// Phase 1-3: discover, dlopen, version-check.
     instances_.reserve(paths.size());
     std::vector<ServiceDescriptor> descriptors;

@@ -36,6 +36,9 @@ gn_result_t ExtensionRegistry::register_extension(
     std::unique_lock lock(mu_);
     std::string key{name};
     if (entries_.contains(key)) return GN_ERR_LIMIT_REACHED;
+    if (max_entries_ != 0 && entries_.size() >= max_entries_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
 
     ExtensionEntry entry;
     entry.name            = std::string{name};
@@ -45,6 +48,11 @@ gn_result_t ExtensionRegistry::register_extension(
 
     entries_.emplace(std::move(key), std::move(entry));
     return GN_OK;
+}
+
+void ExtensionRegistry::set_max_extensions(std::uint32_t cap) noexcept {
+    std::unique_lock lock(mu_);
+    max_entries_ = cap;
 }
 
 gn_result_t ExtensionRegistry::unregister_extension(std::string_view name) noexcept {

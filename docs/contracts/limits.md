@@ -82,6 +82,37 @@ Compile-time constants are still appropriate for layout-fixed values
 (`GN_PUBLIC_KEY_BYTES = 32`); those are facts about wire format,
 not bounds about resources.
 
+The kernel wires the loaded `gn_limits_t` into the registries that
+enforce each cap during `Kernel::set_limits` — `max_connections` to
+`ConnectionRegistry`, `max_extensions` to `ExtensionRegistry`,
+`max_plugins` to `PluginManager`, `max_handlers_per_msg_id` to
+`HandlerRegistry`, `max_timers` and `max_pending_tasks` to
+`TimerRegistry`. A registry whose cap is left at the
+`set_*` default of zero treats the bound as "unlimited"; production
+configurations always set a non-zero value through the loaded
+config.
+
+---
+
+## 4a. Registry-wide caps
+
+The four registry caps below all share a single shape: failed
+allocations return `GN_ERR_LIMIT_REACHED`, increment a per-cap drop
+metric, and leave registry state untouched.
+
+| Cap | Default | Enforced by | Trigger |
+|---|---|---|---|
+| `max_connections` | 4096 | `ConnectionRegistry::insert_with_index` | live record count would exceed cap |
+| `max_extensions` | 256 | `ExtensionRegistry::register_extension` | live entry count would exceed cap |
+| `max_plugins` | 64 | `PluginManager::load` | already-loaded + about-to-load count would exceed cap |
+| `max_handlers_per_msg_id` | 8 | `HandlerRegistry::register_handler` | per-pair chain length would exceed cap (§7) |
+
+Recovery is automatic: a successful `erase_with_index`,
+`unregister_extension`, plugin shutdown, or `unregister_handler` frees
+one slot; a subsequent registration succeeds. No back-pressure event
+is published for these caps — the contract is "fail the new
+registration, leave the existing population intact".
+
 ---
 
 ## 5. Drop semantics
