@@ -55,6 +55,45 @@ The returned `gn_handler_id_t` is opaque, stable until `unregister_handler`.
 Plugins keep it for their own bookkeeping; the kernel does not require it
 back during dispatch.
 
+### 2.1 `gn_handler_vtable_t` layout
+
+The vtable carried by `register_handler`. Every slot is a function
+pointer that the kernel invokes with the plugin-supplied `self`
+argument. NULL is permitted on the optional lifecycle hooks; the
+mandatory slots (`protocol_id`, `supported_msg_ids`, `handle_message`)
+are non-NULL.
+
+```c
+typedef struct gn_handler_vtable_s {
+    const char*      (*protocol_id)(void* self);
+    void             (*supported_msg_ids)(void* self,
+                                          const uint32_t** out_ids,
+                                          size_t* out_count);
+    gn_propagation_t (*handle_message)(void* self,
+                                       const gn_message_t* envelope);
+    void             (*on_result)(void* self,
+                                  const gn_message_t* envelope,
+                                  gn_propagation_t result);
+    void             (*on_init)(void* self);
+    void             (*on_shutdown)(void* self);
+    void* _reserved[4];
+} gn_handler_vtable_t;
+```
+
+| Slot | Required | Lifetime / ownership |
+|---|---|---|
+| `protocol_id` | yes | returned `const char*` outlives the plugin |
+| `supported_msg_ids` | yes | `*out_ids` borrowed for the plugin lifetime; kernel queries once at registration |
+| `handle_message` | yes | `envelope->payload` borrowed until return; copy on retention |
+| `on_result` | no (NULL OK) | called after every `handle_message`; pinned fast-path invokes identically per §6 |
+| `on_init` | no | called once after the kernel admits the registration |
+| `on_shutdown` | no | called once during teardown after every in-flight dispatch returns |
+| `_reserved[4]` | — | NULL on init; size-prefix evolution per `abi-evolution.md` §3a |
+
+The struct does **not** carry an `api_size` first field (§3a marks
+this vtable as fixed-shape at v1; growth happens through
+`_reserved` slot promotion).
+
 ---
 
 ## 2a. Reserved msg_id values
