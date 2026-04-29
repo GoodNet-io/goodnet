@@ -236,21 +236,25 @@ TlsTransport::TlsTransport()
       work_(asio::make_work_guard(ioc_)),
       server_ctx_(asio::ssl::context::tls_server),
       client_ctx_(asio::ssl::context::tls_client) {
-    /// TLS 1.2 minimum on both sides; OpenSSL keeps 1.3 negotiation
-    /// automatic. Disable compression (CRIME / BREAST mitigation
-    /// retained as default at `tls_*_method` but explicitly here so
-    /// future pre-set context migrations don't drop it).
+    /// TLS 1.3 minimum on both sides — enforced by disabling every
+    /// pre-1.3 protocol version explicitly. A peer that only speaks
+    /// pre-1.3 fails the handshake at hello rather than silently
+    /// negotiating an obsolete suite. Compression disabled (CRIME /
+    /// BREAST mitigation; default at `tls_*_method` but explicit
+    /// here so future context migrations don't drop it).
     server_ctx_.set_options(asio::ssl::context::default_workarounds |
                              asio::ssl::context::no_sslv2 |
                              asio::ssl::context::no_sslv3 |
                              asio::ssl::context::no_tlsv1 |
                              asio::ssl::context::no_tlsv1_1 |
+                             asio::ssl::context::no_tlsv1_2 |
                              asio::ssl::context::no_compression);
     client_ctx_.set_options(asio::ssl::context::default_workarounds |
                              asio::ssl::context::no_sslv2 |
                              asio::ssl::context::no_sslv3 |
                              asio::ssl::context::no_tlsv1 |
                              asio::ssl::context::no_tlsv1_1 |
+                             asio::ssl::context::no_tlsv1_2 |
                              asio::ssl::context::no_compression);
     /// `verify_none` is the default — Noise above us is the
     /// authentication gate. Operators who want X.509 PKI as a
