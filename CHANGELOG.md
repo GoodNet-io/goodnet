@@ -357,7 +357,7 @@ typed extension API.
 
 ### Tests
 
-554 across unit, integration, scenario, and property suites.
+555 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan / clang-tidy strict-clean. The
 `ConnectionRegistry_SnapshotAndErase` suite covers the §4a
 atomicity claim (cross-shard non-deadlock and
