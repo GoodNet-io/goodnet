@@ -148,15 +148,15 @@ public:
 
     /// Close on the strand so the reactor's per-descriptor cleanup
     /// runs without overlapping a pending `async_read_some`. The
-    /// `close(ec)` return is best-effort — the FD is gone either way,
-    /// surface a debug log via the transport's `api_->log` so the
-    /// failure isn't silent.
+    /// `close(ec)` return is best-effort — the FD is gone either way;
+    /// route a debug line through `gn_log_debug` so the failure
+    /// isn't silent.
     void do_close() {
         asio::dispatch(strand_, [self = shared_from_this()] {
             std::error_code ec;
             if (self->socket_.close(ec)) {
                 if (auto t = self->transport_.lock();
-                    t && t->api_ && t->api_->log) {
+                    t && t->api_) {
                     gn_log_debug(t->api_,
                                  "ipc: close failed: %s",
                                  ec.message().c_str());
@@ -226,12 +226,12 @@ IpcTransport::~IpcTransport() {
     try {
         shutdown();
     } catch (const std::exception& e) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_warn(api_,
                       "ipc: shutdown threw: %s", e.what());
         }
     } catch (...) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_warn(api_,
                       "ipc: shutdown threw non-std exception");
         }
@@ -482,9 +482,10 @@ void IpcTransport::shutdown() {
     if (acceptor_) {
         std::error_code ec;
         /// `close(ec)` is best-effort on shutdown — the FD is gone
-        /// either way. Surface the error through `api_->log` if the
-        /// host bound one, otherwise discard.
-        if (acceptor_->close(ec) && api_ && api_->log) {
+        /// either way. Route the error through `gn_log_debug`;
+        /// `api_` may be null when the kernel tore down before
+        /// shutdown ran, in which case the macro short-circuits.
+        if (acceptor_->close(ec) && api_) {
             gn_log_debug(api_,
                       "ipc: acceptor close failed: %s",
                       ec.message().c_str());

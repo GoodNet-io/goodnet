@@ -3,7 +3,11 @@
 
 #include "kernel.hpp"
 
+#include <core/util/log.hpp>
+
 #include <algorithm>
+#include <cstdint>
+#include <string>
 
 namespace gn::core {
 
@@ -15,6 +19,7 @@ Kernel::Kernel() noexcept {
     /// runs against a sensible baseline rather than zero ceilings
     /// that would reject every operation.
     limits_ = config_.limits();
+    apply_log_config();
 }
 Kernel::~Kernel() = default;
 
@@ -78,6 +83,7 @@ gn_result_t Kernel::reload_config(std::string_view text) {
         return rc;
     }
     set_limits(config_.limits());
+    apply_log_config();
     on_config_reload_.fire(signal::Empty{});
     return GN_OK;
 }
@@ -87,8 +93,41 @@ gn_result_t Kernel::reload_config_merge(std::string_view overlay) {
         return rc;
     }
     set_limits(config_.limits());
+    apply_log_config();
     on_config_reload_.fire(signal::Empty{});
     return GN_OK;
+}
+
+void Kernel::apply_log_config() noexcept {
+    gn::log::LogConfig lc;
+    {
+        std::string s;
+        if (config_.get_string("log.level", s) == GN_OK)             lc.level         = std::move(s);
+        if (config_.get_string("log.file", s)  == GN_OK)             lc.log_file      = std::move(s);
+        if (config_.get_string("log.project_root", s) == GN_OK)      lc.project_root  = std::move(s);
+        if (config_.get_string("log.console_pattern", s) == GN_OK)   lc.console_pattern = std::move(s);
+        if (config_.get_string("log.file_pattern", s) == GN_OK)      lc.file_pattern  = std::move(s);
+    }
+    {
+        std::int64_t i = 0;
+        if (config_.get_int64("log.max_size", i) == GN_OK && i > 0) {
+            lc.max_size = static_cast<std::size_t>(i);
+        }
+        if (config_.get_int64("log.max_files", i) == GN_OK && i > 0) {
+            lc.max_files = static_cast<int>(i);
+        }
+        if (config_.get_int64("log.source_detail_mode", i) == GN_OK
+            && i >= 0 && i <= 3) {
+            lc.source_detail = static_cast<gn::log::SourceDetail>(i);
+        }
+    }
+    {
+        bool b = false;
+        if (config_.get_bool("log.strip_extension", b) == GN_OK) {
+            lc.strip_extension = b;
+        }
+    }
+    (void)gn::log::init_with(lc);
 }
 
 void Kernel::set_node_identity(identity::NodeIdentity ident) {

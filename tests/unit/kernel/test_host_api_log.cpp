@@ -1,13 +1,12 @@
 /// @file   tests/unit/kernel/test_host_api_log.cpp
-/// @brief  `host_api->log` slot does not interpret format specifiers
-///         in the plugin-supplied buffer per `host-api.md` §11.
+/// @brief  Plugin-facing log substruct (`gn_log_api_t`) hands a fully
+///         formatted buffer to the kernel sink without ever
+///         interpreting format specifiers, per `host-api.md` §11.
 ///
-/// The kernel forwards `msg` to spdlog as a literal `{}` argument
-/// — never as a format string. The pre-RC fix that swapped the
-/// slot from variadic to single-buffer is what closes the
-/// format-string class of attack against the kernel; this test
-/// pins the resulting invariant by piping through a capturing sink
-/// and asserting the bytes survived round-trip without expansion.
+/// `should_log` is the level-filter fast path; `emit` is the literal
+/// hand-off. Together they close the format-string class of attack
+/// against the kernel address space — no `vsnprintf` runs on
+/// plugin-supplied bytes inside the kernel.
 
 #include <gtest/gtest.h>
 
@@ -24,6 +23,7 @@
 #include <core/util/log.hpp>
 
 #include <sdk/host_api.h>
+#include <sdk/log.h>
 #include <sdk/types.h>
 
 namespace {
@@ -31,7 +31,7 @@ namespace {
 class CaptureSink : public spdlog::sinks::base_sink<std::mutex> {
 public:
     /// Tests in this fixture are single-threaded — the kernel logger
-    /// flushes synchronously after `api.log` returns, so the snapshot
+    /// flushes synchronously after `emit` returns, so the snapshot
     /// reads after every call see the final state without contention.
     [[nodiscard]] std::vector<std::string> snapshot() {
         std::lock_guard lk(snap_mu_);
@@ -57,23 +57,26 @@ struct LogHarness {
     std::shared_ptr<CaptureSink>      sink = std::make_shared<CaptureSink>();
     spdlog::sink_ptr                  saved_sink;
     spdlog::level::level_enum         saved_level{};
+    std::string                       saved_pattern;
     gn::core::Kernel                  kernel;
     gn::core::PluginContext           ctx;
     host_api_t                        api{};
 
-    LogHarness() {
+    explicit LogHarness(const char* pattern =
+                            "%^%l%$ [%s:%#] %v") {
         ctx.plugin_name = "log-fixture";
         ctx.kind        = GN_PLUGIN_KIND_HANDLER;
         ctx.kernel      = &kernel;
         ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
         api = gn::core::build_host_api(ctx);
 
-        /// Splice our capturing sink into the kernel logger. Save the
-        /// original sinks + level so the fixture restores them on
+        /// Splice our capturing sink into the kernel logger. Save
+        /// sinks/level/pattern so the fixture restores them on
         /// teardown — the kernel logger is a singleton shared with
         /// every other test in the binary.
         auto& logger = ::gn::log::kernel();
-        saved_level  = logger.level();
+        saved_level   = logger.level();
+        saved_pattern.assign("");  // spdlog has no getter; restore via set
         if (!logger.sinks().empty()) {
             saved_sink = logger.sinks().front();
             logger.sinks().front() = sink;
@@ -81,6 +84,7 @@ struct LogHarness {
             logger.sinks().push_back(sink);
         }
         logger.set_level(spdlog::level::trace);
+        logger.set_pattern(pattern);
     }
 
     ~LogHarness() {
@@ -89,10 +93,18 @@ struct LogHarness {
             logger.sinks().front() = saved_sink;
         }
         logger.set_level(saved_level);
+        logger.set_pattern(::gn::log::kDefaultPattern);
     }
 };
 
 }  // namespace
+
+TEST(HostApiLog, ApiSizePopulated) {
+    LogHarness h;
+    EXPECT_EQ(h.api.log.api_size, sizeof(gn_log_api_t));
+    EXPECT_NE(h.api.log.should_log, nullptr);
+    EXPECT_NE(h.api.log.emit, nullptr);
+}
 
 TEST(HostApiLog, FormatSpecifiersInMessageStayLiteral) {
     LogHarness h;
@@ -102,7 +114,8 @@ TEST(HostApiLog, FormatSpecifiersInMessageStayLiteral) {
     /// without an argument would dereference garbage; `%p` would
     /// leak an address. The kernel must never interpret any of these.
     const char* hostile = "boom %n %s %p {}";
-    h.api.log(h.api.host_ctx, GN_LOG_INFO, hostile);
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "test_file.cpp", 42, hostile);
     ::gn::log::kernel().flush();
 
     auto lines = h.sink->snapshot();
@@ -114,9 +127,23 @@ TEST(HostApiLog, FormatSpecifiersInMessageStayLiteral) {
         << "kernel must prefix with the plugin name";
 }
 
+TEST(HostApiLog, SourceLocationReachesSink) {
+    LogHarness h;
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "callsite.cpp", 1234, "hello");
+    ::gn::log::kernel().flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("callsite.cpp"), std::string::npos)
+        << "captured: " << lines[0];
+    EXPECT_NE(lines[0].find("1234"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
 TEST(HostApiLog, EmptyMessageIsAccepted) {
     LogHarness h;
-    h.api.log(h.api.host_ctx, GN_LOG_INFO, "");
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "test.cpp", 1, "");
     ::gn::log::kernel().flush();
     EXPECT_EQ(h.sink->snapshot().size(), 1u)
         << "empty msg is a valid log line; the kernel does not drop";
@@ -124,9 +151,53 @@ TEST(HostApiLog, EmptyMessageIsAccepted) {
 
 TEST(HostApiLog, NullMessageDroppedSilently) {
     LogHarness h;
-    /// The slot's documented contract is "NULL `msg` is dropped
-    /// silently"; verify we do not crash and no line is recorded.
-    h.api.log(h.api.host_ctx, GN_LOG_INFO, nullptr);
+    /// `emit` documents "NULL `msg` is dropped silently"; verify we
+    /// do not crash and no line is recorded.
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "test.cpp", 1, nullptr);
+    ::gn::log::kernel().flush();
+    EXPECT_EQ(h.sink->snapshot().size(), 0u);
+}
+
+TEST(HostApiLog, NullFileOmitsSourceLocation) {
+    /// `[%s:%#] %v` against a null `file` and zero `line` produces
+    /// `[:0] %v` — spdlog itself does not synthesise a placeholder.
+    /// The contract is "kernel omits the source-location prefix";
+    /// the assert here is that the message survives unchanged. Plain
+    /// `%v` pattern would drop the prefix outright but that is the
+    /// formatter's choice, not the kernel's.
+    LogHarness h{"%v"};
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   nullptr, 0, "no-loc");
+    ::gn::log::kernel().flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("no-loc"), std::string::npos);
+}
+
+TEST(HostApiLog, ShouldLogReflectsKernelLevel) {
+    LogHarness h;
+    auto& logger = ::gn::log::kernel();
+
+    logger.set_level(spdlog::level::warn);
+    EXPECT_EQ(h.api.log.should_log(h.api.host_ctx, GN_LOG_DEBUG), 0);
+    EXPECT_EQ(h.api.log.should_log(h.api.host_ctx, GN_LOG_INFO),  0);
+    EXPECT_NE(h.api.log.should_log(h.api.host_ctx, GN_LOG_WARN),  0);
+    EXPECT_NE(h.api.log.should_log(h.api.host_ctx, GN_LOG_ERROR), 0);
+
+    logger.set_level(spdlog::level::trace);
+    EXPECT_NE(h.api.log.should_log(h.api.host_ctx, GN_LOG_TRACE), 0);
+    EXPECT_NE(h.api.log.should_log(h.api.host_ctx, GN_LOG_DEBUG), 0);
+}
+
+TEST(HostApiLog, EmitFiltersBelowKernelLevel) {
+    LogHarness h;
+    /// Even when a plugin skips the `should_log` fast path, the
+    /// kernel-side `emit` thunk re-checks before forwarding to the
+    /// sink — a misbehaving plugin cannot bypass the filter.
+    ::gn::log::kernel().set_level(spdlog::level::err);
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "test.cpp", 1, "filtered");
     ::gn::log::kernel().flush();
     EXPECT_EQ(h.sink->snapshot().size(), 0u);
 }

@@ -191,6 +191,13 @@ public:
 private:
     void                      fire(Phase prev, Phase next);
 
+    /// Pull the `log.*` block out of the live config and apply it to
+    /// the kernel logger. Called after every successful load /
+    /// reload so operators flip detail mode, file path, or pattern
+    /// without restarting the kernel. A missing block leaves the
+    /// logger at its lazy-startup defaults.
+    void                      apply_log_config() noexcept;
+
     std::atomic<Phase>        state_{Phase::Load};
     std::atomic<bool>         stop_requested_{false};
 

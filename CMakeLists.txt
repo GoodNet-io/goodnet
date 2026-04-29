@@ -26,7 +26,11 @@ add_compile_options(
     -Wall -Wextra -Wpedantic
     -Wshadow -Wconversion -Wnon-virtual-dtor -Woverloaded-virtual
     -Wno-unused-parameter
-)
+    # Strip the absolute build-tree prefix from `__FILE__` so log
+    # output and assertion messages carry repo-relative paths
+    # (`core/util/log.hpp:42`) instead of the full filesystem
+    # location of the source tree.
+    "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
 
 # spdlog compile-time level ceiling. Release strips TRACE and DEBUG
 # call sites entirely; Debug compiles every level. The ceiling is

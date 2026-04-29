@@ -270,11 +270,11 @@ TlsTransport::TlsTransport()
 TlsTransport::~TlsTransport() {
     try { shutdown(); }
     catch (const std::exception& e) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_warn(api_, "tls: shutdown threw: %s", e.what());
         }
     } catch (...) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_warn(api_, "tls: shutdown threw non-std exception");
         }
     }
@@ -304,7 +304,7 @@ void TlsTransport::set_verify_peer(bool on) noexcept {
         client_ctx_.set_verify_mode(
             on ? asio::ssl::verify_peer : asio::ssl::verify_none);
     } catch (const std::exception& e) {
-        if (api_ && api_->log) {
+        if (api_) {
             gn_log_warn(api_, "tls: set_verify_mode threw: %s", e.what());
         }
     }
@@ -715,7 +715,7 @@ void TlsTransport::shutdown() {
 
     if (acceptor_) {
         std::error_code ec;
-        if (acceptor_->close(ec) && api_ && api_->log) {
+        if (acceptor_->close(ec) && api_) {
             gn_log_debug(api_, "tls: acceptor close failed: %s",
                          ec.message().c_str());
         }

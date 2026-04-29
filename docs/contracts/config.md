@@ -30,13 +30,16 @@ begin reading from config. Plugins receive paths verbatim through
 the `config_get_*` slots and resolve them inside the kernel;
 there is no plugin-side JSON parser.
 
-Runtime reload is **deferred to v1.1**. v1 ships a one-shot load
-at kernel startup; the surrounding application that needs hot
-reload restarts the kernel against the new document. The full
-pipeline (file watcher + kernel-side reload trigger + plugin
-re-read callbacks) lands as a separate contract revision once
-the in-tree consumers (TLS cert rotation, heartbeat interval
-re-read, etc.) drive a concrete API shape.
+Runtime reload runs through `Kernel::reload_config(text)` and
+`Kernel::reload_config_merge(overlay)`. Both are atomic-from-the-
+outside: a parse failure or invariant violation rolls the kernel
+state back to the prior load, propagates the new `gn_limits_t`
+into kernel-owned registries through `set_limits`, and then fires
+the `on_config_reload` signal. Plugins subscribe through the
+`subscribe_config_reload` / `unsubscribe_config_reload` host-api
+slots and re-read their own knobs from inside their callback —
+the kernel's responsibility ends at the signal fire; plugins own
+their state-machine response.
 
 ---
 
@@ -50,13 +53,10 @@ re-read, etc.) drive a concrete API shape.
 | Propagate | the embedding application (or `Kernel::set_limits`) hands the `gn_limits_t` snapshot to every kernel-owned registry that enforces a cap (timer, handler, connection, extension); `Kernel::set_limits` runs the propagation |
 | Runtime queries | plugins call `host_api->config_get_string(key, …)` / `config_get_int64(key, …)`; the kernel resolves the dotted path under a shared lock |
 
-`Config::load_json` is the only mutation entry. v1 has no
-`reload`-style API; an embedding that wants to re-read config
-constructs a fresh `Config`, loads, validates, swaps it with the
-running instance, and re-runs `Kernel::set_limits` against the
-new `gn_limits_t`. That dance is the application's responsibility
-in v1; v1.1 will absorb it into a kernel-side `Config::reload`
-entry plus a plugin-facing reload signal.
+Mutation entries are `Config::load_json(text)` (wholesale replace)
+and `Config::merge_json(overlay)` (RFC 7396 deep-merge). The
+kernel-facing `Kernel::reload_config` / `reload_config_merge`
+wrap them with the registry propagation + signal fire.
 
 Default-constructed `Config` is usable: every key lookup returns
 `GN_ERR_UNKNOWN_RECEIVER`, `limits()` returns the canonical defaults
@@ -125,6 +125,46 @@ parser.
         // Storage (sync.md, defer to v1.1 plugins)
         "max_storage_table_entries":     10000,
         "max_storage_value_bytes":       65522
+    },
+
+    // Optional. Kernel logger configuration (host-api.md §11).
+    // Every field has a built-in default; an absent block leaves
+    // the logger at the lazy-startup shape (stderr-only console
+    // sink with the build-aware pattern).
+    "log": {
+        "level":               "info",      // trace/debug/info/warn/error/critical/off
+
+        // File sink. Empty string keeps the console-only shape.
+        "file":                "",
+        "max_size":            10485760,    // 10 MiB rotation cap
+        "max_files":           5,           // rotated history depth
+
+        // Source-location detail (host-api.md §11.4):
+        //   0 = Auto: TRACE/DEBUG full, INFO+ basename only (default)
+        //   1 = FullPath:         project-relative path + line, every level
+        //   2 = BasenameWithLine: basename + line, every level
+        //   3 = BasenameOnly:     basename, no line
+        "source_detail_mode":  0,
+
+        // Project root prefix the %Q flag strips off __FILE__.
+        // The CMake `-fmacro-prefix-map` flag already drops the
+        // build-tree prefix at compile time; this knob covers the
+        // out-of-tree consumer case where the working directory
+        // differs from the build root.
+        "project_root":        "",
+
+        // Optional: drop the file extension from the rendered name
+        // (`router.cpp` → `router`). Off by default — losing the
+        // extension makes header vs. .cpp call sites
+        // indistinguishable in skim-reads.
+        "strip_extension":     false,
+
+        // Pattern overrides. Empty strings keep the build-aware
+        // defaults from `core/util/log.hpp::kDefaultPattern` /
+        // `kDefaultFilePattern`. spdlog's standard flags apply
+        // plus the custom %Q for the source-location prefix.
+        "console_pattern":     "",
+        "file_pattern":        ""
     }
 }
 ```

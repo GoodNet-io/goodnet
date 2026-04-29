@@ -11,13 +11,23 @@
 ///    as the functions, but compile-time level filtering and automatic
 ///    `__FILE__`/`__LINE__` capture. Prefer at every kernel call site.
 ///
-/// Plugin code never includes this header. Plugins log through
-/// `host_api->log` so messages cross the C ABI uniformly. The kernel
+/// Plugin code never includes this header. Plugins log through the
+/// `gn_log_*` macros in `sdk/convenience.h`, which call the
+/// `host_api_t::log` substruct (`should_log` / `emit`). The kernel
 /// bridges those plugin calls back into this same singleton logger
-/// in `core/kernel/host_api_builder.cpp::thunk_log`.
-
+/// in `core/kernel/host_api_builder.cpp` (`thunk_log_emit`).
+///
+/// The singleton has a default-construction path (lazy `kernel()`
+/// call brings up a basic stderr logger) and an explicit one
+/// (`init_with(LogConfig)`) that the kernel runs from `Kernel`'s
+/// constructor with values pulled from the loaded config. Calling
+/// `init_with` again replaces the live sinks atomically — config
+/// reload re-shapes the destination without losing the named logger
+/// registration.
 #pragma once
 
+#include <cstddef>
+#include <string>
 #include <string_view>
 
 #include <spdlog/spdlog.h>
@@ -33,14 +43,20 @@ namespace gn::log {
 /// diagnosis.
 ///
 /// The choice is fixed at compile time via `NDEBUG`. Operators who
-/// want a different shape call `set_pattern` after `init()`.
+/// want a different shape pass a custom pattern through `LogConfig`.
 #if defined(NDEBUG)
 inline constexpr const char* kDefaultPattern =
     "%Y-%m-%dT%H:%M:%S.%e %^%l%$ %v";
 #else
 inline constexpr const char* kDefaultPattern =
-    "%Y-%m-%dT%H:%M:%S.%e %^%l%$ [%s:%#] %v";
+    "%Y-%m-%dT%H:%M:%S.%e %^%l%$ %Q%v";
 #endif
+
+/// File-sink default pattern carries the source-location prefix
+/// always — operators reading rotated logs after the fact want the
+/// call site preserved regardless of the live console verbosity.
+inline constexpr const char* kDefaultFilePattern =
+    "%Y-%m-%dT%H:%M:%S.%e %^%l%$ %Q%v";
 
 /// Build-aware default runtime level. Release defaults to INFO so
 /// the binary does not emit DEBUG even if compile-time filtering
@@ -52,49 +68,83 @@ inline constexpr ::spdlog::level::level_enum kDefaultLevel = ::spdlog::level::in
 inline constexpr ::spdlog::level::level_enum kDefaultLevel = ::spdlog::level::debug;
 #endif
 
-/// Returns the kernel's structured logger. First call constructs a
-/// default stderr logger with the build-aware pattern and runtime
-/// level; subsequent calls reuse the same instance.
-inline ::spdlog::logger& kernel() {
-    static auto logger = []{
-        auto l = ::spdlog::default_logger();
-        l->set_pattern(kDefaultPattern);
-        l->set_level(kDefaultLevel);
-        return l;
-    }();
-    return *logger;
-}
+/// Source-location detail mode for the custom `%Q` format flag.
+///
+///  - `Auto` (0) — TRACE/DEBUG carry full path + line; INFO and
+///    above carry basename only. Default. Reads as production noise
+///    at the upper levels and as a precise breadcrumb at the lower.
+///  - `FullPath` (1) — every level carries the project-relative path
+///    plus `:line`.
+///  - `BasenameWithLine` (2) — every level carries the file
+///    basename plus `:line`.
+///  - `BasenameOnly` (3) — the basename, no line. Tightest format.
+enum class SourceDetail : int {
+    Auto              = 0,
+    FullPath          = 1,
+    BasenameWithLine  = 2,
+    BasenameOnly      = 3,
+};
+
+/// Configuration the kernel hands to `init_with` after the first
+/// successful config load. Field defaults match the lazy startup
+/// path so an unset field never turns logging off.
+struct LogConfig {
+    std::string  level            = "info";
+
+    /// Path to the rotating log file, or empty to skip the file
+    /// sink and keep the destination console-only.
+    std::string  log_file;
+    std::size_t  max_size         = std::size_t{10} * 1024 * 1024;  // 10 MiB
+    int          max_files        = 5;
+
+    SourceDetail source_detail    = SourceDetail::Auto;
+
+    /// Project-relative path prefix the `%Q` flag strips off
+    /// `__FILE__` to keep emitted paths short. The CMake
+    /// `-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=` flag already
+    /// drops the prefix at compile time; this knob covers the
+    /// case where consumers set a different working directory.
+    std::string  project_root;
+
+    /// Strip the extension (`.cpp` / `.hpp`) from the displayed
+    /// filename. Off by default — losing the extension makes
+    /// header vs. .cpp call sites indistinguishable.
+    bool         strip_extension  = false;
+
+    std::string  console_pattern;  // empty => kDefaultPattern
+    std::string  file_pattern;     // empty => kDefaultFilePattern
+};
+
+/// Returns the kernel's named logger (`"gn"`). First call brings up
+/// a basic stderr-only logger with the build-aware pattern and
+/// runtime level; `init_with` replaces the sink set without losing
+/// the registered name.
+[[nodiscard]] ::spdlog::logger& kernel();
 
 /// Initialise the logger explicitly with a chosen level. Idempotent;
-/// re-calling adjusts the live level. Call once at kernel startup so
-/// the first log message lands at the configured verbosity rather
-/// than at whatever default the lazy path picked.
-inline void init(::spdlog::level::level_enum lvl = ::spdlog::level::info) {
-    kernel().set_level(lvl);
-}
+/// re-calling adjusts the live level without recreating sinks. Safe
+/// to call before or after `kernel()`.
+void init(::spdlog::level::level_enum lvl = ::spdlog::level::info);
+
+/// Replace the singleton's sink set + pattern + level using the
+/// values in @p cfg. Re-callable on every config-reload event so
+/// operators flip detail mode, file path, or pattern without
+/// restarting the kernel. Returns `true` if the reshape applied;
+/// `false` if a sink construction failed (the prior shape stays
+/// active).
+bool init_with(const LogConfig& cfg) noexcept;
 
 /// Adjust the live log level. Wired from config-reload paths so
 /// operators flip verbosity without restarting the kernel.
-inline void set_level(::spdlog::level::level_enum lvl) noexcept {
-    kernel().set_level(lvl);
-}
+void set_level(::spdlog::level::level_enum lvl) noexcept;
 
 /// String-to-level helper used by config parsing. Returns the
 /// corresponding `level_enum` for "trace", "debug", "info", "warn",
 /// "warning", "error", "critical", "off"; otherwise returns the
 /// fallback (default info).
-[[nodiscard]] inline ::spdlog::level::level_enum
+[[nodiscard]] ::spdlog::level::level_enum
 parse_level(std::string_view name,
-            ::spdlog::level::level_enum fallback = ::spdlog::level::info) noexcept {
-    if (name == "trace")                       return ::spdlog::level::trace;
-    if (name == "debug")                       return ::spdlog::level::debug;
-    if (name == "info")                        return ::spdlog::level::info;
-    if (name == "warn" || name == "warning")   return ::spdlog::level::warn;
-    if (name == "error")                       return ::spdlog::level::err;
-    if (name == "critical" || name == "fatal") return ::spdlog::level::critical;
-    if (name == "off")                         return ::spdlog::level::off;
-    return fallback;
-}
+            ::spdlog::level::level_enum fallback = ::spdlog::level::info) noexcept;
 
 /// Set the live level by string name; convenience for config plumbing.
 inline void set_level_str(std::string_view name) noexcept {

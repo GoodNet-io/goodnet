@@ -11,22 +11,43 @@ pipe, and the first handler. The kernel moves encrypted bytes
 between two processes over a real socket and surfaces RTT through a
 typed extension API.
 
-### Changed
-
-- **`host_api->log` slot signature** — variadic `(level, fmt, ...)`
-  → single buffer `(level, const char* msg)`. The kernel never
-  invokes `vsnprintf` on plugin-supplied bytes, closing the
-  format-string class of attack against the kernel address space
-  (a compromised plugin cannot smuggle `%n` writes or
-  `%s`-without-arg dereferences across the C ABI). Plugins format
-  on their own stack — `sdk/convenience.h` provides
-  `gn_log_<level>(api, "fmt", args…)` macros that build the
-  message with `snprintf` (2048-byte cap) and call the slot.
-  Bundled transport plugins migrated to the macros. Per
-  `host-api.md` §11.
-
 ### Added
 
+- **Plugin logging vtable** — `host_api_t::log` is a size-prefixed
+  substruct (`gn_log_api_t`) with two slots:
+  `should_log(host_ctx, level)` for the hot-path level filter and
+  `emit(host_ctx, level, file, line, msg)` for the fully-formatted
+  buffer. Plugins format on their own stack — `sdk/convenience.h`
+  exposes `gn_log_<level>(api, "fmt", args…)` macros (printf-style
+  `snprintf`); `sdk/cpp/log.hpp` exposes `GN_LOGF_<level>(api,
+  "{}", args…)` macros (C++23 `std::format_to_n`). Both capture
+  `__FILE__`/`__LINE__` at the call site, short-circuit through
+  `should_log` when the level is filtered out, and call `emit`
+  with a NUL-terminated UTF-8 buffer (2048-byte cap). The kernel
+  hands the buffer to its sink as a literal — no format specifier
+  is interpreted on the kernel side, so a compromised plugin
+  cannot smuggle `%n` writes or `%s`-without-arg dereferences
+  across the C ABI. Substruct shape is gated through
+  `GN_API_HAS_LOG` per `abi-evolution.md` §3a. Per
+  `host-api.md` §11.
+- **Kernel logger** — the named `"gn"` spdlog logger in
+  `core/util/log.hpp` carries a console sink (always present)
+  and an optional rotating file sink. Custom `%Q` flag renders
+  the source-location prefix with four detail modes (Auto,
+  FullPath, BasenameWithLine, BasenameOnly); the Auto default
+  shows full path on TRACE/DEBUG and basename only on INFO+.
+  Release builds (`NDEBUG`) cap the console sink at warn so a
+  long-running daemon does not flood stderr with INFO chatter.
+  CMake passes `-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=` so the
+  rendered `__FILE__` carries repo-relative paths instead of the
+  absolute build-tree location.
+- **`log.*` config keys** — `level`, `file`, `max_size`,
+  `max_files`, `source_detail_mode`, `project_root`,
+  `strip_extension`, `console_pattern`, `file_pattern`. The
+  kernel re-applies the block on every successful
+  `reload_config` / `reload_config_merge` so operators flip
+  detail mode, file path, or pattern without restarting.
+  Schema in `config.md` §3; semantics in `host-api.md` §11.4.
 - **Hot config reload** — `Kernel::reload_config(text)` and
   `reload_config_merge(overlay)` swap the live state atomically,
   propagate the new `gn_limits_t` to every kernel-owned registry
