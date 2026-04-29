@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/registry/handler.hpp`, `core/signal/pipeline.hpp`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-04-29
 **Stability:** v1.x
 
 ---
@@ -107,6 +107,26 @@ The lookup itself is RCU-driven: registry mutations publish a new
 read-only chain snapshot, dispatchers read whichever snapshot was current
 when they entered. Per `fsm-events.md` §6, the snapshot generation is
 64-bit.
+
+A dispatcher that wants the chain alongside the generation counter
+the registry observed under the same shared lock calls
+`lookup_with_generation(protocol_id, msg_id)`, which returns
+`{ chain, generation }` atomically. Returning the pair without a
+TOCTOU window — the lookup-side `find` and the
+`generation()` read both run inside one shared-lock acquire —
+matters for any future caller that wants to compare the recorded
+counter against the live `generation()` post-walk to surface a
+"dispatch on stale chain" rate. The split-call alternative
+(`lookup` then a separate `generation()`) lets a writer slip an
+in-between bump past the caller and corrupts that signal.
+
+In v1 the kernel router consults `lookup_with_generation` and
+walks the snapshot's chain to completion; the recorded generation
+is observability surface, not a mid-walk abort signal. The
+snapshot's `lifetime_anchor` strong refs keep every entry's
+vtable valid for the entire walk, so concurrent unregistration
+turns into a possibly-stale dispatch on entries the new
+generation no longer wants — never a use-after-free.
 
 ---
 
