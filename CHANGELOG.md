@@ -27,6 +27,20 @@ typed extension API.
 
 ### Added
 
+- **Inject rate limiter is configurable** — three new `gn_limits_t`
+  fields (`inject_rate_per_source`, `inject_rate_burst`,
+  `inject_rate_lru_cap`) replace the hard-coded constants the
+  kernel previously held inside `kernel.hpp`. Operators tune the
+  bridge plugin's per-source token bucket through the JSON config
+  document, and `RateLimiterMap::reconfigure` propagates the new
+  shape live without a kernel restart. Cross-field invariant
+  rejects a burst below half the refill rate. `Config::load_json`
+  now auto-validates: a parsed limits set that violates any
+  invariant fails the load with `GN_ERR_LIMIT_REACHED` and rolls
+  the kernel state back to the prior load. Per `limits.md` §2.
+
+### Added
+
 - **Counter surface for kernel and plugin metrics** —
   `host_api->emit_counter(name)` and `iterate_counters(visitor)`
   expose a flat map of named monotonic 64-bit counters. The

@@ -30,6 +30,21 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     /// "off"; non-zero installs the cap as a sub-quota under the
     /// global `max_timers`.
     timers_.set_max_timers_per_plugin(limits_.max_timers_per_plugin);
+
+    /// Reconfigure the inject-path rate limiter live. A zero
+    /// `inject_rate_per_source` keeps the bucket at the kernel's
+    /// startup defaults — operators that omit the section get the
+    /// historical 100/50/4096 shape unchanged. A non-zero value
+    /// drops every existing per-pk bucket and rebuilds with the
+    /// new (rate, burst, lru cap) triple, so an operator pushing
+    /// updated limits sees the new ceiling on the next admit
+    /// without a kernel restart.
+    if (limits_.inject_rate_per_source != 0) {
+        inject_rate_limiter_.reconfigure(
+            static_cast<double>(limits_.inject_rate_per_source),
+            static_cast<double>(limits_.inject_rate_burst),
+            static_cast<std::size_t>(limits_.inject_rate_lru_cap));
+    }
     /// `limits.md` §4 — wire every cap that lives on a kernel-owned
     /// registry so a single `gn_limits_t` is the source of truth.
     /// `PluginManager` is not kernel-owned; it reads `kernel.limits()`

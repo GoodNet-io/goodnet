@@ -55,6 +55,25 @@ typedef struct gn_limits_s {
                                               exhausts the kernel's global
                                               budget and starves siblings. */
 
+    /* Foreign-payload injection rate limiter (host-api.md §8) */
+    uint32_t inject_rate_per_source;     /**< token-bucket refill rate per
+                                              source — tokens per second
+                                              accrued for the bridge plugin's
+                                              `inject_external_message` /
+                                              `inject_frame` calls keyed on
+                                              the source connection's
+                                              remote_pk hash */
+    uint32_t inject_rate_burst;          /**< token-bucket initial / max
+                                              tokens; the rate-limiter accepts
+                                              up to this many calls before the
+                                              refill rate kicks in */
+    uint32_t inject_rate_lru_cap;        /**< maximum number of distinct
+                                              source-pk buckets the kernel
+                                              tracks; the LRU evicts the
+                                              least-recently-used bucket on
+                                              cap, so unbounded source-id
+                                              growth cannot exhaust memory */
+
     /* Handshake-phase send buffer (backpressure.md §8) */
     uint32_t pending_handshake_bytes;    /**< per-conn cap on app data
                                               buffered while the security
@@ -85,6 +104,9 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_MAX_TIMERS                   4096u
 #define GN_LIMITS_DEFAULT_MAX_PENDING_TASKS            4096u
 #define GN_LIMITS_DEFAULT_PENDING_HANDSHAKE_BYTES      (256u << 10) /* 256 KiB */
+#define GN_LIMITS_DEFAULT_INJECT_RATE_PER_SOURCE       100u
+#define GN_LIMITS_DEFAULT_INJECT_RATE_BURST            50u
+#define GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP          4096u
 
 #ifdef __cplusplus
 } /* extern "C" */
