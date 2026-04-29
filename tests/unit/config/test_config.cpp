@@ -471,6 +471,48 @@ TEST(Config_GetArray, IntegerArray) {
     EXPECT_EQ(v, 9001);
 }
 
+// ─── dump round-trip ─────────────────────────────────────────────
+
+TEST(Config_Dump, EmptyConfigYieldsEmptyObject) {
+    Config c;
+    EXPECT_EQ(c.dump(), "{}");
+}
+
+TEST(Config_Dump, RoundTripPreservesValues) {
+    Config c;
+    const char* doc = R"({"hello":"world","limits":{"max_connections":2048,"max_outbound_connections":512}})";
+    ASSERT_EQ(c.load_json(doc), GN_OK);
+
+    /// dump (compact) → re-load — every observable value carries through.
+    Config c2;
+    ASSERT_EQ(c2.load_json(c.dump()), GN_OK);
+    EXPECT_EQ(c2.limits().max_connections, 2048u);
+    EXPECT_EQ(c2.limits().max_outbound_connections, 512u);
+
+    std::string s;
+    EXPECT_EQ(c2.get_string("hello", s), GN_OK);
+    EXPECT_EQ(s, "world");
+}
+
+TEST(Config_Dump, IndentEmitsPrettyOutput) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"a":1,"b":[1,2]})"), GN_OK);
+    /// Compact never has newlines; indent=2 always does on a
+    /// non-trivial structure.
+    EXPECT_EQ(c.dump(-1).find('\n'), std::string::npos);
+    EXPECT_NE(c.dump(2).find('\n'), std::string::npos);
+}
+
+TEST(Config_Dump, ReflectsLatestLoadAfterReload) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"marker":"first"})"), GN_OK);
+    EXPECT_NE(c.dump().find("first"), std::string::npos);
+
+    ASSERT_EQ(c.load_json(R"({"marker":"second"})"), GN_OK);
+    EXPECT_EQ(c.dump().find("first"), std::string::npos);
+    EXPECT_NE(c.dump().find("second"), std::string::npos);
+}
+
 // ─── JSON5-style comments ─────────────────────────────────────────
 
 TEST(Config_LoadJson, AcceptsLineComments) {
