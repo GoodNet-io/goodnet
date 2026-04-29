@@ -77,17 +77,31 @@ typedef enum gn_log_level_e {
 typedef enum gn_drop_reason_e {
     GN_DROP_NONE                  = 0,
 
-    GN_DROP_FRAME_TOO_LARGE       = 1,  /**< exceeds max_frame_bytes */
-    GN_DROP_PAYLOAD_TOO_LARGE     = 2,  /**< exceeds max_payload_bytes */
-    GN_DROP_QUEUE_HARD_CAP        = 3,  /**< per-conn pending queue full */
-    GN_DROP_RESERVED_BIT_SET      = 4,  /**< unknown reserved flag in frame */
-    GN_DROP_DEFRAME_CORRUPT       = 5,  /**< plugin signalled corruption */
-    GN_DROP_ZERO_SENDER           = 6,  /**< envelope sender_pk all zero */
-    GN_DROP_UNKNOWN_RECEIVER      = 7,  /**< no local identity matches receiver_pk */
-    GN_DROP_RELAY_TTL_EXCEEDED    = 8,
-    GN_DROP_RELAY_LOOP_DEDUP      = 9,
-    GN_DROP_RATE_LIMITED          = 10,
-    GN_DROP_TRUST_CLASS_MISMATCH  = 11
+    GN_DROP_FRAME_TOO_LARGE                 = 1,  /**< exceeds max_frame_bytes */
+    GN_DROP_PAYLOAD_TOO_LARGE               = 2,  /**< exceeds max_payload_bytes */
+    GN_DROP_QUEUE_HARD_CAP                  = 3,  /**< per-conn pending queue full */
+    GN_DROP_RESERVED_BIT_SET                = 4,  /**< unknown reserved flag in frame */
+    GN_DROP_DEFRAME_CORRUPT                 = 5,  /**< plugin signalled corruption */
+    GN_DROP_ZERO_SENDER                     = 6,  /**< envelope sender_pk all zero */
+    GN_DROP_UNKNOWN_RECEIVER                = 7,  /**< no local identity matches receiver_pk */
+    GN_DROP_RELAY_TTL_EXCEEDED              = 8,
+    GN_DROP_RELAY_LOOP_DEDUP                = 9,
+    GN_DROP_RATE_LIMITED                    = 10,
+    GN_DROP_TRUST_CLASS_MISMATCH            = 11,
+
+    /**
+     * @name Attestation dispatcher (`attestation.md` §5)
+     * Per-step rejection reasons emitted by the kernel-internal
+     * attestation flow. The connection is closed on each.
+     * @{
+     */
+    GN_DROP_ATTESTATION_BAD_SIZE            = 12, /**< payload size != 232 (§5 step 1) */
+    GN_DROP_ATTESTATION_REPLAY              = 13, /**< binding != session handshake_hash (§5 step 3) */
+    GN_DROP_ATTESTATION_PARSE_FAILED        = 14, /**< 136-byte cert did not parse (§5 step 4) */
+    GN_DROP_ATTESTATION_BAD_SIGNATURE       = 15, /**< Ed25519 over `cert||binding` rejected (§5 step 5) */
+    GN_DROP_ATTESTATION_EXPIRED_OR_INVALID  = 16, /**< cert verify failed (§5 step 6) */
+    GN_DROP_ATTESTATION_IDENTITY_CHANGE     = 17  /**< device_pk differs from pinned (§5 step 7) */
+    /** @} */
 } gn_drop_reason_t;
 
 /**
