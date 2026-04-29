@@ -227,6 +227,14 @@ typed extension API.
 
 ### Changed
 
+- **Registry contract honesty (`registry.md` §4).** The §4 paragraph
+  that promised a deletion-generation increment on a
+  `gn_endpoint_t` snapshot stream is replaced with a description
+  of what the registry actually offers: `get_endpoint` returns the
+  view by value, no cache-invalidation channel exists, consumers
+  re-read or prune their cache on the `DISCONNECTED` event from
+  `conn-events.md` §2a. The previous wording named a stream the
+  kernel never exposed; the rewrite removes the lie.
 - **Standalone Asio.** The networking dependency now ships as
   the `asio` package (Christopher Kohlhoff's standalone build,
   same library as Boost.Asio without the umbrella). The
