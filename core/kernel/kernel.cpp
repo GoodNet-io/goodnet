@@ -21,7 +21,13 @@ Kernel::Kernel() noexcept {
     limits_ = config_.limits();
     apply_log_config();
 }
-Kernel::~Kernel() = default;
+
+/// Joins the timer executor before the default member sequence
+/// runs, so no in-flight callback reaches kernel state during
+/// destruction.
+Kernel::~Kernel() {
+    timers_.shutdown();
+}
 
 void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
     protocol_layer_.store(std::move(layer), std::memory_order_release);
