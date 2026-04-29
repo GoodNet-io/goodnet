@@ -306,6 +306,17 @@ typed extension API.
   see only the Ed25519 representation. `identity.md` §7
   cross-reference updated to point at the curve-conversion
   paragraph rather than the file as a whole.
+- **Capability TLV: `protocol-set` symmetric with `optimizer-set`
+  (`capability-tlv.md` §2).** Type `0x0001` `protocol-set` is now
+  a bitmap of supported `gn.protocol.<name>` slugs in declaration
+  order; the new type `0x0002` `protocol-list` carries the
+  canonical UTF-8 newline-separated ordering, mirroring the
+  `optimizer-set` / `optimizer-list` pair. The previous
+  Bloom-style filter description is dropped — collision-tolerant
+  hashing has no place in a feature-negotiation channel where
+  every entry must be enumerable. Generic TLV codec
+  (`sdk/cpp/capability_tlv.hpp`) is unchanged; the
+  category-specific encoders ride on top of it.
 
 ### Tests
 

@@ -68,7 +68,8 @@ contract, alphabetised by name to make merge conflicts loud.
 | Type | Name | Value layout |
 |---|---|---|
 | `0x0000` | `transport-set` | bitmap of `1u << GN_TRANSPORT_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
-| `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs hashed into a 64-bit Bloom-style filter (collision is a feature negotiation hint, not authoritative) |
+| `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs in declaration order; `protocol-list` (type `0x0002`) carries the canonical ordering |
+| `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
 | `0x0100` | `optimizer-set` | bitmap of supported `gn.optimizer.<name>` slugs in declaration order; `optimizer-list` (type `0x0101`) carries the canonical ordering |
 | `0x0101` | `optimizer-list` | UTF-8 newline-separated list of optimiser names; the index into the list is the bit position in `optimizer-set` |
 | `0x0200` | `heartbeat-interval-ms` | u32 big-endian; the peer's preferred PING cadence |
