@@ -185,6 +185,83 @@ TEST(TimerRegistry_Quota, RejectsPastMaxTimers) {
     EXPECT_EQ(c, GN_INVALID_TIMER_ID);
 }
 
+// ─── per-plugin sub-quota (limits.md §4a) ──────────────────────
+
+TEST(TimerRegistry_Quota, PerPluginQuotaIsolatesSiblings) {
+    /// Plugin A's anchor exhausts its per-plugin budget; plugin B
+    /// must keep its full budget untouched. The historical "global
+    /// cap only" path would let A's spam starve B.
+    TimerRegistry r;
+    r.set_max_timers_per_plugin(2);
+    /// Generous global cap so the per-plugin check is what fires.
+    r.set_max_timers(64);
+
+    auto anchor_a = std::make_shared<PluginAnchor>();
+    auto anchor_b = std::make_shared<PluginAnchor>();
+
+    gn_timer_id_t id = GN_INVALID_TIMER_ID;
+    EXPECT_EQ(r.set_timer(5'000, [](void*) {}, nullptr, anchor_a, &id), GN_OK);
+    EXPECT_EQ(r.set_timer(5'000, [](void*) {}, nullptr, anchor_a, &id), GN_OK);
+    /// A's third admit must hit the per-plugin cap.
+    EXPECT_EQ(r.set_timer(5'000, [](void*) {}, nullptr, anchor_a, &id),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(anchor_a->active_timers.load(), 2u);
+
+    /// B's first two admits succeed — the cap is per-anchor.
+    EXPECT_EQ(r.set_timer(5'000, [](void*) {}, nullptr, anchor_b, &id), GN_OK);
+    EXPECT_EQ(r.set_timer(5'000, [](void*) {}, nullptr, anchor_b, &id), GN_OK);
+    EXPECT_EQ(anchor_b->active_timers.load(), 2u);
+}
+
+TEST(TimerRegistry_Quota, CancelRefundsPerPluginBudget) {
+    /// Cancelling a pending timer must credit the plugin's slot
+    /// back so a long-running plugin that cycles its timer pool
+    /// does not slowly starve itself.
+    TimerRegistry r;
+    r.set_max_timers_per_plugin(2);
+    r.set_max_timers(64);
+
+    auto anchor = std::make_shared<PluginAnchor>();
+
+    gn_timer_id_t a = GN_INVALID_TIMER_ID;
+    gn_timer_id_t b = GN_INVALID_TIMER_ID;
+    ASSERT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, anchor, &a), GN_OK);
+    ASSERT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, anchor, &b), GN_OK);
+
+    /// At quota now; cancel one and let the lambda's refund settle.
+    ASSERT_EQ(r.cancel_timer(a), GN_OK);
+    EXPECT_TRUE(wait_for(
+        [&] { return anchor->active_timers.load() == 1u; }))
+        << "cancel must refund within the test timeout; observed "
+        << anchor->active_timers.load();
+
+    /// Budget restored — a fresh admit succeeds.
+    gn_timer_id_t c = GN_INVALID_TIMER_ID;
+    EXPECT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, anchor, &c), GN_OK);
+    ASSERT_EQ(r.cancel_timer(b), GN_OK);
+    ASSERT_EQ(r.cancel_timer(c), GN_OK);
+}
+
+TEST(TimerRegistry_Quota, ZeroPerPluginCapMeansUnlimited) {
+    /// `set_max_timers_per_plugin(0)` is the historical default —
+    /// no per-plugin gating, only the global cap.
+    TimerRegistry r;
+    r.set_max_timers_per_plugin(0);
+    r.set_max_timers(64);
+
+    auto anchor = std::make_shared<PluginAnchor>();
+
+    gn_timer_id_t id = GN_INVALID_TIMER_ID;
+    /// Schedule more than any plausible per-plugin cap; the global
+    /// cap is what stops the run.
+    for (int i = 0; i < 10; ++i) {
+        ASSERT_EQ(r.set_timer(60'000, [](void*) {}, nullptr,
+                              anchor, &id), GN_OK)
+            << "with cap == 0 the per-plugin check must short-circuit";
+    }
+    EXPECT_EQ(anchor->active_timers.load(), 10u);
+}
+
 // ─── shutdown ───────────────────────────────────────────────────
 
 TEST(TimerRegistry_Shutdown, IdempotentAndCancelsPending) {

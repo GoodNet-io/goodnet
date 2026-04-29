@@ -55,6 +55,16 @@ struct PluginAnchor {
     /// long-running plugin loops observing the flag through
     /// `host_api->is_shutdown_requested` exit cooperatively.
     std::atomic<bool>          shutdown_requested{false};
+
+    /// Per-plugin active-timer count for quota enforcement. The
+    /// kernel's `TimerRegistry` increments at `set_timer` admission
+    /// time and decrements at the head of every fire / cancel
+    /// callback. With `gn_limits_t::max_timers_per_plugin` set to a
+    /// non-zero value the registry refuses an admit that would push
+    /// the counter past the cap, so a misbehaving plugin cannot
+    /// exhaust the kernel's global timer budget on its sibling
+    /// plugins' behalf.
+    std::atomic<std::uint32_t> active_timers{0};
 };
 
 /// RAII gate held for the duration of an async callback's dispatch
