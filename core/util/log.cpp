@@ -139,33 +139,36 @@ make_default_logger() {
     return logger;
 }
 
-std::shared_ptr<spdlog::logger>& storage() {
-    static std::shared_ptr<spdlog::logger> instance;
+std::atomic<std::shared_ptr<spdlog::logger>>& storage() {
+    static std::atomic<std::shared_ptr<spdlog::logger>> instance;
     return instance;
 }
 std::once_flag g_init_once;
 
 void ensure_initialised() {
     std::call_once(g_init_once, [] {
-        if (auto existing = spdlog::get("gn")) {
-            storage() = std::move(existing);
-            return;
+        auto existing = spdlog::get("gn");
+        if (!existing) {
+            existing = make_default_logger();
+            spdlog::register_logger(existing);
         }
-        auto logger = make_default_logger();
-        spdlog::register_logger(logger);
-        storage() = std::move(logger);
+        storage().store(std::move(existing), std::memory_order_release);
     });
 }
 
 }  // namespace
 
-::spdlog::logger& kernel() {
-    ensure_initialised();
-    return *storage();
+std::shared_ptr<::spdlog::logger> kernel() {
+    auto p = storage().load(std::memory_order_acquire);
+    if (!p) {
+        ensure_initialised();
+        p = storage().load(std::memory_order_acquire);
+    }
+    return p;
 }
 
 void init(::spdlog::level::level_enum lvl) {
-    kernel().set_level(lvl);
+    kernel()->set_level(lvl);
 }
 
 ::spdlog::level::level_enum
@@ -182,7 +185,7 @@ parse_level(std::string_view name,
 }
 
 void set_level(::spdlog::level::level_enum lvl) noexcept {
-    kernel().set_level(lvl);
+    kernel()->set_level(lvl);
 }
 
 bool init_with(const LogConfig& cfg) noexcept try {
@@ -232,16 +235,22 @@ bool init_with(const LogConfig& cfg) noexcept try {
         sinks.push_back(std::move(file));
     }
 
-    auto& slot = storage();
-    if (slot) {
-        slot->sinks() = std::move(sinks);
-        slot->set_level(parse_level(cfg.level, kDefaultLevel));
-        slot->flush_on(spdlog::level::warn);
-    } else {
-        ensure_initialised();
-        slot->sinks() = std::move(sinks);
-        slot->set_level(parse_level(cfg.level, kDefaultLevel));
+    /// Build a fresh logger and atomic-swap. Concurrent callers
+    /// holding a `kernel()` shared_ptr keep the prior instance
+    /// alive on their own stack; the swap point itself is a
+    /// release-store on `storage()`.
+    auto fresh = std::make_shared<spdlog::logger>("gn",
+                                                   sinks.begin(),
+                                                   sinks.end());
+    fresh->set_level(parse_level(cfg.level, kDefaultLevel));
+    fresh->flush_on(spdlog::level::warn);
+
+    if (spdlog::get("gn")) {
+        spdlog::drop("gn");
     }
+    spdlog::register_logger(fresh);
+
+    storage().store(std::move(fresh), std::memory_order_release);
     return true;
 } catch (const std::exception&) {
     return false;

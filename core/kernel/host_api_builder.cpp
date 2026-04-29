@@ -618,7 +618,7 @@ int32_t thunk_log_should_log(void* host_ctx, gn_log_level_t level) {
     if (!host_ctx) return 0;
     const auto sp_lvl = map_log_level(level);
     if (sp_lvl == ::spdlog::level::off) return 0;
-    return ::gn::log::kernel().should_log(sp_lvl) ? 1 : 0;
+    return ::gn::log::kernel()->should_log(sp_lvl) ? 1 : 0;
 }
 
 void thunk_log_emit(void* host_ctx, gn_log_level_t level,
@@ -628,16 +628,16 @@ void thunk_log_emit(void* host_ctx, gn_log_level_t level,
 
     const auto sp_lvl = map_log_level(level);
     if (sp_lvl == ::spdlog::level::off) return;
-    if (!::gn::log::kernel().should_log(sp_lvl)) return;
+    if (!::gn::log::kernel()->should_log(sp_lvl)) return;
 
     /// `msg` reaches spdlog as a literal `{}` argument. The kernel
     /// never invokes vsnprintf on plugin bytes — format-string
     /// attack against the kernel address space is closed.
     const ::spdlog::source_loc loc{file ? file : "", line, ""};
     if (pc->plugin_name.empty()) {
-        ::gn::log::kernel().log(loc, sp_lvl, "{}", msg);
+        ::gn::log::kernel()->log(loc, sp_lvl, "{}", msg);
     } else {
-        ::gn::log::kernel().log(loc, sp_lvl,
+        ::gn::log::kernel()->log(loc, sp_lvl,
                                 "[{}] {}", pc->plugin_name, msg);
     }
 }

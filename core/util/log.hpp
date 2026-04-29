@@ -117,9 +117,11 @@ struct LogConfig {
 
 /// Returns the kernel's named logger (`"gn"`). First call brings up
 /// a basic stderr-only logger with the build-aware pattern and
-/// runtime level; `init_with` replaces the sink set without losing
-/// the registered name.
-[[nodiscard]] ::spdlog::logger& kernel();
+/// runtime level; `init_with` swaps the singleton atomically so
+/// concurrent log calls on a soon-to-be-replaced logger keep the
+/// shared ownership of the prior instance until they release the
+/// returned handle.
+[[nodiscard]] std::shared_ptr<::spdlog::logger> kernel();
 
 /// Initialise the logger explicitly with a chosen level. Idempotent;
 /// re-calling adjusts the live level without recreating sinks. Safe
@@ -155,32 +157,32 @@ inline void set_level_str(std::string_view name) noexcept {
 
 template <class... Args>
 inline void trace(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().trace(fmt, std::forward<Args>(args)...);
+    kernel()->trace(fmt, std::forward<Args>(args)...);
 }
 
 template <class... Args>
 inline void debug(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().debug(fmt, std::forward<Args>(args)...);
+    kernel()->debug(fmt, std::forward<Args>(args)...);
 }
 
 template <class... Args>
 inline void info(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().info(fmt, std::forward<Args>(args)...);
+    kernel()->info(fmt, std::forward<Args>(args)...);
 }
 
 template <class... Args>
 inline void warn(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().warn(fmt, std::forward<Args>(args)...);
+    kernel()->warn(fmt, std::forward<Args>(args)...);
 }
 
 template <class... Args>
 inline void error(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().error(fmt, std::forward<Args>(args)...);
+    kernel()->error(fmt, std::forward<Args>(args)...);
 }
 
 template <class... Args>
 inline void critical(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
-    kernel().critical(fmt, std::forward<Args>(args)...);
+    kernel()->critical(fmt, std::forward<Args>(args)...);
 }
 
 } // namespace gn::log
@@ -193,9 +195,9 @@ inline void critical(::spdlog::format_string_t<Args...> fmt, Args&&... args) {
 /// with the ceiling set above TRACE drops the trace calls entirely.
 ///
 /// Prefer these at kernel call sites where the message is a literal.
-#define GN_LOG_TRACE(...)    SPDLOG_LOGGER_TRACE(&::gn::log::kernel(),    __VA_ARGS__)
-#define GN_LOG_DEBUG(...)    SPDLOG_LOGGER_DEBUG(&::gn::log::kernel(),    __VA_ARGS__)
-#define GN_LOG_INFO(...)     SPDLOG_LOGGER_INFO(&::gn::log::kernel(),     __VA_ARGS__)
-#define GN_LOG_WARN(...)     SPDLOG_LOGGER_WARN(&::gn::log::kernel(),     __VA_ARGS__)
-#define GN_LOG_ERROR(...)    SPDLOG_LOGGER_ERROR(&::gn::log::kernel(),    __VA_ARGS__)
-#define GN_LOG_CRITICAL(...) SPDLOG_LOGGER_CRITICAL(&::gn::log::kernel(), __VA_ARGS__)
+#define GN_LOG_TRACE(...)    SPDLOG_LOGGER_TRACE(::gn::log::kernel().get(),    __VA_ARGS__)
+#define GN_LOG_DEBUG(...)    SPDLOG_LOGGER_DEBUG(::gn::log::kernel().get(),    __VA_ARGS__)
+#define GN_LOG_INFO(...)     SPDLOG_LOGGER_INFO(::gn::log::kernel().get(),     __VA_ARGS__)
+#define GN_LOG_WARN(...)     SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),     __VA_ARGS__)
+#define GN_LOG_ERROR(...)    SPDLOG_LOGGER_ERROR(::gn::log::kernel().get(),    __VA_ARGS__)
+#define GN_LOG_CRITICAL(...) SPDLOG_LOGGER_CRITICAL(::gn::log::kernel().get(), __VA_ARGS__)
