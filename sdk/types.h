@@ -148,9 +148,13 @@ typedef enum gn_result_e {
     GN_ERR_NOT_IMPLEMENTED    = -8,
     GN_ERR_VERSION_MISMATCH   = -9,  /**< plugin SDK major != kernel SDK major */
     GN_ERR_LIMIT_REACHED      = -10,
-    GN_ERR_INVALID_STATE      = -11  /**< callee in wrong phase for the requested op
+    GN_ERR_INVALID_STATE      = -11, /**< callee in wrong phase for the requested op
                                        *   (Noise handshake on a transport-phase session,
                                        *   set_timer after shutdown, etc.) */
+    GN_ERR_INTEGRITY_FAILED   = -12  /**< integrity / authenticity check failed
+                                       *   (plugin SHA-256 manifest mismatch,
+                                       *   tampered binary, manifest absent in
+                                       *   strict mode) */
 } gn_result_t;
 
 /* ── Kernel↔plugin envelope ─────────────────────────────────────────────── */

@@ -27,6 +27,16 @@ typed extension API.
 
 ### Added
 
+- **Plugin integrity manifest** — `PluginManager::set_manifest`
+  installs a SHA-256 allowlist that gates every `dlopen`. An empty
+  manifest is the developer-mode default (every plugin loads); a
+  non-empty manifest puts the loader in production mode and rejects
+  every plugin not pinned to a matching hash. Verification runs
+  before `dlopen` so a tampered binary's static initialisers never
+  reach the kernel. Manifest format: JSON
+  `{"plugins":[{"path":...,"sha256":<64-hex>},...]}`. Streaming
+  SHA-256 via libsodium, 64 KiB chunks. New error code
+  `GN_ERR_INTEGRITY_FAILED`. Per `plugin-manifest.md`.
 - **Cooperative cancellation for plugins** — every plugin owns a
   `PluginAnchor` carrying an in-flight counter and a
   `shutdown_requested` flag. Async dispatch sites (timer fire,

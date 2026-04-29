@@ -36,6 +36,7 @@
 
 #include <core/kernel/plugin_context.hpp>
 #include <core/kernel/service_resolver.hpp>
+#include <core/plugin/plugin_manifest.hpp>
 
 namespace gn::core {
 
@@ -105,6 +106,19 @@ public:
         return leaked_handles_;
     }
 
+    /// Install an integrity allowlist consulted before every
+    /// `dlopen`. An empty manifest (the default) lets every plugin
+    /// load — that is the developer-mode path for in-tree fixtures
+    /// and the demo. A non-empty manifest puts the loader in
+    /// production mode: every path must appear in the manifest with
+    /// a matching SHA-256, or `load` fails with
+    /// `GN_ERR_INTEGRITY_FAILED`. See `plugin-manifest.md`.
+    void set_manifest(PluginManifest manifest) noexcept;
+
+    [[nodiscard]] const PluginManifest& manifest() const noexcept {
+        return manifest_;
+    }
+
 private:
     /// Build a ServiceDescriptor from the loaded plugin. Reads the
     /// optional `gn_plugin_descriptor` symbol; absence yields an
@@ -131,6 +145,7 @@ private:
     bool                            active_{false};
     std::chrono::milliseconds       quiescence_timeout_{std::chrono::seconds{1}};
     std::size_t                     leaked_handles_{0};
+    PluginManifest                  manifest_;
 };
 
 } // namespace gn::core
