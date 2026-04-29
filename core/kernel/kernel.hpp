@@ -117,8 +117,12 @@ public:
 
     /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
     /// Set once before `Wire` phase; cannot be replaced afterwards.
+    /// Read returns a shared snapshot so the caller holds a strong
+    /// reference for the duration of its `frame`/`deframe` call —
+    /// concurrent `set_protocol_layer` cannot pull the layer out
+    /// from under an in-flight dispatch.
     void set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept;
-    [[nodiscard]] ::gn::IProtocolLayer* protocol_layer() noexcept { return protocol_layer_.get(); }
+    [[nodiscard]] std::shared_ptr<::gn::IProtocolLayer> protocol_layer() const noexcept;
 
     /// Read-only resource bounds per `limits.md` §2. Loaded once at
     /// startup; subsequent reload requires kernel restart.
@@ -140,20 +144,22 @@ public:
     /// Install the kernel's `NodeIdentity` for the security pipeline.
     /// Must be called before reaching `Wire` phase so the security
     /// session has the local Ed25519 keypair available at handshake
-    /// time. The kernel takes ownership; the move zeroises secrets
-    /// when the kernel is destroyed.
-    void set_node_identity(identity::NodeIdentity identity) noexcept;
+    /// time. The kernel takes ownership; the wrapped instance is
+    /// destroyed (and its secrets zeroised through the keypair's
+    /// `wipe()` path) when the last shared reference goes away.
+    void set_node_identity(identity::NodeIdentity identity);
 
     [[nodiscard]] bool has_node_identity() const noexcept {
-        return node_identity_.has_value();
+        return node_identity() != nullptr;
     }
 
-    /// Read-only access to the installed node identity. Returns nullptr
-    /// when none has been set. The pointed-to instance stays valid for
-    /// the kernel's lifetime.
-    [[nodiscard]] const identity::NodeIdentity* node_identity() const noexcept {
-        return node_identity_ ? &*node_identity_ : nullptr;
-    }
+    /// Read-only access to the installed node identity. Returns a
+    /// null shared_ptr when none has been set. The shared snapshot
+    /// keeps the identity alive for the duration of the caller's
+    /// scope — concurrent `set_node_identity` cannot pull secrets
+    /// out from under an in-flight handshake.
+    [[nodiscard]] std::shared_ptr<const identity::NodeIdentity>
+        node_identity() const noexcept;
 
 private:
     void                      fire(Phase prev, Phase next);
@@ -177,14 +183,20 @@ private:
     Router               router_{identities_, handlers_};
     TimerRegistry        timers_;
 
-    std::shared_ptr<::gn::IProtocolLayer> protocol_layer_;
+    /// Atomic-shared so concurrent `set_protocol_layer` and reads
+    /// from thunk paths do not race. The strong ref returned by
+    /// `protocol_layer()` extends the layer's lifetime past any
+    /// concurrent replacement.
+    std::atomic<std::shared_ptr<::gn::IProtocolLayer>> protocol_layer_;
     gn_limits_t                           limits_{};
     Config                                config_;
 
     signal::SignalChannel<signal::Empty>  on_config_reload_;
     signal::SignalChannel<ConnEvent>      on_conn_event_;
 
-    std::optional<identity::NodeIdentity> node_identity_;
+    /// Atomic-shared like `protocol_layer_`: secrets stay alive for
+    /// the caller's snapshot scope across concurrent identity install.
+    std::atomic<std::shared_ptr<const identity::NodeIdentity>> node_identity_;
 
     /// Per-source rate limiter for `host_api->inject_*` per
     /// `host-api.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.

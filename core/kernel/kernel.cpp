@@ -11,7 +11,11 @@ Kernel::Kernel() noexcept = default;
 Kernel::~Kernel() = default;
 
 void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
-    protocol_layer_ = std::move(layer);
+    protocol_layer_.store(std::move(layer), std::memory_order_release);
+}
+
+std::shared_ptr<::gn::IProtocolLayer> Kernel::protocol_layer() const noexcept {
+    return protocol_layer_.load(std::memory_order_acquire);
 }
 
 void Kernel::set_limits(const gn_limits_t& limits) noexcept {
@@ -37,8 +41,14 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     }
 }
 
-void Kernel::set_node_identity(identity::NodeIdentity ident) noexcept {
-    node_identity_.emplace(std::move(ident));
+void Kernel::set_node_identity(identity::NodeIdentity ident) {
+    auto shared = std::make_shared<const identity::NodeIdentity>(std::move(ident));
+    node_identity_.store(std::move(shared), std::memory_order_release);
+}
+
+std::shared_ptr<const identity::NodeIdentity>
+Kernel::node_identity() const noexcept {
+    return node_identity_.load(std::memory_order_acquire);
 }
 
 Phase Kernel::current_phase() const noexcept {

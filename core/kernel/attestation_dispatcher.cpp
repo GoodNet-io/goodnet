@@ -157,7 +157,7 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
     if (!rec) return;
     if (rec->trust != GN_TRUST_UNTRUSTED) return;
 
-    const identity::NodeIdentity* identity = kernel.node_identity();
+    auto identity = kernel.node_identity();
     if (identity == nullptr) return;
 
     std::span<const std::uint8_t, GN_HASH_BYTES> binding{
@@ -181,7 +181,7 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
     std::memcpy(env.receiver_pk, rec->remote_pk.data(),
                 GN_PUBLIC_KEY_BYTES);
 
-    auto* layer = kernel.protocol_layer();
+    auto layer = kernel.protocol_layer();
     if (layer == nullptr) return;
 
     gn_connection_context_t ctx{};
