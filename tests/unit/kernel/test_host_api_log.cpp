@@ -70,11 +70,13 @@ struct LogHarness {
         ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
         api = gn::core::build_host_api(ctx);
 
-        /// Splice our capturing sink into the kernel logger. Save
-        /// sinks/level/pattern so the fixture restores them on
-        /// teardown — the kernel logger is a singleton shared with
-        /// every other test in the binary.
-        auto& logger = ::gn::log::kernel();
+        /// Splice the capturing sink into the kernel logger. The
+        /// `kernel()` snapshot keeps the logger alive for the
+        /// fixture's lifetime; teardown restores the prior sink,
+        /// level, and pattern so other tests in the binary see
+        /// the original singleton state.
+        auto logger_p = ::gn::log::kernel();
+        auto& logger  = *logger_p;
         saved_level   = logger.level();
         saved_pattern.assign("");  // spdlog has no getter; restore via set
         if (!logger.sinks().empty()) {
@@ -88,7 +90,8 @@ struct LogHarness {
     }
 
     ~LogHarness() {
-        auto& logger = ::gn::log::kernel();
+        auto logger_p = ::gn::log::kernel();
+        auto& logger  = *logger_p;
         if (saved_sink && !logger.sinks().empty()) {
             logger.sinks().front() = saved_sink;
         }
@@ -116,7 +119,7 @@ TEST(HostApiLog, FormatSpecifiersInMessageStayLiteral) {
     const char* hostile = "boom %n %s %p {}";
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    "test_file.cpp", 42, hostile);
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
 
     auto lines = h.sink->snapshot();
     ASSERT_EQ(lines.size(), 1u);
@@ -131,7 +134,7 @@ TEST(HostApiLog, SourceLocationReachesSink) {
     LogHarness h;
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    "callsite.cpp", 1234, "hello");
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
     auto lines = h.sink->snapshot();
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_NE(lines[0].find("callsite.cpp"), std::string::npos)
@@ -144,7 +147,7 @@ TEST(HostApiLog, EmptyMessageIsAccepted) {
     LogHarness h;
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    "test.cpp", 1, "");
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
     EXPECT_EQ(h.sink->snapshot().size(), 1u)
         << "empty msg is a valid log line; the kernel does not drop";
 }
@@ -155,7 +158,7 @@ TEST(HostApiLog, NullMessageDroppedSilently) {
     /// do not crash and no line is recorded.
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    "test.cpp", 1, nullptr);
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
     EXPECT_EQ(h.sink->snapshot().size(), 0u);
 }
 
@@ -169,7 +172,7 @@ TEST(HostApiLog, NullFileOmitsSourceLocation) {
     LogHarness h{"%v"};
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    nullptr, 0, "no-loc");
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
     auto lines = h.sink->snapshot();
     ASSERT_EQ(lines.size(), 1u);
     EXPECT_NE(lines[0].find("no-loc"), std::string::npos);
@@ -177,7 +180,8 @@ TEST(HostApiLog, NullFileOmitsSourceLocation) {
 
 TEST(HostApiLog, ShouldLogReflectsKernelLevel) {
     LogHarness h;
-    auto& logger = ::gn::log::kernel();
+    auto logger_p = ::gn::log::kernel();
+    auto& logger  = *logger_p;
 
     logger.set_level(spdlog::level::warn);
     EXPECT_EQ(h.api.log.should_log(h.api.host_ctx, GN_LOG_DEBUG), 0);
@@ -195,9 +199,9 @@ TEST(HostApiLog, EmitFiltersBelowKernelLevel) {
     /// Even when a plugin skips the `should_log` fast path, the
     /// kernel-side `emit` thunk re-checks before forwarding to the
     /// sink — a misbehaving plugin cannot bypass the filter.
-    ::gn::log::kernel().set_level(spdlog::level::err);
+    ::gn::log::kernel()->set_level(spdlog::level::err);
     h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
                    "test.cpp", 1, "filtered");
-    ::gn::log::kernel().flush();
+    ::gn::log::kernel()->flush();
     EXPECT_EQ(h.sink->snapshot().size(), 0u);
 }
