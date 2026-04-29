@@ -37,7 +37,10 @@ std::uint64_t pick_u64(const nlohmann::json& obj, const char* field, std::uint64
     return static_cast<std::uint64_t>(v);
 }
 
-gn_limits_t default_limits() noexcept {
+gn_limits_t server_profile() noexcept {
+    /// Canonical defaults from `sdk/limits.h`. Matches the
+    /// historical hard-coded values the kernel held inline before
+    /// the profile system landed.
     gn_limits_t L{};
     L.max_connections             = GN_LIMITS_DEFAULT_MAX_CONNECTIONS;
     L.max_outbound_connections    = GN_LIMITS_DEFAULT_MAX_OUTBOUND_CONNECTIONS;
@@ -61,12 +64,88 @@ gn_limits_t default_limits() noexcept {
     return L;
 }
 
+/// Resource-constrained profile for IoT / single-board deploys.
+/// 64-conn ceiling, 8 KiB max frame (low-MTU radio links), small
+/// timer pool, narrowed inject limiter so a single peer cannot
+/// monopolise the device's tiny budget. Embedded operators tune
+/// further from this baseline through the JSON `limits` block.
+gn_limits_t embedded_profile() noexcept {
+    gn_limits_t L = server_profile();
+    L.max_connections             = 64;
+    L.max_outbound_connections    = 16;
+    L.pending_queue_bytes_high    = 64u  * 1024;       //  64 KiB
+    L.pending_queue_bytes_low     = 16u  * 1024;       //  16 KiB
+    L.pending_queue_bytes_hard    = 256u * 1024;       // 256 KiB
+    L.max_frame_bytes             = 8u   * 1024;       //   8 KiB
+    L.max_payload_bytes           = L.max_frame_bytes - 14u;
+    L.max_handlers_per_msg_id     = 4;
+    L.max_relay_ttl               = 2;
+    L.max_plugins                 = 8;
+    L.max_extensions              = 32;
+    L.max_timers                  = 256;
+    L.max_pending_tasks           = 256;
+    L.pending_handshake_bytes     = 32u  * 1024;       //  32 KiB
+    L.max_storage_value_bytes     = L.max_payload_bytes;
+    L.inject_rate_per_source      = 10;
+    L.inject_rate_burst           = 8;
+    L.inject_rate_lru_cap         = 64;
+    return L;
+}
+
+/// Single-user / workstation profile. Sits between Embedded and
+/// Server: enough headroom for active development and casual
+/// peer-to-peer use, without the per-process memory budget the
+/// Server profile assumes.
+gn_limits_t desktop_profile() noexcept {
+    gn_limits_t L = server_profile();
+    L.max_connections             = 512;
+    L.max_outbound_connections    = 128;
+    L.pending_queue_bytes_high    = 256u * 1024;       // 256 KiB
+    L.pending_queue_bytes_low     = 64u  * 1024;       //  64 KiB
+    L.pending_queue_bytes_hard    = 1u   * 1024 * 1024; //  1 MiB
+    L.max_plugins                 = 32;
+    L.max_extensions              = 128;
+    L.max_timers                  = 1024;
+    L.max_pending_tasks           = 1024;
+    return L;
+}
+
+gn_limits_t default_limits() noexcept { return server_profile(); }
+
 } // namespace
 
 Config::Config() : json_(nlohmann::json::object()), limits_(default_limits()) {}
 
+Config::Profile Config::parse_profile_name(std::string_view name) noexcept {
+    if (name == "embedded") return Profile::Embedded;
+    if (name == "desktop")  return Profile::Desktop;
+    /// Unknown / missing names fall back to the safe default. An
+    /// operator who typoed their profile sees the canonical
+    /// values, not a tighter set that would drop traffic.
+    return Profile::Server;
+}
+
+gn_limits_t Config::profile_defaults(Profile profile) noexcept {
+    switch (profile) {
+        case Profile::Embedded: return embedded_profile();
+        case Profile::Desktop:  return desktop_profile();
+        case Profile::Server:   return server_profile();
+    }
+    return server_profile();
+}
+
 gn_limits_t Config::parse_limits(const nlohmann::json& root) {
-    gn_limits_t L = default_limits();
+    /// Profile selects the baseline; the `limits` block overrides
+    /// individual fields on top. Operators write either:
+    ///   `{"profile": "embedded"}` — pure profile, no overrides
+    ///   `{"limits": {"max_connections": 256}}` — server baseline
+    ///   `{"profile": "embedded", "limits": {"max_timers": 512}}`
+    ///       — embedded baseline + a single override
+    Profile profile = Profile::Server;
+    if (auto p = root.find("profile"); p != root.end() && p->is_string()) {
+        profile = parse_profile_name(p->get<std::string>());
+    }
+    gn_limits_t L = profile_defaults(profile);
     auto it = root.find("limits");
     if (it == root.end() || !it->is_object()) return L;
     const auto& obj = *it;
