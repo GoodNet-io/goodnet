@@ -60,6 +60,16 @@ public:
         return send_.nonce() >= REKEY_INTERVAL || recv_.nonce() >= REKEY_INTERVAL;
     }
 
+    /// Test seam: push both counters to a chosen value so the rekey
+    /// threshold path runs without burning 2^60 encrypt operations
+    /// at suite time. Production callers derive nonces from the
+    /// handshake split and never set them directly.
+    void test_set_nonces(std::uint64_t send_n,
+                          std::uint64_t recv_n) noexcept {
+        send_.set_nonce(send_n);
+        recv_.set_nonce(recv_n);
+    }
+
 private:
     CipherState send_;
     CipherState recv_;

@@ -3,6 +3,12 @@
 /// @brief  Noise plugin — primitives (BLAKE2b, HMAC, HKDF, ChaCha20Poly1305)
 ///         and full XX / IK handshake round-trips.
 
+// clang-tidy treats `*opt` after `ASSERT_TRUE(opt.has_value())` as
+// unchecked because the GTest `ASSERT_*` flow-control is opaque to
+// the analyser. The pattern is the standard gtest idiom; suppressing
+// the check at the TU scope keeps the test bodies readable.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 #include <gtest/gtest.h>
 
 #include "cipher.hpp"
@@ -415,6 +421,51 @@ TEST(NoiseHandshakeXX, TransportCiphersInteroperate) {
     EXPECT_EQ(*dec2, bytes_of("pong"));
 }
 
+TEST(NoiseTransportRekey, SymmetricThresholdRekeyKeepsInterop) {
+    /// Auto-rekey trigger fires inside `noise_encrypt`/`noise_decrypt`
+    /// once a CipherState reaches `REKEY_INTERVAL` (2^60). Both peers
+    /// see the matching counter symmetrically — every encrypt by one
+    /// side advances the peer's recv counter by one — so each side
+    /// rekeys at the same point without coordination per
+    /// `noise-handshake.md` §4. Pushing the counters to one short of
+    /// the threshold and exchanging two frames runs the rekey path
+    /// on both peers and asserts traffic continues to authenticate.
+    Keypair init_static = generate_keypair();
+    Keypair resp_static = generate_keypair();
+    HandshakeState initiator(Pattern::XX, true,  init_static);
+    HandshakeState responder(Pattern::XX, false, resp_static);
+    run_xx_handshake(initiator, responder);
+
+    auto i_pair = initiator.split();
+    auto r_pair = responder.split();
+
+    TransportState init_t(std::move(i_pair.send), std::move(i_pair.recv));
+    TransportState resp_t(std::move(r_pair.send), std::move(r_pair.recv));
+
+    init_t.test_set_nonces(REKEY_INTERVAL - 1, REKEY_INTERVAL - 1);
+    resp_t.test_set_nonces(REKEY_INTERVAL - 1, REKEY_INTERVAL - 1);
+
+    /// One encrypt+decrypt pair pushes both ciphers past the
+    /// threshold; the next call observes `needs_rekey()` and runs
+    /// the symmetric rekey on each side.
+    auto e1 = init_t.encrypt(bytes_of("over-threshold"));
+    if (init_t.needs_rekey()) init_t.rekey();
+    auto d1 = resp_t.decrypt(e1);
+    ASSERT_TRUE(d1.has_value());
+    EXPECT_EQ(*d1, bytes_of("over-threshold"));
+    if (resp_t.needs_rekey()) resp_t.rekey();
+
+    /// Counters reset on both sides; subsequent traffic uses the
+    /// fresh keys.
+    EXPECT_EQ(init_t.send_nonce(), 0u);
+    EXPECT_EQ(resp_t.recv_nonce(), 0u);
+
+    auto e2 = resp_t.encrypt(bytes_of("post-rekey"));
+    auto d2 = init_t.decrypt(e2);
+    ASSERT_TRUE(d2.has_value());
+    EXPECT_EQ(*d2, bytes_of("post-rekey"));
+}
+
 TEST(NoiseHandshakeXX, PayloadCarriedThroughEveryMessage) {
     Keypair init_static = generate_keypair();
     Keypair resp_static = generate_keypair();
@@ -533,3 +584,5 @@ TEST(NoiseTransport, RekeyContinuesInteropAfterReset) {
     ASSERT_TRUE(post_dec.has_value());
     EXPECT_EQ(*post_dec, bytes_of("post-rekey"));
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
