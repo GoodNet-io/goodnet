@@ -107,8 +107,14 @@ public:
     /// returns `GN_ERR_LIMIT_REACHED` and leaves the record untouched.
     /// The contract is one-way — there is no `downgrade_trust` because
     /// security weakening is a closure event, not a registry mutation.
+    ///
+    /// When @p out_record is non-null and the upgrade succeeds, the
+    /// post-upgrade record is captured under the same shard lock that
+    /// commits the new trust class, so the caller observes a
+    /// snapshot consistent with the trust value it just set.
     [[nodiscard]] gn_result_t upgrade_trust(gn_conn_id_t id,
-                                             gn_trust_class_t target) noexcept;
+                                             gn_trust_class_t target,
+                                             ConnectionRecord* out_record = nullptr) noexcept;
 
     /// Snapshot lookup by URI string.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_uri(std::string_view uri) const;

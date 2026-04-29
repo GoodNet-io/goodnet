@@ -381,13 +381,13 @@ void AttestationDispatcher::try_complete_upgrade(Kernel&      kernel,
     /// and observes `GN_ERR_LIMIT_REACHED` (the gate refuses
     /// `Peer → Peer`); only the first winner emits the event.
     ///
-    /// Between `upgrade_trust` returning OK and `find_by_id`
-    /// below, a concurrent `notify_disconnect` may erase the
-    /// record; the event then fires with `remote_pk` defaulted
-    /// to zero. Subscribers that need the peer key on a stale
-    /// event re-read it through `find_by_pk`, and the subsequent
-    /// `DISCONNECTED` event signals the disappearance.
-    if (kernel.connections().upgrade_trust(conn, GN_TRUST_PEER) != GN_OK) {
+    /// `out_record` captures the post-upgrade snapshot under the
+    /// same shard mutex that commits the new trust class, so the
+    /// `remote_pk` carried in the event is consistent with the
+    /// trust value the gate just set.
+    ConnectionRecord upgraded{};
+    if (kernel.connections().upgrade_trust(conn, GN_TRUST_PEER,
+                                            &upgraded) != GN_OK) {
         return;
     }
 
@@ -395,9 +395,7 @@ void AttestationDispatcher::try_complete_upgrade(Kernel&      kernel,
     ev.kind  = GN_CONN_EVENT_TRUST_UPGRADED;
     ev.conn  = conn;
     ev.trust = GN_TRUST_PEER;
-    if (auto upgraded = kernel.connections().find_by_id(conn)) {
-        ev.remote_pk = upgraded->remote_pk;
-    }
+    ev.remote_pk = upgraded.remote_pk;
     kernel.on_conn_event().fire(ev);
 }
 
