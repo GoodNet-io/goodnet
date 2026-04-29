@@ -100,6 +100,24 @@ gn_result_t PluginManager::open_one(const std::string& path,
                                     PluginInstance& out,
                                     std::string& diag) {
     out.path = path;
+
+    /// Integrity check before dlopen. An empty manifest is the
+    /// developer-mode path; production callers install a manifest
+    /// at startup and the kernel refuses every plugin not in it.
+    /// Per `plugin-manifest.md` the integrity check is the kernel's
+    /// only defence between an attacker-controlled plugins
+    /// directory and the kernel's own address space — running it
+    /// before dlopen rather than after means a tampered binary
+    /// never reaches `RTLD_NOW`-side initialisers.
+    if (!manifest_.empty()) {
+        std::string verify_diag;
+        if (!manifest_.verify(path, verify_diag)) {
+            diag = "plugin integrity check failed: ";
+            diag += verify_diag;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+    }
+
     out.so_handle = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!out.so_handle) {
         diag = "dlopen failed for ";
@@ -377,6 +395,10 @@ void PluginManager::rollback() {
 void PluginManager::shutdown() {
     if (!active_ && instances_.empty()) return;
     rollback();
+}
+
+void PluginManager::set_manifest(PluginManifest manifest) noexcept {
+    manifest_ = std::move(manifest);
 }
 
 } // namespace gn::core

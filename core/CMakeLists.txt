@@ -20,6 +20,7 @@ add_library(goodnet_kernel STATIC
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
     plugin/plugin_manager.cpp
+    plugin/plugin_manifest.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
 

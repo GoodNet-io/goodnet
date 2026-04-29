@@ -166,3 +166,79 @@ TEST(PluginManager_MaxPlugins, ZeroPathsAboveCapRejected) {
     EXPECT_NE(diag.find("max_plugins"), std::string::npos) << diag;
     EXPECT_EQ(pm.size(), 0u);
 }
+
+/// `plugin-manifest.md`: the manifest is the kernel's only defence
+/// between an attacker-controlled plugins directory and its own
+/// address space. An empty manifest is the developer-mode path; a
+/// non-empty manifest puts the loader in production mode and every
+/// load is gated by SHA-256 verification before `dlopen` runs.
+
+TEST(PluginManager_Manifest, EmptyManifestPermitsAllLoads) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_TRUE(pm.manifest().empty());
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    pm.shutdown();
+}
+
+TEST(PluginManager_Manifest, MatchingHashAccepted) {
+    /// Compute the actual on-disk hash of the null .so and install
+    /// it as the manifest. Production-mode load must accept the
+    /// freshly-built binary.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    PluginManifest m;
+    if (digest.has_value()) {
+        m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+    }
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(m));
+    EXPECT_FALSE(pm.manifest().empty());
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    pm.shutdown();
+}
+
+TEST(PluginManager_Manifest, HashMismatchRejected) {
+    /// Install a manifest whose hash for the null .so is wrong;
+    /// load must fail with GN_ERR_INTEGRITY_FAILED before dlopen
+    /// has a chance to run the .so's static initialisers.
+    PluginManifest m;
+    PluginHash wrong{};
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, wrong);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(m));
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("integrity check failed"), std::string::npos)
+        << diag;
+    EXPECT_EQ(pm.size(), 0u);
+}
+
+TEST(PluginManager_Manifest, UnlistedPathRejected) {
+    /// Manifest that does NOT list the path being loaded must
+    /// reject — this is the production-mode default-deny.
+    PluginManifest m;
+    PluginHash dummy{};
+    m.add_entry("/some/other/registered/path.so", dummy);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(m));
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("no manifest entry"), std::string::npos)
+        << diag;
+}
