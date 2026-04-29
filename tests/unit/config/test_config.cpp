@@ -353,6 +353,124 @@ TEST(Config_GetInt64, EmptySegmentRejected) {
     EXPECT_EQ(c.get_int64("k.", out), GN_ERR_UNKNOWN_RECEIVER);
 }
 
+// ─── get_bool ────────────────────────────────────────────────────
+
+TEST(Config_GetBool, ReadsTrueAndFalse) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"on": true, "off": false})"), GN_OK);
+    bool v = false;
+    EXPECT_EQ(c.get_bool("on", v), GN_OK);
+    EXPECT_TRUE(v);
+    EXPECT_EQ(c.get_bool("off", v), GN_OK);
+    EXPECT_FALSE(v);
+}
+
+TEST(Config_GetBool, IntegerNotABool) {
+    /// JSON distinguishes `1` from `true`; the typed slot rejects
+    /// the integer rather than coerce. Plugins that want C-style
+    /// "0/1 means false/true" pick `get_int64` instead.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"v": 1})"), GN_OK);
+    bool v = false;
+    EXPECT_EQ(c.get_bool("v", v), GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(Config_GetBool, MissingReturnsUnknownReceiver) {
+    Config c;
+    bool v = false;
+    EXPECT_EQ(c.get_bool("absent", v), GN_ERR_UNKNOWN_RECEIVER);
+}
+
+// ─── get_double ──────────────────────────────────────────────────
+
+TEST(Config_GetDouble, FloatLiteral) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"k": 3.14})"), GN_OK);
+    double v = 0.0;
+    EXPECT_EQ(c.get_double("k", v), GN_OK);
+    EXPECT_DOUBLE_EQ(v, 3.14);
+}
+
+TEST(Config_GetDouble, IntegerLiteralAccepted) {
+    /// Operators reach the same knob whether they write `1` or
+    /// `1.0`; the typed slot widens the integer to double rather
+    /// than rejecting on type mismatch.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"k": 5})"), GN_OK);
+    double v = 0.0;
+    EXPECT_EQ(c.get_double("k", v), GN_OK);
+    EXPECT_DOUBLE_EQ(v, 5.0);
+}
+
+TEST(Config_GetDouble, StringRejected) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"k": "1.5"})"), GN_OK);
+    double v = 0.0;
+    EXPECT_EQ(c.get_double("k", v), GN_ERR_INVALID_ENVELOPE);
+}
+
+// ─── get_array_* ─────────────────────────────────────────────────
+
+TEST(Config_GetArray, SizeOfFlatArray) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"peers": ["a", "b", "c"]})"), GN_OK);
+    std::size_t n = 0;
+    EXPECT_EQ(c.get_array_size("peers", n), GN_OK);
+    EXPECT_EQ(n, 3u);
+}
+
+TEST(Config_GetArray, SizeOnNonArrayRejected) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"k": "scalar"})"), GN_OK);
+    std::size_t n = 0;
+    EXPECT_EQ(c.get_array_size("k", n), GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(Config_GetArray, StringByIndex) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"peers": ["alpha", "beta", "gamma"]})"),
+              GN_OK);
+    std::string out;
+    EXPECT_EQ(c.get_array_string("peers", 0, out), GN_OK);
+    EXPECT_EQ(out, "alpha");
+    EXPECT_EQ(c.get_array_string("peers", 2, out), GN_OK);
+    EXPECT_EQ(out, "gamma");
+}
+
+TEST(Config_GetArray, OutOfBoundsReturnsUnknownReceiver) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"peers": ["a", "b"]})"), GN_OK);
+    std::string out;
+    EXPECT_EQ(c.get_array_string("peers", 5, out),
+              GN_ERR_UNKNOWN_RECEIVER);
+}
+
+TEST(Config_GetArray, ElementTypeMismatch) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"mixed": [1, "two", 3]})"), GN_OK);
+    std::string s;
+    EXPECT_EQ(c.get_array_string("mixed", 0, s),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(c.get_array_string("mixed", 1, s), GN_OK);
+    EXPECT_EQ(s, "two");
+
+    std::int64_t i = 0;
+    EXPECT_EQ(c.get_array_int64("mixed", 0, i), GN_OK);
+    EXPECT_EQ(i, 1);
+    EXPECT_EQ(c.get_array_int64("mixed", 1, i),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(Config_GetArray, IntegerArray) {
+    /// Typical use-case: `dht.bootstrap_nodes` ports or
+    /// `tuning.profile_thresholds` numeric config.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"ports": [9000, 9001, 9002]})"), GN_OK);
+    std::int64_t v = 0;
+    EXPECT_EQ(c.get_array_int64("ports", 1, v), GN_OK);
+    EXPECT_EQ(v, 9001);
+}
+
 // ─── JSON5-style comments ─────────────────────────────────────────
 
 TEST(Config_LoadJson, AcceptsLineComments) {

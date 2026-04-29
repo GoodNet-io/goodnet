@@ -83,6 +83,37 @@ public:
     [[nodiscard]] gn_result_t get_int64(std::string_view key,
                                         std::int64_t& out) const;
 
+    /// Lookup a boolean value by dotted path.
+    [[nodiscard]] gn_result_t get_bool(std::string_view key,
+                                        bool& out) const;
+
+    /// Lookup a floating-point value by dotted path. Accepts both
+    /// JSON `number` (integer literal) and `number` (float literal)
+    /// — operators that write `0.5` and operators that write `1`
+    /// both reach the same configurable knob without surprise.
+    [[nodiscard]] gn_result_t get_double(std::string_view key,
+                                          double& out) const;
+
+    /// Lookup the size of an array at @p key. Returns
+    /// `GN_ERR_UNKNOWN_RECEIVER` when the key is missing,
+    /// `GN_ERR_INVALID_ENVELOPE` when the value is not an array,
+    /// `GN_OK` and writes the element count to @p out otherwise.
+    [[nodiscard]] gn_result_t get_array_size(std::string_view key,
+                                              std::size_t& out) const;
+
+    /// Read the string element at @p index of the array at @p key.
+    /// Out-of-bounds @p index returns `GN_ERR_UNKNOWN_RECEIVER`.
+    /// Element-type mismatch returns `GN_ERR_INVALID_ENVELOPE`.
+    [[nodiscard]] gn_result_t get_array_string(std::string_view key,
+                                                std::size_t      index,
+                                                std::string&     out) const;
+
+    /// Read the integer element at @p index of the array at @p key.
+    /// Same error contract as `get_array_string`.
+    [[nodiscard]] gn_result_t get_array_int64(std::string_view key,
+                                               std::size_t      index,
+                                               std::int64_t&    out) const;
+
     /// Snapshot of the parsed limits. Read-side accessors hold a
     /// shared lock for the duration of the call.
     [[nodiscard]] gn_limits_t limits() const noexcept;

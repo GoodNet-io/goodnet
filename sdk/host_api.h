@@ -165,6 +165,53 @@ typedef struct host_api_s {
                                     const char* key,
                                     int64_t* out_value);
 
+    /**
+     * @brief Lookup a boolean value. Returns 0/1 in @p out_value
+     *        on success.
+     */
+    gn_result_t (*config_get_bool)(void* host_ctx,
+                                    const char* key,
+                                    int32_t* out_value);
+
+    /**
+     * @brief Lookup a floating-point value. Accepts both integer
+     *        and float JSON literals — operators that write
+     *        `0.5` and operators that write `1` reach the same
+     *        configurable knob.
+     */
+    gn_result_t (*config_get_double)(void* host_ctx,
+                                      const char* key,
+                                      double* out_value);
+
+    /**
+     * @brief Number of elements in the array at @p key. Returns
+     *        `GN_ERR_UNKNOWN_RECEIVER` when the key is missing,
+     *        `GN_ERR_INVALID_ENVELOPE` when the value is not an
+     *        array, `GN_OK` and writes the count otherwise.
+     */
+    gn_result_t (*config_get_array_size)(void* host_ctx,
+                                          const char* key,
+                                          size_t* out_size);
+
+    /**
+     * @brief Read the string at @p index of the array at @p key.
+     *        Same ownership shape as `config_get_string` — the
+     *        plugin frees through the matching destructor.
+     */
+    gn_result_t (*config_get_array_string)(void* host_ctx,
+                                            const char* key,
+                                            size_t index,
+                                            char** out_str,
+                                            void (**out_free)(char*));
+
+    /**
+     * @brief Read the integer at @p index of the array at @p key.
+     */
+    gn_result_t (*config_get_array_int64)(void* host_ctx,
+                                           const char* key,
+                                           size_t index,
+                                           int64_t* out_value);
+
     /* ── Limits read access ────────────────────────────────────────────── */
 
     /**
