@@ -473,7 +473,12 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
         return GN_ERR_NULL_ARG;
     }
 
-    const std::string canonical_uri(uri_sv);
+    /// `notify_connect` carries the resolved-IP URI so the registry
+    /// index key matches what the kernel observes through subsequent
+    /// `find_by_uri` lookups, and the orchestrator's `?peer=<hex>`
+    /// stash (keyed on `host:port`) lines up with the literal-host
+    /// form per `dns.md` §1.
+    const std::string& canonical_uri = *resolved;
     session->socket().async_connect(ep,
         [weak = std::weak_ptr<TcpTransport>(shared_from_this()),
          session, canonical_uri, ep](

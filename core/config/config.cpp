@@ -97,6 +97,15 @@ gn_result_t Config::validate(std::string* out_reason) const {
         note("limits.max_outbound_connections > limits.max_connections");
         return GN_ERR_LIMIT_REACHED;
     }
+    if (limits_.pending_queue_bytes_low == 0) {
+        /// `low == 0` makes the falling-edge `BACKPRESSURE_CLEAR`
+        /// publisher in every transport unable to fire — `post >= 0`
+        /// is always true, so subscribers stay paused forever after
+        /// the first `BACKPRESSURE_SOFT`. Per `backpressure.md` §3
+        /// the threshold is positive.
+        note("limits.pending_queue_bytes_low must be > 0");
+        return GN_ERR_LIMIT_REACHED;
+    }
     if (limits_.pending_queue_bytes_low >= limits_.pending_queue_bytes_high) {
         note("limits.pending_queue_bytes_low >= pending_queue_bytes_high");
         return GN_ERR_LIMIT_REACHED;

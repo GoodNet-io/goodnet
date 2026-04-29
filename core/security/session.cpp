@@ -182,18 +182,18 @@ gn_result_t SecuritySession::enqueue_pending(
     std::vector<std::uint8_t>&& bytes,
     std::uint64_t hard_cap_bytes)
 {
+    /// Phase check + cap check + push happen under the mutex so
+    /// `take_pending` cannot observe a stale `Handshake` while a
+    /// concurrent `advance_handshake` has already moved the session
+    /// to `Transport`. Without the unified critical section a
+    /// post-transition push would leave bytes in `pending_` that the
+    /// kernel never drains — the producer would have received `GN_OK`
+    /// for bytes that never reach the wire.
+    const auto incoming = static_cast<std::uint64_t>(bytes.size());
+    std::lock_guard lock(pending_mu_);
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Handshake) {
         return GN_ERR_INVALID_STATE;
     }
-    const auto incoming = static_cast<std::uint64_t>(bytes.size());
-    /// Pre-check against the cap before locking. The atomic load may
-    /// observe a stale value, so the post-lock branch confirms.
-    if (hard_cap_bytes > 0 &&
-        pending_bytes_.load(std::memory_order_relaxed) + incoming
-            > hard_cap_bytes) {
-        return GN_ERR_LIMIT_REACHED;
-    }
-    std::lock_guard lock(pending_mu_);
     if (hard_cap_bytes > 0 &&
         pending_bytes_.load(std::memory_order_relaxed) + incoming
             > hard_cap_bytes) {
@@ -206,11 +206,13 @@ gn_result_t SecuritySession::enqueue_pending(
 
 std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
     std::vector<std::vector<std::uint8_t>> out;
-    {
-        std::lock_guard lock(pending_mu_);
-        out.swap(pending_);
-    }
-    pending_bytes_.store(0, std::memory_order_release);
+    std::lock_guard lock(pending_mu_);
+    out.swap(pending_);
+    /// Counter reset stays inside the lock so a concurrent
+    /// `enqueue_pending` (already serialised through the same mutex)
+    /// observes the zeroed counter before its own
+    /// `pending_bytes_.fetch_add` runs.
+    pending_bytes_.store(0, std::memory_order_relaxed);
     return out;
 }
 

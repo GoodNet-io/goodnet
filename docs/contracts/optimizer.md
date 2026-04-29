@@ -152,10 +152,10 @@ connection event
 table. Optimisers never call `connect` / `disconnect` themselves;
 they always return a recommendation.
 
-A v1.0 baseline build ships `PathManager` as a skeleton — see the
-Phase 8 plan in the dossier — so the contract is observable
-end-to-end before optimisers exist. Optimiser plugins ship
-incrementally; the kernel never has to know about them.
+A v1.0 baseline build ships `PathManager` as a skeleton so the
+contract is observable end-to-end before optimisers exist.
+Optimiser plugins ship incrementally; the kernel never has to
+know about them.
 
 ---
 
@@ -166,5 +166,7 @@ incrementally; the kernel never has to know about them.
 - Quiescence anchor: `plugin-lifetime.md` §4.
 - Capability advertisement (peer-to-peer optimiser negotiation):
   `capability-tlv.md`.
-- Wire format that carries capability blobs in the post-Noise
-  handshake: `gnet-protocol.md` §7.
+- The TLV blob rides as application payload over the same secured
+  GNET channel that handler messages use — it is not a separate
+  frame format. `gnet-protocol.md` §6 notes the capability
+  handshake as a higher-layer concern of versioning.
