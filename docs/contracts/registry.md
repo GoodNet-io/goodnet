@@ -77,9 +77,14 @@ Properties:
 3. Remove from URI index, pk index, then shard.
 4. Release.
 
-The erase operation publishes a deletion-generation increment on the
-`gn_endpoint_t` snapshot stream so that plugin-side cached endpoint
-references can detect that they refer to a deleted record.
+`get_endpoint` returns the `gn_endpoint_t` view by value at call time
+(`host-api.md` §2). The registry exposes no cache-invalidation channel
+to plugins: a consumer that retains a `gn_endpoint_t` past its
+originating call holds a frozen copy whose source record may have
+been erased. Consumers re-call `get_endpoint` whenever the live state
+matters; long-lived per-conn cached state belongs in plugin-private
+storage indexed by `conn_id` and pruned on the `DISCONNECTED` event
+(`conn-events.md` §2a).
 
 The erase primitive also exposes an atomic snapshot variant
 (§4a) for callers that must publish a terminal lifecycle event
