@@ -118,7 +118,7 @@ gn_result_t thunk_send(void* host_ctx,
         return GN_ERR_NOT_IMPLEMENTED;
     }
 
-    auto* layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layer();
     if (!layer) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Outbound envelope: this node is the sender, `rec` is the
@@ -603,7 +603,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     /// reject the connection up front if the declared `trust` is
     /// not in the layer's mask. The security-provider gate fires
     /// later inside `Sessions::create` against the security mask.
-    if (auto* layer = pc->kernel->protocol_layer(); layer != nullptr) {
+    if (auto layer = pc->kernel->protocol_layer(); layer != nullptr) {
         const std::uint32_t mask = layer->allowed_trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) return GN_ERR_INVALID_ENVELOPE;
@@ -639,7 +639,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     /// security-trust.md §4) take the no-session path and fall through
     /// to the bare protocol layer.
     auto& sec = pc->kernel->security();
-    const auto* ident = pc->kernel->node_identity();
+    auto ident = pc->kernel->node_identity();
     if (sec.is_active() && ident != nullptr) {
         const auto entry = sec.current();
         const auto& device = ident->device();
@@ -774,7 +774,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
         ctx.local_pk = *local;
     }
 
-    auto* layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     auto deframed = layer->deframe(ctx, wire_bytes);
@@ -828,7 +828,7 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
         return GN_ERR_LIMIT_REACHED;
     }
 
-    auto* layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Inbound bridge envelope: source connection's remote pk is
@@ -866,7 +866,7 @@ gn_result_t thunk_inject_frame(void* host_ctx,
         return GN_ERR_LIMIT_REACHED;
     }
 
-    auto* layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_connection_context_t ctx{};
