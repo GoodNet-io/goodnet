@@ -153,6 +153,6 @@ bridge is bound to.
 ## 7. Cross-references
 
 - TrustClass policy that gates attestation use: `security-trust.md`.
-- Ed25519 keys carried in the Noise handshake: `noise-handshake.md`.
+- Curve conversion (Ed25519 → X25519) for Noise DH: `noise-handshake.md` §8.
 - Connection accessors that return 32-byte public keys:
   `protocol-layer.md` §3.1.

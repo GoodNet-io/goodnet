@@ -294,6 +294,18 @@ typed extension API.
   re-enter `notify_disconnect` against the same conn — the
   re-entrant call observes the record gone and emits no second
   event. The `reason` parameter is reserved at v1.
+- **Noise handshake: Ed25519↔X25519 conversion explicit
+  (`noise-handshake.md` §8).** §8 now states that the address is
+  an Ed25519 public key and the Noise suite's `25519` denotes
+  X25519 for Diffie-Hellman; each side's static key crosses
+  curves at session initialisation through the standard
+  birational map (libsodium
+  `crypto_sign_ed25519_pk_to_curve25519` /
+  `crypto_sign_ed25519_sk_to_curve25519`), and the conversion
+  lives inside the security provider. The kernel and handlers
+  see only the Ed25519 representation. `identity.md` §7
+  cross-reference updated to point at the curve-conversion
+  paragraph rather than the file as a whole.
 
 ### Tests
 

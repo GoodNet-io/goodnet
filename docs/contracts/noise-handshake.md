@@ -183,6 +183,16 @@ the mesh layer uses as addresses. There is no separate "transport
 key" authority — `pk` is the address, the same `pk` is the Noise
 static.
 
+The address is an Ed25519 public key (32 bytes); the Noise suite
+suffix `25519` denotes X25519 for Diffie-Hellman. Each side's static
+key crosses curves at session initialisation — the security provider
+applies the standard birational map (libsodium
+`crypto_sign_ed25519_pk_to_curve25519` for the public half,
+`crypto_sign_ed25519_sk_to_curve25519` for the secret half) before
+the key enters the Noise state machine. The conversion is one-way and
+lives inside the security provider; the kernel and handlers see only
+the Ed25519 representation.
+
 After a successful Noise handshake:
 
 1. The transport called `host_api->notify_connect` at the moment the
