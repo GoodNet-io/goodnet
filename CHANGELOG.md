@@ -345,10 +345,15 @@ typed extension API.
   the dispatcher — plugin handlers never see attestation
   traffic, and `HandlerRegistry::register_handler` rejects the
   reserved id with `GN_ERR_INVALID_ENVELOPE`. Per-step verify
-  failures (size / replay / parse / signature / expiry) drop
-  the envelope, increment the named drop metric, and
-  disconnect the connection. Per-conn dispatcher state clears
-  on `notify_disconnect`.
+  failures (size / replay / parse / signature / expiry /
+  identity-change) drop the envelope, log the named reason,
+  and disconnect the connection. A duplicate attestation with
+  the same `device_pk` is silently dropped without disconnect
+  (live re-attestation is out of scope at v1). Per-conn
+  dispatcher state clears on `notify_disconnect` directly from
+  the kernel thunk. The "exactly once" upgrade guarantee comes
+  from the registry's `upgrade_trust` policy gate — concurrent
+  callers race through the gate and the loser exits silently.
 
 ### Tests
 

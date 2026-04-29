@@ -312,6 +312,25 @@ TEST(AttestationDispatcher_Mutual, OnDisconnectClearsState) {
     EXPECT_FALSE(dispatcher.their_received_valid(conn));
 }
 
+TEST(AttestationDispatcher_Mutual, DuplicateAttestationSameDevicePkSilentlyDropped) {
+    /// A second attestation arriving on the same session with the
+    /// same device_pk is dropped — no disconnect, no second
+    /// upgrade event (per `attestation.md` §5 step 7 same-pk
+    /// branch + §9 live re-attestation note).
+    gn::core::Kernel kernel;
+    gn::core::AttestationDispatcher dispatcher;
+    const gn_conn_id_t conn = 99;
+    gn::PublicKey pinned{};
+    pinned.fill(0xAB);
+
+    /// Seed: their_received_valid = true, pinned_device_pk = pinned.
+    dispatcher.test_seed_and_complete(kernel, conn,
+                                       /*our_sent=*/false,
+                                       /*their_received_valid=*/true,
+                                       pinned);
+    EXPECT_TRUE(dispatcher.their_received_valid(conn));
+}
+
 TEST(AttestationDispatcher_Mutual, LoopbackTrustNotUpgraded) {
     /// `Loopback` is not a target the gate accepts as input; the
     /// dispatcher's promotion call returns LIMIT_REACHED and no
