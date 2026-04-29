@@ -130,6 +130,30 @@ public:
     /// validated at load time.
     [[nodiscard]] std::string dump(int indent = -1) const;
 
+    /// Named tuning profile. Selects a baseline `gn_limits_t` —
+    /// the JSON document's `limits` block then overrides individual
+    /// fields on top of the chosen baseline. The default profile is
+    /// `Server` and matches the historical hard-coded canonical
+    /// values; `Embedded` shrinks every bound for resource-
+    /// constrained IoT or single-board deployments; `Desktop`
+    /// picks a middle ground.
+    enum class Profile {
+        Server,    ///< canonical defaults — large memory, many conns
+        Embedded,  ///< small device — tight bounds across the board
+        Desktop    ///< single-user — between Server and Embedded
+    };
+
+    /// Parse a profile name string into the enum. Recognises
+    /// `"server"` / `"embedded"` / `"desktop"` (lowercase). Returns
+    /// `Profile::Server` on any other input — the
+    /// canonical-defaults baseline is the safe fallback.
+    [[nodiscard]] static Profile parse_profile_name(std::string_view name) noexcept;
+
+    /// Return the baseline `gn_limits_t` for @p profile. Identical
+    /// to `parse_limits` against an empty JSON document with the
+    /// matching profile.
+    [[nodiscard]] static gn_limits_t profile_defaults(Profile profile) noexcept;
+
 private:
     [[nodiscard]] static gn_limits_t parse_limits(const nlohmann::json& root);
 

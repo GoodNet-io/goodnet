@@ -471,6 +471,100 @@ TEST(Config_GetArray, IntegerArray) {
     EXPECT_EQ(v, 9001);
 }
 
+// ─── profiles ────────────────────────────────────────────────────
+
+TEST(Config_Profile, NameParserAcceptsKnown) {
+    EXPECT_EQ(Config::parse_profile_name("server"),
+              Config::Profile::Server);
+    EXPECT_EQ(Config::parse_profile_name("embedded"),
+              Config::Profile::Embedded);
+    EXPECT_EQ(Config::parse_profile_name("desktop"),
+              Config::Profile::Desktop);
+}
+
+TEST(Config_Profile, NameParserFallsBackToServer) {
+    /// Unknown names fall back to canonical defaults. An operator
+    /// who typoed their profile sees the safe-default values, not
+    /// a tighter set that would drop traffic.
+    EXPECT_EQ(Config::parse_profile_name(""),
+              Config::Profile::Server);
+    EXPECT_EQ(Config::parse_profile_name("typo"),
+              Config::Profile::Server);
+    EXPECT_EQ(Config::parse_profile_name("SERVER"),
+              Config::Profile::Server);  // strict lowercase match
+}
+
+TEST(Config_Profile, ServerDefaultsMatchHistorical) {
+    const auto L = Config::profile_defaults(Config::Profile::Server);
+    EXPECT_EQ(L.max_connections,          GN_LIMITS_DEFAULT_MAX_CONNECTIONS);
+    EXPECT_EQ(L.max_outbound_connections,
+              GN_LIMITS_DEFAULT_MAX_OUTBOUND_CONNECTIONS);
+    EXPECT_EQ(L.max_timers,               GN_LIMITS_DEFAULT_MAX_TIMERS);
+    EXPECT_EQ(L.max_frame_bytes,          GN_LIMITS_DEFAULT_MAX_FRAME_BYTES);
+}
+
+TEST(Config_Profile, EmbeddedShrinksEveryDimension) {
+    const auto S = Config::profile_defaults(Config::Profile::Server);
+    const auto E = Config::profile_defaults(Config::Profile::Embedded);
+    EXPECT_LT(E.max_connections,          S.max_connections);
+    EXPECT_LT(E.max_outbound_connections, S.max_outbound_connections);
+    EXPECT_LT(E.max_timers,               S.max_timers);
+    EXPECT_LT(E.max_frame_bytes,          S.max_frame_bytes);
+    EXPECT_LT(E.max_plugins,              S.max_plugins);
+    EXPECT_LT(E.inject_rate_per_source,   S.inject_rate_per_source);
+}
+
+TEST(Config_Profile, DesktopBetweenEmbeddedAndServer) {
+    const auto S = Config::profile_defaults(Config::Profile::Server);
+    const auto E = Config::profile_defaults(Config::Profile::Embedded);
+    const auto D = Config::profile_defaults(Config::Profile::Desktop);
+    EXPECT_GT(D.max_connections, E.max_connections);
+    EXPECT_LT(D.max_connections, S.max_connections);
+    EXPECT_GT(D.max_timers,      E.max_timers);
+    EXPECT_LT(D.max_timers,      S.max_timers);
+}
+
+TEST(Config_Profile, JsonSelectsProfile) {
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"profile": "embedded"})"), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 64u)
+        << "embedded baseline must surface even with no `limits` block";
+}
+
+TEST(Config_Profile, LimitsBlockOverridesProfile) {
+    /// `profile` selects the baseline; `limits` overrides individual
+    /// fields on top. An operator writing both wants the baseline's
+    /// shape with surgical exceptions.
+    Config c;
+    const char* doc = R"({
+        "profile": "embedded",
+        "limits": {
+            "max_connections": 32
+        }
+    })";
+    ASSERT_EQ(c.load_json(doc), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 32u)
+        << "limits override must beat profile baseline";
+    /// Untouched fields keep the embedded baseline (not server).
+    EXPECT_EQ(c.limits().max_timers, 256u)
+        << "embedded baseline must surface for non-overridden fields";
+}
+
+TEST(Config_Profile, MissingProfileFieldUsesServerBaseline) {
+    /// No `profile` key — historical behaviour: server defaults.
+    /// Lower outbound alongside total to satisfy the invariant.
+    Config c;
+    const char* doc = R"({"limits": {
+        "max_connections": 999,
+        "max_outbound_connections": 256
+    }})";
+    ASSERT_EQ(c.load_json(doc), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 999u);
+    /// Untouched field reflects server baseline (4096-default).
+    EXPECT_EQ(c.limits().max_timers,
+              GN_LIMITS_DEFAULT_MAX_TIMERS);
+}
+
 // ─── dump round-trip ─────────────────────────────────────────────
 
 TEST(Config_Dump, EmptyConfigYieldsEmptyObject) {

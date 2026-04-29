@@ -74,6 +74,21 @@ parser.
 ```jsonc
 {
     "version": 1,
+
+    // Optional. Selects the baseline gn_limits_t that the `limits`
+    // block then overrides field-by-field. Three values:
+    //   "server"   — canonical defaults (large memory, many conns).
+    //                The unwritten default; same behaviour as before
+    //                profiles landed.
+    //   "embedded" — IoT / single-board: 64 conns, 8 KiB max frame,
+    //                256 timers, narrowed inject limiter.
+    //   "desktop"  — single-user: 512 conns, 1 KiB queue cap,
+    //                between Server and Embedded.
+    // Unknown / missing names fall back to "server" — operators who
+    // typo a profile see the safe-default values, not a tighter set
+    // that would drop traffic.
+    "profile": "server",
+
     "limits": {
         // Connections (limits.md §2)
         "max_connections":             4096,
