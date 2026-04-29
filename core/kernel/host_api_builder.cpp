@@ -3,7 +3,6 @@
 
 #include "host_api_builder.hpp"
 
-#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -482,8 +481,8 @@ gn_result_t thunk_config_get_int64(void* host_ctx,
     return GN_OK;
 }
 
-void thunk_log(void* host_ctx, gn_log_level_t level, const char* fmt, ...) {
-    if (!host_ctx || !fmt) return;
+void thunk_log(void* host_ctx, gn_log_level_t level, const char* msg) {
+    if (!host_ctx || !msg) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
 
     /// Map the C ABI level to spdlog's enum.
@@ -498,15 +497,12 @@ void thunk_log(void* host_ctx, gn_log_level_t level, const char* fmt, ...) {
     }
     if (!::gn::log::kernel().should_log(sp_lvl)) return;
 
-    /// Render varargs into a stack buffer; truncate beyond 4 KiB so the
-    /// hot path stays allocation-free.
-    char buf[4096];
-    va_list ap;
-    va_start(ap, fmt);
-    (void)std::vsnprintf(buf, sizeof(buf), fmt, ap);
-    va_end(ap);
-
-    ::gn::log::kernel().log(sp_lvl, "[{}] {}", pc->plugin_name, buf);
+    /// `msg` is a pre-formatted, NUL-terminated string from the plugin's
+    /// own `snprintf`. The kernel passes it to spdlog as a literal so
+    /// no format specifiers in `msg` are interpreted — `host-api.md`
+    /// §11 makes this an explicit security invariant: plugin-controlled
+    /// format strings never reach `vsnprintf` on the kernel side.
+    ::gn::log::kernel().log(sp_lvl, "[{}] {}", pc->plugin_name, msg);
 }
 
 /// Send handshake-phase bytes raw via the transport vtable, bypassing

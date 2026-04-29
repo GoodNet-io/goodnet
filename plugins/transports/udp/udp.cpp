@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "udp.hpp"
 
+#include <sdk/convenience.h>
 #include <sdk/cpp/dns.hpp>
 #include <sdk/cpp/uri.hpp>
 
@@ -117,9 +118,9 @@ gn_result_t UdpTransport::listen(std::string_view uri_sv) {
             std::error_code v6_ec;
             if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
                 api_ && api_->log) {
-                api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                          "udp: v6_only(false) failed: %s",
-                          v6_ec.message().c_str());
+                gn_log_debug(api_,
+                             "udp: v6_only(false) failed: %s",
+                             v6_ec.message().c_str());
             }
         }
         sock.bind(ep);
@@ -169,9 +170,9 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
                 std::error_code v6_ec;
                 if (sock.set_option(asio_ip::v6_only(false), v6_ec) &&
                     api_ && api_->log) {
-                    api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                              "udp: v6_only(false) failed: %s",
-                              v6_ec.message().c_str());
+                    gn_log_debug(api_,
+                                 "udp: v6_only(false) failed: %s",
+                                 v6_ec.message().c_str());
                 }
             }
             socket_.emplace(std::move(sock));
@@ -187,9 +188,9 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
             /// API there is nowhere for received bytes to flow.
             std::error_code close_ec;
             if (socket_->close(close_ec) && api_ && api_->log) {
-                api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                          "udp: rollback close: %s",
-                          close_ec.message().c_str());
+                gn_log_debug(api_,
+                             "udp: rollback close: %s",
+                             close_ec.message().c_str());
             }
             socket_.reset();
         }
@@ -226,9 +227,9 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
             if (socket_freshly_created) {
                 std::error_code close_ec;
                 if (socket_->close(close_ec) && api_->log) {
-                    api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                              "udp: rollback close: %s",
-                              close_ec.message().c_str());
+                    gn_log_debug(api_,
+                                 "udp: rollback close: %s",
+                                 close_ec.message().c_str());
                 }
                 socket_.reset();
             }
@@ -243,9 +244,9 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
     if (api_->kick_handshake) {
         if (const auto rc = api_->kick_handshake(api_->host_ctx, conn);
             rc != GN_OK && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                      "udp: kick_handshake rc=%d for conn=%llu",
-                      rc, static_cast<unsigned long long>(conn));
+            gn_log_debug(api_,
+                         "udp: kick_handshake rc=%d for conn=%llu",
+                         rc, static_cast<unsigned long long>(conn));
         }
     }
     return GN_OK;
@@ -291,9 +292,9 @@ gn_result_t UdpTransport::send(gn_conn_id_t conn,
                         if (!t2) return;
                         if (send_ec) {
                             if (t2->api_ && t2->api_->log) {
-                                t2->api_->log(t2->api_->host_ctx, GN_LOG_DEBUG,
-                                              "udp: send_to failed: %s",
-                                              send_ec.message().c_str());
+                                gn_log_debug(t2->api_,
+                                             "udp: send_to failed: %s",
+                                             send_ec.message().c_str());
                             }
                             return;
                         }
@@ -339,9 +340,9 @@ gn_result_t UdpTransport::disconnect(gn_conn_id_t conn) {
         if (const auto rc = api_->notify_disconnect(
                 api_->host_ctx, conn, GN_OK);
             rc != GN_OK && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                      "udp: notify_disconnect rc=%d for conn=%llu",
-                      rc, static_cast<unsigned long long>(conn));
+            gn_log_debug(api_,
+                         "udp: notify_disconnect rc=%d for conn=%llu",
+                         rc, static_cast<unsigned long long>(conn));
         }
     }
     return GN_OK;
@@ -380,9 +381,9 @@ void UdpTransport::start_receive() {
                         return;
                     }
                     if (self->api_ && self->api_->log) {
-                        self->api_->log(self->api_->host_ctx, GN_LOG_WARN,
-                                        "udp: recv stopped: %s",
-                                        ec.message().c_str());
+                        gn_log_warn(self->api_,
+                                    "udp: recv stopped: %s",
+                                    ec.message().c_str());
                     }
                     return;
                 }
@@ -448,8 +449,8 @@ void UdpTransport::start_receive() {
                     if (const auto rc = self->api_->kick_handshake(
                             self->api_->host_ctx, id);
                         rc != GN_OK && self->api_->log) {
-                        self->api_->log(self->api_->host_ctx, GN_LOG_DEBUG,
-                                        "udp: kick_handshake rc=%d", rc);
+                        gn_log_debug(self->api_,
+                                     "udp: kick_handshake rc=%d", rc);
                     }
                 }
 
@@ -487,9 +488,9 @@ void UdpTransport::shutdown() {
             if (const auto rc = api_->notify_disconnect(
                     api_->host_ctx, conn, GN_OK);
                 rc != GN_OK && api_->log) {
-                api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                          "udp: notify_disconnect rc=%d for conn=%llu",
-                          rc, static_cast<unsigned long long>(conn));
+                gn_log_debug(api_,
+                             "udp: notify_disconnect rc=%d for conn=%llu",
+                             rc, static_cast<unsigned long long>(conn));
             }
         }
     }
@@ -497,8 +498,8 @@ void UdpTransport::shutdown() {
     if (socket_) {
         std::error_code ec;
         if (socket_->close(ec) && api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                      "udp: close failed: %s", ec.message().c_str());
+            gn_log_debug(api_,
+                         "udp: close failed: %s", ec.message().c_str());
         }
         socket_.reset();
     }

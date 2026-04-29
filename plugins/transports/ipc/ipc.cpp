@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 #include "ipc.hpp"
 
+#include <sdk/convenience.h>
 #include <sdk/cpp/uri.hpp>
 
 #include <asio/bind_executor.hpp>
@@ -156,7 +157,7 @@ public:
             if (self->socket_.close(ec)) {
                 if (auto t = self->transport_.lock();
                     t && t->api_ && t->api_->log) {
-                    t->api_->log(t->api_->host_ctx, GN_LOG_DEBUG,
+                    gn_log_debug(t->api_,
                                  "ipc: close failed: %s",
                                  ec.message().c_str());
                 }
@@ -226,12 +227,12 @@ IpcTransport::~IpcTransport() {
         shutdown();
     } catch (const std::exception& e) {
         if (api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_WARN,
+            gn_log_warn(api_,
                       "ipc: shutdown threw: %s", e.what());
         }
     } catch (...) {
         if (api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_WARN,
+            gn_log_warn(api_,
                       "ipc: shutdown threw non-std exception");
         }
     }
@@ -484,7 +485,7 @@ void IpcTransport::shutdown() {
         /// either way. Surface the error through `api_->log` if the
         /// host bound one, otherwise discard.
         if (acceptor_->close(ec) && api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
+            gn_log_debug(api_,
                       "ipc: acceptor close failed: %s",
                       ec.message().c_str());
         }

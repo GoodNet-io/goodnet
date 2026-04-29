@@ -6,6 +6,7 @@
 
 #include "wire.hpp"
 
+#include <sdk/convenience.h>
 #include <sdk/cpp/dns.hpp>
 
 #include <asio/bind_executor.hpp>
@@ -573,8 +574,7 @@ WsTransport::~WsTransport() {
         shutdown();
     } catch (const std::exception& e) {
         if (api_ && api_->log) {
-            api_->log(api_->host_ctx, GN_LOG_DEBUG,
-                      "ws: shutdown threw: %s", e.what());
+            gn_log_debug(api_, "ws: shutdown threw: %s", e.what());
         }
     }
     /// `shutdown()` joins the worker only when called from outside

@@ -416,3 +416,38 @@ ignores the flag is observably the noisy one.
 re-arming, posted multi-step tasks return without scheduling the
 next step, queue-drain workers treat the flag as the loop's exit
 predicate.
+
+---
+
+## 11. Logging without format-string trust
+
+The `log` slot accepts a fully-formatted, NUL-terminated message
+buffer — not a format string plus arguments. The kernel never
+invokes `vsnprintf` on plugin-supplied bytes; it forwards the
+buffer to the structured logger as a literal payload.
+
+| Property | Specification |
+|---|---|
+| Producer | every plugin |
+| Effect | one log line written to the kernel's structured sink, prefixed with the calling plugin's name |
+| Payload | `msg` is a NUL-terminated UTF-8 buffer the plugin formatted on its own stack |
+| Concurrency | safe from any thread owning a reference to `api` |
+| Delivery | best-effort; messages below the live level threshold are dropped without I/O |
+| Truncation | the plugin's local formatter chooses the cap (the bundled `gn_log_*` macros use 2048 bytes); the kernel does not re-truncate. Plugins formatting larger messages allocate their own buffer and call the slot directly |
+
+The contract rules out the format-string class of attack against
+the kernel. A compromised plugin cannot smuggle `%n` writes,
+`%s`-without-arg dereferences, or excessive width specifiers into
+kernel address space — the kernel never parses format directives,
+so there is nothing to abuse.
+
+Plugins format locally. `sdk/convenience.h` provides
+`gn_log_<level>(api, "fmt", args…)` macros that build the message
+on the plugin's stack with `snprintf` and then call this slot with
+the resulting buffer. Plugins that prefer a different formatter
+(C++ `std::format`, fmt::format, custom) format into their own
+buffer and call `api->log(host_ctx, level, buf)` directly.
+
+Empty or NULL `msg` is dropped silently. The kernel's only
+operations on the buffer are the level filter, the plugin-name
+prefix, and forwarding to spdlog as a literal.

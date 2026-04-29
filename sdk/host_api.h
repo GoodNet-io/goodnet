@@ -174,9 +174,25 @@ typedef struct host_api_s {
 
     /* ── Logging ───────────────────────────────────────────────────────── */
 
+    /**
+     * @brief Emit @p msg at @p level into the kernel's structured logger.
+     *
+     * @p msg is a fully-formatted, NUL-terminated string. The kernel
+     * does **not** parse format specifiers — it never invokes
+     * `vsnprintf` on plugin-supplied bytes. This rules out the
+     * format-string class of attack: a compromised plugin cannot
+     * smuggle `%n`, `%s`-without-arg, or excessive width specifiers
+     * into kernel address space, because the kernel's only operation
+     * on the buffer is to forward it to spdlog as a literal payload.
+     *
+     * Plugins format locally — `sdk/convenience.h` provides
+     * `gn_log_<level>(api, "fmt", args...)` macros that build the
+     * message on the plugin's stack with `snprintf` and then call
+     * this slot with the resulting buffer.
+     */
     void (*log)(void* host_ctx,
                 gn_log_level_t level,
-                const char* fmt, ...);
+                const char* msg);
 
     /* ── Transport-side notifications ──────────────────────────────────── */
 
