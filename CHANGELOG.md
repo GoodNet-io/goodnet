@@ -131,20 +131,24 @@ typed extension API.
   counters through every alternate index. Counters are allocated
   on `insert_with_index`, reaped on `erase_with_index`; calls on
   a missing id are silent no-ops to absorb teardown races.
-- **Handshake-phase pending queue** — `host_api->send` no longer
-  rejects application data while the connection's
-  `SecuritySession` is in `Handshake`. Each framed plaintext is
-  buffered on the session's pending queue (per
-  `backpressure.md` §8), capped at
+- **Handshake-phase pending queue** — `host_api->send` buffers
+  application data while the connection's `SecuritySession` is
+  in `Handshake`. Each framed plaintext sits on the session's
+  pending queue (per `backpressure.md` §8), capped at
   `gn_limits_t::pending_handshake_bytes` (default 256 KiB,
-  `GN_ERR_LIMIT_REACHED` past the cap). When `advance_handshake`
-  transitions the session to `Transport` — on either the
-  `kick_handshake` or `notify_inbound_bytes` path — the kernel
-  encrypts every queued plaintext and pushes it through the
-  resolved transport in arrival order. `SecuritySession::close`
-  drops any leftover bytes; a connection that disconnects
-  mid-handshake reports the loss through
-  `GN_CONN_EVENT_DISCONNECTED`.
+  `GN_ERR_LIMIT_REACHED` past the cap). The phase check, cap
+  check, and queue insert all run under one mutex so a
+  concurrent `advance_handshake` cannot let bytes slip into
+  `pending_` after `take_pending` already drained. When
+  `advance_handshake` transitions the session to `Transport` —
+  on either the `kick_handshake` or `notify_inbound_bytes`
+  path — the kernel resolves the transport vtable first, takes
+  the queued plaintexts, encrypts each, and pushes the
+  ciphertext in arrival order. A per-frame `encrypt_transport`
+  failure or transport hard-cap rejection mid-drain disconnects
+  the connection (the AEAD nonce has already advanced — partial
+  completion is unrecoverable); the producer observes the loss
+  as `GN_CONN_EVENT_DISCONNECTED`.
 - **DNS resolver helper** — header-only `sdk/cpp/dns.hpp` with
   `gn::sdk::resolve_uri_host(io_context&, uri)`. Blocking
   `asio::ip::tcp::resolver` lookup on the calling thread for
@@ -164,11 +168,10 @@ typed extension API.
   `PathManager`, an `on_event(ev)` slot for connection-event
   subscriptions, and a `subscribed_events` bitmask. Reserved
   initial names (`transport-failover`, `relay-upgrade`, `ice`,
-  `autonat`) lock the namespace so future plugins land in
-  predictable slots. Per `docs/contracts/optimizer.md` (new).
-  No optimiser plugins ship in v1 — Phase 4 work — but the
-  contract pins the shape so each plugin lands without
-  re-touching the core.
+  `autonat`) lock the namespace so each plugin lands in a
+  predictable slot. Per `docs/contracts/optimizer.md` (new).
+  v1 ships the contract surface; the optimiser plugins
+  themselves arrive on their own cadence.
 - **Capability TLV codec** — `sdk/cpp/capability_tlv.hpp` ships
   a header-only encode / parse pair against the
   `[type:u16 BE][length:u16 BE][value]*` blob format described

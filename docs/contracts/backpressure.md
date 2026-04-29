@@ -40,8 +40,12 @@ Three observable layers, in order from immediate to advisory:
 
 The default thresholds (`limits.md` §2) are 256 KiB low /
 1 MiB high / 4 MiB hard. Operators tune the trio per deployment;
-the cross-field invariant `low < high ≤ hard` is enforced at
-`Config::validate` (`limits.md` §3).
+the cross-field invariant `0 < low < high ≤ hard` is enforced at
+`Config::validate` (`limits.md` §3). `low == 0` is rejected
+because the falling-edge `BACKPRESSURE_CLEAR` publisher fires on
+`bytes_buffered < low` — with `low == 0` the inequality is never
+satisfied and subscribers stay paused after the first soft
+signal forever.
 
 ---
 
@@ -187,10 +191,16 @@ zero value disables the cap; the reference build wires
 After every `advance_handshake` call that transitions the session
 to `Transport`, the kernel:
 
-1. Atomically takes the queued plaintexts via
+1. Resolves the transport vtable for the connection's scheme. If
+   the lookup fails (transport plugin unregistered between
+   enqueue and drain), the kernel leaves the pending queue
+   intact; `SecuritySession::close()` releases it on disconnect
+   so producers see a single `GN_CONN_EVENT_DISCONNECTED`
+   instead of a silent mid-drain drop.
+2. Atomically takes the queued plaintexts via
    `SecuritySession::take_pending()`.
-2. Encrypts each one through `encrypt_transport`.
-3. Pushes the ciphertext through the resolved transport's `send`
+3. Encrypts each one through `encrypt_transport`.
+4. Pushes the ciphertext through the resolved transport's `send`
    slot in arrival order, accounting `add_outbound` per byte that
    leaves.
 
@@ -198,6 +208,25 @@ The drain happens both on the responder's first inbound run (the
 `notify_inbound_bytes` path that completes XX / IK on the receive
 half) and on the initiator's `kick_handshake` for IK-style
 patterns that complete on the first message.
+
+### Per-frame failure
+
+A drain may fail mid-loop on either step 3 or step 4 — an
+`encrypt_transport` error (provider out of memory, AEAD state
+corrupt) or a transport hard-cap rejection
+(`GN_ERR_LIMIT_REACHED`). The producer already received `GN_OK`
+from `enqueue_pending`; once the AEAD nonce advances on the
+first successful encrypt, partial completion is unrecoverable —
+the kernel cannot roll the cipher state back to retry the
+remaining plaintexts.
+
+The contract: **disconnect the connection on any per-frame
+failure during drain.** The peer observes
+`GN_CONN_EVENT_DISCONNECTED`; subscribers retry on a fresh
+session. Subsequent plaintexts in the same drain are dropped
+when the session closes. This is louder than a silent mid-drain
+drop and gives producers a single deterministic signal to
+recover from.
 
 ### Drop on close
 

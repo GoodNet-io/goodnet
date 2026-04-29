@@ -26,7 +26,9 @@ categories' bitmaps; new categories slot in as new types — both
 extensions are wire-additive, no version bump required.
 
 The blob is exchanged in-band over the secured GNET channel
-(`gnet-protocol.md` §7) once the handshake completes. The kernel
+once the handshake completes — it rides as the payload of an
+application message, not a distinct frame format
+(`gnet-protocol.md` §6 notes the same intent). The kernel
 itself does not encode or decode the blob — it surfaces the
 bytes through `host_api->send_capability_blob` /
 `host_api->set_capability_handler` hooks (reserved for v1.1) so

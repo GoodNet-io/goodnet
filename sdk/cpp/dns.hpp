@@ -12,6 +12,7 @@
 
 #pragma once
 
+#include <cctype>
 #include <cstddef>
 #include <expected>
 #include <string>
@@ -127,6 +128,25 @@ resolve_uri_host(asio::io_context& ioc, std::string_view uri) {
     if (host_is_v6_literal) {
         return std::unexpected(ResolveError{
             ResolveError::Kind::UnparseableUri, std::string{uri}});
+    }
+
+    /// Validate the hostname against an RFC 1035 LDH-style alphabet
+    /// before handing it to the resolver. Without this guard a URI
+    /// carrying `userinfo@host`, a `#fragment`, or arbitrary garbage
+    /// reaches the system resolver — leaking the bytes through a
+    /// DNS query and burning a network round-trip on input that
+    /// could never resolve.
+    if (host.empty() || host.size() > 253) {
+        return std::unexpected(ResolveError{
+            ResolveError::Kind::UnparseableUri, std::string{uri}});
+    }
+    for (const char ch : host) {
+        const auto u = static_cast<unsigned char>(ch);
+        const bool ok = std::isalnum(u) != 0 || ch == '-' || ch == '.';
+        if (!ok) {
+            return std::unexpected(ResolveError{
+                ResolveError::Kind::UnparseableUri, std::string{uri}});
+        }
     }
 
     /// Hostname → IP literal. Synchronous resolve on the caller's

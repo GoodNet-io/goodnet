@@ -96,10 +96,18 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             if (!found) return;          // cancelled before fire
             if (ec)     return;          // operation_aborted, etc.
 
-            /// Lifetime gate: drop the dispatch when the calling
-            /// plugin's quiescence sentinel has expired. Anchor-less
-            /// timers (in-tree fixtures) skip the gate.
-            if (anchor_set && anchor_weak.expired()) return;
+            /// Lifetime gate: lock the weak anchor into a strong
+            /// reference for the duration of the dispatch. Holding
+            /// the strong ref through `fn(user_data)` blocks the
+            /// `PluginManager::drain_anchor` spin from observing
+            /// quiescence and thus from running `dlclose` while
+            /// the callback is still in the plugin's `.text`.
+            /// Anchor-less timers (in-tree fixtures) skip the gate.
+            std::shared_ptr<void> strong;
+            if (anchor_set) {
+                strong = anchor_weak.lock();
+                if (!strong) return;
+            }
             fn(user_data);
         });
 
@@ -152,7 +160,14 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
              anchor_weak = std::weak_ptr<void>(anchor),
              anchor_set = static_cast<bool>(anchor)] {
                 pending_tasks_.fetch_sub(1, std::memory_order_relaxed);
-                if (anchor_set && anchor_weak.expired()) return;
+                /// See `set_timer` for the strong-lock rationale —
+                /// holding the strong ref blocks drain_anchor from
+                /// observing quiescence during the dispatch.
+                std::shared_ptr<void> strong;
+                if (anchor_set) {
+                    strong = anchor_weak.lock();
+                    if (!strong) return;
+                }
                 fn(user_data);
             });
         return GN_OK;

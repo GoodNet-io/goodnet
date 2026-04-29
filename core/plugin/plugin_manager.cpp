@@ -299,6 +299,14 @@ void PluginManager::rollback() {
             /// and ctx-held) so only in-flight snapshots remain.
             std::weak_ptr<void> watch;
             if (it->ctx) {
+                /// Cancel any still-pending timers / posted tasks
+                /// queued by this plugin before dropping the anchor.
+                /// Without the cancel the drain spin would wait for
+                /// every long-delay timer to fire its lifetime gate;
+                /// per `timer.md` §4 #3 the rollback path is the
+                /// place that keeps `dlclose` from blocking on those
+                /// queued entries.
+                kernel_.timers().cancel_for_anchor(it->ctx->plugin_anchor);
                 watch = it->ctx->plugin_anchor;
                 it->ctx->plugin_anchor.reset();
             }

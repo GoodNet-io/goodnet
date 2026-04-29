@@ -92,6 +92,8 @@ typedef struct host_api_s {
                                       uint32_t version,
                                       const void* vtable);
 
+    gn_result_t (*unregister_extension)(void* host_ctx, const char* name);
+
     /* ── Configuration ───────────────────────────────────────────────── */
     gn_result_t (*config_get_string)(void* host_ctx, const char* key,
                                      char** out_str,
@@ -161,6 +163,27 @@ typedef struct host_api_s {
     gn_result_t (*post_to_executor)(void* host_ctx,
                                     gn_task_fn_t fn,
                                     void* user_data);
+
+    /* ── Connection-event observer (conn-events.md) ─────────────────── */
+    gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                        gn_conn_event_cb_t cb,
+                                        void* user_data,
+                                        gn_subscription_id_t* out_id);
+    gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
+                                          gn_subscription_id_t id);
+    gn_result_t (*for_each_connection)(void* host_ctx,
+                                       gn_conn_visitor_t visitor,
+                                       void* user_data);
+
+    /* ── Backpressure publisher (backpressure.md §3) ────────────────── */
+    /* Transport-only slot: the kernel routes the call into the         */
+    /* connection-event channel as `BACKPRESSURE_SOFT` /                 */
+    /* `BACKPRESSURE_CLEAR`. `kind` is the raw event constant from      */
+    /* `sdk/conn_events.h`; `bytes` carries the current `bytes_buffered` */
+    /* on the transport's write queue.                                   */
+    gn_result_t (*notify_backpressure)(void* host_ctx, gn_conn_id_t conn,
+                                       gn_conn_event_kind_t kind,
+                                       uint64_t bytes);
 
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];

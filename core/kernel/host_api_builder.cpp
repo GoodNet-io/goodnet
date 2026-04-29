@@ -314,7 +314,15 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
     auto token = pc->kernel->on_conn_event().subscribe(
         [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
-            if (anchor_set && anchor_weak.expired()) return;
+            /// Lock the weak anchor into a strong ref for the
+            /// dispatch so `PluginManager::drain_anchor` cannot
+            /// observe quiescence and run `dlclose` while the
+            /// callback is still in the plugin's `.text`.
+            std::shared_ptr<void> strong;
+            if (anchor_set) {
+                strong = anchor_weak.lock();
+                if (!strong) return;
+            }
             gn_conn_event_t e{};
             e.api_size      = sizeof(gn_conn_event_t);
             e.kind          = ev.kind;
@@ -507,34 +515,47 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
 }
 
 /// Drain the session's pending-handshake queue once it has reached
-/// the Transport phase. Each buffered plaintext is encrypted and
-/// pushed through the transport in arrival order. Per-conn `add_outbound`
-/// is folded in for every byte that left the kernel; a transport
-/// hard-cap rejection (`GN_ERR_LIMIT_REACHED`) drops the frame on the
-/// floor — the producer already received `GN_OK` from `enqueue_pending`
-/// and observes the loss through the watermark events. Per
-/// `backpressure.md` §8.
+/// the Transport phase. The transport vtable lookup runs **before**
+/// `take_pending` so a missing transport leaves the queue intact —
+/// `session.close()` clears it on disconnect with a single visible
+/// loss event, not a silent mid-drain drop.
+///
+/// Per-frame failures (encrypt error or transport hard-cap rejection)
+/// disconnect the connection. The producer already received `GN_OK`
+/// from `enqueue_pending`; once the AEAD nonce advances on the first
+/// successful encrypt, partial completion is unrecoverable. Closing
+/// the conn surfaces the loss as `GN_CONN_EVENT_DISCONNECTED` so a
+/// subscriber can retry on a fresh session. Per `backpressure.md` §8.
 void drain_handshake_pending(PluginContext* pc,
                               gn_conn_id_t conn,
                               SecuritySession& session,
                               std::string_view transport_scheme) {
-    auto pending = session.take_pending();
-    if (pending.empty()) return;
-
     auto trans = pc->kernel->transports().find_by_scheme(transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return;
     }
+
+    auto pending = session.take_pending();
+    if (pending.empty()) return;
+
     for (auto& plaintext : pending) {
         std::vector<std::uint8_t> cipher;
         if (session.encrypt_transport(plaintext, cipher) != GN_OK) {
-            continue;
+            if (trans->vtable->disconnect) {
+                (void)trans->vtable->disconnect(trans->self, conn);
+            }
+            return;
         }
         const auto rc = trans->vtable->send(
             trans->self, conn, cipher.data(), cipher.size());
         if (rc == GN_OK) {
             pc->kernel->connections().add_outbound(conn, cipher.size(), 1);
+            continue;
         }
+        if (trans->vtable->disconnect) {
+            (void)trans->vtable->disconnect(trans->self, conn);
+        }
+        return;
     }
 }
 

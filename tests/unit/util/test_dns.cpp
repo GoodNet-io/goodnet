@@ -99,3 +99,25 @@ TEST(ResolveUriHost, NonResolvableHostnameReportsError) {
     EXPECT_EQ(out.error().kind, gn::sdk::ResolveError::Kind::ResolveFailed);
     EXPECT_FALSE(out.error().message.empty());
 }
+
+TEST(ResolveUriHost, RejectsUserinfoBeforeHost) {
+    /// `user:pass@host` would otherwise leak credentials to the
+    /// system resolver. Rejected before the lookup.
+    auto& ioc = shared_ioc();
+    auto out = gn::sdk::resolve_uri_host(
+        ioc, "tcp://user:pass@example.com:443");
+    ASSERT_FALSE(out.has_value());
+    EXPECT_EQ(out.error().kind,
+              gn::sdk::ResolveError::Kind::UnparseableUri);
+}
+
+TEST(ResolveUriHost, RejectsHostnameWithSpaces) {
+    /// LDH alphabet excludes spaces; a URI containing a space in
+    /// the host slot is malformed.
+    auto& ioc = shared_ioc();
+    auto out = gn::sdk::resolve_uri_host(
+        ioc, "tcp://bad host:443");
+    ASSERT_FALSE(out.has_value());
+    EXPECT_EQ(out.error().kind,
+              gn::sdk::ResolveError::Kind::UnparseableUri);
+}
