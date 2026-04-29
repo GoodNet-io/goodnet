@@ -250,7 +250,58 @@ on a fresh session.
 
 ---
 
-## 10. Cross-references
+## 10. Known limitations
+
+### 10.1 Inter-session device-key swap on a leaked secret
+
+§5 step 7 ("Identity stability") binds `device_pk` only within a
+single connection: it compares the inbound peer device key
+against `pinned_device_pk`, a per-connection slot the kernel
+populates on the first valid attestation receive. The slot is
+released on `notify_disconnect` (§7), so a peer that reconnects
+on a fresh session installs a new pin from scratch.
+
+If an operator's `device_sk` leaks (backup compromise, malicious
+insider, misplaced HSM token), the holder can mint a new
+attestation under the same `user_pk` with a different `device_pk`,
+sign `cert||binding` legitimately with the leaked key, and the
+verifier accepts it across the very next session — there is no
+cross-session pin and no kernel-side revocation registry.
+
+The attack surface is bounded:
+
+- Step 5 still rejects an Ed25519 signature mismatch — the
+  attacker must possess the leaked `device_sk` to forge
+  `cert||binding`.
+- Step 6 still rejects an expired cert — the user-side cert
+  signature pins `expiry` cryptographically, so the leak's
+  exploitability is bounded by the cert's `exp` field.
+- Loopback / IntraNode connections take the dispatcher's no-op
+  path (§4) and do not surface the attestation flow at all, so
+  the local-only deployment is unaffected.
+
+v1 ships without revocation. Operators rotate the leaked
+identity by reissuing a fresh `user_sk` outside the kernel and
+distributing the new `user_pk` to peers; until the rotation
+propagates the leaked `device_sk` is trusted up to the cert's
+expiry.
+
+A v1.0.x patch will add device-key pinning at the
+`ConnectionRegistry` level: the first valid attestation under a
+known `remote_pk` records `device_pk` on the persistent identity
+record, subsequent sessions to the same peer reject a different
+`device_pk` even after `notify_disconnect` cleared the
+per-connection slot. A v1.1 release adds an explicit revocation
+registry the operator publishes alongside their identity rotation.
+
+Operators who need stronger isolation today shorten the cert's
+`expiry` window — `Attestation::create` accepts any duration, and
+a 24-hour cap closes the leak's exploitable window at the cost of
+more frequent re-attestation.
+
+---
+
+## 11. Cross-references
 
 - Attestation cert format and verification: `identity.md` §4.
 - Trust upgrade gate fired by §6: `security-trust.md` §3.
