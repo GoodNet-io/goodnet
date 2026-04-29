@@ -41,6 +41,37 @@ UdpTransport::~UdpTransport() {
 
 void UdpTransport::set_host_api(const host_api_t* api) noexcept {
     api_ = api;
+    /// Reconfigure the per-source-IP new-conn limiter from config.
+    /// Operator-tunable knobs replace the historical hard-coded
+    /// `kNewConnRate=10/sec`, `kNewConnBurst=50` ceilings — a
+    /// legitimate flood from a mobile peer behind carrier NAT
+    /// (different observed IPs per packet) used to clip at 10/s,
+    /// now scales by deploy. Each key is independently optional;
+    /// a missing key keeps the current default. Negative or zero
+    /// values fall back so an obvious typo never disables the
+    /// limiter outright.
+    if (api_ != nullptr && api_->config_get_int64) {
+        double      rate         = kNewConnRate;
+        double      burst        = kNewConnBurst;
+        std::size_t lru_cap      = 4096;
+        std::int64_t v           = 0;
+        if (api_->config_get_int64(api_->host_ctx,
+                                    "udp.new_conn_rate", &v) == GN_OK
+            && v > 0) {
+            rate = static_cast<double>(v);
+        }
+        if (api_->config_get_int64(api_->host_ctx,
+                                    "udp.new_conn_burst", &v) == GN_OK
+            && v > 0) {
+            burst = static_cast<double>(v);
+        }
+        if (api_->config_get_int64(api_->host_ctx,
+                                    "udp.new_conn_lru_cap", &v) == GN_OK
+            && v > 0) {
+            lru_cap = static_cast<std::size_t>(v);
+        }
+        new_conn_limiter_.reconfigure(rate, burst, lru_cap);
+    }
 }
 
 std::size_t UdpTransport::session_count() const noexcept {
