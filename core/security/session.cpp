@@ -8,39 +8,6 @@ namespace gn::core {
 
 // ── SecuritySession ─────────────────────────────────────────────────
 
-SecuritySession::SecuritySession(SecuritySession&& other) noexcept
-    : vtable_(other.vtable_),
-      provider_self_(other.provider_self_),
-      state_(other.state_),
-      phase_(other.phase_.load(std::memory_order_acquire)),
-      conn_id_(other.conn_id_),
-      keys_(other.keys_) {
-    other.vtable_        = nullptr;
-    other.provider_self_ = nullptr;
-    other.state_         = nullptr;
-    other.phase_.store(SecurityPhase::Closed, std::memory_order_release);
-    other.conn_id_       = GN_INVALID_ID;
-}
-
-SecuritySession& SecuritySession::operator=(SecuritySession&& other) noexcept {
-    if (this != &other) {
-        close();
-        vtable_        = other.vtable_;
-        provider_self_ = other.provider_self_;
-        state_         = other.state_;
-        phase_.store(other.phase_.load(std::memory_order_acquire),
-                      std::memory_order_release);
-        conn_id_       = other.conn_id_;
-        keys_          = other.keys_;
-        other.vtable_        = nullptr;
-        other.provider_self_ = nullptr;
-        other.state_         = nullptr;
-        other.phase_.store(SecurityPhase::Closed, std::memory_order_release);
-        other.conn_id_       = GN_INVALID_ID;
-    }
-    return *this;
-}
-
 SecuritySession::~SecuritySession() {
     close();
 }
@@ -76,6 +43,7 @@ void SecuritySession::close() noexcept {
 gn_result_t SecuritySession::open(
     const gn_security_provider_vtable_t* vtable,
     void* provider_self,
+    std::shared_ptr<void> security_anchor,
     gn_conn_id_t conn,
     gn_trust_class_t trust,
     gn_handshake_role_t role,
@@ -85,9 +53,10 @@ gn_result_t SecuritySession::open(
 {
     if (!vtable || !vtable->handshake_open) return GN_ERR_NULL_ARG;
 
-    vtable_        = vtable;
-    provider_self_ = provider_self;
-    conn_id_       = conn;
+    vtable_           = vtable;
+    provider_self_    = provider_self;
+    security_anchor_  = std::move(security_anchor);
+    conn_id_          = conn;
 
     const std::uint8_t* remote_pk_ptr = nullptr;
     if (!remote_static_pk_or_empty.empty()) {
@@ -248,6 +217,7 @@ std::shared_ptr<SecuritySession> Sessions::create(
     gn_conn_id_t conn,
     const gn_security_provider_vtable_t* vtable,
     void* provider_self,
+    std::shared_ptr<void> security_anchor,
     gn_trust_class_t trust,
     gn_handshake_role_t role,
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
@@ -270,40 +240,31 @@ std::shared_ptr<SecuritySession> Sessions::create(
         }
     }
 
-    /// Reject duplicate creation under the same `conn` id. Without
-    /// this guard a second `create()` call silently overwrites the
-    /// existing entry; an active borrower keeps the old session
-    /// alive through `shared_ptr`, but new callers see a fresh
-    /// session that lost the handshake state. The kernel pipeline
-    /// allocates one session per `notify_connect`, so a duplicate
-    /// here is a contract violation by the caller.
+    /// Reserve the slot under exclusive lock, then run the
+    /// provider's `handshake_open` outside the lock. Two callers
+    /// racing on the same `conn` see at most one slot reservation;
+    /// the loser receives `GN_ERR_LIMIT_REACHED` before any
+    /// provider state is allocated, so the provider never observes
+    /// a duplicate `handshake_open(conn, ...)` for one id.
+    auto session = std::make_shared<SecuritySession>();
     {
-        std::shared_lock lock(mu_);
+        std::unique_lock lock(mu_);
         if (map_.count(conn) != 0) {
             out_result = GN_ERR_LIMIT_REACHED;
             return nullptr;
         }
+        map_.emplace(conn, session);
     }
 
-    auto session = std::make_shared<SecuritySession>();
-    out_result = session->open(vtable, provider_self, conn, trust, role,
+    out_result = session->open(vtable, provider_self,
+                                std::move(security_anchor),
+                                conn, trust, role,
                                 local_static_sk, local_static_pk,
                                 remote_static_pk_or_empty);
     if (out_result != GN_OK) {
-        return nullptr;
-    }
-    {
         std::unique_lock lock(mu_);
-        /// Race re-check — another thread could have inserted between
-        /// our shared-lock probe and the unique-lock acquire. `emplace`
-        /// returns `inserted == false` on conflict; in that case we
-        /// surface the same error and drop our new session on the
-        /// floor (the existing one wins).
-        const auto [_, inserted] = map_.emplace(conn, session);
-        if (!inserted) {
-            out_result = GN_ERR_LIMIT_REACHED;
-            return nullptr;
-        }
+        map_.erase(conn);
+        return nullptr;
     }
     return session;
 }

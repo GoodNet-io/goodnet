@@ -139,7 +139,7 @@ TEST(SecuritySession, OpenInitialPhaseIsHandshake) {
     prov.complete_immediately = false;
     auto vt = make_vtable();
     SecuritySession session;
-    EXPECT_EQ(session.open(&vt, &prov, /*conn*/ 1,
+    EXPECT_EQ(session.open(&vt, &prov, {}, /*conn*/ 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -154,7 +154,7 @@ TEST(SecuritySession, AdvanceHandshakeTransitionsToTransportOnComplete) {
     prov.complete_immediately = true;
     auto vt = make_vtable();
     SecuritySession session;
-    ASSERT_EQ(session.open(&vt, &prov, 1,
+    ASSERT_EQ(session.open(&vt, &prov, {}, 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -170,7 +170,7 @@ TEST(SecuritySession, AdvanceRejectedAfterTransition) {
     FakeProvider prov;
     auto vt = make_vtable();
     SecuritySession session;
-    ASSERT_EQ(session.open(&vt, &prov, 1,
+    ASSERT_EQ(session.open(&vt, &prov, {}, 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -186,7 +186,7 @@ TEST(SecuritySession, EncryptDecryptRoundTripInTransportPhase) {
     FakeProvider prov;
     auto vt = make_vtable();
     SecuritySession session;
-    ASSERT_EQ(session.open(&vt, &prov, 1,
+    ASSERT_EQ(session.open(&vt, &prov, {}, 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -212,7 +212,7 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
     prov.complete_immediately = false;
     auto vt = make_vtable();
     SecuritySession session;
-    ASSERT_EQ(session.open(&vt, &prov, 1,
+    ASSERT_EQ(session.open(&vt, &prov, {}, 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -227,16 +227,15 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
 
 namespace {
 
-SecuritySession make_handshake_session(FakeProvider& prov,
-                                        const gn_security_provider_vtable_t& vt) {
-    SecuritySession session;
-    EXPECT_EQ(session.open(&vt, &prov, /*conn*/ 1,
+void open_handshake_session(SecuritySession& session,
+                             FakeProvider& prov,
+                             const gn_security_provider_vtable_t& vt) {
+    EXPECT_EQ(session.open(&vt, &prov, {}, /*conn*/ 1,
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
                             std::span<const std::uint8_t>{}),
               GN_OK);
-    return session;
 }
 
 }  // namespace
@@ -245,7 +244,8 @@ TEST(SecuritySessionPending, EnqueueDuringHandshakeAccumulatesBytes) {
     FakeProvider prov;
     prov.complete_immediately = false;
     auto vt = make_vtable();
-    auto session = make_handshake_session(prov, vt);
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
 
     EXPECT_EQ(session.enqueue_pending({1, 2, 3}, /*cap*/ 0), GN_OK);
     EXPECT_EQ(session.enqueue_pending({4, 5}, /*cap*/ 0), GN_OK);
@@ -256,7 +256,8 @@ TEST(SecuritySessionPending, EnqueueRespectsHardCap) {
     FakeProvider prov;
     prov.complete_immediately = false;
     auto vt = make_vtable();
-    auto session = make_handshake_session(prov, vt);
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
 
     /// First enqueue fits under the cap; second pushes over and
     /// must be rejected.
@@ -273,7 +274,8 @@ TEST(SecuritySessionPending, EnqueueRejectedOutsideHandshake) {
     FakeProvider prov;
     prov.complete_immediately = true;
     auto vt = make_vtable();
-    auto session = make_handshake_session(prov, vt);
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
     std::vector<std::uint8_t> tmp;
     ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
     ASSERT_EQ(session.phase(), SecurityPhase::Transport);
@@ -286,7 +288,8 @@ TEST(SecuritySessionPending, TakePendingDrainsAndResetsCounter) {
     FakeProvider prov;
     prov.complete_immediately = false;
     auto vt = make_vtable();
-    auto session = make_handshake_session(prov, vt);
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
 
     ASSERT_EQ(session.enqueue_pending({1, 2}, 0), GN_OK);
     ASSERT_EQ(session.enqueue_pending({3, 4, 5}, 0), GN_OK);
@@ -305,7 +308,8 @@ TEST(SecuritySessionPending, CloseDropsBufferedBytes) {
     FakeProvider prov;
     prov.complete_immediately = false;
     auto vt = make_vtable();
-    auto session = make_handshake_session(prov, vt);
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
 
     ASSERT_EQ(session.enqueue_pending({1, 2, 3}, 0), GN_OK);
     EXPECT_EQ(session.pending_bytes(), 3u);
@@ -320,7 +324,7 @@ TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
     auto vt = make_vtable();
     {
         SecuritySession session;
-        ASSERT_EQ(session.open(&vt, &prov, 1,
+        ASSERT_EQ(session.open(&vt, &prov, {}, 1,
                                 GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                                 std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                                 std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -344,7 +348,7 @@ TEST(Sessions, CreateAndFindReturnsSameHandle) {
 
     gn_result_t rc = GN_OK;
     auto a = sessions.create(
-        /*conn*/ 7, &vt, &prov,
+        /*conn*/ 7, &vt, &prov, {},
         GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -367,7 +371,7 @@ TEST(Sessions, CreateRejectsDuplicateConn) {
 
     gn_result_t rc = GN_OK;
     auto first = sessions.create(
-        /*conn*/ 11, &vt, &prov,
+        /*conn*/ 11, &vt, &prov, {},
         GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -381,7 +385,7 @@ TEST(Sessions, CreateRejectsDuplicateConn) {
     /// keys while new callers see a freshly-keyed handshake;
     /// payloads diverge.
     auto second = sessions.create(
-        /*conn*/ 11, &vt, &prov,
+        /*conn*/ 11, &vt, &prov, {},
         GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -398,7 +402,7 @@ TEST(Sessions, DestroyClearsAndCallsHandshakeClose) {
     Sessions sessions;
 
     gn_result_t rc = GN_OK;
-    (void)sessions.create(7, &vt, &prov,
+    (void)sessions.create(7, &vt, &prov, {},
                             GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
                             std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
                             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -427,7 +431,7 @@ TEST(Sessions, CreateRefusedWhenTrustNotInProviderMask) {
 
     gn_result_t rc = GN_OK;
     auto sess = sessions.create(
-        /*conn*/ 13, &vt, &prov,
+        /*conn*/ 13, &vt, &prov, {},
         GN_TRUST_UNTRUSTED, GN_ROLE_INITIATOR,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
@@ -451,7 +455,7 @@ TEST(Sessions, CreateAcceptsTrustClassInProviderMask) {
 
     gn_result_t rc = GN_OK;
     auto sess = sessions.create(
-        /*conn*/ 14, &vt, &prov,
+        /*conn*/ 14, &vt, &prov, {},
         GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),

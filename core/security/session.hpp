@@ -61,8 +61,13 @@ public:
 
     SecuritySession(const SecuritySession&)            = delete;
     SecuritySession& operator=(const SecuritySession&) = delete;
-    SecuritySession(SecuritySession&&)                 noexcept;
-    SecuritySession& operator=(SecuritySession&&)      noexcept;
+    /// Non-movable: `pending_mu_` is non-movable, and ownership
+    /// of an open handshake state crosses an ABI boundary that
+    /// the move would silently break. The kernel keeps every
+    /// session inside `Sessions::map_` under `shared_ptr`, so
+    /// move semantics are not part of the surface.
+    SecuritySession(SecuritySession&&)                 = delete;
+    SecuritySession& operator=(SecuritySession&&)      = delete;
     ~SecuritySession();
 
     /// Open a session against the active security provider.
@@ -79,6 +84,7 @@ public:
     [[nodiscard]] gn_result_t open(
         const gn_security_provider_vtable_t* vtable,
         void* provider_self,
+        std::shared_ptr<void> security_anchor,
         gn_conn_id_t conn,
         gn_trust_class_t trust,
         gn_handshake_role_t role,
@@ -150,9 +156,17 @@ public:
     }
 
 private:
-    /// Borrowed; lifetime tied to the SecurityRegistry entry.
+    /// Borrowed; the strong reference in `security_anchor_` keeps
+    /// the provider's `.so` mapped while this pointer is live.
     const gn_security_provider_vtable_t* vtable_ = nullptr;
     void* provider_self_ = nullptr;
+    /// Strong reference to the security plugin's lifetime anchor.
+    /// PluginManager observes through a `weak_ptr` between
+    /// `unregister_security` and `dlclose`; while at least one
+    /// session holds this anchor, the kernel keeps the provider's
+    /// `.so` mapped past every in-flight encrypt/decrypt call
+    /// (per `plugin-lifetime.md` §4).
+    std::shared_ptr<void> security_anchor_;
     /// Owned (allocated by provider in handshake_open, freed in
     /// handshake_close).
     void* state_ = nullptr;
@@ -195,6 +209,7 @@ public:
         gn_conn_id_t conn,
         const gn_security_provider_vtable_t* vtable,
         void* provider_self,
+        std::shared_ptr<void> security_anchor,
         gn_trust_class_t trust,
         gn_handshake_role_t role,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
