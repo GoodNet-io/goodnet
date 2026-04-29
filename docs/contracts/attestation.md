@@ -120,14 +120,29 @@ and the connection is closed:
    (signature self-check against the embedded `user_pk` plus
    non-expired against the current clock) fails; metric
    `attestation.expired_or_invalid`.
-7. **Identity stability.** Drop and disconnect if a previously
-   verified attestation on this connection carried a different
-   `device_pk`; metric `attestation.identity_change`.
+7. **Identity stability.** If a prior attestation has already
+   verified on this connection, compare the new `device_pk`
+   against the cached one:
+   - **Different** `device_pk` — drop and disconnect; metric
+     `attestation.identity_change`. This catches a peer that
+     swaps its device key mid-session.
+   - **Same** `device_pk` — drop the envelope but leave the
+     connection alive. Live re-attestation is out of scope per
+     §9, and the binding match in step 3 already prevents replay
+     across sessions; a same-key duplicate within one session is
+     therefore noise, not an error.
 8. Mark per-connection dispatcher state `their_received_valid = true`
    and cache the verified `(user_pk, device_pk)` for handler
    observation.
 
-Step 8 runs only when every prior check passes.
+Step 8 runs only on the first valid attestation; subsequent
+attestations with the same key skip step 8 and return.
+
+Metric labels in steps 1–7 are emitted as structured log fields at
+warn level. The v1 release does not lift them to a kernel-managed
+counter surface; a future minor release may bind them to a
+`gn_drop_reason_t` enum entry once the cross-cutting drop-metrics
+counter design lands.
 
 ---
 
@@ -147,6 +162,13 @@ irrelevant — concurrent send and receive on the two halves of the
 duplex stream both reach the dual-flag state regardless of which
 races first; the upgrade fires exactly once per connection.
 
+The "exactly once" guarantee comes from the connection registry's
+`upgrade_trust` policy gate (`security-trust.md` §3): after the
+first successful promotion, every subsequent attempt returns
+`GN_ERR_LIMIT_REACHED` (the gate refuses `Peer → Peer`) and the
+dispatcher exits without firing a duplicate event. Concurrent
+callers race through the gate, exactly one wins.
+
 If only `our_sent` is true and the peer never sends a valid
 attestation, the connection stays at `Untrusted` indefinitely.
 Plugins that gate behaviour on trust class observe `Untrusted` and
@@ -159,9 +181,11 @@ waiting close the connection through `host_api->disconnect`.
 ## 7. Per-connection state lifecycle
 
 The dispatcher allocates per-connection state on the first call to
-either §4 or §5. State is released on `notify_disconnect` per
-`conn-events.md` §2a — the dispatcher subscribes to the
-connection-event channel and clears the entry on `DISCONNECTED`.
+either §4 or §5. State is released when `notify_disconnect`
+invokes the dispatcher's `on_disconnect(conn)` entry directly from
+the kernel thunk (per `conn-events.md` §2a) — the call runs
+before the `DISCONNECTED` event publish, so subscribers never
+observe stale flags during their callback.
 
 State entries do not survive `notify_disconnect`; a fresh
 connection with a previously-used numeric id (after id reuse)
@@ -183,9 +207,16 @@ The peer observes the disconnect through
 policy at the connection layer; the dispatcher does not retry
 attestation on the closed connection.
 
-Producer-side failures (cannot encrypt, cannot enqueue) abort the
-§4 sequence without setting `our_sent`. The connection remains at
-`Untrusted` and may be retried on a fresh session.
+Producer-side failures abort the §4 sequence without setting
+`our_sent`. The producer may fail at any of: composing the
+payload (signature error from the device key), framing through
+the active protocol layer, encrypting through the security
+session, looking up the active transport, or writing to the
+transport. Each step logs at warn level with the connection id
+and an indicative reason; no metric is emitted (the abort is
+silent at the metric level — operators see a session-keyed warn
+line). The connection remains at `Untrusted` and may be retried
+on a fresh session.
 
 ---
 

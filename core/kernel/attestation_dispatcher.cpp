@@ -263,8 +263,9 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
 
     /// Step 7: identity stability. A re-used connection id
     /// receives a fresh state on `on_disconnect`, so the pinned
-    /// key matches only when a duplicate attestation arrives in
-    /// the same session.
+    /// key matches only when an attestation arrives twice on the
+    /// same session.
+    bool identity_changed = false;
     {
         std::lock_guard lock(mu_);
         State& state = states_[conn];
@@ -272,21 +273,27 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
             const ::gn::PublicKey& pinned = state.pinned_device_pk;
             if (std::memcmp(pinned.data(), device_pk.data(),
                             GN_PUBLIC_KEY_BYTES) != 0) {
-                /// Drop without holding the lock across the
-                /// disconnect — the lock guards only state map
-                /// access; the disconnect path takes its own
-                /// registry locks.
-                ::gn::log::warn("attestation: identity change on conn={}",
-                                static_cast<std::uint64_t>(conn));
+                /// Identity-change attempt — flag for disconnect
+                /// outside the lock so the registry critical
+                /// section runs without holding the dispatcher's
+                /// mutex.
+                identity_changed = true;
             } else {
                 /// Same device_pk, duplicate attestation — drop
                 /// the envelope but do not disconnect (per
                 /// `attestation.md` §9 live re-attestation note).
                 return static_cast<int>(Outcome::IdentityChange);
             }
+        } else {
+            state.their_received_valid = true;
+            state.pinned_device_pk     = device_pk;
         }
-        state.their_received_valid = true;
-        state.pinned_device_pk     = device_pk;
+    }
+
+    if (identity_changed) {
+        disconnect_on_consumer_failure(kernel, conn,
+                                        "attestation.identity_change");
+        return static_cast<int>(Outcome::IdentityChange);
     }
 
     try_complete_upgrade(kernel, conn);
@@ -345,6 +352,19 @@ void AttestationDispatcher::try_complete_upgrade(Kernel&      kernel,
     /// the dispatcher silently drops — the connection stays at
     /// its declared trust class, which is the contract for
     /// Loopback/IntraNode anyway.
+    ///
+    /// The gate enforces the "exactly once" guarantee from
+    /// `attestation.md` §6: a concurrent caller that races
+    /// through the lock above reaches `upgrade_trust` second
+    /// and observes `GN_ERR_LIMIT_REACHED` (the gate refuses
+    /// `Peer → Peer`); only the first winner emits the event.
+    ///
+    /// Between `upgrade_trust` returning OK and `find_by_id`
+    /// below, a concurrent `notify_disconnect` may erase the
+    /// record; the event then fires with `remote_pk` defaulted
+    /// to zero. Subscribers that need the peer key on a stale
+    /// event re-read it through `find_by_pk`, and the subsequent
+    /// `DISCONNECTED` event signals the disappearance.
     if (kernel.connections().upgrade_trust(conn, GN_TRUST_PEER) != GN_OK) {
         return;
     }
