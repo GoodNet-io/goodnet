@@ -10,10 +10,12 @@
 ///
 /// The reference-counted ownership invariant from
 /// `plugin-lifetime.md` §4 is enforced here: every loaded plugin
-/// owns a `std::shared_ptr<int>` quiescence sentinel that registry
-/// entries copy at registration time. Unload waits on a `weak_ptr`
-/// observation of the sentinel before `dlclose` to prevent the
-/// classic "dispatch into a torn-down handler" UAF.
+/// owns a `std::shared_ptr<PluginAnchor>` quiescence sentinel that
+/// registry entries copy at registration time. The anchor carries
+/// the `shutdown_requested` flag and the `in_flight` counter that
+/// `GateGuard` maintains around every async callback. Unload waits
+/// on a `weak_ptr` observation of the sentinel before `dlclose` to
+/// prevent the classic "dispatch into a torn-down handler" UAF.
 ///
 /// SHA-256 manifest verification and hot-reload land as additive
 /// features once the dispatch generation-counter quiescence wait is
@@ -122,7 +124,7 @@ private:
     /// Returns true on clean expiry, false on timeout (caller must
     /// then leak the dlclose handle to keep async callbacks safe).
     [[nodiscard]] bool drain_anchor(PluginInstance& inst,
-                                    const std::weak_ptr<void>& watch);
+                                    const std::weak_ptr<PluginAnchor>& watch);
 
     Kernel&                         kernel_;
     std::vector<PluginInstance>     instances_;

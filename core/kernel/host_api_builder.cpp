@@ -311,18 +311,19 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
                                         gn_subscription_id_t* out_id) {
     if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
-    auto anchor_weak = std::weak_ptr<void>(pc->plugin_anchor);
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
     auto token = pc->kernel->on_conn_event().subscribe(
         [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
-            /// Lock the weak anchor into a strong ref for the
-            /// dispatch so `PluginManager::drain_anchor` cannot
-            /// observe quiescence and run `dlclose` while the
-            /// callback is still in the plugin's `.text`.
-            std::shared_ptr<void> strong;
+            /// Open a `GateGuard` for the dispatch so
+            /// `PluginManager::drain_anchor` cannot run `dlclose`
+            /// while the callback is still in the plugin's `.text`.
+            /// The guard refuses if rollback already published
+            /// `shutdown_requested = true`, dropping the dispatch.
+            std::optional<GateGuard> guard;
             if (anchor_set) {
-                strong = anchor_weak.lock();
-                if (!strong) return;
+                guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
             }
             gn_conn_event_t e{};
             e.api_size      = sizeof(gn_conn_event_t);
@@ -336,6 +337,14 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
         });
     *out_id = static_cast<gn_subscription_id_t>(token);
     return GN_OK;
+}
+
+int32_t thunk_is_shutdown_requested(void* host_ctx) {
+    if (!host_ctx) return 0;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!pc->plugin_anchor) return 0;
+    return pc->plugin_anchor->shutdown_requested.load(
+        std::memory_order_acquire) ? 1 : 0;
 }
 
 gn_result_t thunk_unsubscribe_conn_state(void* host_ctx,
@@ -956,6 +965,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.inject_external_message = &thunk_inject_external_message;
     a.inject_frame            = &thunk_inject_frame;
     a.kick_handshake          = &thunk_kick_handshake;
+
+    a.is_shutdown_requested   = &thunk_is_shutdown_requested;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel/timer_registry`, every plugin that schedules
 async work
-**Last verified:** 2026-04-28
+**Last verified:** 2026-04-29
 **Stability:** v1.x; `set_timer`, `cancel_timer`, and
 `post_to_executor` are stable; periodic timer support ships as an
 opt-in extension once a producer needs it.
@@ -71,10 +71,12 @@ Delays are measured against a monotonic clock (`steady_clock` on
 glibc-class platforms); system time changes do not advance or
 delay scheduled callbacks.
 
-`cancel_timer` removes a still-pending timer. Returns
-`GN_OK` on success, `GN_ERR_UNKNOWN_RECEIVER` when the timer has
-already fired or never existed. The contract is idempotent:
-cancelling an already-cancelled timer is success.
+`cancel_timer` removes a still-pending timer. Returns `GN_OK`
+whether the timer was alive, already fired, never existed, or had
+been cancelled previously. The "not found" case collapses to
+success so plugins do not race against the self-cleanup that fires
+a natural completion. `GN_ERR_NULL_ARG` is returned only for
+`GN_INVALID_TIMER_ID`.
 
 `post_to_executor` runs `fn(user_data)` on the service executor at
 the next available point. Useful for handing back work from a
@@ -108,17 +110,27 @@ entries hold the sentinel through a strong reference (the
 "lifetime anchor"); async tasks like timers and posted callbacks
 hold the matching weak observer so a stale callback cannot extend
 the plugin's effective lifetime. Before invoking `fn(user_data)`,
-the kernel upgrades the observer to a strong reference; failure
-to upgrade is a clean exit, the callback is dropped silently.
+the kernel opens a cancellation gate: it upgrades the observer to
+a strong reference and inspects the sentinel's `shutdown_requested`
+flag. The dispatch is dropped — `fn` is not called — when either
+check fails (anchor expired, or rollback already requested
+shutdown for the calling plugin). On a successful gate the strong
+reference is held for the duration of `fn(user_data)`, so the
+plugin's `.text` cannot be unmapped while the callback is in
+flight.
 
 Concrete properties:
 
 1. A timer that fires after the calling plugin's `gn_plugin_unregister`
    has run is observed and dropped — `fn` is not called.
-2. `cancel_timer` from inside a plugin's callback chain is
+2. A timer that fires after rollback published `shutdown_requested`
+   but before the anchor's last reference dropped is also observed
+   and dropped, even though the anchor is still live for the
+   duration of registry-entry teardown.
+3. `cancel_timer` from inside a plugin's callback chain is
    permitted; the kernel handles re-entry on the same thread by
    deferring the erase until the current callback returns.
-3. `PluginManager::rollback` cancels every still-pending timer
+4. `PluginManager::rollback` cancels every still-pending timer
    whose weak observer matches the plugin being unloaded before
    draining the lifetime anchor (`plugin-lifetime.md` §4
    quiescence). This keeps the drain loop fast: in-flight timers
@@ -126,7 +138,10 @@ Concrete properties:
 
 A plugin **must not** spawn its own threads to back periodic work.
 The contract is "post your task to the service executor"; everything
-else is a §8 violation in `plugin-lifetime.md`.
+else is a §9 violation in `plugin-lifetime.md`. Periodic plugins
+poll `is_shutdown_requested` (`host-api.md` §10) at the top of
+each tick and stop re-arming once the flag flips, so the kernel's
+drain wait completes ahead of the bounded timeout.
 
 ---
 
@@ -184,6 +199,8 @@ race against the self-cleanup path on natural firing.
 ## 8. Cross-references
 
 - Reference-counted ownership rule: `plugin-lifetime.md` §4.
+- Cooperative cancellation: `plugin-lifetime.md` §8,
+  `host-api.md` §10.
 - Resource limits: `limits.md` §2.
 - Host-API surface: `host-api.md` §9 (this section is the
   authoritative semantics; host-api.md cites here).

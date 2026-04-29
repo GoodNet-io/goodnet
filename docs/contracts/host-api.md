@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
 **Implements:** size-prefix evolution per `abi-evolution.md`
-**Last verified:** 2026-04-28
+**Last verified:** 2026-04-29
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---
@@ -184,6 +184,12 @@ typedef struct host_api_s {
     gn_result_t (*notify_backpressure)(void* host_ctx, gn_conn_id_t conn,
                                        gn_conn_event_kind_t kind,
                                        uint64_t bytes);
+
+    /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────── */
+    /* Non-zero once teardown for this plugin has begun. Plugins poll  */
+    /* the slot from inside long-running async work and exit early so  */
+    /* they drain ahead of the kernel's bounded wait.                  */
+    int32_t (*is_shutdown_requested)(void* host_ctx);
 
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];
@@ -377,4 +383,36 @@ specification:
 
 A plugin **must** route its async work through these slots; private
 threads outliving `gn_plugin_shutdown` violate `plugin-lifetime.md`
-§8 and are not supported.
+§9 and are not supported.
+
+---
+
+## 10. Cooperative cancellation
+
+Long-running async work poll `is_shutdown_requested(host_ctx)` and
+exit cooperatively when the slot returns non-zero. The slot flips on
+the moment the kernel begins teardown for this plugin — before
+`gn_plugin_unregister`, before pending timers are cancelled, before
+the drain wait.
+
+| Property | Specification |
+|---|---|
+| Producer | `core/plugin/manager` at the start of per-plugin rollback. |
+| Effect | Atomic publish of the shutdown flag on the plugin's anchor. |
+| Returns | 0 if shutdown not requested or context has no anchor; non-zero otherwise. |
+| Concurrency | Safe to call from any thread that owns a reference to `api`. |
+| Delivery | The flag latches on; once set, every subsequent call returns non-zero through the rest of the plugin's lifetime. |
+| Side effects | None. The slot is a pure observation. |
+
+The flag is **advisory**. The kernel-side gate around every async
+callback already refuses dispatches that arrive after the flag was
+published, so a plugin that never polls the flag is still safe — it
+just consumes the kernel's bounded drain budget on shutdown. Polling
+the flag is how the plugin earns the fast path: the kernel logs the
+in-flight count alongside the drain timeout, so a plugin that
+ignores the flag is observably the noisy one.
+
+`plugin-lifetime.md` §8 covers the patterns: periodic timers stop
+re-arming, posted multi-step tasks return without scheduling the
+next step, queue-drain workers treat the flag as the loop's exit
+predicate.

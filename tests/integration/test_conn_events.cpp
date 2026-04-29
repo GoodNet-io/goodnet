@@ -43,7 +43,7 @@ PluginContext make_transport_ctx(Kernel& k) {
     ctx.kernel        = &k;
     ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
     ctx.plugin_name   = "test-transport";
-    ctx.plugin_anchor = std::make_shared<int>(0);
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
 }
 
@@ -139,7 +139,7 @@ TEST(ConnEvents, AnchorExpiredDropsCallback) {
     ctx.kernel        = &k;
     ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
     ctx.plugin_name   = "expiring";
-    ctx.plugin_anchor = std::make_shared<int>(0);
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     auto api = build_host_api(ctx);
 
     EventBag bag;

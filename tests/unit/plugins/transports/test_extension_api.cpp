@@ -42,7 +42,7 @@ struct ExtensionFixture {
         ctx.kernel        = &k;
         ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
         ctx.plugin_name   = "fixture";
-        ctx.plugin_anchor = std::make_shared<int>(0);
+        ctx.plugin_anchor = std::make_shared<PluginAnchor>();
         api               = build_host_api(ctx);
     }
 };

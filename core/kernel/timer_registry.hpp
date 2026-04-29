@@ -9,11 +9,14 @@
 /// `timer.md` §3 without depending on any transport's executor.
 ///
 /// Lifetime safety mirrors `plugin-lifetime.md` §4: each scheduled
-/// entry stores a `std::weak_ptr<void>` of the calling plugin's
-/// quiescence sentinel. Before invoking the user callback the
-/// dispatcher upgrades the observer; failure to upgrade is a
-/// silent drop, so a callback whose plugin has already unloaded
-/// never dereferences unmapped memory.
+/// entry stores a `std::weak_ptr<PluginAnchor>` of the calling
+/// plugin. Before invoking the user callback the dispatcher opens a
+/// `GateGuard`; the guard refuses if the anchor expired or the
+/// plugin's rollback path already published `shutdown_requested =
+/// true`, and otherwise increments the anchor's in-flight counter
+/// for the duration of the dispatch. The drain side waits on the
+/// counter before `dlclose`, so a callback whose plugin already
+/// unloaded never dereferences unmapped memory.
 
 #pragma once
 
@@ -31,6 +34,8 @@
 #include <asio/steady_timer.hpp>
 
 #include <sdk/types.h>
+
+#include "plugin_anchor.hpp"
 
 namespace gn::core {
 
@@ -53,7 +58,7 @@ public:
     [[nodiscard]] gn_result_t set_timer(std::uint32_t  delay_ms,
                                          gn_task_fn_t   fn,
                                          void*          user_data,
-                                         const std::shared_ptr<void>& anchor,
+                                         const std::shared_ptr<PluginAnchor>& anchor,
                                          gn_timer_id_t* out_id) noexcept;
 
     /// Cancel a pending timer. Returns `GN_OK` whether the timer
@@ -66,7 +71,7 @@ public:
     /// silently skips the dispatch.
     [[nodiscard]] gn_result_t post(gn_task_fn_t fn,
                                     void*        user_data,
-                                    const std::shared_ptr<void>& anchor) noexcept;
+                                    const std::shared_ptr<PluginAnchor>& anchor) noexcept;
 
     /// Cap on simultaneously-pending timers + queued tasks.
     /// Defaults match `gn_limits_t::max_timers` /
@@ -79,7 +84,7 @@ public:
     /// same control block as @p anchor. Used by `PluginManager`
     /// during rollback so a quiescing plugin's drain loop is not
     /// extended by stale timers.
-    void cancel_for_anchor(const std::shared_ptr<void>& anchor) noexcept;
+    void cancel_for_anchor(const std::shared_ptr<PluginAnchor>& anchor) noexcept;
 
     [[nodiscard]] std::size_t active_timers() const noexcept;
     [[nodiscard]] std::size_t pending_tasks() const noexcept;
@@ -92,10 +97,9 @@ public:
 private:
     struct TimerEntry {
         std::shared_ptr<asio::steady_timer> timer;
-        std::weak_ptr<void>                 anchor;
+        std::weak_ptr<PluginAnchor>         anchor;
         gn_task_fn_t                        fn          = nullptr;
         void*                               user_data   = nullptr;
-        bool                                anchor_set  = false;
     };
 
     asio::io_context                                          ioc_;

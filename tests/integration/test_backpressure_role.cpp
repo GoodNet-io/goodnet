@@ -51,7 +51,7 @@ PluginContext make_ctx(Kernel& k, gn_plugin_kind_t kind, const char* name) {
     ctx.kernel        = &k;
     ctx.kind          = kind;
     ctx.plugin_name   = name;
-    ctx.plugin_anchor = std::make_shared<int>(0);
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
 }
 

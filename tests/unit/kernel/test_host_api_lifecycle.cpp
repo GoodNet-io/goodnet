@@ -59,7 +59,7 @@ PluginContext make_transport_ctx(Kernel& k) {
     ctx.kernel        = &k;
     ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
     ctx.plugin_name   = "test-transport";
-    ctx.plugin_anchor = std::make_shared<int>(0);
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
 }
 
@@ -68,7 +68,7 @@ PluginContext make_handler_ctx(Kernel& k) {
     ctx.kernel        = &k;
     ctx.kind          = GN_PLUGIN_KIND_HANDLER;
     ctx.plugin_name   = "test-handler";
-    ctx.plugin_anchor = std::make_shared<int>(0);
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
 }
 
