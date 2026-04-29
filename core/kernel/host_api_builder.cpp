@@ -814,9 +814,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         gn_result_t session_rc = GN_OK;
         (void)pc->kernel->sessions().create(
             new_id,
-            entry.vtable,
-            entry.self,
-            entry.lifetime_anchor,
+            entry,
             trust,
             role,
             device.secret_key_view(),

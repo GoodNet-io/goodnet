@@ -41,9 +41,7 @@ void SecuritySession::close() noexcept {
 }
 
 gn_result_t SecuritySession::open(
-    const gn_security_provider_vtable_t* vtable,
-    void* provider_self,
-    std::shared_ptr<void> security_anchor,
+    const SecurityEntry& entry,
     gn_conn_id_t conn,
     gn_trust_class_t trust,
     gn_handshake_role_t role,
@@ -51,11 +49,11 @@ gn_result_t SecuritySession::open(
     std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
     std::span<const std::uint8_t> remote_static_pk_or_empty)
 {
-    if (!vtable || !vtable->handshake_open) return GN_ERR_NULL_ARG;
+    if (!entry.vtable || !entry.vtable->handshake_open) return GN_ERR_NULL_ARG;
 
-    vtable_           = vtable;
-    provider_self_    = provider_self;
-    security_anchor_  = std::move(security_anchor);
+    vtable_           = entry.vtable;
+    provider_self_    = entry.self;
+    security_anchor_  = entry.lifetime_anchor;
     conn_id_          = conn;
 
     const std::uint8_t* remote_pk_ptr = nullptr;
@@ -215,9 +213,7 @@ gn_result_t SecuritySession::decrypt_transport(
 
 std::shared_ptr<SecuritySession> Sessions::create(
     gn_conn_id_t conn,
-    const gn_security_provider_vtable_t* vtable,
-    void* provider_self,
-    std::shared_ptr<void> security_anchor,
+    const SecurityEntry& entry,
     gn_trust_class_t trust,
     gn_handshake_role_t role,
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
@@ -231,8 +227,8 @@ std::shared_ptr<SecuritySession> Sessions::create(
     /// the handshake state is allocated. Refusing here keeps the
     /// upstream pipeline from leaking a half-initialised session
     /// into the registry on a misconfigured stack.
-    if (vtable && vtable->allowed_trust_mask) {
-        const std::uint32_t mask = vtable->allowed_trust_mask(provider_self);
+    if (entry.vtable && entry.vtable->allowed_trust_mask) {
+        const std::uint32_t mask = entry.vtable->allowed_trust_mask(entry.self);
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
             out_result = GN_ERR_INVALID_ENVELOPE;
@@ -256,9 +252,7 @@ std::shared_ptr<SecuritySession> Sessions::create(
         map_.emplace(conn, session);
     }
 
-    out_result = session->open(vtable, provider_self,
-                                std::move(security_anchor),
-                                conn, trust, role,
+    out_result = session->open(entry, conn, trust, role,
                                 local_static_sk, local_static_pk,
                                 remote_static_pk_or_empty);
     if (out_result != GN_OK) {
