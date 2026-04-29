@@ -106,15 +106,14 @@ typedef struct host_api_s {
     /* Read-only borrow valid for the plugin's lifetime; see limits.md. */
     const gn_limits_t* (*limits)(void* host_ctx);
 
-    /* ── Logging ─────────────────────────────────────────────────────── */
-    /* The `log` slot accepts a fully-formatted message buffer, not a   */
-    /* format string. The kernel never invokes `vsnprintf` on plugin-   */
-    /* supplied bytes — the format-string class of attack against the  */
-    /* kernel address space is closed. Plugins format on their own      */
-    /* stack via `sdk/convenience.h::gn_log_<level>` macros. See §11    */
-    /* for the full security invariant.                                 */
-    void (*log)(void* host_ctx, gn_log_level_t level,
-                const char* msg);
+    /* ── Logging (sdk/log.h, host-api.md §11) ────────────────────── */
+    /* Substruct rather than a single function pointer so the kernel  */
+    /* can grow the logging surface (level fast-path, source-loc      */
+    /* prefix, key-value records) without rewriting the host_api      */
+    /* shape on every step. The first field of `gn_log_api_t` is its  */
+    /* own `api_size`; consumers gate access to entries beyond their  */
+    /* compile-time view through `GN_API_HAS_LOG` from `sdk/abi.h`.   */
+    gn_log_api_t log;
 
     /* ── Transport-side notifications ────────────────────────────────── */
     /* `trust` and `role` are computed by the transport per             */
@@ -427,33 +426,91 @@ predicate.
 
 ## 11. Logging without format-string trust
 
-The `log` slot accepts a fully-formatted, NUL-terminated message
-buffer — not a format string plus arguments. The kernel never
-invokes `vsnprintf` on plugin-supplied bytes; it forwards the
-buffer to the structured logger as a literal payload.
+The `log` field of `host_api_t` is a substruct, `gn_log_api_t`,
+declared in `sdk/log.h`. It carries two function pointers — the
+level-filter fast path and the literal-buffer hand-off — plus the
+size prefix that gates access to future additions per
+`abi-evolution.md` §3a.
+
+```c
+typedef struct gn_log_api_s {
+    uint32_t api_size;
+
+    int32_t (*should_log)(void* host_ctx, gn_log_level_t level);
+    void    (*emit)(void* host_ctx,
+                    gn_log_level_t level,
+                    const char* file, int32_t line,
+                    const char* msg);
+
+    void* _reserved[8];
+} gn_log_api_t;
+```
+
+### 11.1 `should_log`
 
 | Property | Specification |
 |---|---|
 | Producer | every plugin |
+| Effect | none observable; pure level query against the kernel logger |
+| Returns | `1` when a message at @p level would land in the live sink, `0` when it would be filtered out |
+| Concurrency | safe from any thread owning a reference to `api` |
+| Use | hot dispatch paths call this before formatting so a filtered-out level pays for no `snprintf` |
+
+A plugin that skips `should_log` and formats unconditionally is
+correct but wasteful — the kernel re-checks the level inside `emit`
+and drops sub-threshold messages without writing.
+
+### 11.2 `emit`
+
+| Property | Specification |
+|---|---|
+| Producer | every plugin (after formatting on its own stack) |
 | Effect | one log line written to the kernel's structured sink, prefixed with the calling plugin's name |
-| Payload | `msg` is a NUL-terminated UTF-8 buffer the plugin formatted on its own stack |
+| Payload | `msg` is a NUL-terminated UTF-8 buffer the plugin formatted on its own stack; @p file/@p line carry the call-site source location, or `NULL` / `0` to omit the prefix |
 | Concurrency | safe from any thread owning a reference to `api` |
 | Delivery | best-effort; messages below the live level threshold are dropped without I/O |
-| Truncation | the plugin's local formatter chooses the cap (the bundled `gn_log_*` macros use 2048 bytes); the kernel does not re-truncate. Plugins formatting larger messages allocate their own buffer and call the slot directly |
+| Truncation | the plugin's local formatter chooses the cap (the bundled `gn_log_*` macros use 2048 bytes); the kernel does not re-truncate. Plugins formatting larger messages allocate their own buffer and call `emit` directly |
 
-The contract rules out the format-string class of attack against
-the kernel. A compromised plugin cannot smuggle `%n` writes,
-`%s`-without-arg dereferences, or excessive width specifiers into
-kernel address space — the kernel never parses format directives,
-so there is nothing to abuse.
+Empty `msg` ("") is a valid log line and is written. NULL `msg` is
+dropped silently. The kernel's only operations on the buffer are
+the level filter, the plugin-name prefix, the source-location
+prefix per §11.3, and forwarding to spdlog as a literal.
+
+### 11.3 Format-string trust boundary
+
+The kernel never invokes `vsnprintf` on plugin-supplied bytes; it
+forwards `msg` to the structured logger as a literal payload. A
+compromised plugin cannot smuggle `%n` writes, `%s`-without-arg
+dereferences, or excessive width specifiers into kernel address
+space — the kernel never parses format directives, so there is
+nothing to abuse. The trust boundary sits at the plugin's stack
+buffer; everything past `emit` is kernel-controlled.
 
 Plugins format locally. `sdk/convenience.h` provides
 `gn_log_<level>(api, "fmt", args…)` macros that build the message
-on the plugin's stack with `snprintf` and then call this slot with
-the resulting buffer. Plugins that prefer a different formatter
-(C++ `std::format`, fmt::format, custom) format into their own
-buffer and call `api->log(host_ctx, level, buf)` directly.
+on the plugin's stack with `snprintf`, capture `__FILE__` and
+`__LINE__` at the macro expansion site, and call `emit` with the
+result. C++ plugins that prefer `std::format`'s typed `{}` syntax
+use the `GN_LOGF_<level>` macros from `sdk/cpp/log.hpp`, which run
+`std::format_to_n` on the same 2048-byte stack buffer and feed the
+result into the same `emit` slot — the trust-boundary contract is
+identical.
 
-Empty or NULL `msg` is dropped silently. The kernel's only
-operations on the buffer are the level filter, the plugin-name
-prefix, and forwarding to spdlog as a literal.
+### 11.4 Source-location detail mode
+
+The kernel's logger renders the `file`/`line` pair through a
+`%Q` flag whose verbosity is controlled by `log.source_detail_mode`
+in the operator config:
+
+| Mode | Behaviour |
+|---|---|
+| 0 (Auto) | TRACE/DEBUG carry full path + line; INFO and above carry basename only. Default. |
+| 1 (FullPath) | every level carries the project-relative path plus `:line`. |
+| 2 (BasenameWithLine) | every level carries the file basename plus `:line`. |
+| 3 (BasenameOnly) | the basename, no line. Tightest format. |
+
+The rendered path is project-relative when the build runs with
+`-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=` (default in this tree)
+or when `log.project_root` is set. Otherwise the formatter falls
+back to the basename so a path containing the absolute build-tree
+prefix never lands in the rendered line.
