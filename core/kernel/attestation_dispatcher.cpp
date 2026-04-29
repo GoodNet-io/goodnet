@@ -80,7 +80,7 @@ void AttestationDispatcher::set_clock(NowSec clock) noexcept {
 ::gn::Result<std::vector<std::uint8_t>>
 AttestationDispatcher::compose_payload(
     const identity::NodeIdentity& identity,
-    std::span<const std::uint8_t, GN_HASH_BYTES> binding) noexcept
+    std::span<const std::uint8_t, GN_HASH_BYTES> binding) noexcept try
 {
     std::vector<std::uint8_t> payload(kPayloadBytes);
 
@@ -101,6 +101,8 @@ AttestationDispatcher::compose_payload(
     }
     std::memcpy(payload.data() + kSignatureOffset, sig->data(), kSignatureSize);
     return payload;
+} catch (...) {
+    return std::unexpected(::gn::Error{.code = GN_ERR_OUT_OF_MEMORY, .what = {}});
 }
 
 AttestationDispatcher::Outcome
@@ -148,7 +150,7 @@ AttestationDispatcher::verify_payload(
 
 void AttestationDispatcher::send_self(Kernel&          kernel,
                                        gn_conn_id_t     conn,
-                                       SecuritySession& session) noexcept
+                                       SecuritySession& session) noexcept try
 {
     /// Producer step per `attestation.md` §4. Loopback / IntraNode
     /// connections skip the exchange — their trust class is final
@@ -224,12 +226,15 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
         states_[conn].our_sent = true;
     }
     try_complete_upgrade(kernel, conn);
+} catch (...) {
+    ::gn::log::warn("attestation: producer raised exception — conn={}",
+                    static_cast<std::uint64_t>(conn));
 }
 
 int AttestationDispatcher::on_inbound(Kernel&                       kernel,
                                        gn_conn_id_t                  conn,
                                        SecuritySession&              session,
-                                       std::span<const std::uint8_t> payload) noexcept
+                                       std::span<const std::uint8_t> payload) noexcept try
 {
     std::span<const std::uint8_t, GN_HASH_BYTES> binding{
         session.transport_keys().handshake_hash, GN_HASH_BYTES};
@@ -311,6 +316,10 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
 
     try_complete_upgrade(kernel, conn);
     return static_cast<int>(Outcome::Ok);
+} catch (...) {
+    ::gn::log::warn("attestation: consumer raised exception — conn={}",
+                    static_cast<std::uint64_t>(conn));
+    return static_cast<int>(Outcome::ParseFailed);
 }
 
 void AttestationDispatcher::on_disconnect(gn_conn_id_t conn) noexcept {
