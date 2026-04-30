@@ -74,7 +74,7 @@ typedef struct gn_optimizer_recommendation_s {
  * earlier; ties broken by registration order.
  *
  * Lifetime: every entry executes under the calling plugin's
- * quiescence anchor (`plugin-lifetime.md` §4); a plugin that has
+ * lifetime anchor (`plugin-lifetime.md` §4); a plugin that has
  * begun unloading sees `recommend` and `on_event` dropped silently.
  */
 typedef struct gn_optimizer_api_s {

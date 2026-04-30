@@ -67,7 +67,7 @@ host_api->register_extension(
 ```
 
 The kernel keeps the extension alive only as long as the plugin's
-quiescence anchor stays alive (`plugin-lifetime.md` §4).
+lifetime anchor stays alive (`plugin-lifetime.md` §4).
 
 ---
 
@@ -105,7 +105,7 @@ recommendation; an optimiser is permitted to recommend, never to
 mutate registry state directly.
 
 Lifetime invariant: every entry in the vtable executes under the
-calling plugin's quiescence anchor. A plugin that has begun
+calling plugin's lifetime anchor. A plugin that has begun
 unloading drops the call silently before any optimiser code runs.
 
 ---

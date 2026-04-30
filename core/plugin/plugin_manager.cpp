@@ -223,7 +223,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
     out.ctx->kind        = out.descriptor.kind;
     out.ctx->kernel      = &kernel_;
 
-    /// The quiescence sentinel. The shared_ptr's reference count
+    /// The lifetime anchor. The shared_ptr's reference count
     /// tracks `(this ctx) + (every registry entry the plugin
     /// installs) + (every dispatch snapshot in flight) + (every
     /// async callback currently in plugin code via GateGuard)`.
