@@ -178,6 +178,27 @@ process memory after the documented destruction point.
 
 ---
 
+## 5b. Cross-plugin application
+
+The end-of-life hygiene formalised in §5 applies to every long-lived
+secret buffer the GoodNet codebase owns. The clauses are
+canonical for Noise; other plugins follow the same pattern through
+their own destructors and reassignment paths:
+
+- A long-lived secret buffer is zeroised at the destruction point
+  of the owning object.
+- A reassignment of the same buffer zeroises the previous bytes
+  before the new bytes are written, so a shorter replacement does
+  not leave a tail of the old secret in process memory.
+- After the buffer's cryptographic purpose ends, the buffer is
+  wiped — the destructor remains as a defence-in-depth backstop.
+
+The TLS transport's server private key buffer follows this pattern:
+the override storage is zeroised on destruction, on reassignment
+through `set_server_credentials`, and after the OpenSSL context has
+loaded the bytes in `load_server_credentials`. The cert buffer is
+public material and is exempt from the wipe rule.
+
 ## 5a. `gn_handshake_keys_t` layout
 
 The provider populates this struct in `export_transport_keys` and
