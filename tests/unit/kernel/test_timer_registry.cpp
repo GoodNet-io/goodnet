@@ -231,6 +231,46 @@ TEST(TimerRegistry_Quota, ZeroMaxTimersCapMeansUnlimited) {
     r.shutdown();
 }
 
+TEST(TimerRegistry_Quota, SetTimerCapHoldsUnderConcurrentAdmits) {
+    /// `set_timer`'s global cap admit-then-emplace previously
+    /// released the mutex between the size check and the
+    /// `timers_.emplace` — concurrent admits could each observe
+    /// `size() < cap` and both push past it. Holding the lock
+    /// from check through emplace collapses the window. Stress
+    /// test asserts the count never exceeds the cap regardless of
+    /// thread interleaving.
+    TimerRegistry r;
+    r.set_max_timers(8);
+
+    constexpr int kThreads = 16;
+    constexpr int kSetsPerThread = 32;
+    std::atomic<int> accepted{0};
+    std::atomic<int> rejected{0};
+    std::vector<std::thread> workers;
+    workers.reserve(kThreads);
+    for (int t = 0; t < kThreads; ++t) {
+        workers.emplace_back([&] {
+            for (int i = 0; i < kSetsPerThread; ++i) {
+                gn_timer_id_t id = GN_INVALID_TIMER_ID;
+                /// 60-second delay ensures none of the timers fire
+                /// during the stress; the entries stay in the map
+                /// for the duration of the assertion.
+                const auto rc = r.set_timer(60'000, [](void*) {},
+                                             nullptr, {}, &id);
+                if (rc == GN_OK) accepted.fetch_add(1);
+                else if (rc == GN_ERR_LIMIT_REACHED) rejected.fetch_add(1);
+            }
+        });
+    }
+    for (auto& w : workers) w.join();
+    /// Map size never exceeds the cap; the surplus admits all
+    /// route to LIMIT_REACHED.
+    EXPECT_LE(accepted.load(), 8);
+    EXPECT_GT(rejected.load(), 0);
+    EXPECT_EQ(accepted.load() + rejected.load(), kThreads * kSetsPerThread);
+    r.shutdown();
+}
+
 TEST(TimerRegistry_Quota, PostCapHoldsUnderConcurrentAdmits) {
     /// CAS-loop admit on `post()` must keep two concurrent
     /// admit threads under the cap even when both observe a
