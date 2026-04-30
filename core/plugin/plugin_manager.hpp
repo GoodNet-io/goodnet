@@ -122,10 +122,13 @@ public:
     /// Demand a non-empty manifest. With this flag set, `load` fails
     /// with `GN_ERR_INTEGRITY_FAILED` whenever the manifest is empty,
     /// even for in-tree paths the developer-mode flow would accept.
-    /// Production deployments wire this from `plugins.manifest_required`
-    /// on the kernel config and pair it with a populated manifest;
-    /// dev fixtures leave the flag at its default `false`. See
-    /// `plugin-manifest.md`.
+    /// Production deployments call this on the bootstrap thread
+    /// before `load` and pair it with a populated manifest; dev
+    /// fixtures leave the flag at its default `false`. See
+    /// `plugin-manifest.md` §7. Both `set_manifest_required` and
+    /// `set_manifest` are bootstrap-only — the manager does not
+    /// guard against concurrent setter calls during an active
+    /// session.
     void set_manifest_required(bool required) noexcept;
 
     [[nodiscard]] bool manifest_required() const noexcept {

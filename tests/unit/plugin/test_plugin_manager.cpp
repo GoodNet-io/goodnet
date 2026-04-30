@@ -272,8 +272,8 @@ TEST(PluginManager_Manifest, HashMismatchRejected) {
 TEST(PluginManager_Manifest, RequiredFlagRefusesEmptyManifest) {
     /// `plugin-manifest.md` §7: the required flag turns the empty-
     /// manifest case into a hard error, naming "manifest required
-    /// but empty" in the diagnostic. The default flow with the flag
-    /// clear continues to permit empty-manifest loads.
+    /// but empty: <path>" in the diagnostic. The default flow with
+    /// the flag clear continues to permit empty-manifest loads.
     Kernel k;
     PluginManager pm(k);
     pm.set_manifest_required(true);
@@ -286,6 +286,9 @@ TEST(PluginManager_Manifest, RequiredFlagRefusesEmptyManifest) {
     EXPECT_NE(diag.find("manifest required but empty"),
               std::string::npos)
         << diag;
+    EXPECT_NE(diag.find(GOODNET_NULL_PLUGIN_PATH), std::string::npos)
+        << "diag must name the rejected path so the operator can "
+           "trace which load tripped the flag: " << diag;
     EXPECT_EQ(pm.size(), 0u);
 }
 
