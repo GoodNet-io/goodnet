@@ -116,6 +116,17 @@ gn_result_t PluginManager::open_one(const std::string& path,
                                     std::string& diag) {
     out.path = path;
 
+    /// Production-mode trip-wire: when the manifest-required flag is
+    /// set, an empty allowlist refuses every load. Operators wire
+    /// the flag from `plugins.manifest_required` and pair it with a
+    /// populated manifest; the dev-mode flow leaves the flag clear
+    /// and the empty allowlist passes through.
+    if (manifest_required_ && manifest_.empty()) {
+        diag = "plugin integrity check failed: manifest required but empty: ";
+        diag += path;
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+
     /// Integrity check before dlopen. An empty manifest is the
     /// developer-mode path; production callers install a manifest
     /// at startup and the kernel refuses every plugin not in it.
@@ -511,6 +522,10 @@ void PluginManager::shutdown() {
 
 void PluginManager::set_manifest(PluginManifest manifest) noexcept {
     manifest_ = std::move(manifest);
+}
+
+void PluginManager::set_manifest_required(bool required) noexcept {
+    manifest_required_ = required;
 }
 
 } // namespace gn::core

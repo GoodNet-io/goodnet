@@ -269,6 +269,45 @@ TEST(PluginManager_Manifest, HashMismatchRejected) {
     EXPECT_EQ(pm.size(), 0u);
 }
 
+TEST(PluginManager_Manifest, RequiredFlagRefusesEmptyManifest) {
+    /// `plugin-manifest.md` §7: the required flag turns the empty-
+    /// manifest case into a hard error, naming "manifest required
+    /// but empty" in the diagnostic. The default flow with the flag
+    /// clear continues to permit empty-manifest loads.
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest_required(true);
+    EXPECT_TRUE(pm.manifest_required());
+    EXPECT_TRUE(pm.manifest().empty());
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("manifest required but empty"),
+              std::string::npos)
+        << diag;
+    EXPECT_EQ(pm.size(), 0u);
+}
+
+TEST(PluginManager_Manifest, RequiredFlagWithPopulatedManifestLoads) {
+    /// Required flag plus a populated manifest reaches the normal
+    /// integrity check path; a matching SHA-256 succeeds.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+    if (!digest) return;  // tidy: optional access guard
+    PluginManifest m;
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest_required(true);
+    pm.set_manifest(std::move(m));
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    pm.shutdown();
+}
+
 TEST(PluginManager_Manifest, UnlistedPathRejected) {
     /// Manifest that does NOT list the path being loaded must
     /// reject — this is the production-mode default-deny.
