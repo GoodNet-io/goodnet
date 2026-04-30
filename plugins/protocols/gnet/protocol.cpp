@@ -4,6 +4,8 @@
 #include "protocol.hpp"
 #include "wire.hpp"
 
+#include <sodium.h>
+
 #include <cstring>
 
 #include <sdk/connection.h>
@@ -22,7 +24,10 @@ namespace {
 }
 
 [[nodiscard]] bool pk_buffer_eq(const std::uint8_t* a, const std::uint8_t* b) noexcept {
-    return std::memcmp(a, b, GN_PUBLIC_KEY_BYTES) == 0;
+    /// Constant-time compare so the framed-vs-relay-transit branch
+    /// downstream (header overhead 14 vs 78 bytes) does not become a
+    /// length oracle on the per-byte equality of either public key.
+    return sodium_memcmp(a, b, GN_PUBLIC_KEY_BYTES) == 0;
 }
 
 } // namespace

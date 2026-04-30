@@ -55,7 +55,8 @@ record sits inside one GNET frame.
 | Range | Owner |
 |---|---|
 | `0x0000 – 0x00ff` | reserved for kernel-emitted records |
-| `0x0100 – 0x0fff` | core plugins (heartbeat, discovery, future companion handlers) |
+| `0x0100 – 0x01ff` | _reserved_; the allocation table below holds it for future cross-cutting families |
+| `0x0200 – 0x0fff` | core plugins (heartbeat, discovery, future companion handlers) |
 | `0x1000 – 0x7fff` | application records |
 | `0x8000 – 0xffff` | experimental, **not** to be relied on across releases |
 
