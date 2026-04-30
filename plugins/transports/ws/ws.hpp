@@ -113,6 +113,22 @@ public:
 
     [[nodiscard]] static gn_transport_caps_t capabilities() noexcept;
 
+    /// Override the per-connection hard cap after `set_host_api` —
+    /// the regression suite for `backpressure.md` §3.1 needs a tiny
+    /// cap to exercise the control-reply abuse path inside a unit
+    /// test. Production callers configure the cap through
+    /// `gn_limits_t::pending_queue_bytes_hard`.
+    void set_pending_queue_bytes_hard_for_test(std::uint64_t bytes) noexcept;
+
+    /// Simulate a peer-initiated frame on @p conn by writing @p
+    /// bytes directly through the session's socket on the worker
+    /// strand. The receive path of the peer's session parses and
+    /// processes the frame as if it arrived over the wire. Used by
+    /// the regression suite for `backpressure.md` §3.1.
+    [[nodiscard]] gn_result_t send_raw_for_test(
+        gn_conn_id_t conn,
+        std::span<const std::uint8_t> bytes);
+
     /// RFC 6455 mandates a 64 KiB ceiling on a single frame's
     /// payload before the implementation should fall back to
     /// fragmentation. GoodNet caps below that so the receive buffer

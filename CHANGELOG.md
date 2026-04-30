@@ -474,6 +474,17 @@ typed extension API.
   the kernel thunk. The "exactly once" upgrade guarantee comes
   from the registry's `upgrade_trust` policy gate — concurrent
   callers race through the gate and the loser exits silently.
+- **WebSocket transport gates control replies through the
+  per-connection hard cap (`backpressure.md` §3.1).** Pong replies
+  to peer-initiated pings and graceful-close echoes share the same
+  budget that `host_api->send` already respects. A peer flooding
+  pings cannot push the local write queue past the cap — the
+  transport disconnects when the next pong reply would overflow,
+  treating the flood as abuse rather than amplifying the buffer.
+  The close-echo path drops the reply silently when the cap is
+  already saturated; the socket teardown carries the closure. The
+  regression suite simulates a 64-ping flood under a 256-byte cap
+  and asserts the server publishes `notify_disconnect`.
 - **Noise handshake clears every secret buffer on Split
   (`noise-handshake.md` §5 clause 4).** The handshake state's
   `Split` step zeroises the long-term static private key, the
