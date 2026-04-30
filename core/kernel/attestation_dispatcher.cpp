@@ -3,6 +3,8 @@
 
 #include "attestation_dispatcher.hpp"
 
+#include <sodium.h>
+
 #include <cstring>
 #include <ctime>
 #include <utility>
@@ -122,8 +124,10 @@ AttestationDispatcher::verify_payload(
     const auto recv_binding = payload.subspan<kBindingOffset, kBindingSize>();
     const auto sig_span     = payload.subspan<kSignatureOffset, kSignatureSize>();
 
-    /// Step 3: binding match.
-    if (std::memcmp(recv_binding.data(), binding.data(), kBindingSize) != 0) {
+    /// Step 3: binding match. Constant-time compare so a peer that
+    /// runs the channel-binding probe through repeated handshakes
+    /// learns nothing from per-byte timing.
+    if (sodium_memcmp(recv_binding.data(), binding.data(), kBindingSize) != 0) {
         return Outcome::BindingMismatch;
     }
 
@@ -291,8 +295,8 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
         State& state = states_[conn];
         if (state.their_received_valid) {
             const ::gn::PublicKey& pinned = state.pinned_device_pk;
-            if (std::memcmp(pinned.data(), device_pk.data(),
-                            GN_PUBLIC_KEY_BYTES) != 0) {
+            if (sodium_memcmp(pinned.data(), device_pk.data(),
+                              GN_PUBLIC_KEY_BYTES) != 0) {
                 /// Identity-change attempt — flag for disconnect
                 /// outside the lock so the registry critical
                 /// section runs without holding the dispatcher's
