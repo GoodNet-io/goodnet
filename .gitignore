@@ -69,7 +69,9 @@ result-*
 !plugins/**/README.md
 
 # Tests
+!tests/**/*.c
 !tests/**/*.cpp
+!tests/**/*.h
 !tests/**/*.hpp
 !tests/**/*.conf
 !tests/**/CMakeLists.txt
