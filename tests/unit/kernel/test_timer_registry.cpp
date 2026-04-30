@@ -185,6 +185,52 @@ TEST(TimerRegistry_Quota, RejectsPastMaxTimers) {
     EXPECT_EQ(c, GN_INVALID_TIMER_ID);
 }
 
+TEST(TimerRegistry_Quota, ZeroPendingCapMeansUnlimited) {
+    /// `limits.md` §4 — a cap left at the `set_*` default of zero
+    /// is treated as unlimited. Mirrors the `set_timer` per-plugin
+    /// behaviour exercised by `ZeroPerPluginCapMeansUnlimited`.
+    /// The flip cap=1 → 0 makes the test fail on the pre-fix path
+    /// where `cur >= cap` rejected at zero unconditionally.
+    TimerRegistry r;
+    r.set_max_pending_tasks(1);
+    EXPECT_EQ(r.post([](void*) {}, nullptr, {}), GN_OK);
+    /// Cap == 1 with one admit already in flight — second post is
+    /// the LIMIT_REACHED case, exercising the non-zero-cap path.
+    EXPECT_EQ(r.post([](void*) {}, nullptr, {}), GN_ERR_LIMIT_REACHED);
+
+    /// Switch to "unlimited" — every subsequent admit must
+    /// succeed even though the live counter is already at the
+    /// previous cap. A pre-fix run rejects every call with
+    /// `cur >= 0` true.
+    r.set_max_pending_tasks(0);
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_EQ(r.post([](void*) {}, nullptr, {}), GN_OK);
+    }
+    r.shutdown();
+}
+
+TEST(TimerRegistry_Quota, ZeroMaxTimersCapMeansUnlimited) {
+    /// Same `limits.md` §4 rule for the global `max_timers` cap
+    /// in `set_timer`. Flip from cap=2 → 0 demonstrates the
+    /// transition: the third admit at cap=2 is rejected, then
+    /// cap=0 admits the same call. Pre-fix code rejected at
+    /// cap=0 with `timers_.size() >= 0` always true.
+    TimerRegistry r;
+    r.set_max_timers(2);
+
+    gn_timer_id_t id = GN_INVALID_TIMER_ID;
+    EXPECT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, {}, &id), GN_OK);
+    EXPECT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, {}, &id), GN_OK);
+    EXPECT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, {}, &id),
+              GN_ERR_LIMIT_REACHED);
+
+    r.set_max_timers(0);
+    for (int i = 0; i < 32; ++i) {
+        EXPECT_EQ(r.set_timer(60'000, [](void*) {}, nullptr, {}, &id), GN_OK);
+    }
+    r.shutdown();
+}
+
 TEST(TimerRegistry_Quota, PostCapHoldsUnderConcurrentAdmits) {
     /// CAS-loop admit on `post()` must keep two concurrent
     /// admit threads under the cap even when both observe a

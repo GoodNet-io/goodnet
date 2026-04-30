@@ -58,9 +58,11 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
 
     try {
         {
+            /// `limits.md` §4 — a cap of zero disables enforcement.
             std::lock_guard lk(mu_);
-            if (timers_.size() >=
-                max_timers_.load(std::memory_order_relaxed)) {
+            const std::uint32_t cap =
+                max_timers_.load(std::memory_order_relaxed);
+            if (cap != 0 && timers_.size() >= cap) {
                 return GN_ERR_LIMIT_REACHED;
             }
         }
@@ -202,13 +204,15 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
     /// publish the increment. Two concurrent admits cannot both
     /// observe a sub-cap value and both pass the check — the
     /// loser's CAS sees an updated `cur` and re-evaluates against
-    /// the cap. Mirrors the `set_timer` per-plugin admission loop.
+    /// the cap. A cap of zero disables enforcement per
+    /// `limits.md` §4. Mirrors the `set_timer` per-plugin
+    /// admission loop.
     {
         std::uint32_t cur = pending_tasks_.load(std::memory_order_relaxed);
         while (true) {
             const std::uint32_t cap =
                 max_pending_tasks_.load(std::memory_order_relaxed);
-            if (cur >= cap) {
+            if (cap != 0 && cur >= cap) {
                 return GN_ERR_LIMIT_REACHED;
             }
             if (pending_tasks_.compare_exchange_weak(
