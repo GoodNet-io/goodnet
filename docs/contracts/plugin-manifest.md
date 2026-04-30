@@ -123,12 +123,17 @@ peak memory use stays bounded for plugins of any realistic size.
 ### 4.1 Hash and load through the same descriptor (Linux)
 
 The integrity check and `dlopen` operate on the **same file
-descriptor** so a leaf-symlink swap between hash and load cannot
-route the loader to a different inode than the one the kernel
-hashed. The Linux sequence:
+descriptor** so a symlink swap between hash and load — at any
+component of the path — cannot route the loader to a different
+inode than the one the kernel hashed. The Linux sequence:
 
-1. `open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)` — refuses a
-   symlink at the leaf component;
+1. `openat2(AT_FDCWD, path, {O_RDONLY | O_CLOEXEC,
+   RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS})` — refuses
+   every symlink along the path (leaf or any parent
+   directory) and every magic-link such as `/proc/self/fd/N`.
+   Linux 5.6+. Older kernels fall back to
+   `open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)`, which
+   covers only the leaf component;
 2. `sha256_of_fd(fd)` — `pread`-based streaming; leaves the seek
    state at zero so the descriptor is reusable;
 3. `verify_digest(path, observed)` — manifest lookup + compare;
@@ -136,15 +141,15 @@ hashed. The Linux sequence:
    the kernel just hashed, regardless of any concurrent path
    replacement.
 
-The `O_NOFOLLOW` guard is leaf-only. A parent-directory swap
-(attacker controls a directory in the path's prefix) is still
-permitted by the current implementation; the operator-controls
-assumption from §5 stays load-bearing for that window.
+`RESOLVE_NO_SYMLINKS` is the strongest portable defence
+available against directory-level path-traversal swaps; the
+older `O_NOFOLLOW` fallback narrows the threat to the leaf
+component only.
 
 Non-Linux builds fall back to the path-based `verify(path)` +
 `dlopen(path)` sequence, which is race-prone. Production
 deployments should stay on Linux until a `RESOLVE_BENEATH`-class
-guard ships.
+guard ships on the target platform.
 
 ---
 
@@ -205,14 +210,6 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 - **Capability manifest.** A separate manifest will pin per-plugin
   capabilities (filesystem, network, syscall) once the sandbox
   layer lands. v1 ships only the integrity manifest.
-- **Parent-directory symlink swap.** §4.1 closes the leaf-symlink
-  window through `O_NOFOLLOW`, but a directory in the path's
-  prefix replaced with a symlink between `set_manifest` and
-  `open` still routes the kernel to attacker-chosen bytes. v1
-  inherits §5's operator-controls assumption for the prefix. A
-  future revision lands `openat2(RESOLVE_BENEATH)` or a dir-fd
-  pinned at `set_manifest` time so the prefix collapses to a
-  single trust decision.
 - **Empty-manifest silent dev-mode.** A production deployment
   that ships an empty manifest by accident gets no warning. The
   v1 surface is permissive on purpose so in-tree fixtures and

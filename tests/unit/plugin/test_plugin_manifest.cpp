@@ -12,7 +12,11 @@
 #include <gtest/gtest.h>
 
 #include <fcntl.h>
+#include <sys/syscall.h>
 #include <unistd.h>
+#if defined(SYS_openat2) && __has_include(<linux/openat2.h>)
+#include <linux/openat2.h>
+#endif
 
 #include <array>
 #include <cerrno>
@@ -140,6 +144,49 @@ TEST(PluginManifest_Sha, FdReadMatchesPathRead) {
 
 TEST(PluginManifest_Sha, FdInvalidReturnsNullopt) {
     EXPECT_FALSE(PluginManifest::sha256_of_fd(-1).has_value());
+}
+
+TEST(PluginManifest_Sha, OpenAt2RefusesParentDirectorySymlink) {
+    /// `plugin-manifest.md` §4.1 — the kernel uses
+    /// `openat2(RESOLVE_NO_SYMLINKS)` so a symlink anywhere in
+    /// the path's prefix (not just the leaf) is rejected with
+    /// `ELOOP`. The pre-T16 path used `O_NOFOLLOW` which only
+    /// guards the leaf. Replicate the kernel's open arguments
+    /// here so the test pins the syscall surface even when the
+    /// PluginManager's load path is not exercised.
+#ifdef SYS_openat2
+    const std::array<std::uint8_t, 3> abc{'a', 'b', 'c'};
+    const auto target_dir = fs::temp_directory_path() / "gn_manifest_real_dir";
+    fs::create_directory(target_dir);
+    const auto target = target_dir / "target.so";
+    {
+        std::ofstream f(target, std::ios::binary | std::ios::trunc);
+        f.write(reinterpret_cast<const char*>(abc.data()),
+                static_cast<std::streamsize>(abc.size()));
+    }
+
+    /// Parent-directory symlink: link → target_dir.
+    const auto link_dir = fs::temp_directory_path() / "gn_manifest_link_dir";
+    fs::remove(link_dir);
+    fs::create_directory_symlink(target_dir, link_dir);
+    const auto via_link = link_dir / "target.so";
+
+    struct ::open_how how{};
+    how.flags = static_cast<__u64>(O_RDONLY | O_CLOEXEC);
+    how.resolve = RESOLVE_NO_SYMLINKS;
+    const int fd = static_cast<int>(::syscall(
+        SYS_openat2, AT_FDCWD, via_link.c_str(), &how, sizeof(how)));
+    EXPECT_LT(fd, 0);
+    /// Kernel returns ELOOP for a symlink encountered under
+    /// RESOLVE_NO_SYMLINKS regardless of position in the path.
+    EXPECT_EQ(errno, ELOOP);
+    if (fd >= 0) ::close(fd);
+
+    fs::remove(link_dir);
+    fs::remove_all(target_dir);
+#else
+    GTEST_SKIP() << "SYS_openat2 not available on this build host";
+#endif
 }
 
 TEST(PluginManifest_Sha, FdOpenedWithNoFollowRefusesSymlink) {
