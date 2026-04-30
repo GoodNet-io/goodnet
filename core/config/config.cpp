@@ -8,6 +8,8 @@
 #include <mutex>
 #include <sstream>
 
+#include <core/util/log.hpp>
+
 namespace gn::core {
 
 namespace {
@@ -400,15 +402,38 @@ gn_result_t Config::merge_json(std::string_view overlay) {
     /// objects merge field-by-field, scalars and arrays replace
     /// the matching key wholesale.
     nlohmann::json merged;
+    nlohmann::json prior;
     {
         std::shared_lock lock(mu_);
         merged = json_;
+        prior  = json_;
     }
     merged.merge_patch(patch);
 
     auto new_limits = parse_limits(merged);
     if (auto rc = validate_limits(new_limits, nullptr); rc != GN_OK) {
         return rc;
+    }
+
+    /// Profile re-evaluation per `config.md` §3a — an overlay that
+    /// carries `profile` switches the baseline that the limits
+    /// derive from. Surface the change at warn level so an
+    /// operator who only meant to nudge one field sees the
+    /// baseline shift in the audit trail.
+    const auto extract_profile = [](const nlohmann::json& doc) -> std::string {
+        if (auto p = doc.find("profile"); p != doc.end() && p->is_string()) {
+            return p->get<std::string>();
+        }
+        return "server";
+    };
+    const std::string prior_profile  = extract_profile(prior);
+    const std::string merged_profile = extract_profile(merged);
+    if (prior_profile != merged_profile) {
+        SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
+            "config.merge_json: profile changed '{}' -> '{}'; every "
+            "limits.* field that the overlay does not set snaps to "
+            "the new baseline (config.md §3a)",
+            prior_profile, merged_profile);
     }
 
     std::unique_lock lock(mu_);

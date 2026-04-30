@@ -528,6 +528,44 @@ TEST(Config_Merge, OverlayReplacesArrays) {
     EXPECT_EQ(s, "x");
 }
 
+TEST(Config_Merge, ProfileSwitchSnapsUnsetLimitsToNewBaseline) {
+    /// `config.md` §3a — merging an overlay that names a different
+    /// `profile` re-evaluates every limits.* field that the
+    /// overlay does not pin against the new baseline. The caller
+    /// who only meant to override `max_timers` ends up with the
+    /// embedded profile's connection cap because the baseline
+    /// flipped under the overlay.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"profile": "server"})"), GN_OK);
+    /// Server baseline ships `max_connections = 4096`.
+    ASSERT_EQ(c.limits().max_connections, 4096u);
+
+    ASSERT_EQ(c.merge_json(
+        R"({"profile": "embedded", "limits": {"max_timers": 128}})"),
+        GN_OK);
+
+    /// `max_connections` was unset in the overlay; profile flip
+    /// snaps it to the embedded baseline (64). The pinned
+    /// `max_timers` stays at 128 even though embedded would have
+    /// defaulted to 256.
+    EXPECT_EQ(c.limits().max_connections, 64u);
+    EXPECT_EQ(c.limits().max_timers, 128u);
+}
+
+TEST(Config_Merge, OverlayWithoutProfileKeepsPriorBaseline) {
+    /// Same §3a — an overlay that omits `profile` keeps the
+    /// active baseline so unset limits stay where the prior
+    /// `load_json` placed them. This is the intended workflow
+    /// for nudging a single field without surprise.
+    Config c;
+    ASSERT_EQ(c.load_json(R"({"profile": "embedded"})"), GN_OK);
+    ASSERT_EQ(c.limits().max_connections, 64u);
+
+    ASSERT_EQ(c.merge_json(R"({"limits": {"max_timers": 128}})"), GN_OK);
+    EXPECT_EQ(c.limits().max_connections, 64u);
+    EXPECT_EQ(c.limits().max_timers, 128u);
+}
+
 TEST(Config_Merge, MalformedOverlayPreservesPriorState) {
     Config c;
     ASSERT_EQ(c.load_json(R"({"marker": "base"})"), GN_OK);
