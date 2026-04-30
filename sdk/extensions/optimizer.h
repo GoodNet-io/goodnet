@@ -5,7 +5,7 @@
  * Plugins that own a single path-optimisation strategy
  * (transport-failover, relay-upgrade, ICE, autonat, …) register a
  * `gn_optimizer_api_t` vtable under
- * `"gn.optimizer." + name`. The kernel's `PathManager` walks every
+ * `"gn.optimizer." + name`. The kernel's `path orchestrator` walks every
  * registered optimiser in priority order on each connection event
  * and applies the first non-empty recommendation. Per
  * `docs/contracts/optimizer.md`.
@@ -42,7 +42,7 @@ typedef enum gn_optimizer_strategy_e {
         graceful drain on the old socket, fresh handshake on the new. */
     GN_OPT_REPLACE  = 0,
     /** Add the recommended transport as a parallel path; the
-        `PathManager` may steer subsequent sends across both. */
+        `path orchestrator` may steer subsequent sends across both. */
     GN_OPT_ADD_PATH = 1,
     /** Drop the current connection. Used by autonat / ICE when the
         peer is concluded unreachable across every candidate path. */
@@ -51,7 +51,7 @@ typedef enum gn_optimizer_strategy_e {
 
 /**
  * @brief Recommendation produced by an optimiser. Filled by
- *        `recommend`; consumed by the kernel's `PathManager`.
+ *        `recommend`; consumed by the kernel's `path orchestrator`.
  */
 typedef struct gn_optimizer_recommendation_s {
     gn_optimizer_strategy_t strategy;

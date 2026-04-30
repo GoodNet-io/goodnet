@@ -35,7 +35,7 @@ so:
 
 Optimisers are decision plugins. They do not move bytes — moving
 bytes is the transport layer's job. An optimiser's recommendation
-is consumed by the `PathManager` and turned into a `connect()` /
+is consumed by the `path orchestrator` and turned into a `connect()` /
 `disconnect()` sequence on the kernel-managed transport.
 
 ---
@@ -100,7 +100,7 @@ typedef struct gn_optimizer_api_s {
 
 `gn_optimizer_recommendation_t` carries a target transport
 scheme + URI, and an `apply_strategy` enum: `Replace`, `AddPath`,
-`Drop`. The kernel's `PathManager` decides what to do with the
+`Drop`. The kernel's `path orchestrator` decides what to do with the
 recommendation; an optimiser is permitted to recommend, never to
 mutate registry state directly.
 
@@ -140,22 +140,20 @@ connection event
   └── kernel publishes to subscribed optimisers
        └── optimiser updates state, may queue a follow-up timer
 
-`PathManager::evaluate(conn)` (called periodically + on subscribed events)
+evaluate(conn) (called periodically + on subscribed events)
   └── for each registered optimiser in priority order:
        optimiser.recommend(conn) → recommendation
        if recommendation:
-           apply via PathManager
+           apply via the kernel's path orchestrator
            break
 ```
 
-`PathManager` is the single mutating entrypoint to the path-state
-table. Optimisers never call `connect` / `disconnect` themselves;
-they always return a recommendation.
-
-A v1.0 baseline build ships `PathManager` as a skeleton so the
-contract is observable end-to-end before optimisers exist.
-Optimiser plugins ship incrementally; the kernel never has to
-know about them.
+The path orchestrator is the single mutating entrypoint to the
+path-state table. Optimisers never call `connect` / `disconnect`
+themselves; they always return a recommendation. A v1.0 baseline
+build ships the orchestrator as a skeleton so the contract is
+observable end-to-end before optimisers exist; optimiser plugins
+ship incrementally and the kernel never has to know about them.
 
 ---
 

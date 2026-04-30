@@ -204,9 +204,12 @@ Hot-reload is supported but constrained:
   (`fsm-events.md` §6) reach a value past every in-flight read of the
   old vtable. A 64-bit counter is used; wraparound across realistic
   deployment lifetimes is not a concern.
-- During quiescence the plugin's slot in the dispatch table holds a
-  tombstone vtable that returns `GN_ERR_NOT_IMPLEMENTED` — better than
-  UAF and observable through metrics.
+- During quiescence the plugin's registry entry is removed from
+  the dispatch table; new lookups miss and return
+  `GN_ERR_UNKNOWN_RECEIVER`. In-flight dispatches that captured a
+  snapshot before removal complete against their captured vtable
+  copy and the matching `lifetime_anchor` keeps the `.so` mapped
+  past the last call.
 
 The race between `dlclose` and pending dispatch is closed by this
 generation-quiescence wait.

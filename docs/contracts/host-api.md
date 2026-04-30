@@ -112,7 +112,8 @@ typedef struct host_api_s {
     /* prefix, key-value records) without rewriting the host_api      */
     /* shape on every step. The first field of `gn_log_api_t` is its  */
     /* own `api_size`; consumers gate access to entries beyond their  */
-    /* compile-time view through `GN_API_HAS_LOG` from `sdk/abi.h`.   */
+    /* compile-time view through `GN_API_HAS(&api->log, slot)` from   */
+    /* `sdk/abi.h`.                                                    */
     gn_log_api_t log;
 
     /* ── Transport-side notifications ────────────────────────────────── */

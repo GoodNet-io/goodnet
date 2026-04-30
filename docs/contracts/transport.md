@@ -58,9 +58,10 @@ After a security handshake completes, the kernel may upgrade
 `Untrusted → Peer`. Transports never declare anything stronger than
 `Peer`; the upgrade path is the kernel's responsibility.
 
-A transport on a loopback path **must** declare `Loopback` regardless of
-any `--allow-null-untrusted` configuration; this hint is what lets the
-kernel permit `null+raw` stacks per `security-trust.md` §4.
+A transport on a loopback path **must** declare `Loopback` regardless
+of any opt-in flag in the security configuration; the trust class is
+what lets the kernel permit `null+raw` stacks per
+`security-trust.md` §4.
 
 ## 3a. Handshake role declaration
 

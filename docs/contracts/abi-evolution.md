@@ -67,13 +67,13 @@ typedef struct host_api_s {
     /* slots populated since v1.0 */
     int      (*send)(...);
     int      (*broadcast)(...);
-    /* slot added in v1.2: */
-    int      (*pin_handler)(...);
+    /* slot appended in a future MINOR: */
+    int      (*future_slot)(...);
     /* ... */
 } host_api_t;
 
-static inline int can_call_pin_handler(const host_api_t* api) {
-    return api->api_size >= offsetof(host_api_t, pin_handler) + sizeof(api->pin_handler);
+static inline int can_call_future_slot(const host_api_t* api) {
+    return api->api_size >= offsetof(host_api_t, future_slot) + sizeof(api->future_slot);
 }
 ```
 

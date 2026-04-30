@@ -208,13 +208,7 @@ threat model excludes a local-process attacker who could equally read
 
 Some users need plaintext on an untrusted link for testing or for use
 behind an external Noise/TLS terminator. The contract permits it only
-via explicit opt-in:
-
-```bash
-goodnet --allow-null-untrusted ...
-```
-
-or in JSON config:
+via explicit opt-in in the embedding configuration:
 
 ```json
 {
@@ -229,8 +223,8 @@ or in JSON config:
 }
 ```
 
-Without the flag, stack construction returns
-`GN_ERR_INVALID_STACK_POLICY`. The flag is logged at warn level on
+Without the opt-in, stack construction returns
+`GN_ERR_INVALID_ENVELOPE`. The opt-in is logged at warn level on
 every connect using the stack — there is no quiet plaintext path.
 
 ---
