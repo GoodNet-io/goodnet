@@ -31,6 +31,7 @@ namespace {
 const gn_handler_vtable_t* dummy_vtable() {
     static const gn_handler_vtable_t vt = []() {
         gn_handler_vtable_t v{};
+        v.api_size = sizeof(gn_handler_vtable_t);
         return v;
     }();
     return &vt;
@@ -74,6 +75,22 @@ TEST(HandlerRegistry_Args, RejectsEmptyProtocolId) {
     EXPECT_EQ(reg.register_handler("", 1, 128,
                                    dummy_vtable(), nullptr, &id),
               GN_ERR_NULL_ARG);
+    EXPECT_EQ(id, GN_INVALID_ID);
+    EXPECT_EQ(reg.size(), 0u);
+}
+
+TEST(HandlerRegistry_Args, RejectsVtableWithSmallerApiSize) {
+    /// `abi-evolution.md` §3a: a producer-declared `api_size` smaller
+    /// than the kernel's struct minimum is rejected before any slot
+    /// lookup. Mirrors the `register_transport` and
+    /// `register_provider` defensive size-prefix check.
+    HandlerRegistry reg;
+    gn_handler_vtable_t shrunk{};
+    shrunk.api_size = 0;
+    gn_handler_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler("gnet-v1", 1, 128,
+                                   &shrunk, nullptr, &id),
+              GN_ERR_VERSION_MISMATCH);
     EXPECT_EQ(id, GN_INVALID_ID);
     EXPECT_EQ(reg.size(), 0u);
 }

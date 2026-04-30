@@ -14,6 +14,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 #include <sdk/trust.h>
 
@@ -181,6 +182,8 @@ typedef struct gn_security_provider_vtable_s {
 
     void* _reserved[4];
 } gn_security_provider_vtable_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_security_provider_vtable_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

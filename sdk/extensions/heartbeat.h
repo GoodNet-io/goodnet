@@ -14,6 +14,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -41,8 +42,15 @@ typedef struct gn_heartbeat_stats_s {
  *
  * The `ctx` field is the handler's `self` pointer; every entry takes
  * it as its first argument. Versioned with @ref GN_EXT_HEARTBEAT_VERSION.
+ *
+ * Begins with @ref api_size for size-prefix evolution per
+ * `abi-evolution.md` §3. Consumers query the extension through
+ * `host_api->query_extension_checked` which validates `api_size`
+ * against the consumer's compile-time minimum before any slot fires.
  */
 typedef struct gn_heartbeat_api_s {
+    uint32_t api_size;          /**< sizeof(gn_heartbeat_api_t) at producer build time */
+
     /**
      * @brief Snapshot the aggregate stats. Returns 0 on success, -1
      *        when @p out is NULL.
@@ -76,6 +84,8 @@ typedef struct gn_heartbeat_api_s {
     void* ctx;
     void* _reserved[4];
 } gn_heartbeat_api_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_heartbeat_api_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

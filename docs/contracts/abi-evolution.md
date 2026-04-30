@@ -54,10 +54,12 @@ from the load entry point and the plugin is rejected.
 
 ## 3. Size-prefix vtables
 
-Function-pointer tables (`host_api_t`, `host_loader_api_t`, every
-`*_vtable_t`) start with a `uint32_t api_size`. The producer fills it
-with `sizeof(*table)` at producer build time. Consumers compare
-against the offset of the field they want to call:
+Every function-pointer table crossing the C ABI starts with a
+`uint32_t api_size` as its first field. That includes `host_api_t`,
+`host_loader_api_t`, and every `*_vtable_t` (transport, security
+provider, handler, protocol layer, extension API). The producer
+fills it with `sizeof(*table)` at producer build time. Consumers
+compare against the offset of the field they want to call:
 
 ```c
 typedef struct host_api_s {
@@ -90,19 +92,27 @@ Rules:
 Without size-prefix, adding a single function pointer would force every
 already-compiled plugin to rebuild.
 
+C ABI is the lowest common denominator the SDK exposes; every
+supported language binding traverses this boundary. The size-prefix
+rule applies regardless of where the producer was built — a binding
+layer fills `api_size` at producer compile time and runs the
+consumer-side `api_size >= offsetof(slot) + sizeof(slot)` guard
+before any newly-introduced slot fires. Per-language helper macros
+and wrappers belong to the binding's own contract, not to this one.
+
 ---
 
 ## 3a. Kernel-side validation of plugin-provided vtables
 
 The size-prefix rule (§3) is symmetric: when a **plugin** registers
 a vtable with the kernel — `gn_transport_vtable_t`,
-`gn_security_provider_vtable_t`, and any future plugin-provided
-table — the kernel is the consumer and the plugin is the producer.
-The kernel validates `api_size` defensively before invoking any
-slot:
+`gn_security_provider_vtable_t`, `gn_handler_vtable_t`, and any
+future plugin-provided table — the kernel is the consumer and the
+plugin is the producer. The kernel validates `api_size`
+defensively before invoking any slot:
 
 ```
-on register_transport(vtable):
+on register_<X>(vtable):
     if vtable == NULL                        return GN_ERR_NULL_ARG
     if vtable->api_size < sizeof(min_struct) return GN_ERR_VERSION_MISMATCH
     accept; subsequent slot calls are GN_API_HAS-checked
@@ -115,11 +125,13 @@ the field and crash the kernel on first slot lookup). A plugin
 that fails the check is rejected at registration; no partial
 state survives.
 
-The handler vtable (`gn_handler_vtable_t`) is fixed-shape at v1
-and does not carry `api_size`; it grows by `_reserved` slot
-promotion (§4) instead of size-prefix appending. Future versions
-that need to append slots will introduce `api_size` as a `MINOR`
-bump.
+Two C ABI vtables in the SDK do not pass through a kernel-side
+register thunk and therefore validate consumer-side instead:
+
+| Vtable | Why no kernel validation | Where it is validated |
+|---|---|---|
+| `gn_protocol_layer_vtable_t` | The kernel holds an `std::shared_ptr<gn::IProtocolLayer>` C++ wrapper rather than the C vtable; a future C-only protocol adapter performs the `api_size` check before constructing the wrapper. | producer-side until the C adapter ships; the field is populated today so adapter introduction is non-breaking |
+| `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(out, slot)` before invoking any slot added after `MINOR` 0 |
 
 ---
 

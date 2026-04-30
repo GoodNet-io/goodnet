@@ -533,6 +533,8 @@ typedef struct host_api_s {
     void* _reserved[8];
 } host_api_t;
 
+GN_VTABLE_API_SIZE_FIRST(host_api_t);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

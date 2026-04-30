@@ -9,6 +9,9 @@
 #ifndef GOODNET_SDK_HANDLER_H
 #define GOODNET_SDK_HANDLER_H
 
+#include <stdint.h>
+
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -29,8 +32,13 @@ typedef enum gn_propagation_e {
 
 /**
  * @brief Vtable for an `IHandler` implementation in C.
+ *
+ * Begins with @ref api_size for size-prefix evolution per
+ * `abi-evolution.md` §3.
  */
 typedef struct gn_handler_vtable_s {
+    uint32_t api_size;          /**< sizeof(gn_handler_vtable_t) at producer build time */
+
     /**
      * @brief Stable identifier of the protocol layer this handler binds to.
      *        Returned pointer outlives the plugin.
@@ -77,6 +85,8 @@ typedef struct gn_handler_vtable_s {
 
     void* _reserved[4];
 } gn_handler_vtable_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_handler_vtable_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

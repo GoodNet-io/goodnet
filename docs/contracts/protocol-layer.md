@@ -94,8 +94,16 @@ mapped to the codes listed in §8.
 
 ### 3.0 `gn_protocol_layer_vtable_t` layout
 
+Begins with `api_size` for size-prefix evolution per
+`abi-evolution.md` §3. The kernel statically links one
+`IProtocolLayer` C++ wrapper rather than this C vtable directly,
+so the `api_size` check runs in the future C-only protocol
+adapter (per §3a) — populating the field today keeps the adapter's
+introduction non-breaking.
+
 ```c
 typedef struct gn_protocol_layer_vtable_s {
+    uint32_t    api_size;                /* sizeof(gn_protocol_layer_vtable_t) at producer build time */
     const char* (*protocol_id)(void* self);
     gn_result_t (*deframe)(void* self,
                            gn_connection_context_t* ctx,
@@ -128,7 +136,7 @@ Slot ownership and lifetime:
 | `frame`/`out_bytes` + `out_free` | plugin allocates; kernel calls `out_free(out_bytes)` once the bytes commit to the security layer |
 | `protocol_id` returned `const char*` | outlives the plugin |
 | `allowed_trust_mask` | bitmap of `1u << GN_TRUST_<X>` per `security-trust.md` §4 |
-| `_reserved[4]` | NULL on init; size-prefix evolution per `abi-evolution.md` §3a |
+| `gn_deframe_result_t::_reserved[4]` | NULL on init; value-type evolution per `abi-evolution.md` §4 |
 
 ### 3.1 `ConnectionContext`
 

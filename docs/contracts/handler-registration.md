@@ -57,14 +57,18 @@ back during dispatch.
 
 ### 2.1 `gn_handler_vtable_t` layout
 
-The vtable carried by `register_handler`. Every slot is a function
-pointer that the kernel invokes with the plugin-supplied `self`
-argument. NULL is permitted on the optional lifecycle hooks; the
-mandatory slots (`protocol_id`, `supported_msg_ids`, `handle_message`)
-are non-NULL.
+The vtable carried by `register_handler`. Begins with `api_size`
+for size-prefix evolution per `abi-evolution.md` §3; the kernel
+rejects a registration whose `api_size < sizeof(gn_handler_vtable_t)`
+with `GN_ERR_VERSION_MISMATCH` per §3a. Every remaining slot is a
+function pointer that the kernel invokes with the plugin-supplied
+`self` argument. NULL is permitted on the optional lifecycle
+hooks; the mandatory slots (`protocol_id`, `supported_msg_ids`,
+`handle_message`) are non-NULL.
 
 ```c
 typedef struct gn_handler_vtable_s {
+    uint32_t         api_size;          /* sizeof(gn_handler_vtable_t) at producer build time */
     const char*      (*protocol_id)(void* self);
     void             (*supported_msg_ids)(void* self,
                                           const uint32_t** out_ids,

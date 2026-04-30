@@ -115,6 +115,7 @@ std::uint32_t allowed_trust_mask_thunk(void* /*self*/) noexcept {
 
 gn_protocol_layer_vtable_t make_vtable() noexcept {
     gn_protocol_layer_vtable_t v{};
+    v.api_size           = sizeof(gn_protocol_layer_vtable_t);
     v.protocol_id        = &protocol_id_thunk;
     v.deframe            = &deframe_thunk;
     v.frame              = &frame_thunk;

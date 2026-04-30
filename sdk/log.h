@@ -19,6 +19,7 @@
 
 #include <stdint.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -70,6 +71,8 @@ typedef struct gn_log_api_s {
     /** Reserved slots for additive evolution per `abi-evolution.md`. */
     void* _reserved[8];
 } gn_log_api_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_log_api_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

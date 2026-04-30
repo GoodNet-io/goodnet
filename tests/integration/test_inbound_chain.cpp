@@ -55,6 +55,7 @@ struct CaptureHandler {
 /// Build a vtable that points at the static handle method above.
 gn_handler_vtable_t make_vtable() {
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &CaptureHandler::handle;
     return vt;
 }

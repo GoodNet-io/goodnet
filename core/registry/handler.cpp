@@ -20,6 +20,14 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
     if (vtable == nullptr || out_id == nullptr || protocol_id.empty()) {
         return GN_ERR_NULL_ARG;
     }
+    /// `abi-evolution.md` §3a: defensive size-prefix check on the
+    /// plugin-provided vtable. A vtable that declares a smaller
+    /// size than the kernel's known minimum is from an SDK older
+    /// than the slots the kernel intends to call — reject before
+    /// any slot lookup.
+    if (vtable->api_size < sizeof(gn_handler_vtable_t)) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
     if (msg_id == 0) {
         /// `0` is reserved as the unset sentinel — registrations against
         /// it would shadow legitimate dispatches.

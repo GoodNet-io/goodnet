@@ -254,6 +254,7 @@ int main() {
 
     InboxState alice_inbox;
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &handler_consume;
     gn_handler_id_t hid = GN_INVALID_ID;
     if (alice->api.register_handler(alice->api.host_ctx, "gnet-v1",

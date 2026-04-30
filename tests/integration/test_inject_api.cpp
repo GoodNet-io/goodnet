@@ -89,6 +89,7 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
 
     Capture cap;
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
     ASSERT_EQ(h.api.register_handler(h.api.host_ctx,
@@ -150,6 +151,7 @@ TEST(InjectExternal, EmptyPayloadAccepted) {
 
     Capture cap;
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
     ASSERT_EQ(h.api.register_handler(h.api.host_ctx,

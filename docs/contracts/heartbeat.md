@@ -68,6 +68,7 @@ production deployments do not remap it.
 #define GN_EXT_HEARTBEAT_VERSION  0x00010000u
 
 typedef struct gn_heartbeat_api_s {
+    uint32_t api_size;          /* sizeof(gn_heartbeat_api_t) at producer build time */
     int (*get_stats)(void* ctx, gn_heartbeat_stats_t* out);
     int (*get_rtt)(void* ctx, gn_conn_id_t conn, uint64_t* out_rtt_us);
     int (*get_observed_address)(void* ctx, gn_conn_id_t conn,
@@ -78,8 +79,14 @@ typedef struct gn_heartbeat_api_s {
 } gn_heartbeat_api_t;
 ```
 
-`ctx` is the handler's `self` pointer; every entry takes it as the
-first argument.
+Begins with `api_size` for size-prefix evolution per
+`abi-evolution.md` §3. The kernel stores extension vtables as
+opaque `const void*`, so the consumer (a plugin querying via
+`host_api->query_extension_checked`) runs the size guard before
+invoking any slot added after `MINOR` 0 — the `GN_API_HAS(api,
+field)` macro from `sdk/abi.h` is the canonical check. `ctx` is
+the handler's `self` pointer; every entry takes it as the first
+argument.
 
 ### 3.1 `get_stats`
 
