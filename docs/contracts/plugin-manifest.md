@@ -168,9 +168,12 @@ guard ships on the target platform.
    manifest (see §7).
 4. **Install at runtime.** The operator parses the manifest into
    `PluginManifest::parse`, hands it to
-   `PluginManager::set_manifest`, and then calls
-   `PluginManager::load`. The order matters: `set_manifest` must
-   precede `load` for the integrity check to apply.
+   `PluginManager::set_manifest`, optionally calls
+   `PluginManager::set_manifest_required(true)` to demand a
+   non-empty manifest (see §7), and then calls
+   `PluginManager::load`. The order matters: every setter runs on
+   the bootstrap thread before `load`. `set_manifest_required(true)`
+   without a paired `set_manifest` rejects every load.
 
 ---
 
@@ -178,7 +181,8 @@ guard ships on the target platform.
 
 | Condition | Result |
 |---|---|
-| Manifest empty (developer mode) | every plugin loads without integrity check |
+| Manifest empty, required flag clear (developer mode) | every plugin loads without integrity check |
+| Manifest empty, required flag set | `GN_ERR_INTEGRITY_FAILED`, diagnostic "manifest required but empty: …" |
 | Path not in manifest | `GN_ERR_INTEGRITY_FAILED`, diagnostic "no manifest entry for path: …" |
 | Path in manifest, on-disk hash matches | proceed to `dlopen` |
 | Path in manifest, on-disk hash differs | `GN_ERR_INTEGRITY_FAILED`, diagnostic "manifest sha256 mismatch on: …" |
@@ -214,11 +218,16 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
   in-tree fixtures and the demo run with an empty manifest and
   every `dlopen` succeeds. Production deployments install a
   non-empty manifest and pair it with the
-  `set_manifest_required(true)` knob (`plugins.manifest_required`
-  on the kernel config). With the flag set, an empty manifest
-  refuses every load with `GN_ERR_INTEGRITY_FAILED` and the diag
-  names "manifest required but empty"; the dev-mode flow keeps
-  working only as long as the flag stays clear.
+  `set_manifest_required(true)` knob. With the flag set, an empty
+  manifest refuses every load with `GN_ERR_INTEGRITY_FAILED` and
+  the diag names "manifest required but empty" followed by the
+  rejected path; the dev-mode flow keeps working only as long as
+  the flag stays clear. The required-flag and the manifest itself
+  are both bootstrap-only — the host calls
+  `set_manifest_required` and `set_manifest` from the bootstrap
+  thread before `load`. A config-key reader that wires the flag
+  from a kernel-managed config sits outside the v1 surface; the
+  embedding host maps the config to the setter call directly.
 
 ---
 

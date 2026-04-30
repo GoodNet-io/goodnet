@@ -117,10 +117,11 @@ gn_result_t PluginManager::open_one(const std::string& path,
     out.path = path;
 
     /// Production-mode trip-wire: when the manifest-required flag is
-    /// set, an empty allowlist refuses every load. Operators wire
-    /// the flag from `plugins.manifest_required` and pair it with a
-    /// populated manifest; the dev-mode flow leaves the flag clear
-    /// and the empty allowlist passes through.
+    /// set, an empty allowlist refuses every load. Operators flip
+    /// the flag through `set_manifest_required(true)` on the
+    /// bootstrap thread before `load`, paired with a populated
+    /// manifest; the dev-mode flow leaves the flag clear and the
+    /// empty allowlist passes through.
     if (manifest_required_ && manifest_.empty()) {
         diag = "plugin integrity check failed: manifest required but empty: ";
         diag += path;
