@@ -13,6 +13,8 @@
 #include <asio/read.hpp>
 #include <asio/write.hpp>
 
+#include <sodium.h>
+
 #include <array>
 #include <cstring>
 #include <deque>
@@ -278,6 +280,12 @@ TlsTransport::~TlsTransport() {
             gn_log_warn(api_, "tls: shutdown threw non-std exception");
         }
     }
+    /// Per noise-handshake.md §5b: the override server private key
+    /// has no remaining purpose once the transport tears down.
+    /// Wipe the buffer before the vector frees its storage so the
+    /// freed allocation does not carry the secret into the
+    /// allocator's free list.
+    sodium_memzero(override_key_pem_.data(), override_key_pem_.size());
 }
 
 void TlsTransport::set_host_api(const host_api_t* api) noexcept {
@@ -290,10 +298,23 @@ void TlsTransport::set_host_api(const host_api_t* api) noexcept {
         }
     }
 }
-void TlsTransport::set_server_credentials(const std::string& cert_pem,
-                                           const std::string& key_pem) {
-    override_cert_pem_ = cert_pem;
-    override_key_pem_  = key_pem;
+void TlsTransport::set_server_credentials(std::string_view cert_pem,
+                                           std::string_view key_pem) {
+    override_cert_pem_.assign(cert_pem.begin(), cert_pem.end());
+    /// Per noise-handshake.md §5b: zeroise the previous key bytes
+    /// before the new bytes overwrite them. A shorter replacement
+    /// would otherwise leave a tail of the old secret in process
+    /// memory.
+    sodium_memzero(override_key_pem_.data(), override_key_pem_.size());
+    override_key_pem_.assign(
+        reinterpret_cast<const std::uint8_t*>(key_pem.data()),
+        reinterpret_cast<const std::uint8_t*>(key_pem.data() + key_pem.size()));
+}
+
+bool TlsTransport::key_pem_zeroised_for_test() const noexcept {
+    if (override_key_pem_.empty()) return true;
+    return sodium_is_zero(override_key_pem_.data(),
+                           override_key_pem_.size()) != 0;
 }
 void TlsTransport::set_verify_peer(bool on) noexcept {
     verify_peer_ = on;
@@ -367,8 +388,19 @@ bool TlsTransport::load_server_credentials() {
             server_ctx_.use_certificate_chain(
                 asio::buffer(override_cert_pem_));
             server_ctx_.use_private_key(
-                asio::buffer(override_key_pem_),
+                asio::buffer(override_key_pem_.data(),
+                              override_key_pem_.size()),
                 asio::ssl::context::pem);
+            /// Per noise-handshake.md §5b: OpenSSL has copied the
+            /// key bytes into its own context; the override buffer
+            /// has no remaining purpose. Wipe it eagerly so the
+            /// secret does not outlive its purpose. The buffer
+            /// stays allocated (empty()) so a follow-up
+            /// `set_server_credentials` reassign hits the same
+            /// storage path.
+            sodium_memzero(override_key_pem_.data(),
+                            override_key_pem_.size());
+            override_key_pem_.clear();
             return true;
         } catch (...) {
             return false;

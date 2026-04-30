@@ -30,6 +30,7 @@
 #include <string_view>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
 #include <asio/executor_work_guard.hpp>
 #include <asio/io_context.hpp>
@@ -82,9 +83,17 @@ public:
     /// Direct cert + key configuration for in-tree tests that
     /// instantiate the transport without a Kernel. Production
     /// loads come through `transports.tls.cert_path` /
-    /// `transports.tls.key_path` on the kernel-owned config.
-    void set_server_credentials(const std::string& cert_pem,
-                                 const std::string& key_pem);
+    /// `transports.tls.key_path` on the kernel-owned config. The
+    /// key buffer is wiped before the new bytes overwrite it per
+    /// `noise-handshake.md` §5b.
+    void set_server_credentials(std::string_view cert_pem,
+                                 std::string_view key_pem);
+
+    /// Forward-secrecy observable: the override server private key
+    /// buffer is fully zero. Used by the regression suite that
+    /// pins `noise-handshake.md` §5b — production callers do not
+    /// consult this.
+    [[nodiscard]] bool key_pem_zeroised_for_test() const noexcept;
 
     /// Toggle peer-cert verification. Disabled by default — the
     /// link-layer cert is one of two credentials and the Noise
@@ -139,7 +148,12 @@ private:
     std::uint64_t pending_queue_bytes_hard_ = 0;
 
     std::string                                                      override_cert_pem_;
-    std::string                                                      override_key_pem_;
+    /// Owns the override server private key bytes. Storage is a
+    /// byte vector so the destructor and the reassignment path can
+    /// `sodium_memzero` the buffer per `noise-handshake.md` §5b —
+    /// `std::string` would leave libstdc++'s internal capacity
+    /// buffer unmanaged.
+    std::vector<std::uint8_t>                                        override_key_pem_;
     bool                                                             verify_peer_{false};
 
     const host_api_t* api_ = nullptr;
