@@ -120,6 +120,32 @@ The kernel's hash function is libsodium's
 `crypto_hash_sha256_*`; the file is streamed in 64 KiB chunks so
 peak memory use stays bounded for plugins of any realistic size.
 
+### 4.1 Hash and load through the same descriptor (Linux)
+
+The integrity check and `dlopen` operate on the **same file
+descriptor** so a leaf-symlink swap between hash and load cannot
+route the loader to a different inode than the one the kernel
+hashed. The Linux sequence:
+
+1. `open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC)` — refuses a
+   symlink at the leaf component;
+2. `sha256_of_fd(fd)` — `pread`-based streaming; leaves the seek
+   state at zero so the descriptor is reusable;
+3. `verify_digest(path, observed)` — manifest lookup + compare;
+4. `dlopen("/proc/self/fd/N")` — loader resolves the same inode
+   the kernel just hashed, regardless of any concurrent path
+   replacement.
+
+The `O_NOFOLLOW` guard is leaf-only. A parent-directory swap
+(attacker controls a directory in the path's prefix) is still
+permitted by the current implementation; the operator-controls
+assumption from §5 stays load-bearing for that window.
+
+Non-Linux builds fall back to the path-based `verify(path)` +
+`dlopen(path)` sequence, which is race-prone. Production
+deployments should stay on Linux until a `RESOLVE_BENEATH`-class
+guard ships.
+
 ---
 
 ## 5. Operator workflow
@@ -179,22 +205,14 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 - **Capability manifest.** A separate manifest will pin per-plugin
   capabilities (filesystem, network, syscall) once the sandbox
   layer lands. v1 ships only the integrity manifest.
-- **Verify-then-`dlopen` TOCTOU.** The integrity check opens the
-  file once for hashing; `dlopen` opens it a second time to map
-  the binary. An attacker with write access to the plugins
-  directory between those two opens can swap the on-disk bytes —
-  the kernel hashes one file and maps another. v1 explicitly
-  assumes the plugins directory is operator-controlled and
-  write-protected at OS level (filesystem permissions, immutable
-  bind mount, or container-image read-only layer). v1.1 closes
-  the window by hashing through the descriptor that backs
-  `dlopen` (single open, `/proc/self/fd/N` re-resolution).
-- **Symlink races.** `fopen` follows symlinks. An attacker who
-  can replace a symlink target between manifest emission and
-  load defeats the integrity check. The same operator-controls
-  assumption applies; v1.1 will use `O_NOFOLLOW` on the hash
-  open and refuse loads through symlinks unless the operator
-  explicitly opts in.
+- **Parent-directory symlink swap.** §4.1 closes the leaf-symlink
+  window through `O_NOFOLLOW`, but a directory in the path's
+  prefix replaced with a symlink between `set_manifest` and
+  `open` still routes the kernel to attacker-chosen bytes. v1
+  inherits §5's operator-controls assumption for the prefix. A
+  future revision lands `openat2(RESOLVE_BENEATH)` or a dir-fd
+  pinned at `set_manifest` time so the prefix collapses to a
+  single trust decision.
 - **Empty-manifest silent dev-mode.** A production deployment
   that ships an empty manifest by accident gets no warning. The
   v1 surface is permissive on purpose so in-tree fixtures and

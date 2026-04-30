@@ -5,6 +5,12 @@
 
 #include <dlfcn.h>
 
+#ifdef __linux__
+#include <fcntl.h>
+#include <unistd.h>
+#include <cstdio>
+#endif
+
 #include <chrono>
 #include <cstring>
 #include <thread>
@@ -109,6 +115,68 @@ gn_result_t PluginManager::open_one(const std::string& path,
     /// directory and the kernel's own address space — running it
     /// before dlopen rather than after means a tampered binary
     /// never reaches `RTLD_NOW`-side initialisers.
+#ifdef __linux__
+    if (!manifest_.empty()) {
+        /// Cheap path-only check first — an unlisted plugin is
+        /// rejected before paying the open + hash cost. Manifest
+        /// membership is not a secret, so the timing differential
+        /// here is OK.
+        if (!manifest_.contains(path)) {
+            diag = "plugin integrity check failed: no manifest entry for path: ";
+            diag += path;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        /// `O_NOFOLLOW` rejects a symlink at the leaf; combined
+        /// with `dlopen("/proc/self/fd/N")` it pins the kernel
+        /// to a single inode across hash and load. An attacker
+        /// cannot swap the path between the two operations — the
+        /// fd refers to the file the hash covered. Parent-directory
+        /// symlink swaps remain in scope of the operator-controls
+        /// assumption per `plugin-manifest.md` §7.
+        const int fd = ::open(path.c_str(),
+                              O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        if (fd < 0) {
+            diag = "plugin integrity check failed: open: ";
+            diag += path;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        const auto observed = PluginManifest::sha256_of_fd(fd);
+        if (!observed) {
+            ::close(fd);
+            diag = "plugin integrity check failed: read: ";
+            diag += path;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        std::string verify_diag;
+        if (!manifest_.verify_digest(path, *observed, verify_diag)) {
+            ::close(fd);
+            diag = "plugin integrity check failed: ";
+            diag += verify_diag;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        char proc_path[64];
+        (void)std::snprintf(proc_path, sizeof(proc_path),
+                            "/proc/self/fd/%d", fd);
+        out.so_handle = ::dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
+        ::close(fd);
+        if (!out.so_handle) {
+            diag = "dlopen failed for ";
+            diag += path;
+            diag += ": ";
+            if (const char* err = ::dlerror()) diag += err;
+            return GN_ERR_UNKNOWN_RECEIVER;
+        }
+    } else {
+        out.so_handle = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!out.so_handle) {
+            diag = "dlopen failed for ";
+            diag += path;
+            diag += ": ";
+            if (const char* err = ::dlerror()) diag += err;
+            return GN_ERR_UNKNOWN_RECEIVER;
+        }
+    }
+#else
     if (!manifest_.empty()) {
         std::string verify_diag;
         if (!manifest_.verify(path, verify_diag)) {
@@ -126,6 +194,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
         if (const char* err = ::dlerror()) diag += err;
         return GN_ERR_UNKNOWN_RECEIVER;
     }
+#endif
 
     PluginSymbols syms{};
     auto rc = resolve_symbols(out.so_handle, syms, diag);

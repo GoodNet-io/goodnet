@@ -93,6 +93,17 @@ public:
     [[nodiscard]] static std::optional<PluginHash>
     sha256_of_file(const std::string& path) noexcept;
 
+    /// Compute the SHA-256 of an already-opened file descriptor.
+    /// The caller owns @p fd and is responsible for closing it; the
+    /// function rewinds via `pread` so the descriptor's seek state
+    /// is left untouched. Used by the kernel's load path to hash
+    /// and `dlopen` the same inode (`/proc/self/fd/N`) so a
+    /// concurrent symlink swap on the manifest path cannot route
+    /// the dlopen to a different file than the one that hashed.
+    /// Linux-only; non-Linux callers fall back to `sha256_of_file`.
+    [[nodiscard]] static std::optional<PluginHash>
+    sha256_of_fd(int fd) noexcept;
+
     /// Add a single entry programmatically. Used by tests and by
     /// the in-tree fixture path that builds a manifest at runtime.
     /// The path is canonicalised through `std::filesystem::
@@ -114,10 +125,26 @@ public:
     [[nodiscard]] bool verify(const std::string& path,
                                std::string&       diagnostic) const;
 
+    /// Verify against an already-hashed digest taken from an open
+    /// file descriptor. The kernel computes the digest through
+    /// `sha256_of_fd` and dlopens the same descriptor through
+    /// `/proc/self/fd/N`; this overload accepts the precomputed
+    /// digest so the manifest entry lookup uses @p path as the
+    /// stable key while the hash comes from the inode the kernel
+    /// is actually about to load.
+    [[nodiscard]] bool verify_digest(const std::string& path,
+                                      const PluginHash&  observed,
+                                      std::string&       diagnostic) const;
+
     /// `true` when no entries were installed. The kernel treats
     /// empty as "developer mode": every plugin loads. Production
     /// installs a non-empty manifest.
     [[nodiscard]] bool empty() const noexcept { return entries_.empty(); }
+
+    /// Cheap path-only membership check — no hashing. Used by the
+    /// kernel's load path to short-circuit unlisted-path requests
+    /// before opening + hashing the file.
+    [[nodiscard]] bool contains(const std::string& path) const;
 
     /// Read-only access to the parsed entries; used by diagnostics
     /// and tests to walk the manifest without re-parsing.

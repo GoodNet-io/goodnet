@@ -10,6 +10,8 @@
 #include <system_error>
 #include <unordered_set>
 
+#include <unistd.h>
+
 #include <nlohmann/json.hpp>
 #include <sodium.h>
 
@@ -119,6 +121,38 @@ PluginManifest::sha256_of_file(const std::string& path) noexcept {
     return digest;
 }
 
+std::optional<PluginHash>
+PluginManifest::sha256_of_fd(int fd) noexcept {
+    /// Large-file support — `pread` walks `off_t` offsets; a
+    /// 32-bit `off_t` would silently truncate plugins above 2 GiB.
+    /// Compile-time check costs nothing and rejects a build that
+    /// would silently roll over.
+    static_assert(sizeof(off_t) >= 8,
+                  "off_t must be 64-bit; build with _FILE_OFFSET_BITS=64");
+    if (fd < 0) return std::nullopt;
+
+    crypto_hash_sha256_state state;
+    crypto_hash_sha256_init(&state);
+
+    /// `pread` reads from an explicit offset so the descriptor's
+    /// shared seek state stays at zero — the same fd can be passed
+    /// onward to `dlopen` afterwards without an `lseek` rewind.
+    std::array<std::uint8_t, kReadChunkBytes> buffer{};
+    off_t off = 0;
+    while (true) {
+        const ssize_t n = ::pread(fd, buffer.data(), buffer.size(), off);
+        if (n < 0) return std::nullopt;
+        if (n == 0) break;
+        crypto_hash_sha256_update(&state, buffer.data(),
+                                   static_cast<std::size_t>(n));
+        off += n;
+    }
+
+    PluginHash digest{};
+    crypto_hash_sha256_final(&state, digest.data());
+    return digest;
+}
+
 void PluginManifest::add_entry(const std::string& path,
                                 const PluginHash&  sha256) {
     entries_.push_back({canonicalise(path), sha256});
@@ -194,20 +228,33 @@ gn_result_t PluginManifest::parse(std::string_view  json,
     return GN_OK;
 }
 
-bool PluginManifest::verify(const std::string& path,
-                             std::string&       diagnostic) const {
-    /// Canonicalise the lookup so a relative path on the caller side
-    /// matches an absolute entry on the manifest side and vice
-    /// versa. Both add_entry and parse run paths through the same
-    /// helper at install time, so the comparison reduces to a
-    /// post-canonicalisation byte equality.
-    const std::string lookup = canonicalise(path);
+namespace {
 
+/// Locate the manifest entry for @p path; canonicalises the lookup
+/// so relative and absolute spellings collapse to the same key.
+[[nodiscard]] std::vector<ManifestEntry>::const_iterator
+find_entry(const std::vector<ManifestEntry>& entries,
+           const std::string& path) {
     /// Linear scan is fine for v1: even a saturated deployment
     /// loads a few dozen plugins. A future revision can switch to
     /// a hash-keyed map if the count climbs.
-    const auto it = std::find_if(entries_.begin(), entries_.end(),
+    const std::string lookup = canonicalise(path);
+    return std::find_if(entries.begin(), entries.end(),
         [&](const ManifestEntry& e) { return e.path == lookup; });
+}
+
+}  // namespace
+
+bool PluginManifest::contains(const std::string& path) const {
+    return find_entry(entries_, path) != entries_.end();
+}
+
+bool PluginManifest::verify(const std::string& path,
+                             std::string&       diagnostic) const {
+    /// Lookup before hashing so an unlisted path returns the
+    /// "no manifest entry" diagnostic without paying the file
+    /// I/O cost. Tests pin the diagnostic strings.
+    const auto it = find_entry(entries_, path);
     if (it == entries_.end()) {
         diagnostic = "no manifest entry for path: ";
         diagnostic += path;
@@ -228,6 +275,30 @@ bool PluginManifest::verify(const std::string& path,
         diagnostic += encode_hex(it->sha256);
         diagnostic += ", observed ";
         diagnostic += encode_hex(*observed);
+        diagnostic += ')';
+        return false;
+    }
+
+    return true;
+}
+
+bool PluginManifest::verify_digest(const std::string& path,
+                                    const PluginHash&  observed,
+                                    std::string&       diagnostic) const {
+    const auto it = find_entry(entries_, path);
+    if (it == entries_.end()) {
+        diagnostic = "no manifest entry for path: ";
+        diagnostic += path;
+        return false;
+    }
+
+    if (observed != it->sha256) {
+        diagnostic = "manifest sha256 mismatch on: ";
+        diagnostic += path;
+        diagnostic += " (expected ";
+        diagnostic += encode_hex(it->sha256);
+        diagnostic += ", observed ";
+        diagnostic += encode_hex(observed);
         diagnostic += ')';
         return false;
     }
