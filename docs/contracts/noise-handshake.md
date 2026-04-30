@@ -246,14 +246,19 @@ the Ed25519 representation.
 
 After a successful Noise handshake:
 
-1. The transport called `host_api->notify_connect` at the moment the
-   socket established, with `trust` derived from the address (per
-   `transport.md` §3 — `Loopback` for `127.0.0.1`/`::1`/AF_UNIX,
-   `Untrusted` for public). The kernel promotes the connection
-   record from `Untrusted` to `Peer` once the handshake reaches the
-   Transport phase, gated through `gn_trust_can_upgrade` in
-   `sdk/trust.h`. `Loopback` and `IntraNode` connections do not
-   upgrade — the gate refuses any other transition.
+1. The transport called `host_api->notify_connect` at the moment
+   the socket established, with `trust` derived from the address
+   (per `transport.md` §3 — `Loopback` for `127.0.0.1`/`::1`/
+   AF_UNIX, `Untrusted` for public). Trust class **stays
+   `Untrusted`** when the handshake reaches the Transport phase —
+   completing the cryptographic handshake proves the peer holds
+   the static key but not that the kernel should treat the peer
+   as a `Peer`-class participant. The promotion to `Peer` is
+   gated by the attestation dual-flag protocol per
+   `attestation.md` §6, which fires after both sides exchange a
+   valid attestation envelope; `Loopback` and `IntraNode`
+   connections never upgrade — `gn_trust_can_upgrade` in
+   `sdk/trust.h` refuses any other transition.
 2. The endpoint's `pk` is set to the peer's static public key,
    copied from the handshake-result structure.
 3. Subsequent envelopes from this connection carry that `pk` as
