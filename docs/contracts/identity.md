@@ -150,6 +150,46 @@ bridge is bound to.
 
 ---
 
+## 6a. Identity rotation surface
+
+The kernel's local identity is mutable through one entry point:
+`Kernel::set_node_identity(NodeIdentity)`. The setter installs
+the new identity through an atomic `shared_ptr` swap on the
+`node_identity_` slot; concurrent readers either see the prior
+or the new value, never a half-written state. v1 exposes this
+operation **only on the C++ kernel surface** — the embedding
+application (process owner, daemon binary, test harness) calls
+it directly and is responsible for any policy that gates the
+rotation.
+
+The C ABI `host_api_t` does **not** carry a rotation slot. Plugin
+authors cannot rotate the local identity. The exclusion is
+intentional and load-bearing:
+
+- Identity rotation is a privileged operation. A handler plugin
+  flipping the local identity mid-flight would change the
+  `sender_pk` on every outgoing envelope — peers that pinned
+  trust against the prior key see traffic from a stranger.
+- The rotation surface needs to coordinate with attestation,
+  trust upgrade, and on-disk persistence (when the embedding
+  application stores the device seed). Those concerns belong
+  to the embedding code, not to a plugin.
+
+In-flight effects after a rotation:
+
+| Surface | Effect |
+|---|---|
+| New connections | open with the new device key; address derived per §3 |
+| Existing transport-phase connections | retain the keys they negotiated under the prior identity; the kernel does not interrupt them |
+| Pending handshakes | sample `node_identity()` at handshake start; whichever value the atomic load returned wins for that session |
+| Plugin-visible `gn_ctx_local_pk` | tracks the kernel's current identity at the time the dispatch context was built |
+
+A future v1.x may extend the host API with a privileged
+rotation helper for embedding code that runs the kernel in a
+sandbox; v1 keeps the surface narrow.
+
+---
+
 ## 7. Cross-references
 
 - TrustClass policy that gates attestation use: `security-trust.md`.
