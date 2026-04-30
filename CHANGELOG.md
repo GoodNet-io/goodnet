@@ -474,6 +474,15 @@ typed extension API.
   the kernel thunk. The "exactly once" upgrade guarantee comes
   from the registry's `upgrade_trust` policy gate — concurrent
   callers race through the gate and the loser exits silently.
+- **Noise handshake clears the long-term static private key on
+  Split (`noise-handshake.md` §5 clause 4).** The handshake state's
+  `Split` step now zeroises `s_sk_` alongside the existing eager
+  wipe of the ephemeral keys. The destructor stays as a defence-in-
+  depth backstop; in the steady-state path it sees the buffer
+  already cleared. Removes the window in which a long-lived
+  handshake state — the same buffer reused inside a security
+  session that survives many transport frames — kept the long-term
+  identity secret around past its purpose.
 
 ### Tests
 
