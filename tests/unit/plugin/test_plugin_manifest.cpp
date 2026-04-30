@@ -11,7 +11,11 @@
 
 #include <gtest/gtest.h>
 
+#include <fcntl.h>
+#include <unistd.h>
+
 #include <array>
+#include <cerrno>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -111,6 +115,67 @@ TEST(PluginManifest_Sha, KnownAnswerForSmallPayload) {
 TEST(PluginManifest_Sha, MissingFileReturnsNullopt) {
     EXPECT_FALSE(
         PluginManifest::sha256_of_file("/nonexistent/path/no-such-file").has_value());
+}
+
+TEST(PluginManifest_Sha, FdReadMatchesPathRead) {
+    /// `sha256_of_fd` and `sha256_of_file` must agree on the same
+    /// inode — the kernel uses one for verification and the other
+    /// as the production fallback. A drift between them would let
+    /// a Linux deployment pass integrity while a non-Linux build
+    /// of the same binary fails or vice versa.
+    const std::array<std::uint8_t, 5> abc{'a', 'b', 'c', 'd', 'e'};
+    const auto path = write_temp("gn_manifest_fd_match", abc);
+    const auto by_path = PluginManifest::sha256_of_file(path.string());
+    ASSERT_TRUE(by_path.has_value());
+
+    const int fd = ::open(path.c_str(), O_RDONLY | O_CLOEXEC);
+    ASSERT_GE(fd, 0);
+    const auto by_fd = PluginManifest::sha256_of_fd(fd);
+    ::close(fd);
+    ASSERT_TRUE(by_fd.has_value());
+    if (by_path.has_value() && by_fd.has_value()) {
+        EXPECT_EQ(*by_path, *by_fd);
+    }
+}
+
+TEST(PluginManifest_Sha, FdInvalidReturnsNullopt) {
+    EXPECT_FALSE(PluginManifest::sha256_of_fd(-1).has_value());
+}
+
+TEST(PluginManifest_Sha, FdOpenedWithNoFollowRefusesSymlink) {
+    /// `plugin-manifest.md` §4.1 — the kernel opens the manifest
+    /// path with `O_NOFOLLOW` so a symlink at the leaf component
+    /// is refused before any hashing runs. The defence is not
+    /// inside `sha256_of_fd` itself (which receives an already-
+    /// opened descriptor); this pin asserts the open-time guard
+    /// that the kernel's load path relies on.
+    const std::array<std::uint8_t, 3> abc{'a', 'b', 'c'};
+    const auto target = write_temp("gn_manifest_symlink_target", abc);
+    const auto link   = fs::temp_directory_path() / "gn_manifest_symlink_link";
+    fs::remove(link);
+    fs::create_symlink(target, link);
+
+    const int fd = ::open(link.c_str(),
+                          O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    EXPECT_LT(fd, 0);
+    EXPECT_EQ(errno, ELOOP);
+    if (fd >= 0) ::close(fd);
+    fs::remove(link);
+}
+
+TEST(PluginManifest_Verify, ContainsRunsBeforeIO) {
+    /// `manifest_.contains(path)` short-circuits unlisted-path
+    /// queries without paying the hash I/O cost. A path absent
+    /// from the manifest reports `false` even when the file does
+    /// not exist — the lookup is path-only.
+    PluginManifest m;
+    PluginHash hash{};
+    hash.fill(0xAA);
+    m.add_entry("/listed/path.so", hash);
+
+    EXPECT_TRUE(m.contains("/listed/path.so"));
+    EXPECT_FALSE(m.contains("/different/path.so"));
+    EXPECT_FALSE(m.contains("/no/such/file.so"));
 }
 
 // ─── Manifest parser ────────────────────────────────────────────────
