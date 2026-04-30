@@ -129,6 +129,13 @@ flood was unintentional. Application data submitted through
 `host_api->send` continues to receive `GN_ERR_LIMIT_REACHED` on the
 same edge, per §3.
 
+Locally-initiated control frames — for example a host-side
+`disconnect` that emits a graceful close — follow the same
+drop-on-overflow rule. The frame is omitted when the queue is at
+the cap; the socket teardown that follows carries the closure
+regardless. Producers do not observe a distinct error for the
+dropped echo because the connection terminates anyway.
+
 ---
 
 ## 4. Producer obligations

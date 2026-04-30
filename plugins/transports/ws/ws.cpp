@@ -281,12 +281,26 @@ public:
         auto frame = std::make_shared<std::vector<std::uint8_t>>(
             wire::build_close_frame(/*mask=*/mode_ == Mode::Client,
                                     make_mask_seed()));
-        bytes_buffered_.fetch_add(frame->size(), std::memory_order_relaxed);
         asio::dispatch(strand_,
             [self = shared_from_this(), frame]() mutable {
                 if (self->phase_ == Phase::Closed) return;
-                self->write_queue_.push_back(std::move(frame));
-                self->maybe_start_write();
+                /// Per backpressure.md §3.1: host-initiated close
+                /// frames follow the same drop-on-overflow rule as
+                /// peer-echoed close frames. The socket teardown
+                /// below carries the closure regardless of whether
+                /// the wire-level frame went out.
+                auto t = self->transport_.lock();
+                const auto hard_cap =
+                    t ? t->pending_queue_bytes_hard_ : 0U;
+                const auto current = self->bytes_buffered_.load(
+                    std::memory_order_relaxed);
+                if (hard_cap == 0 ||
+                    current + frame->size() <= hard_cap) {
+                    self->bytes_buffered_.fetch_add(
+                        frame->size(), std::memory_order_relaxed);
+                    self->write_queue_.push_back(std::move(frame));
+                    self->maybe_start_write();
+                }
                 self->phase_ = Phase::Closed;
                 std::error_code ec;
                 if (self->socket_.shutdown(
