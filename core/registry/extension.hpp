@@ -2,10 +2,10 @@
 /// @brief  Named extension vtable lookup with semver gating.
 ///
 /// Plugins publish typed vtables under stable names (`"gn.heartbeat"`,
-/// `"gn.optimizer.relay"`) so other plugins can call them without
-/// linking. Kernel-side registry holds the (name, version, vtable)
-/// triple; lookups verify a requested major/minor version is
-/// compatible with the registered one.
+/// `"gn.dns"`) so other plugins can call them without linking.
+/// Kernel-side registry holds the (name, version, vtable) triple;
+/// lookups verify a requested major/minor version is compatible with
+/// the registered one.
 
 #pragma once
 
@@ -73,9 +73,10 @@ public:
                                                       std::uint32_t requested_version,
                                                       const void** out_vtable) const noexcept;
 
-    /// Return every entry whose name starts with @p prefix. Used for
-    /// the `"gn.optimizer.*"` enumeration pattern from the legacy
-    /// plugin-extensibility audit.
+    /// Return every entry whose name starts with @p prefix. Plugins
+    /// that group their vtables under a shared dotted namespace
+    /// (`"gn.dns.*"`, `"gn.discovery.*"`) enumerate the family
+    /// through this entry without holding a separate index.
     [[nodiscard]] std::vector<ExtensionEntry>
     query_prefix(std::string_view prefix) const;
 
