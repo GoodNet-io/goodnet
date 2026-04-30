@@ -1,11 +1,12 @@
 /// @file   core/registry/extension.hpp
 /// @brief  Named extension vtable lookup with semver gating.
 ///
-/// Plugins publish typed vtables under stable names (`"gn.heartbeat"`,
-/// `"gn.dns"`) so other plugins can call them without linking.
-/// Kernel-side registry holds the (name, version, vtable) triple;
-/// lookups verify a requested major/minor version is compatible with
-/// the registered one.
+/// Plugins publish typed vtables under stable names (`"gn.heartbeat"`
+/// for the single-entry case, `"gn.transport.<scheme>"` for a
+/// multi-entry family) so other plugins can call them without
+/// linking. Kernel-side registry holds the (name, version, vtable)
+/// triple; lookups verify a requested major/minor version is
+/// compatible with the registered one.
 
 #pragma once
 

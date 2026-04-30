@@ -1,7 +1,7 @@
 # Contract: Protocol Layer (kernel↔plugin envelope)
 
 **Status:** active · v1
-**Owner:** `core/kernel`, `plugins/protocols/*`
+**Owner:** `core/kernel`, `core/registry`, `plugins/protocols/*`
 **Last verified:** 2026-04-27
 **Stability:** breaking changes require kernel ABI bump
 
