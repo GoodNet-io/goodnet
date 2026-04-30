@@ -17,6 +17,19 @@ namespace gn::core {
 
 namespace {
 
+/// Liveness check for the `PluginContext*` every host_api thunk
+/// reaches through `host_ctx`. The kernel stamps `kMagicDead` in
+/// `~PluginContext`; a plugin that retained the `host_api`
+/// pointer past its own teardown lands in a thunk with a freed
+/// context whose magic field reads as the poison value (or, if
+/// the slab was reused, as unrelated bytes). The thunk returns
+/// before dereferencing any other field. See
+/// `plugin_context.hpp` for the soft-guard caveats — sanitisers
+/// remain the source of truth for true UAF detection.
+[[nodiscard]] inline bool ctx_live(PluginContext* pc) noexcept {
+    return pc != nullptr && pc->magic == PluginContext::kMagicLive;
+}
+
 /// Build a `gn_message_t` from the four pieces every assembly site
 /// always has: the two public keys, the msg id, and the borrowed
 /// payload span. Pre-helper this was a 7-line memcpy ritual at
@@ -112,6 +125,7 @@ gn_result_t thunk_send(void* host_ctx,
                        size_t payload_size) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
@@ -187,6 +201,7 @@ gn_result_t thunk_find_conn_by_pk(void* host_ctx,
                                    gn_conn_id_t* out_conn) {
     if (!host_ctx || !pk || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     PublicKey key{};
     std::memcpy(key.data(), pk, GN_PUBLIC_KEY_BYTES);
@@ -200,6 +215,7 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
                                 gn_endpoint_t* out) {
     if (!host_ctx || !out) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
@@ -234,6 +250,7 @@ gn_result_t thunk_register_security(void* host_ctx,
                                      void* security_self) {
     if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->security().register_provider(
         provider_id, vtable, security_self, pc->plugin_anchor);
 }
@@ -241,12 +258,14 @@ gn_result_t thunk_register_security(void* host_ctx,
 gn_result_t thunk_unregister_security(void* host_ctx, const char* provider_id) {
     if (!host_ctx || !provider_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->security().unregister_provider(provider_id);
 }
 
 gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
     auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
@@ -262,6 +281,7 @@ gn_result_t thunk_query_extension_checked(void* host_ctx,
                                           const void** out_vtable) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->extensions().query_extension_checked(
         name, version, out_vtable);
 }
@@ -272,6 +292,7 @@ gn_result_t thunk_register_extension(void* host_ctx,
                                      const void* vtable) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->extensions().register_extension(
         name, version, vtable, pc->plugin_anchor);
 }
@@ -279,6 +300,7 @@ gn_result_t thunk_register_extension(void* host_ctx,
 gn_result_t thunk_unregister_extension(void* host_ctx, const char* name) {
     if (!host_ctx || !name) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->extensions().unregister_extension(name);
 }
 
@@ -289,6 +311,7 @@ gn_result_t thunk_set_timer(void* host_ctx,
                              gn_timer_id_t* out_id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->timers().set_timer(
         delay_ms, fn, user_data, pc->plugin_anchor, out_id);
 }
@@ -296,6 +319,7 @@ gn_result_t thunk_set_timer(void* host_ctx,
 gn_result_t thunk_cancel_timer(void* host_ctx, gn_timer_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->timers().cancel_timer(id);
 }
 
@@ -304,6 +328,7 @@ gn_result_t thunk_post_to_executor(void* host_ctx,
                                     void* user_data) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->timers().post(fn, user_data, pc->plugin_anchor);
 }
 
@@ -313,6 +338,7 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
                                         gn_subscription_id_t* out_id) {
     if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
     auto token = pc->kernel->on_conn_event().subscribe(
@@ -347,6 +373,7 @@ gn_result_t thunk_subscribe_config_reload(void* host_ctx,
                                            uint64_t* out_id) {
     if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
     auto token = pc->kernel->on_config_reload().subscribe(
@@ -372,6 +399,7 @@ gn_result_t thunk_unsubscribe_config_reload(void* host_ctx,
                                               uint64_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->on_config_reload().unsubscribe(
         static_cast<signal::SignalChannel<signal::Empty>::Token>(id));
     return GN_OK;
@@ -380,6 +408,12 @@ gn_result_t thunk_unsubscribe_config_reload(void* host_ctx,
 int32_t thunk_is_shutdown_requested(void* host_ctx) {
     if (!host_ctx) return 0;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    /// A poisoned context surfaces as `shutdown_requested = 1`
+    /// per `host-api.md` §10's cooperative-cancellation invariant
+    /// — a long-running plugin loop that finds itself reading a
+    /// dead context is by definition past its teardown point and
+    /// should bail rather than proceed against stale state.
+    if (!ctx_live(pc)) [[unlikely]] return 1;
     if (!pc->plugin_anchor) return 0;
     return pc->plugin_anchor->shutdown_requested.load(
         std::memory_order_acquire) ? 1 : 0;
@@ -388,6 +422,7 @@ int32_t thunk_is_shutdown_requested(void* host_ctx) {
 void thunk_emit_counter(void* host_ctx, const char* name) {
     if (!host_ctx || !name) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return;
     pc->kernel->metrics().increment(name);
 }
 
@@ -396,6 +431,7 @@ std::uint64_t thunk_iterate_counters(void* host_ctx,
                                       void* user_data) {
     if (!host_ctx || !visitor) return 0;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return 0;
     return pc->kernel->metrics().iterate(visitor, user_data);
 }
 
@@ -404,6 +440,7 @@ gn_result_t thunk_unsubscribe_conn_state(void* host_ctx,
     if (!host_ctx) return GN_ERR_NULL_ARG;
     if (id == GN_INVALID_SUBSCRIPTION_ID) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->on_conn_event().unsubscribe(
         static_cast<signal::SignalChannel<ConnEvent>::Token>(id));
     return GN_OK;
@@ -414,6 +451,7 @@ gn_result_t thunk_for_each_connection(void* host_ctx,
                                        void* user_data) {
     if (!host_ctx || !visitor) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->connections().for_each(
         [visitor, user_data](const ConnectionRecord& rec) -> bool {
             return visitor(user_data,
@@ -431,6 +469,7 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
                                        std::uint64_t pending_bytes) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     /// Only transport-kind plugins own write queues, so only they
     /// can produce truthful backpressure signals. Other plugin
     /// kinds attempting to publish here are misconfigured.
@@ -464,6 +503,7 @@ gn_result_t thunk_register_transport(void* host_ctx,
                                      gn_transport_id_t* out_id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->transports().register_transport(
         scheme, vtable, transport_self, out_id, pc->plugin_anchor);
 }
@@ -471,6 +511,7 @@ gn_result_t thunk_register_transport(void* host_ctx,
 gn_result_t thunk_unregister_transport(void* host_ctx, gn_transport_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->transports().unregister_transport(id);
 }
 
@@ -483,6 +524,7 @@ gn_result_t thunk_register_handler(void* host_ctx,
                                    gn_handler_id_t* out_id) {
     if (!host_ctx || !protocol_id || !vtable || !out_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->handlers().register_handler(
         protocol_id, msg_id, priority, vtable, handler_self, out_id,
         pc->plugin_anchor);
@@ -491,12 +533,14 @@ gn_result_t thunk_register_handler(void* host_ctx,
 gn_result_t thunk_unregister_handler(void* host_ctx, gn_handler_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->handlers().unregister_handler(id);
 }
 
 const gn_limits_t* thunk_limits(void* host_ctx) {
     if (!host_ctx) return nullptr;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return nullptr;
     return &pc->kernel->limits();
 }
 
@@ -506,6 +550,7 @@ gn_result_t thunk_config_get_string(void* host_ctx,
                                     void (**out_free)(char*)) {
     if (!host_ctx || !key || !out_str || !out_free) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     std::string buf;
     const auto rc = pc->kernel->config().get_string(key, buf);
@@ -527,6 +572,7 @@ gn_result_t thunk_config_get_int64(void* host_ctx,
                                    int64_t* out_value) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     std::int64_t v = 0;
     const auto rc = pc->kernel->config().get_int64(key, v);
     if (rc != GN_OK) return rc;
@@ -539,6 +585,7 @@ gn_result_t thunk_config_get_bool(void* host_ctx,
                                    int32_t* out_value) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     bool v = false;
     const auto rc = pc->kernel->config().get_bool(key, v);
     if (rc != GN_OK) return rc;
@@ -551,6 +598,7 @@ gn_result_t thunk_config_get_double(void* host_ctx,
                                      double* out_value) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->config().get_double(key, *out_value);
 }
 
@@ -559,6 +607,7 @@ gn_result_t thunk_config_get_array_size(void* host_ctx,
                                          size_t* out_size) {
     if (!host_ctx || !key || !out_size) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     std::size_t v = 0;
     const auto rc = pc->kernel->config().get_array_size(key, v);
     if (rc != GN_OK) return rc;
@@ -573,6 +622,7 @@ gn_result_t thunk_config_get_array_string(void* host_ctx,
                                            void (**out_free)(char*)) {
     if (!host_ctx || !key || !out_str || !out_free) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     std::string buf;
     const auto rc = pc->kernel->config().get_array_string(key, index, buf);
@@ -594,6 +644,7 @@ gn_result_t thunk_config_get_array_int64(void* host_ctx,
                                           int64_t* out_value) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     std::int64_t v = 0;
     const auto rc = pc->kernel->config().get_array_int64(key, index, v);
     if (rc != GN_OK) return rc;
@@ -616,6 +667,7 @@ map_log_level(gn_log_level_t level) noexcept {
 
 int32_t thunk_log_should_log(void* host_ctx, gn_log_level_t level) {
     if (!host_ctx) return 0;
+    if (!ctx_live(static_cast<PluginContext*>(host_ctx))) [[unlikely]] return 0;
     const auto sp_lvl = map_log_level(level);
     if (sp_lvl == ::spdlog::level::off) return 0;
     return ::gn::log::kernel()->should_log(sp_lvl) ? 1 : 0;
@@ -625,12 +677,7 @@ void thunk_log_emit(void* host_ctx, gn_log_level_t level,
                      const char* file, int32_t line, const char* msg) {
     if (!host_ctx || !msg) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
-    /// Liveness canary per `plugin_context.hpp`. A plugin that
-    /// retained the `host_api` pointer past its own teardown lands
-    /// here with a destroyed PluginContext; the destructor stamped
-    /// `kMagicDead` and we drop the call instead of dereferencing
-    /// `pc->plugin_name` into reused memory.
-    if (pc->magic != PluginContext::kMagicLive) return;
+    if (!ctx_live(pc)) [[unlikely]] return;
 
     const auto sp_lvl = map_log_level(level);
     if (sp_lvl == ::spdlog::level::off) return;
@@ -765,6 +812,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
                                  gn_conn_id_t* out_conn) {
     if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
@@ -842,6 +890,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
 gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     auto session = pc->kernel->sessions().find(conn);
@@ -881,6 +930,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                                        size_t size) {
     if (!host_ctx || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Look up the connection record to populate the per-call context.
@@ -981,6 +1031,7 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
     if (msg_id == 0) return GN_ERR_INVALID_ENVELOPE;
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
@@ -1019,6 +1070,7 @@ gn_result_t thunk_inject_frame(void* host_ctx,
     if (!frame || frame_size == 0) return GN_ERR_NULL_ARG;
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
@@ -1066,6 +1118,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
                                     gn_result_t /*reason*/) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Implements `conn-events.md` §2a: drop the security session,
