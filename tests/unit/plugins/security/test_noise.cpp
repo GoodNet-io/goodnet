@@ -421,6 +421,49 @@ TEST(NoiseHandshakeXX, TransportCiphersInteroperate) {
     EXPECT_EQ(*dec2, bytes_of("pong"));
 }
 
+TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretXX) {
+    /// `noise-handshake.md` §5 clause 4: Split clears the long-term
+    /// static private key inside the handshake state. Before Split
+    /// the buffer carries the supplied secret; after Split it is
+    /// fully zero — the destructor sees an already-cleared buffer
+    /// in the steady-state path.
+    Keypair init_static = generate_keypair();
+    Keypair resp_static = generate_keypair();
+    HandshakeState initiator(Pattern::XX, true,  init_static);
+    HandshakeState responder(Pattern::XX, false, resp_static);
+    run_xx_handshake(initiator, responder);
+
+    EXPECT_FALSE(initiator.static_secret_zeroised_for_test());
+    EXPECT_FALSE(responder.static_secret_zeroised_for_test());
+
+    [[maybe_unused]] auto i_pair = initiator.split();
+    [[maybe_unused]] auto r_pair = responder.split();
+
+    EXPECT_TRUE(initiator.static_secret_zeroised_for_test());
+    EXPECT_TRUE(responder.static_secret_zeroised_for_test());
+}
+
+TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretIK) {
+    /// Same invariant for IK: the responder holds its long-term
+    /// static across both pattern messages, the initiator holds its
+    /// across both messages too. Split fires the eager wipe on both
+    /// roles.
+    Keypair init_static = generate_keypair();
+    Keypair resp_static = generate_keypair();
+    HandshakeState initiator(Pattern::IK, true,  init_static, resp_static.pk);
+    HandshakeState responder(Pattern::IK, false, resp_static);
+    run_ik_handshake(initiator, responder);
+
+    EXPECT_FALSE(initiator.static_secret_zeroised_for_test());
+    EXPECT_FALSE(responder.static_secret_zeroised_for_test());
+
+    [[maybe_unused]] auto i_pair = initiator.split();
+    [[maybe_unused]] auto r_pair = responder.split();
+
+    EXPECT_TRUE(initiator.static_secret_zeroised_for_test());
+    EXPECT_TRUE(responder.static_secret_zeroised_for_test());
+}
+
 TEST(NoiseTransportRekey, SymmetricThresholdRekeyKeepsInterop) {
     /// Auto-rekey trigger fires inside `noise_encrypt`/`noise_decrypt`
     /// once a CipherState reaches `REKEY_INTERVAL` (2^60). Both peers

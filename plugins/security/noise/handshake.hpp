@@ -110,6 +110,13 @@ public:
     };
     [[nodiscard]] TransportPair split();
 
+    /// Forward-secrecy observable: the long-term static private key
+    /// buffer inside this handshake state is fully zero. Used by the
+    /// regression suite that pins `noise-handshake.md` §5 clause 4 —
+    /// production callers have no reason to consult this, the contract
+    /// already states the handshake is unsafe to reuse after Split.
+    [[nodiscard]] bool static_secret_zeroised_for_test() const noexcept;
+
 private:
     Pattern        pattern_;
     bool           initiator_;

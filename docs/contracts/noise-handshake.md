@@ -144,6 +144,16 @@ The contract:
 2. After export, the source session's encrypt/decrypt entries return
    `GN_ERR_INVALID_STATE`. Reuse is rejected.
 3. The inline-crypto state zeroises its own keys when destroyed.
+4. The handshake state's `Split` step zeroises the long-term static
+   private key inside the handshake-state buffer at the moment the
+   transport ciphers are produced. After `Split` returns, no further
+   pattern message can be processed (`is_complete()` is true), so the
+   static private key has no remaining purpose inside the handshake
+   state. The ephemeral private key, ephemeral public key, and the
+   peer ephemeral key are zeroised at the same point. The destructor
+   re-zeroises every key buffer as a defence-in-depth backstop; in
+   the steady-state path the destructor sees buffers already cleared
+   by `Split`.
 
 How a language zeroises memory is internal to the binding (libsodium
 `sodium_memzero` in C/C++; equivalent secure-erase primitives

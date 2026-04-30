@@ -277,12 +277,20 @@ HandshakeState::TransportPair HandshakeState::split() {
         tp.recv = std::move(pair.first);
     }
 
-    // Ephemeral keys are no longer needed; zeroise eagerly to shorten
-    // their lifetime in process memory.
+    // Per noise-handshake.md §5: the long-term static private key has
+    // no remaining purpose inside the handshake state once Split has
+    // produced the transport ciphers. Zeroise eagerly so the buffer
+    // does not outlive its purpose. Ephemeral keys follow the same
+    // rule.
+    sodium_memzero(s_sk_.data(), DH_PRIVATE_KEY_BYTES);
     sodium_memzero(e_sk_.data(), DH_PRIVATE_KEY_BYTES);
     sodium_memzero(e_pk_.data(), DH_PUBLIC_KEY_BYTES);
     sodium_memzero(re_.data(),   DH_PUBLIC_KEY_BYTES);
     return tp;
+}
+
+bool HandshakeState::static_secret_zeroised_for_test() const noexcept {
+    return sodium_is_zero(s_sk_.data(), DH_PRIVATE_KEY_BYTES) != 0;
 }
 
 } // namespace gn::noise
