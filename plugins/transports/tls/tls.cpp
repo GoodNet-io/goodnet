@@ -260,23 +260,11 @@ TlsTransport::TlsTransport()
                              asio::ssl::context::no_tlsv1_2 |
                              asio::ssl::context::no_compression);
     /// Default-secure: clients verify the peer certificate against
-    /// OpenSSL's default trust store. Operators running TLS as link
-    /// encryption beneath Noise authentication opt out through
-    /// `transports.tls.verify_peer = false` on the kernel config;
-    /// the transport reads the flag in `set_host_api` and flips the
-    /// verify mode accordingly.
+    /// OpenSSL's default trust store. The trust store load happens
+    /// in `set_host_api` so a load failure can surface through the
+    /// host log; here only the verify-mode bit is set so the
+    /// invariant holds even if `set_host_api` never runs.
     client_ctx_.set_verify_mode(asio::ssl::verify_peer);
-    verify_peer_ = true;
-    try {
-        client_ctx_.set_default_verify_paths();
-    } catch (...) {  // NOLINT(bugprone-empty-catch)
-        /// OpenSSL builds without a trust store still allow opt-out
-        /// through `set_verify_peer(false)`; the client connect path
-        /// fails the handshake when verify_peer remains true and no
-        /// trust store loaded. Swallow the throw — the failure mode
-        /// surfaces at handshake time, not at construction.
-        (void)0;
-    }
 
     worker_ = std::thread([this] { ioc_.run(); });
 }
@@ -309,6 +297,34 @@ void TlsTransport::set_host_api(const host_api_t* api) noexcept {
             pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
         }
     }
+    /// Default-secure baseline: re-bind always restarts in
+    /// verify_peer mode, then the config opt-out check may flip to
+    /// verify_none. Without this reset, an api swap from a verify-
+    /// none deployment to one without the config key would leave
+    /// the previous opt-out in force.
+    set_verify_peer(true);
+    bool trust_store_loaded = true;
+    try {
+        client_ctx_.set_default_verify_paths();
+    } catch (const std::exception& e) {
+        trust_store_loaded = false;
+        if (api_ != nullptr) {
+            gn_log_warn(api_,
+                "tls: default trust store load failed: %s; "
+                "verify_peer handshakes will fail until "
+                "transports.tls.verify_peer is set false or a "
+                "trust bundle is loaded explicitly", e.what());
+        }
+    } catch (...) {
+        trust_store_loaded = false;
+        if (api_ != nullptr) {
+            gn_log_warn(api_,
+                "tls: default trust store load failed: unknown "
+                "exception; verify_peer handshakes will fail until "
+                "transports.tls.verify_peer is set false");
+        }
+    }
+    (void)trust_store_loaded;
     /// Honour `transports.tls.verify_peer` config opt-out. The flag
     /// defaults to true (verify peer cert against the OpenSSL trust
     /// store); explicit `false` switches to verify_none for the
@@ -340,7 +356,6 @@ bool TlsTransport::key_pem_zeroised_for_test() const noexcept {
                            override_key_pem_.size()) != 0;
 }
 void TlsTransport::set_verify_peer(bool on) noexcept {
-    verify_peer_ = on;
     /// `set_verify_mode` is `noexcept`-incompatible in older asio
     /// builds; swallow any throw rather than propagate, since the
     /// caller's intent is "best-effort policy update".

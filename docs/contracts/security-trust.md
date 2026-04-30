@@ -91,6 +91,28 @@ require attestation — their trust class is final at
 `notify_connect` and the gate refuses any other transition
 regardless.
 
+### Link-layer authentication policy
+
+Identity authentication is the security-pipeline's job. Link-layer
+transports do not duplicate it:
+
+- **TLS client.** Default verifies the peer certificate against the
+  OpenSSL default trust store. Operators running TLS as link
+  encryption beneath Noise opt out through
+  `transports.tls.verify_peer = false` on the kernel config; the
+  Noise handshake then carries identity authentication and the
+  attestation gate above promotes trust.
+- **TLS server.** Anonymous-client by spec. The server presents its
+  certificate and key but does not demand a client cert. Peer
+  identity reaches the kernel through the Noise handshake on the
+  same connection, not through mutual TLS. An operator who needs
+  X.509 mutual auth as a second factor adds a `verify_peer_client`
+  knob through a transport-extension; the v1 baseline does not
+  ship one.
+- **Plain TCP / UDP / IPC / WS.** No link-layer authentication.
+  Identity is the security-pipeline's job; the transport surfaces
+  the URI and trust class only.
+
 ---
 
 ## 3a. `gn_security_provider_vtable_t` layout

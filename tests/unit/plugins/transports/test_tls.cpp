@@ -215,6 +215,103 @@ TEST(TlsTransport_VerifyDefault, ClientRejectsUntrustedCertWithoutOptOut) {
     server->shutdown();
 }
 
+namespace {
+
+/// Test harness variant that exposes a `transports.tls.verify_peer`
+/// config bool. The caller sets `verify_peer_value` before binding
+/// the api; an unbound variant leaves `config_get_bool` returning
+/// `GN_ERR_UNKNOWN_RECEIVER`.
+struct TlsConfigHarness : TlsHarness {
+    std::optional<int32_t> verify_peer_value;
+
+    static gn_result_t s_config_get_bool(void* host_ctx,
+                                          const char* key,
+                                          int32_t* out_value) {
+        auto* h = static_cast<TlsConfigHarness*>(host_ctx);
+        if (h && key && std::string_view{key} == "transports.tls.verify_peer"
+            && h->verify_peer_value && out_value) {
+            *out_value = *h->verify_peer_value;
+            return GN_OK;
+        }
+        return GN_ERR_UNKNOWN_RECEIVER;
+    }
+
+    host_api_t make_api() {
+        host_api_t api = TlsHarness::make_api();
+        api.config_get_bool = &s_config_get_bool;
+        return api;
+    }
+};
+
+} // namespace
+
+TEST(TlsTransport_VerifyDefault, ConfigOptOutLetsHandshakeSucceed) {
+    /// `transports.tls.verify_peer = false` on the config flips the
+    /// client to verify_none, matching the API opt-out.
+    std::string cert, key;
+    ASSERT_TRUE(generate_self_signed(cert, key));
+
+    TlsConfigHarness harness;
+    harness.verify_peer_value = 0;
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::transport::tls::TlsTransport>();
+    auto client = std::make_shared<gn::transport::tls::TlsTransport>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+    server->set_server_credentials(cert, key);
+
+    ASSERT_EQ(server->listen("tls://127.0.0.1:0"), GN_OK);
+    const auto port = server->listen_port();
+    const std::string uri =
+        "tls://127.0.0.1:" + std::to_string(port);
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    ASSERT_TRUE(wait_for([&] {
+        std::lock_guard lk(harness.mu);
+        return harness.connects.size() >= 2;
+    }));
+
+    client->shutdown();
+    server->shutdown();
+}
+
+TEST(TlsTransport_VerifyDefault, ConfigUnboundEnforcesDefault) {
+    /// Without the config key bound (`config_get_bool` returns
+    /// `GN_ERR_UNKNOWN_RECEIVER`), the client stays in verify_peer
+    /// mode and refuses the self-signed loopback cert.
+    std::string cert, key;
+    ASSERT_TRUE(generate_self_signed(cert, key));
+
+    TlsConfigHarness harness;
+    /// verify_peer_value left unset — config_get_bool returns miss.
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::transport::tls::TlsTransport>();
+    auto client = std::make_shared<gn::transport::tls::TlsTransport>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+    server->set_server_credentials(cert, key);
+
+    ASSERT_EQ(server->listen("tls://127.0.0.1:0"), GN_OK);
+    const auto port = server->listen_port();
+    const std::string uri =
+        "tls://127.0.0.1:" + std::to_string(port);
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    const bool any_initiator = wait_for([&] {
+        std::lock_guard lk(harness.mu);
+        for (auto role : harness.roles) {
+            if (role == GN_ROLE_INITIATOR) return true;
+        }
+        return false;
+    }, std::chrono::seconds{2});
+    EXPECT_FALSE(any_initiator);
+
+    client->shutdown();
+    server->shutdown();
+}
+
 TEST(TlsTransport_KeyHygiene, ListenZeroisesOverrideKey) {
     /// `noise-handshake.md` §5b: once OpenSSL has copied the key
     /// bytes into its own context, the override buffer has no
