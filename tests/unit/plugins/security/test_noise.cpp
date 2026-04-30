@@ -443,6 +443,67 @@ TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretXX) {
     EXPECT_TRUE(responder.static_secret_zeroised_for_test());
 }
 
+TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesChainingKeyXX) {
+    /// `noise-handshake.md` §5 clause 4: the symmetric chaining key
+    /// has no remaining cryptographic purpose once Split has
+    /// produced the transport ciphers. The buffer is cleared inside
+    /// `SymmetricState::split()`; the handshake-state forwarder
+    /// surfaces the observable.
+    Keypair init_static = generate_keypair();
+    Keypair resp_static = generate_keypair();
+    HandshakeState initiator(Pattern::XX, true,  init_static);
+    HandshakeState responder(Pattern::XX, false, resp_static);
+    run_xx_handshake(initiator, responder);
+
+    EXPECT_FALSE(initiator.chaining_key_zeroised_for_test());
+    EXPECT_FALSE(responder.chaining_key_zeroised_for_test());
+
+    [[maybe_unused]] auto i_pair = initiator.split();
+    [[maybe_unused]] auto r_pair = responder.split();
+
+    EXPECT_TRUE(initiator.chaining_key_zeroised_for_test());
+    EXPECT_TRUE(responder.chaining_key_zeroised_for_test());
+}
+
+/// The next two tests intentionally probe the moved-from state to
+/// pin the §5 clause 4 invariant: the moved-from source's secret
+/// buffers are zero. The clang-tidy `bugprone-use-after-move` and
+/// `clang-analyzer-cplusplus.Move` checks fire on the deliberate
+/// reads — they are the test, not bugs.
+// NOLINTBEGIN(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
+
+TEST(NoiseHandshakeForwardSecrecy, MoveConstructZeroisesSourceSecrets) {
+    Keypair init_static = generate_keypair();
+    HandshakeState orig(Pattern::XX, true, init_static);
+    EXPECT_FALSE(orig.static_secret_zeroised_for_test());
+    EXPECT_FALSE(orig.chaining_key_zeroised_for_test());
+
+    HandshakeState moved(std::move(orig));
+    /// Moved-into instance carries the secret; moved-from is wiped.
+    EXPECT_FALSE(moved.static_secret_zeroised_for_test());
+    EXPECT_FALSE(moved.chaining_key_zeroised_for_test());
+    EXPECT_TRUE(orig.static_secret_zeroised_for_test());
+    EXPECT_TRUE(orig.chaining_key_zeroised_for_test());
+}
+
+TEST(NoiseHandshakeForwardSecrecy, MoveAssignZeroisesSourceSecrets) {
+    Keypair static_a = generate_keypair();
+    Keypair static_b = generate_keypair();
+    HandshakeState a(Pattern::XX, true, static_a);
+    HandshakeState b(Pattern::XX, true, static_b);
+    EXPECT_FALSE(a.static_secret_zeroised_for_test());
+    EXPECT_FALSE(b.static_secret_zeroised_for_test());
+
+    a = std::move(b);
+    /// Destination now carries b's secret; source b is wiped.
+    EXPECT_FALSE(a.static_secret_zeroised_for_test());
+    EXPECT_FALSE(a.chaining_key_zeroised_for_test());
+    EXPECT_TRUE(b.static_secret_zeroised_for_test());
+    EXPECT_TRUE(b.chaining_key_zeroised_for_test());
+}
+
+// NOLINTEND(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
+
 TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretIK) {
     /// Same invariant for IK: the responder holds its long-term
     /// static across both pattern messages, the initiator holds its
