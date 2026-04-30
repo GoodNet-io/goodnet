@@ -57,16 +57,6 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
     }
 
     try {
-        {
-            /// `limits.md` §4 — a cap of zero disables enforcement.
-            std::lock_guard lk(mu_);
-            const std::uint32_t cap =
-                max_timers_.load(std::memory_order_relaxed);
-            if (cap != 0 && timers_.size() >= cap) {
-                return GN_ERR_LIMIT_REACHED;
-            }
-        }
-
         /// Per-plugin sub-quota (`limits.md` §4a /
         /// `max_timers_per_plugin`). The counter is always
         /// maintained when an anchor is supplied — the cap is
@@ -100,18 +90,37 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             }
         }
 
-        const auto id = next_id_.fetch_add(1, std::memory_order_relaxed);
-        auto timer = std::make_shared<asio::steady_timer>(
-            ioc_, std::chrono::milliseconds{delay_ms});
-
-        TimerEntry entry;
-        entry.timer     = timer;
-        entry.anchor    = anchor;
-        entry.fn        = fn;
-        entry.user_data = user_data;
-
+        gn_timer_id_t id = GN_INVALID_TIMER_ID;
+        std::shared_ptr<asio::steady_timer> timer;
         {
+            /// Hold `mu_` from the global-cap check through the
+            /// `emplace`. `limits.md` §4 — a cap of zero disables
+            /// enforcement. The pre-fix path released the lock
+            /// between the size check and the emplace; two admits
+            /// racing through that window could both observe
+            /// `size() < cap` and both push, leaving the registry
+            /// at `cap + 1`. Holding the lock collapses the window
+            /// at the cost of constructing the asio timer and the
+            /// entry under the mutex — both are short and bounded
+            /// (one heap allocation, no syscalls).
             std::lock_guard lk(mu_);
+            const std::uint32_t cap =
+                max_timers_.load(std::memory_order_relaxed);
+            if (cap != 0 && timers_.size() >= cap) {
+                if (anchor) {
+                    anchor->active_timers.fetch_sub(
+                        1, std::memory_order_acq_rel);
+                }
+                return GN_ERR_LIMIT_REACHED;
+            }
+            id = next_id_.fetch_add(1, std::memory_order_relaxed);
+            timer = std::make_shared<asio::steady_timer>(
+                ioc_, std::chrono::milliseconds{delay_ms});
+            TimerEntry entry;
+            entry.timer     = timer;
+            entry.anchor    = anchor;
+            entry.fn        = fn;
+            entry.user_data = user_data;
             timers_.emplace(id, std::move(entry));
         }
 
@@ -165,8 +174,14 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
         *out_id = id;
         return GN_OK;
     } catch (const std::bad_alloc&) {
+        if (anchor) {
+            anchor->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+        }
         return GN_ERR_OUT_OF_MEMORY;
     } catch (const std::exception&) {
+        if (anchor) {
+            anchor->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+        }
         return GN_ERR_NULL_ARG;
     }
 }
