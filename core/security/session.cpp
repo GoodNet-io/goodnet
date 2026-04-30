@@ -4,6 +4,8 @@
 
 #include <cstring>
 
+#include <core/kernel/safe_invoke.hpp>
+
 namespace gn::core {
 
 // ── SecuritySession ─────────────────────────────────────────────────
@@ -22,7 +24,8 @@ void SecuritySession::close() noexcept {
         phase_.load(std::memory_order_acquire) != SecurityPhase::Closed &&
         vtable_->handshake_close)
     {
-        vtable_->handshake_close(provider_self_, state_);
+        safe_call_void("security.handshake_close",
+            vtable_->handshake_close, provider_self_, state_);
     }
     state_ = nullptr;
     phase_.store(SecurityPhase::Closed, std::memory_order_release);
@@ -65,7 +68,9 @@ gn_result_t SecuritySession::open(
     }
 
     void* state = nullptr;
-    const gn_result_t rc = vtable_->handshake_open(
+    const gn_result_t rc = safe_call_result(
+        "security.handshake_open",
+        vtable_->handshake_open,
         provider_self_, conn, trust, role,
         local_static_sk.data(), local_static_pk.data(),
         remote_pk_ptr, &state);
@@ -87,7 +92,9 @@ gn_result_t SecuritySession::advance_handshake(
     if (!vtable_ || !vtable_->handshake_step) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t step_out{};
-    const gn_result_t rc = vtable_->handshake_step(
+    const gn_result_t rc = safe_call_result(
+        "security.handshake_step",
+        vtable_->handshake_step,
         provider_self_, state_,
         incoming.data(), incoming.size(),
         &step_out);
@@ -101,20 +108,26 @@ gn_result_t SecuritySession::advance_handshake(
         out_msg.clear();
     }
     if (step_out.free_fn && step_out.bytes) {
-        step_out.free_fn(step_out.bytes);
+        safe_call_void("security.handshake_step.free_fn",
+            step_out.free_fn, step_out.bytes);
     }
 
     /// Check completion. Provider returns nonzero when the handshake
     /// has reached the transport phase.
-    if (vtable_->handshake_complete &&
-        vtable_->handshake_complete(provider_self_, state_) != 0)
-    {
-        if (vtable_->export_transport_keys) {
-            const gn_result_t er = vtable_->export_transport_keys(
-                provider_self_, state_, &keys_);
-            if (er != GN_OK) return er;
+    if (vtable_->handshake_complete) {
+        const auto complete_opt = safe_call_value<int>(
+            "security.handshake_complete",
+            vtable_->handshake_complete, provider_self_, state_);
+        if (complete_opt.value_or(0) != 0) {
+            if (vtable_->export_transport_keys) {
+                const gn_result_t er = safe_call_result(
+                    "security.export_transport_keys",
+                    vtable_->export_transport_keys,
+                    provider_self_, state_, &keys_);
+                if (er != GN_OK) return er;
+            }
+            phase_.store(SecurityPhase::Transport, std::memory_order_release);
         }
-        phase_.store(SecurityPhase::Transport, std::memory_order_release);
     }
     return GN_OK;
 }
@@ -128,7 +141,9 @@ gn_result_t SecuritySession::encrypt_transport(
     if (!vtable_ || !vtable_->encrypt) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t enc_out{};
-    const gn_result_t rc = vtable_->encrypt(
+    const gn_result_t rc = safe_call_result(
+        "security.encrypt",
+        vtable_->encrypt,
         provider_self_, state_,
         plaintext.data(), plaintext.size(),
         &enc_out);
@@ -140,7 +155,8 @@ gn_result_t SecuritySession::encrypt_transport(
         out_cipher.clear();
     }
     if (enc_out.free_fn && enc_out.bytes) {
-        enc_out.free_fn(enc_out.bytes);
+        safe_call_void("security.encrypt.free_fn",
+            enc_out.free_fn, enc_out.bytes);
     }
     return GN_OK;
 }
@@ -192,7 +208,9 @@ gn_result_t SecuritySession::decrypt_transport(
     if (!vtable_ || !vtable_->decrypt) return GN_ERR_NOT_IMPLEMENTED;
 
     gn_secure_buffer_t dec_out{};
-    const gn_result_t rc = vtable_->decrypt(
+    const gn_result_t rc = safe_call_result(
+        "security.decrypt",
+        vtable_->decrypt,
         provider_self_, state_,
         ciphertext.data(), ciphertext.size(),
         &dec_out);
@@ -204,7 +222,8 @@ gn_result_t SecuritySession::decrypt_transport(
         out_plaintext.clear();
     }
     if (dec_out.free_fn && dec_out.bytes) {
-        dec_out.free_fn(dec_out.bytes);
+        safe_call_void("security.decrypt.free_fn",
+            dec_out.free_fn, dec_out.bytes);
     }
     return GN_OK;
 }
@@ -228,7 +247,13 @@ std::shared_ptr<SecuritySession> Sessions::create(
     /// upstream pipeline from leaking a half-initialised session
     /// into the registry on a misconfigured stack.
     if (entry.vtable && entry.vtable->allowed_trust_mask) {
-        const std::uint32_t mask = entry.vtable->allowed_trust_mask(entry.self);
+        const auto mask_opt = safe_call_value<std::uint32_t>(
+            "security.allowed_trust_mask",
+            entry.vtable->allowed_trust_mask, entry.self);
+        /// A throwing trust-mask slot collapses the gate to "deny"
+        /// — we cannot trust a provider that crashes to enumerate
+        /// its admitted classes correctly.
+        const std::uint32_t mask = mask_opt.value_or(0u);
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
             out_result = GN_ERR_INVALID_ENVELOPE;

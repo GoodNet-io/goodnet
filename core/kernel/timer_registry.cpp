@@ -7,6 +7,8 @@
 
 #include <utility>
 
+#include "safe_invoke.hpp"
+
 namespace gn::core {
 
 TimerRegistry::TimerRegistry()
@@ -165,9 +167,9 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             if (anchor_set) {
                 auto guard = GateGuard::acquire(anchor_weak);
                 if (!guard) return;
-                fn(user_data);
+                safe_call_void("timer.callback", fn, user_data);
             } else {
-                fn(user_data);
+                safe_call_void("timer.callback", fn, user_data);
             }
         });
 
@@ -252,9 +254,9 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
                 if (anchor_set) {
                     auto guard = GateGuard::acquire(anchor_weak);
                     if (!guard) return;
-                    fn(user_data);
+                    safe_call_void("executor.task", fn, user_data);
                 } else {
-                    fn(user_data);
+                    safe_call_void("executor.task", fn, user_data);
                 }
             });
         return GN_OK;

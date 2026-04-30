@@ -26,6 +26,7 @@
 
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <core/kernel/safe_invoke.hpp>
 #include <core/util/log.hpp>
 
 #include <sdk/plugin.h>
@@ -335,7 +336,9 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     for (auto& inst : instances_) {
         auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
             ::dlsym(inst.so_handle, "gn_plugin_init"));
-        const auto rc = init_fn(&inst.api, &inst.self);
+        const auto rc = safe_call_result(
+            "plugin.gn_plugin_init",
+            init_fn, &inst.api, &inst.self);
         if (rc != GN_OK) {
             note("gn_plugin_init failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -347,7 +350,9 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     for (auto& inst : instances_) {
         auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
             ::dlsym(inst.so_handle, "gn_plugin_register"));
-        const auto rc = reg_fn(inst.self);
+        const auto rc = safe_call_result(
+            "plugin.gn_plugin_register",
+            reg_fn, inst.self);
         if (rc != GN_OK) {
             note("gn_plugin_register failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -438,7 +443,13 @@ void PluginManager::rollback() {
         if (it->registered && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
                     ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
-                fn(it->self);
+                /// `gn_result_t` discarded — the unregister path
+                /// continues to teardown regardless of the
+                /// plugin's reported outcome; we only care that
+                /// no exception escapes the C ABI boundary.
+                (void)safe_call_result(
+                    "plugin.gn_plugin_unregister",
+                    fn, it->self);
             }
             it->registered = false;
         }
@@ -458,7 +469,8 @@ void PluginManager::rollback() {
         if (it->self && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
                     ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
-                fn(it->self);
+                safe_call_void("plugin.gn_plugin_shutdown",
+                    fn, it->self);
             }
             it->self = nullptr;
         }

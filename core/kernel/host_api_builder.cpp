@@ -11,6 +11,7 @@
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
+#include "safe_invoke.hpp"
 #include "system_handler_ids.hpp"
 
 namespace gn::core {
@@ -176,9 +177,9 @@ gn_result_t thunk_send(void* host_ctx,
             std::vector<std::uint8_t> cipher;
             const gn_result_t rc = session->encrypt_transport(*framed, cipher);
             if (rc != GN_OK) return rc;
-            const auto send_rc = trans->vtable->send(trans->self, conn,
-                                                      cipher.data(),
-                                                      cipher.size());
+            const auto send_rc = safe_call_result("transport.send",
+                trans->vtable->send, trans->self, conn,
+                cipher.data(), cipher.size());
             if (send_rc == GN_OK) {
                 pc->kernel->connections().add_outbound(
                     conn, cipher.size(), 1);
@@ -187,8 +188,9 @@ gn_result_t thunk_send(void* host_ctx,
         }
     }
 
-    const auto send_rc = trans->vtable->send(trans->self, conn,
-                                              framed->data(), framed->size());
+    const auto send_rc = safe_call_result("transport.send",
+        trans->vtable->send, trans->self, conn,
+        framed->data(), framed->size());
     if (send_rc == GN_OK) {
         pc->kernel->connections().add_outbound(
             conn, framed->size(), 1);
@@ -272,7 +274,8 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!trans || !trans->vtable || !trans->vtable->disconnect) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
-    return trans->vtable->disconnect(trans->self, conn);
+    return safe_call_result("transport.disconnect",
+        trans->vtable->disconnect, trans->self, conn);
 }
 
 gn_result_t thunk_query_extension_checked(void* host_ctx,
@@ -361,7 +364,8 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
             e.pending_bytes = ev.pending_bytes;
             std::memcpy(e.remote_pk, ev.remote_pk.data(),
                         GN_PUBLIC_KEY_BYTES);
-            cb(user_data, &e);
+            safe_call_void("conn_state.subscriber",
+                cb, user_data, &e);
         });
     *out_id = static_cast<gn_subscription_id_t>(token);
     return GN_OK;
@@ -386,9 +390,11 @@ gn_result_t thunk_subscribe_config_reload(void* host_ctx,
             if (anchor_set) {
                 auto guard = GateGuard::acquire(anchor_weak);
                 if (!guard) return;
-                cb(user_data);
+                safe_call_void("config_reload.subscriber",
+                    cb, user_data);
             } else {
-                cb(user_data);
+                safe_call_void("config_reload.subscriber",
+                    cb, user_data);
             }
         });
     *out_id = static_cast<std::uint64_t>(token);
@@ -454,11 +460,15 @@ gn_result_t thunk_for_each_connection(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->connections().for_each(
         [visitor, user_data](const ConnectionRecord& rec) -> bool {
-            return visitor(user_data,
-                           rec.id,
-                           rec.trust,
-                           rec.remote_pk.data(),
-                           rec.uri.c_str()) == 0;
+            const auto rc_opt = safe_call_value<int>(
+                "for_each_connection.visitor",
+                visitor, user_data,
+                rec.id, rec.trust,
+                rec.remote_pk.data(), rec.uri.c_str());
+            /// A throwing visitor stops the walk just as a non-zero
+            /// return would; we conservatively treat the throw as
+            /// "stop visiting" rather than continue.
+            return rc_opt.value_or(1) == 0;
         });
     return GN_OK;
 }
@@ -707,7 +717,9 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
-    return trans->vtable->send(trans->self, conn, bytes.data(), bytes.size());
+    return safe_call_result("transport.send",
+        trans->vtable->send, trans->self, conn,
+        bytes.data(), bytes.size());
 }
 
 /// Kernel-side teardown for a connection that the kernel itself
@@ -764,18 +776,21 @@ void drain_handshake_pending(PluginContext* pc,
         std::vector<std::uint8_t> cipher;
         if (session.encrypt_transport(plaintext, cipher) != GN_OK) {
             if (trans->vtable->disconnect) {
-                (void)trans->vtable->disconnect(trans->self, conn);
+                (void)safe_call_result("transport.disconnect",
+                    trans->vtable->disconnect, trans->self, conn);
             }
             return;
         }
-        const auto rc = trans->vtable->send(
-            trans->self, conn, cipher.data(), cipher.size());
+        const auto rc = safe_call_result("transport.send",
+            trans->vtable->send, trans->self, conn,
+            cipher.data(), cipher.size());
         if (rc == GN_OK) {
             pc->kernel->connections().add_outbound(conn, cipher.size(), 1);
             continue;
         }
         if (trans->vtable->disconnect) {
-            (void)trans->vtable->disconnect(trans->self, conn);
+            (void)safe_call_result("transport.disconnect",
+                trans->vtable->disconnect, trans->self, conn);
         }
         return;
     }
