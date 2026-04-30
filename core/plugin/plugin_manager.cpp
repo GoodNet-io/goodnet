@@ -8,7 +8,15 @@
 #ifdef __linux__
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/syscall.h>
 #include <cstdio>
+#include <cstdint>
+#include <cstring>
+#include <errno.h>
+#if defined(SYS_openat2) && __has_include(<linux/openat2.h>)
+#include <linux/openat2.h>
+#define GOODNET_HAVE_OPENAT2 1
+#endif
 #endif
 
 #include <chrono>
@@ -126,15 +134,30 @@ gn_result_t PluginManager::open_one(const std::string& path,
             diag += path;
             return GN_ERR_INTEGRITY_FAILED;
         }
-        /// `O_NOFOLLOW` rejects a symlink at the leaf; combined
-        /// with `dlopen("/proc/self/fd/N")` it pins the kernel
-        /// to a single inode across hash and load. An attacker
-        /// cannot swap the path between the two operations — the
-        /// fd refers to the file the hash covered. Parent-directory
-        /// symlink swaps remain in scope of the operator-controls
-        /// assumption per `plugin-manifest.md` §7.
-        const int fd = ::open(path.c_str(),
-                              O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        /// `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS)`
+        /// (Linux 5.6+) refuses every symlink along the path, not
+        /// only the leaf. A parent-directory swap that the older
+        /// `O_NOFOLLOW` open could not see — `/var/lib/goodnet/` →
+        /// attacker-symlink — fails here with `ELOOP`. Combined
+        /// with `dlopen("/proc/self/fd/N")` it pins the kernel to
+        /// a single inode across hash and load. The fallback for
+        /// older kernels keeps `O_NOFOLLOW` (leaf-only) as the
+        /// best-effort guard.
+        int fd = -1;
+#ifdef GOODNET_HAVE_OPENAT2
+        struct open_how how{};
+        how.flags = static_cast<__u64>(O_RDONLY | O_CLOEXEC);
+        how.resolve = RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS;
+        fd = static_cast<int>(::syscall(
+            SYS_openat2, AT_FDCWD, path.c_str(), &how, sizeof(how)));
+        if (fd < 0 && errno == ENOSYS) {
+            fd = ::open(path.c_str(),
+                        O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+        }
+#else
+        fd = ::open(path.c_str(),
+                    O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+#endif
         if (fd < 0) {
             diag = "plugin integrity check failed: open: ";
             diag += path;
