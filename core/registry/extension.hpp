@@ -75,8 +75,8 @@ public:
 
     /// Return every entry whose name starts with @p prefix. Plugins
     /// that group their vtables under a shared dotted namespace
-    /// (`"gn.dns.*"`, `"gn.discovery.*"`) enumerate the family
-    /// through this entry without holding a separate index.
+    /// enumerate the family through this entry without holding a
+    /// separate index.
     [[nodiscard]] std::vector<ExtensionEntry>
     query_prefix(std::string_view prefix) const;
 

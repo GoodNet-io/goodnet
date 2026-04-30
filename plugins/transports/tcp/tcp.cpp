@@ -476,7 +476,7 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
 
     /// `notify_connect` carries the resolved-IP URI so the registry
     /// index key matches what the kernel observes through subsequent
-    /// `find_by_uri` lookups, and the orchestrator's `?peer=<hex>`
+    /// `find_by_uri` lookups, and the connect path's `?peer=<hex>`
     /// stash (keyed on `host:port`) lines up with the literal-host
     /// form per `dns.md` §1.
     const std::string& canonical_uri = *resolved;

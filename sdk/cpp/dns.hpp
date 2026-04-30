@@ -4,7 +4,7 @@
 ///
 /// `resolve_uri_host` rewrites a `<scheme>://<host>:<port>[/path][?query]`
 /// URI so the host segment is an IP literal. Transports call this
-/// once per outbound `connect` to keep the orchestrator's cached
+/// once per outbound `connect` to keep the connect path's cached
 /// peer-pk stash and the registry URI index keyed on the same
 /// canonical form. IP-literal hosts and `ipc://` path-style URIs
 /// short-circuit — the helper rewrites only when an actual lookup is
