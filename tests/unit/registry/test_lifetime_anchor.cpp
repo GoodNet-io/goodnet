@@ -29,8 +29,12 @@
 namespace {
 
 const gn_handler_vtable_t* dummy_handler_vtable() {
-    static const gn_handler_vtable_t v{};
-    return &v;
+    static const gn_handler_vtable_t vt = []() {
+        gn_handler_vtable_t v{};
+        v.api_size = sizeof(gn_handler_vtable_t);
+        return v;
+    }();
+    return &vt;
 }
 
 const gn_transport_vtable_t* dummy_transport_vtable() {

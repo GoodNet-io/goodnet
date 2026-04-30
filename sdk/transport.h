@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -107,6 +108,8 @@ typedef struct gn_transport_vtable_s {
 
     void* _reserved[4];
 } gn_transport_vtable_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_transport_vtable_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

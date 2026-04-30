@@ -9,6 +9,9 @@
 #ifndef GOODNET_SDK_PROTOCOL_H
 #define GOODNET_SDK_PROTOCOL_H
 
+#include <stdint.h>
+
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -44,9 +47,12 @@ typedef struct gn_deframe_result_s {
  * @brief Vtable for an `IProtocolLayer` implementation in C.
  *
  * The kernel calls every function with a plugin-supplied `self` pointer
- * obtained at plugin init.
+ * obtained at plugin init. Begins with @ref api_size for size-prefix
+ * evolution per `abi-evolution.md` §3.
  */
 typedef struct gn_protocol_layer_vtable_s {
+    uint32_t api_size;          /**< sizeof(gn_protocol_layer_vtable_t) at producer build time */
+
     /**
      * @brief Stable identifier; lowercase hyphenated. Example: "gnet-v1".
      *
@@ -117,6 +123,8 @@ typedef struct gn_protocol_layer_vtable_s {
 
     void* _reserved[4];
 } gn_protocol_layer_vtable_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_protocol_layer_vtable_t);
 
 #ifdef __cplusplus
 } /* extern "C" */

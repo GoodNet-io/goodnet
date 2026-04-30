@@ -75,6 +75,7 @@ HeartbeatHandler::HeartbeatHandler(const host_api_t* api,
                                      ClockNowUs clock)
     : api_(api), now_us_(std::move(clock))
 {
+    vtable_.api_size           = sizeof(gn_handler_vtable_t);
     vtable_.protocol_id        = &HeartbeatHandler::vtable_protocol_id;
     vtable_.supported_msg_ids  = &HeartbeatHandler::vtable_supported_msg_ids;
     vtable_.handle_message     = &HeartbeatHandler::vtable_handle_message;
@@ -82,6 +83,7 @@ HeartbeatHandler::HeartbeatHandler(const host_api_t* api,
     vtable_.on_init            = nullptr;
     vtable_.on_shutdown        = nullptr;
 
+    ext_vtable_.api_size              = sizeof(gn_heartbeat_api_t);
     ext_vtable_.get_stats             = &HeartbeatHandler::ext_get_stats;
     ext_vtable_.get_rtt               = &HeartbeatHandler::ext_get_rtt;
     ext_vtable_.get_observed_address  = &HeartbeatHandler::ext_get_observed_address;

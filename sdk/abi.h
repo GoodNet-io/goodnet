@@ -54,6 +54,25 @@ extern "C" {
     ((api) != NULL && \
      (api)->api_size >= (offsetof(__typeof__(*(api)), field) + sizeof((api)->field)))
 
+/**
+ * @brief Compile-time guard that @p T begins with `uint32_t api_size`.
+ *
+ * Every C ABI vtable in `sdk/` carries `api_size` as its first field
+ * so a consumer can read the size byte-precisely without knowing the
+ * rest of the struct's layout (`abi-evolution.md` §3). Place this at
+ * file scope immediately after the struct's typedef so a rebase that
+ * accidentally moves another field above `api_size` fails to compile.
+ */
+#ifdef __cplusplus
+  #define GN_VTABLE_API_SIZE_FIRST(T) \
+      static_assert(offsetof(T, api_size) == 0, \
+                    #T " must begin with `uint32_t api_size` per abi-evolution.md §3")
+#else
+  #define GN_VTABLE_API_SIZE_FIRST(T) \
+      _Static_assert(offsetof(T, api_size) == 0, \
+                     #T " must begin with `uint32_t api_size` per abi-evolution.md §3")
+#endif
+
 /* ── Version comparison helpers ──────────────────────────────────────────── */
 
 /**

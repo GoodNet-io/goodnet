@@ -82,6 +82,7 @@ void stub_on_result(void* self, const gn_message_t* env, gn_propagation_t result
 const gn_handler_vtable_t* stub_vtable() {
     static const gn_handler_vtable_t vt = []() {
         gn_handler_vtable_t v{};
+        v.api_size       = sizeof(gn_handler_vtable_t);
         v.handle_message = &stub_handle;
         v.on_result      = &stub_on_result;
         return v;

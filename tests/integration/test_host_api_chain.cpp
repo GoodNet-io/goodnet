@@ -64,6 +64,7 @@ TEST(HostApiChain, RegisterHandlerThroughApi) {
     KernelHarness h;
     Capture cap;
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
 
     gn_handler_id_t hid = GN_INVALID_ID;
@@ -114,6 +115,7 @@ TEST(HostApiChain, InboundBytesReachHandler) {
     /// Bob registers a capturing handler through the host_api.
     Capture cap;
     gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
     ASSERT_EQ(bob.api.register_handler(bob.api.host_ctx,
