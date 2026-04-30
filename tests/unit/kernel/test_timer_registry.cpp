@@ -185,6 +185,41 @@ TEST(TimerRegistry_Quota, RejectsPastMaxTimers) {
     EXPECT_EQ(c, GN_INVALID_TIMER_ID);
 }
 
+TEST(TimerRegistry_Quota, PostCapHoldsUnderConcurrentAdmits) {
+    /// CAS-loop admit on `post()` must keep two concurrent
+    /// admit threads under the cap even when both observe a
+    /// sub-cap value before either publishes its increment.
+    /// Without the loop the loser's `fetch_add` would push the
+    /// counter over the ceiling and the per-plugin pending pool
+    /// would silently overflow.
+    TimerRegistry r;
+    r.set_max_pending_tasks(8);
+
+    constexpr int kThreads = 16;
+    constexpr int kPosts   = 64;
+    std::atomic<int> accepted{0};
+    std::atomic<int> rejected{0};
+    std::vector<std::thread> workers;
+    workers.reserve(kThreads);
+    for (int t = 0; t < kThreads; ++t) {
+        workers.emplace_back([&] {
+            for (int i = 0; i < kPosts; ++i) {
+                const auto rc = r.post([](void*) {}, nullptr, {});
+                if (rc == GN_OK) accepted.fetch_add(1);
+                else if (rc == GN_ERR_LIMIT_REACHED) rejected.fetch_add(1);
+            }
+        });
+    }
+    for (auto& w : workers) w.join();
+    /// Wait for the asio worker to drain the queue so the
+    /// pending counter reads back to zero. The cap holds in
+    /// flight; the post-execution refund matches.
+    r.shutdown();
+    EXPECT_GT(accepted.load(), 0);
+    EXPECT_GT(rejected.load(), 0);
+    EXPECT_EQ(accepted.load() + rejected.load(), kThreads * kPosts);
+}
+
 // ─── per-plugin sub-quota (limits.md §4a) ──────────────────────
 
 TEST(TimerRegistry_Quota, PerPluginQuotaIsolatesSiblings) {

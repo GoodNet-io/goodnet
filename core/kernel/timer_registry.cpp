@@ -197,13 +197,30 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
     if (shutdown_.load(std::memory_order_acquire)) {
         return GN_ERR_INVALID_STATE;
     }
-    if (pending_tasks_.load(std::memory_order_relaxed) >=
-        max_pending_tasks_.load(std::memory_order_relaxed)) {
-        return GN_ERR_LIMIT_REACHED;
+    /// Compare-and-exchange admission: read the current pending
+    /// count, reject when it would step over the cap, otherwise
+    /// publish the increment. Two concurrent admits cannot both
+    /// observe a sub-cap value and both pass the check — the
+    /// loser's CAS sees an updated `cur` and re-evaluates against
+    /// the cap. Mirrors the `set_timer` per-plugin admission loop.
+    {
+        std::uint32_t cur = pending_tasks_.load(std::memory_order_relaxed);
+        while (true) {
+            const std::uint32_t cap =
+                max_pending_tasks_.load(std::memory_order_relaxed);
+            if (cur >= cap) {
+                return GN_ERR_LIMIT_REACHED;
+            }
+            if (pending_tasks_.compare_exchange_weak(
+                    cur, cur + 1,
+                    std::memory_order_acq_rel,
+                    std::memory_order_relaxed)) {
+                break;
+            }
+        }
     }
 
     try {
-        pending_tasks_.fetch_add(1, std::memory_order_relaxed);
         asio::post(ioc_,
             [this, fn, user_data,
              anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
