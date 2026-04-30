@@ -205,3 +205,22 @@ TEST(HostApiLog, EmitFiltersBelowKernelLevel) {
     ::gn::log::kernel()->flush();
     EXPECT_EQ(h.sink->snapshot().size(), 0u);
 }
+
+TEST(HostApiLog, EmitDropsCallWhenContextCanaryPoisoned) {
+    /// A plugin that retained `host_api` past its own teardown
+    /// would, on next `emit`, dereference a freed `PluginContext`
+    /// and read garbage `plugin_name`. The destructor stamps the
+    /// liveness canary to `kMagicDead`; `thunk_log_emit` checks
+    /// the canary before reading any other field and silently
+    /// drops the call. Simulate the post-teardown read by hand-
+    /// poisoning the canary on a still-live context — the live
+    /// path is exercised by every other test in this file.
+    LogHarness h;
+    h.ctx.magic = gn::core::PluginContext::kMagicDead;
+    h.api.log.emit(h.api.host_ctx, GN_LOG_INFO,
+                   "test.cpp", 1, "after-free");
+    ::gn::log::kernel()->flush();
+    EXPECT_EQ(h.sink->snapshot().size(), 0u);
+    /// Restore so the harness's destructor can run cleanly.
+    h.ctx.magic = gn::core::PluginContext::kMagicLive;
+}
