@@ -20,19 +20,19 @@ namespace gn::core {
 class Kernel;
 
 struct PluginContext {
-    /// Liveness canary. `thunk_log_emit` reads this field first;
-    /// a mismatch means the context has already been destroyed
-    /// (the plugin retained `host_api` past its own `dlclose`)
-    /// and the thunk drops the call instead of dereferencing
-    /// `pc->plugin_name` into reused memory. The destructor stamps
-    /// `kMagicDead`. The check is a soft fast-fail — if the heap
-    /// slab is reused between teardown and the next thunk call
-    /// the magic read aliases unrelated bytes and the heuristic
-    /// fails open. True UAF detection is sanitisers' job; this
-    /// guard catches the common case where the slot is still in
-    /// the freed state. Other host-API thunks dereference
-    /// `host_ctx` without the check today; lifting the canary
-    /// into every thunk is tracked separately.
+    /// Liveness canary. Every host_api thunk in
+    /// `host_api_builder.cpp` reads this field via `ctx_live`
+    /// before any other field; a mismatch means the context has
+    /// already been destroyed (the plugin retained `host_api`
+    /// past its own `dlclose`) and the thunk drops the call
+    /// instead of dereferencing `pc->plugin_name` /
+    /// `pc->kernel` / `pc->plugin_anchor` into reused memory.
+    /// The destructor stamps `kMagicDead`. The check is a soft
+    /// fast-fail — if the heap slab is reused between teardown
+    /// and the next thunk call the magic read aliases unrelated
+    /// bytes and the heuristic fails open. True UAF detection
+    /// remains sanitisers' job; this guard catches the common
+    /// case where the slot is still in the freed state.
     static constexpr std::uint64_t kMagicLive = 0xC0DE600DC0DE600DULL;
     static constexpr std::uint64_t kMagicDead = 0xDEAD600DDEAD600DULL;
     std::uint64_t           magic{kMagicLive};

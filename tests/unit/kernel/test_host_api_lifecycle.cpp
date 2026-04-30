@@ -425,3 +425,53 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
     EXPECT_EQ(disconnected, 1)
         << "re-entrant call publishes nothing; one DISCONNECTED total";
 }
+
+/// PluginContext liveness canary covers every `host_api_t` thunk
+/// uniformly per `plugin_context.hpp`. A plugin that retained
+/// the host_api past its own teardown lands here with a context
+/// whose `magic` field reads as `kMagicDead`; every thunk drops
+/// the call before dereferencing other fields. Hand-poison the
+/// canary on a still-live context and exercise three thunk
+/// families — register, send, query — to assert uniform
+/// rejection. Restore before harness destruct.
+TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
+    Kernel k;
+    auto ctx = make_handler_ctx(k);
+    auto api = build_host_api(ctx);
+
+    ctx.magic = PluginContext::kMagicDead;
+
+    /// register family — register_handler
+    gn_handler_id_t hid = GN_INVALID_ID;
+    gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
+    EXPECT_EQ(api.register_handler(&ctx, "gnet-v1", 1, 128, &vt, nullptr, &hid),
+              GN_ERR_INVALID_STATE);
+    EXPECT_EQ(hid, GN_INVALID_ID);
+
+    /// send family — disconnect. Without the canary this would
+    /// reach `connections().find_by_id(1)` and return
+    /// `GN_ERR_UNKNOWN_RECEIVER`; the canary fast-fails first.
+    EXPECT_EQ(api.disconnect(&ctx, 1), GN_ERR_INVALID_STATE);
+
+    /// query family — get_endpoint
+    gn_endpoint_t endpoint{};
+    EXPECT_EQ(api.get_endpoint(&ctx, 1, &endpoint), GN_ERR_INVALID_STATE);
+
+    /// timer family — set_timer
+    gn_timer_id_t tid = GN_INVALID_TIMER_ID;
+    EXPECT_EQ(api.set_timer(&ctx, 1000, [](void*) {}, nullptr, &tid),
+              GN_ERR_INVALID_STATE);
+
+    /// extension family — register_extension
+    EXPECT_EQ(api.register_extension(&ctx, "gn.test", 0x00010000u, &vt),
+              GN_ERR_INVALID_STATE);
+
+    /// shutdown query — poisoned ctx surfaces as
+    /// `shutdown_requested = 1` per `host-api.md` §10 so a
+    /// stale long-running loop bails instead of running with
+    /// freed state.
+    EXPECT_EQ(api.is_shutdown_requested(&ctx), 1);
+
+    ctx.magic = PluginContext::kMagicLive;
+}
