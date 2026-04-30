@@ -291,23 +291,12 @@ typed extension API.
   IPv6 brackets, path-style URIs, query preservation,
   unparseable inputs, the `localhost` lookup, and `*.invalid`
   failure surfaces.
-- **Path-optimiser plugin framework** —
-  `sdk/extensions/optimizer.h` defines the `gn.optimizer.<name>`
-  extension shape: a `recommend(conn)` slot that returns a
-  `Replace` / `AddPath` / `Drop` recommendation for the kernel's
-  `PathManager`, an `on_event(ev)` slot for connection-event
-  subscriptions, and a `subscribed_events` bitmask. Reserved
-  initial names (`transport-failover`, `relay-upgrade`, `ice`,
-  `autonat`) lock the namespace so each plugin lands in a
-  predictable slot. Per `docs/contracts/optimizer.md` (new).
-  v1 ships the contract surface; the optimiser plugins
-  themselves arrive on their own cadence.
 - **Capability TLV codec** — `sdk/cpp/capability_tlv.hpp` ships
   a header-only encode / parse pair against the
   `[type:u16 BE][length:u16 BE][value]*` blob format described
   in `docs/contracts/capability-tlv.md` (new). Used by the
   post-Noise capability handshake — peers exchange the supported
-  optimiser / transport / protocol names in a single GNET frame.
+  transport and protocol names in a single GNET frame.
   Unknown record types are skipped on parse so the format stays
   wire-additive. Eight new unit tests cover empty round-trip,
   multi-record order, big-endian field layout, oversized-value
@@ -426,15 +415,11 @@ typed extension API.
   see only the Ed25519 representation. `identity.md` §7
   cross-reference updated to point at the curve-conversion
   paragraph rather than the file as a whole.
-- **Capability TLV: `protocol-set` symmetric with `optimizer-set`
-  (`capability-tlv.md` §2).** Type `0x0001` `protocol-set` is now
-  a bitmap of supported `gn.protocol.<name>` slugs in declaration
-  order; the new type `0x0002` `protocol-list` carries the
-  canonical UTF-8 newline-separated ordering, mirroring the
-  `optimizer-set` / `optimizer-list` pair. The previous
-  Bloom-style filter description is dropped — collision-tolerant
-  hashing has no place in a feature-negotiation channel where
-  every entry must be enumerable. Generic TLV codec
+- **Capability TLV: `protocol-set` and `protocol-list` types
+  (`capability-tlv.md` §2).** Type `0x0001` `protocol-set` is a
+  bitmap of supported `gn.protocol.<name>` slugs in declaration
+  order; type `0x0002` `protocol-list` carries the canonical
+  UTF-8 newline-separated ordering. Generic TLV codec
   (`sdk/cpp/capability_tlv.hpp`) is unchanged; the
   category-specific encoders ride on top of it.
 - **TLS plugin: minimum protocol version bumped to 1.3.** Both

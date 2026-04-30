@@ -42,7 +42,6 @@
 #include <sdk/types.h>
 
 #include <sdk/extensions/heartbeat.h>
-#include <sdk/extensions/optimizer.h>
 #include <sdk/extensions/transport.h>
 
 /* ── sdk/types.h ───────────────────────────────────────────────────────────── */
@@ -455,34 +454,6 @@ _Static_assert(offsetof(gn_heartbeat_api_t, ctx) == 32,
                "gn_heartbeat_api_t::ctx offset pinned at 32");
 _Static_assert(offsetof(gn_heartbeat_api_t, _reserved) == 40,
                "gn_heartbeat_api_t::_reserved offset pinned at 40");
-
-/* ── sdk/extensions/optimizer.h ────────────────────────────────────────────── */
-
-_Static_assert(sizeof(gn_optimizer_recommendation_t) == 344,
-               "gn_optimizer_recommendation_t size pinned at 344");
-_Static_assert(offsetof(gn_optimizer_recommendation_t, strategy) == 0,
-               "gn_optimizer_recommendation_t::strategy offset pinned at 0");
-_Static_assert(offsetof(gn_optimizer_recommendation_t, target_uri) == 4,
-               "gn_optimizer_recommendation_t::target_uri offset pinned at 4");
-_Static_assert(offsetof(gn_optimizer_recommendation_t, target_scheme) == 260,
-               "gn_optimizer_recommendation_t::target_scheme offset pinned at 260");
-_Static_assert(offsetof(gn_optimizer_recommendation_t, _reserved) == 280,
-               "gn_optimizer_recommendation_t::_reserved offset pinned at 280");
-
-_Static_assert(sizeof(gn_optimizer_api_t) == 96,
-               "gn_optimizer_api_t size pinned at 96");
-_Static_assert(offsetof(gn_optimizer_api_t, api_size) == 0,
-               "gn_optimizer_api_t::api_size offset pinned at 0");
-_Static_assert(offsetof(gn_optimizer_api_t, priority) == 4,
-               "gn_optimizer_api_t::priority offset pinned at 4");
-_Static_assert(offsetof(gn_optimizer_api_t, recommend) == 8,
-               "gn_optimizer_api_t::recommend offset pinned at 8");
-_Static_assert(offsetof(gn_optimizer_api_t, on_event) == 16,
-               "gn_optimizer_api_t::on_event offset pinned at 16");
-_Static_assert(offsetof(gn_optimizer_api_t, subscribed_events) == 24,
-               "gn_optimizer_api_t::subscribed_events offset pinned at 24");
-_Static_assert(offsetof(gn_optimizer_api_t, _reserved) == 32,
-               "gn_optimizer_api_t::_reserved offset pinned at 32");
 
 /* ── sdk/extensions/transport.h ────────────────────────────────────────────── */
 

@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** every plugin that exchanges capability state with a peer
-            (heartbeat, optimiser plugins, future companion handlers)
+            (heartbeat, discovery plugins, future companion handlers)
 **Last verified:** 2026-04-28
 **Stability:** v1.x; type registry grows append-only.
 
@@ -12,10 +12,9 @@
 
 After the Noise handshake reaches the Transport phase, peers
 need to learn which optional features the other side supports.
-The set is open — `gn.optimizer.relay-upgrade` ships with v1,
-`gn.optimizer.ice` ships separately, autonat ships in a third
-release wave — and shipping a fixed bitmap means every new
-capability bumps a wire version.
+The set is open — peers gain new transport schemes, protocol
+layers, and discovery handlers across releases — and shipping a
+fixed bitmap means every new capability bumps a wire version.
 
 This contract pins a **TLV-of-bitmap** format: a list of
 type-length-value records where the value of each record is a
@@ -56,7 +55,7 @@ record sits inside one GNET frame.
 | Range | Owner |
 |---|---|
 | `0x0000 – 0x00ff` | reserved for kernel-emitted records |
-| `0x0100 – 0x0fff` | core plugins (heartbeat, optimiser plugins above) |
+| `0x0100 – 0x0fff` | core plugins (heartbeat, discovery, future companion handlers) |
 | `0x1000 – 0x7fff` | application records |
 | `0x8000 – 0xffff` | experimental, **not** to be relied on across releases |
 
@@ -70,8 +69,6 @@ contract, alphabetised by name to make merge conflicts loud.
 | `0x0000` | `transport-set` | bitmap of `1u << GN_TRANSPORT_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
 | `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs in declaration order; `protocol-list` (type `0x0002`) carries the canonical ordering |
 | `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
-| `0x0100` | `optimizer-set` | bitmap of supported `gn.optimizer.<name>` slugs in declaration order; `optimizer-list` (type `0x0101`) carries the canonical ordering |
-| `0x0101` | `optimizer-list` | UTF-8 newline-separated list of optimiser names; the index into the list is the bit position in `optimizer-set` |
 | `0x0200` | `heartbeat-interval-ms` | u32 big-endian; the peer's preferred PING cadence |
 
 A consumer that receives an unknown type **must** skip the record
@@ -129,7 +126,6 @@ to implement; the contract here scopes only the one-frame case.
 
 ## 6. Cross-references
 
-- Optimiser plugin shape: `optimizer.md`.
 - Frame layer that wraps the blob: `gnet-protocol.md`.
 - Transport capability flags referenced by `transport-set`:
   `sdk/extensions/transport.h` (`GN_TRANSPORT_CAP_*`).

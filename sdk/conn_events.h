@@ -26,15 +26,6 @@ typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_TRUST_UPGRADED     = 3, /**< Untrusted → Peer */
     GN_CONN_EVENT_BACKPRESSURE_SOFT  = 4, /**< pending_queue crossed *_high */
     GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5, /**< pending_queue dropped below *_low */
-    /**
-     * Reserved for v1.1: heartbeat handler emits this on every RTT
-     * sample. The slot is allocated now so optimiser plugins (per
-     * `optimizer.md` §4) can compile against the bit position
-     * `1u << GN_CONN_EVENT_RTT_SAMPLE`. The kernel never publishes
-     * the event in v1.0 — subscribers see no traffic on this kind
-     * until the heartbeat handler ships it.
-     */
-    GN_CONN_EVENT_RTT_SAMPLE         = 6,
 } gn_conn_event_kind_t;
 
 /**

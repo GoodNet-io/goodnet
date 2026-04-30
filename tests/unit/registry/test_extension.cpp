@@ -202,21 +202,21 @@ TEST(ExtensionRegistry_Semver, PatchIgnored) {
 TEST(ExtensionRegistry_QueryPrefix, MatchesByLeadingSegment) {
     ExtensionRegistry r;
     int va = 0, vb = 0, vc = 0, vd = 0;
-    ASSERT_EQ(r.register_extension("gn.optimizer.relay",
+    ASSERT_EQ(r.register_extension("gn.discovery.mdns",
                                     gn_version_pack(1, 0, 0), &va),
               GN_OK);
-    ASSERT_EQ(r.register_extension("gn.optimizer.batch",
+    ASSERT_EQ(r.register_extension("gn.discovery.dht",
                                     gn_version_pack(1, 0, 0), &vb),
               GN_OK);
-    ASSERT_EQ(r.register_extension("gn.optimizer.dedup",
+    ASSERT_EQ(r.register_extension("gn.discovery.bootstrap",
                                     gn_version_pack(1, 0, 0), &vc),
               GN_OK);
     ASSERT_EQ(r.register_extension("gn.heartbeat",
                                     gn_version_pack(1, 0, 0), &vd),
               GN_OK);
 
-    auto opts = r.query_prefix("gn.optimizer.");
-    EXPECT_EQ(opts.size(), 3u);
+    auto group = r.query_prefix("gn.discovery.");
+    EXPECT_EQ(group.size(), 3u);
 
     auto all = r.query_prefix("gn.");
     EXPECT_EQ(all.size(), 4u);
