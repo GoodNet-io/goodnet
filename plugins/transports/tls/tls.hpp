@@ -153,7 +153,6 @@ private:
     /// `std::string` would leave libstdc++'s internal capacity
     /// buffer unmanaged.
     std::vector<std::uint8_t>                                        override_key_pem_;
-    bool                                                             verify_peer_{false};
 
     const host_api_t* api_ = nullptr;
 };
