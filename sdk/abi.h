@@ -45,8 +45,8 @@ extern "C" {
  *
  * Usage:
  * @code
- *   if (GN_API_HAS(api, pin_handler)) {
- *       api->pin_handler(host_ctx, conn, handler_id);
+ *   if (GN_API_HAS(api, get_endpoint)) {
+ *       api->get_endpoint(host_ctx, conn, &out);
  *   }
  * @endcode
  */

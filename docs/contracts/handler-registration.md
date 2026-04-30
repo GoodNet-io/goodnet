@@ -182,54 +182,13 @@ Three rules:
    envelope.
 2. **Equal priority sees in registration order.** Older registrations
    come first; this ordering is stable to plugin authors who care.
-3. **Pin-handler fast-path** can elide the lookup entirely (§5).
-
 Priority is a hint, not enforcement; an application can register a
 `priority=0` handler that watches every message for metrics without
 risking that it intercepts traffic.
 
 ---
 
-## 5. Pin-handler fast-path
-
-A connection may **pin** a handler — calling
-`host_api->pin_handler(conn, handler_id)` — bypassing chain lookup for
-matching envelopes. Used by latency-sensitive applications (gaming,
-real-time RPC) to remove the per-dispatch hash-lookup.
-
-Rules:
-
-- Pin is per-`(conn_id, msg_id)`. Different connections may pin
-  different handlers for the same `msg_id`.
-- The pinned handler **must still receive `on_result`**. The fast-path
-  mirrors slow-path callbacks; skipping `on_result` would silently lose
-  message-completion notifications.
-- Pinning a non-existent handler returns `GN_ERR_UNKNOWN`.
-- Unpin via `host_api->unpin_handler(conn, msg_id)`. Default pin slot
-  is `INVALID_HANDLER_ID`; the slow-path lookup runs.
-
-```cpp
-void Pipeline::dispatch_with_pin(...) {
-    if (auto pinned = ctx.pinned_handler(env.msg_id);
-        pinned != INVALID_HANDLER_ID)
-    {
-        auto* h = handler_registry_.get(pinned);
-        const Propagation r = h->vtable->handle_message(h->self, &env);
-        h->vtable->on_result(h->self, &env, r);
-        return;     // intentional: pin elides the chain
-    }
-    dispatch(ctx, env);   // §3 — full chain
-}
-```
-
-A pinned handler that returns `Continue` does **not** fall through to
-the chain. Pin is a unilateral substitute, not a chain prefix; if the
-caller wants chain plus pin, they register the same handler at
-`priority=255` and skip the pin.
-
----
-
-## 6. `on_result` is mandatory in the call chain
+## 5. `on_result` is mandatory in the call chain
 
 The pipeline calls `on_result` after every `handle_message` regardless
 of outcome, with the `Propagation` value as argument. Handlers that
@@ -245,7 +204,7 @@ own implementation.
 
 ---
 
-## 7. Unregistration semantics
+## 6. Unregistration semantics
 
 ```c
 gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
@@ -263,7 +222,7 @@ gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
 
 ---
 
-## 8. Cross-references
+## 7. Cross-references
 
 - The vtable plugin-side: `protocol-layer.md` §3.
 - The C ABI declaration: `host-api.md` §2 (`register_handler`).
