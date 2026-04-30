@@ -11,12 +11,11 @@
 ///
 /// Cert + key paths come from the kernel-owned config under
 /// `transports.tls.cert_path` / `transports.tls.key_path`. A server
-/// without both refuses to listen; a client always offers no
-/// certificate and verifies the peer only when
-/// `transports.tls.verify_peer` is set, otherwise trusts the
-/// transport-layer credential blindly and lets the Noise upgrade
-/// be the authentication gate (`security-trust.md` §3 single-source
-/// principle).
+/// without both refuses to listen. A client verifies the peer
+/// certificate against OpenSSL's default trust store by default;
+/// operators who run TLS underneath Noise authentication opt out
+/// explicitly through `transports.tls.verify_peer = false` on the
+/// kernel config (`security-trust.md` §3 single-source principle).
 
 #pragma once
 

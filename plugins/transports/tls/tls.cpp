@@ -259,12 +259,24 @@ TlsTransport::TlsTransport()
                              asio::ssl::context::no_tlsv1_1 |
                              asio::ssl::context::no_tlsv1_2 |
                              asio::ssl::context::no_compression);
-    /// `verify_none` is the default — Noise above us is the
-    /// authentication gate. Operators who want X.509 PKI as a
-    /// second factor enable `transports.tls.verify_peer` on the
-    /// kernel config and load a CA bundle through OpenSSL's
-    /// default verify paths.
-    client_ctx_.set_verify_mode(asio::ssl::verify_none);
+    /// Default-secure: clients verify the peer certificate against
+    /// OpenSSL's default trust store. Operators running TLS as link
+    /// encryption beneath Noise authentication opt out through
+    /// `transports.tls.verify_peer = false` on the kernel config;
+    /// the transport reads the flag in `set_host_api` and flips the
+    /// verify mode accordingly.
+    client_ctx_.set_verify_mode(asio::ssl::verify_peer);
+    verify_peer_ = true;
+    try {
+        client_ctx_.set_default_verify_paths();
+    } catch (...) {  // NOLINT(bugprone-empty-catch)
+        /// OpenSSL builds without a trust store still allow opt-out
+        /// through `set_verify_peer(false)`; the client connect path
+        /// fails the handshake when verify_peer remains true and no
+        /// trust store loaded. Swallow the throw — the failure mode
+        /// surfaces at handshake time, not at construction.
+        (void)0;
+    }
 
     worker_ = std::thread([this] { ioc_.run(); });
 }
@@ -295,6 +307,17 @@ void TlsTransport::set_host_api(const host_api_t* api) noexcept {
             pending_queue_bytes_low_  = L->pending_queue_bytes_low;
             pending_queue_bytes_high_ = L->pending_queue_bytes_high;
             pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
+        }
+    }
+    /// Honour `transports.tls.verify_peer` config opt-out. The flag
+    /// defaults to true (verify peer cert against the OpenSSL trust
+    /// store); explicit `false` switches to verify_none for the
+    /// TLS-as-link-encryption-beneath-Noise stack.
+    if (api_ != nullptr && api_->config_get_bool != nullptr) {
+        std::int32_t v = 1;
+        if (api_->config_get_bool(api_->host_ctx,
+                "transports.tls.verify_peer", &v) == GN_OK) {
+            set_verify_peer(v != 0);
         }
     }
 }
