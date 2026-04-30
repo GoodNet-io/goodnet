@@ -625,6 +625,12 @@ void thunk_log_emit(void* host_ctx, gn_log_level_t level,
                      const char* file, int32_t line, const char* msg) {
     if (!host_ctx || !msg) return;
     auto* pc = static_cast<PluginContext*>(host_ctx);
+    /// Liveness canary per `plugin_context.hpp`. A plugin that
+    /// retained the `host_api` pointer past its own teardown lands
+    /// here with a destroyed PluginContext; the destructor stamped
+    /// `kMagicDead` and we drop the call instead of dereferencing
+    /// `pc->plugin_name` into reused memory.
+    if (pc->magic != PluginContext::kMagicLive) return;
 
     const auto sp_lvl = map_log_level(level);
     if (sp_lvl == ::spdlog::level::off) return;
