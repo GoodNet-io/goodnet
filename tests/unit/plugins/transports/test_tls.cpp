@@ -166,6 +166,55 @@ TEST(TlsTransport, RejectsListenWithoutCredentials) {
     t->shutdown();
 }
 
+TEST(TlsTransport_VerifyDefault, ClientRejectsUntrustedCertWithoutOptOut) {
+    /// Default-secure: a fresh `TlsTransport` client verifies the
+    /// peer cert against OpenSSL's default trust store. A self-
+    /// signed loopback cert chains to nothing trusted, so the
+    /// handshake fails and `notify_connect` never publishes the
+    /// initiator side. The harness records the responder-side
+    /// connect from `accept` but no initiator-side completion.
+    std::string cert, key;
+    ASSERT_TRUE(generate_self_signed(cert, key));
+
+    TlsHarness harness;
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::transport::tls::TlsTransport>();
+    auto client = std::make_shared<gn::transport::tls::TlsTransport>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+    server->set_server_credentials(cert, key);
+    /// Note: no `client->set_verify_peer(false)` — default verify
+    /// stays on; this is the regression scenario.
+
+    ASSERT_EQ(server->listen("tls://127.0.0.1:0"), GN_OK);
+    const auto port = server->listen_port();
+    ASSERT_GT(port, 0u);
+
+    const std::string uri =
+        "tls://127.0.0.1:" + std::to_string(port);
+    /// `connect` returns GN_OK on enqueue — the failure surfaces
+    /// asynchronously inside the handshake, not on the call.
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    /// Wait for any handshake completion. With verify_peer on and
+    /// no trust store match, the initiator side never publishes
+    /// `notify_connect`. A two-second window catches a successful
+    /// handshake on the pre-fix path.
+    const bool any_initiator = wait_for([&] {
+        std::lock_guard lk(harness.mu);
+        for (auto role : harness.roles) {
+            if (role == GN_ROLE_INITIATOR) return true;
+        }
+        return false;
+    }, std::chrono::seconds{2});
+
+    EXPECT_FALSE(any_initiator);
+
+    client->shutdown();
+    server->shutdown();
+}
+
 TEST(TlsTransport_KeyHygiene, ListenZeroisesOverrideKey) {
     /// `noise-handshake.md` §5b: once OpenSSL has copied the key
     /// bytes into its own context, the override buffer has no
@@ -198,6 +247,11 @@ TEST(TlsTransport, LoopbackHandshakeAndPayloadRoundTrip) {
     server->set_host_api(&api);
     client->set_host_api(&api);
     server->set_server_credentials(cert, key);
+    /// Self-signed cert in this loopback fixture chains to nothing;
+    /// the client opts out of peer-cert verification explicitly,
+    /// matching the production "TLS as link encryption beneath
+    /// Noise" path.
+    client->set_verify_peer(false);
 
     ASSERT_EQ(server->listen("tls://127.0.0.1:0"), GN_OK);
     const auto port = server->listen_port();

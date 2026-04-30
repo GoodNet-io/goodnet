@@ -336,6 +336,15 @@ typed extension API.
 
 ### Changed
 
+- **TLS plugin: client peer-cert verification on by default.** A
+  fresh `TlsTransport` client verifies the peer cert against
+  OpenSSL's default trust store. Operators running TLS as link
+  encryption beneath Noise authentication opt out through
+  `transports.tls.verify_peer = false` on the kernel config; the
+  transport reads the flag in `set_host_api` and flips the verify
+  mode accordingly. The regression suite asserts the handshake
+  fails when the client opts in (the default) and the peer
+  presents a self-signed cert that chains to nothing trusted.
 - **FFI spec: subscriber failure modes (`signal-channel.md` §6).**
   `SignalChannel::subscribe` now rejects an empty `std::function`
   and returns the invalid-token sentinel; the subscriber list is
