@@ -183,6 +183,32 @@ top-level keys. A `version` field is conventionally `1` — the
 kernel does not enforce it in v1, but operators include it so a
 future v2 binary can detect the legacy shape.
 
+### 3a. Profile re-evaluation under `merge_json`
+
+`merge_json(overlay)` runs RFC 7396 deep-merge on the live JSON
+document and **re-derives** the limits from the merged result.
+That includes the `profile` field: an overlay that carries
+`"profile": "<name>"` replaces the active baseline, and every
+unset `limits.*` field then snaps to the new profile's defaults
+rather than to the previously merged value. Operators who only
+intend to nudge one limit field must omit the `profile` key from
+the overlay — keeping the existing baseline in place.
+
+```jsonc
+// active document, profile = server, max_connections defaulted
+{ "profile": "server" }
+
+// overlay — switches the baseline, max_connections collapses to
+// the embedded default (256), not the prior server default
+{ "profile": "embedded", "limits": { "max_payload_bytes": 4096 } }
+```
+
+The kernel emits a `warn`-level log line whenever a `merge_json`
+call changes the resolved profile so an operator who did not
+expect the baseline shift sees the cause in the audit trail.
+Wholesale `load_json` does not log the change because the
+operator is replacing the document by definition.
+
 Cross-field invariants land in `limits.md` §3 and are enforced
 inside `load_json` (auto-validate). Every load that returns
 `GN_OK` has passed:
