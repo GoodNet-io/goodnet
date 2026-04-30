@@ -315,4 +315,18 @@ inline std::vector<std::uint8_t> build_pong_frame(
     return out;
 }
 
+/// Build a ping frame carrying @p payload (RFC 6455 §5.5.2).
+/// Production code does not emit pings — the helper exists so the
+/// regression suite for `backpressure.md` §3.1 can simulate a
+/// peer-initiated ping flood on the receive path.
+inline std::vector<std::uint8_t> build_ping_frame(
+    std::span<const std::uint8_t> payload,
+    bool mask,
+    std::uint32_t mask_seed) {
+    /// Ping shares the binary-frame shape but with opcode 0x9.
+    auto out = build_binary_frame(payload, mask, mask_seed);
+    out[0] = static_cast<std::uint8_t>(0x80U | 0x09U);
+    return out;
+}
+
 } // namespace gn::transport::ws::wire

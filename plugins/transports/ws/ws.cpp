@@ -262,6 +262,21 @@ public:
         }
     }
 
+    /// Test-only: write @p data straight onto the wire as if the
+    /// peer had emitted those bytes. The receive path on the other
+    /// end parses the bytes through the normal frame loop. Used by
+    /// the regression suite for `backpressure.md` §3.1; production
+    /// code never invokes this.
+    void send_raw_for_test(
+        const std::shared_ptr<std::vector<std::uint8_t>>& data) {
+        asio::async_write(socket_, asio::buffer(*data),
+            asio::bind_executor(strand_,
+                [self = shared_from_this(), data](
+                    const std::error_code&, std::size_t) {
+                    /// Test-only path; errors do not propagate.
+                }));
+    }
+
     void enqueue_close() {
         auto frame = std::make_shared<std::vector<std::uint8_t>>(
             wire::build_close_frame(/*mask=*/mode_ == Mode::Client,
@@ -470,10 +485,22 @@ private:
                         auto reply = std::make_shared<std::vector<std::uint8_t>>(
                             wire::build_close_frame(
                                 mode_ == Mode::Client, make_mask_seed()));
-                        bytes_buffered_.fetch_add(
-                            reply->size(), std::memory_order_relaxed);
-                        write_queue_.push_back(std::move(reply));
-                        maybe_start_write();
+                        /// Per backpressure.md §3.1: control replies
+                        /// share the per-connection hard cap. If the
+                        /// queue is already at the cap when the peer
+                        /// asks to close, drop the echo — the socket
+                        /// teardown below carries the closure signal
+                        /// regardless.
+                        const auto hard_cap = t->pending_queue_bytes_hard_;
+                        const auto current = bytes_buffered_.load(
+                            std::memory_order_relaxed);
+                        if (hard_cap == 0 ||
+                            current + reply->size() <= hard_cap) {
+                            bytes_buffered_.fetch_add(
+                                reply->size(), std::memory_order_relaxed);
+                            write_queue_.push_back(std::move(reply));
+                            maybe_start_write();
+                        }
                     }
                     phase_ = Phase::Closed;
                     return;
@@ -484,6 +511,18 @@ private:
                             std::span<const std::uint8_t>(
                                 payload.data(), payload.size()),
                             mode_ == Mode::Client, make_mask_seed()));
+                    /// Per backpressure.md §3.1: a control flood is
+                    /// abuse, not production traffic. If echoing the
+                    /// pong would push the queue past the hard cap,
+                    /// disconnect rather than amplify the buffer.
+                    const auto hard_cap = t->pending_queue_bytes_hard_;
+                    const auto current = bytes_buffered_.load(
+                        std::memory_order_relaxed);
+                    if (hard_cap != 0 &&
+                        current + pong->size() > hard_cap) {
+                        fail();
+                        return;
+                    }
                     bytes_buffered_.fetch_add(
                         pong->size(), std::memory_order_relaxed);
                     write_queue_.push_back(std::move(pong));
@@ -592,6 +631,22 @@ void WsTransport::set_host_api(const host_api_t* api) noexcept {
             pending_queue_bytes_hard_ = L->pending_queue_bytes_hard;
         }
     }
+}
+
+void WsTransport::set_pending_queue_bytes_hard_for_test(
+    std::uint64_t bytes) noexcept {
+    pending_queue_bytes_hard_ = bytes;
+}
+
+gn_result_t WsTransport::send_raw_for_test(
+    gn_conn_id_t conn,
+    std::span<const std::uint8_t> bytes) {
+    auto s = find_session(conn);
+    if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    auto data = std::make_shared<std::vector<std::uint8_t>>(
+        bytes.begin(), bytes.end());
+    s->send_raw_for_test(data);
+    return GN_OK;
 }
 
 std::uint16_t WsTransport::listen_port() const noexcept {

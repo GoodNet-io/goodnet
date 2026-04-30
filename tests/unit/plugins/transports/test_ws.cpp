@@ -262,6 +262,76 @@ TEST(WsTransport, LoopbackHandshakeAndPayloadRoundTrip) {
     server->shutdown();
 }
 
+// ─── backpressure §3.1 — control-reply hard-cap discipline ─────
+
+TEST(WsTransport_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
+    /// `backpressure.md` §3.1: a peer flooding pings cannot push
+    /// the per-connection queue past the hard cap — the server
+    /// disconnects when the next pong reply would exceed it.
+    WsHarness harness;
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::transport::ws::WsTransport>();
+    auto client = std::make_shared<gn::transport::ws::WsTransport>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+
+    /// Tiny cap so a handful of ping replies overflow it. Each
+    /// pong with 32-byte payload is 34 bytes on the wire (server
+    /// reply is unmasked); 256 / 34 = ~7 replies before overflow.
+    server->set_pending_queue_bytes_hard_for_test(256);
+
+    ASSERT_EQ(server->listen("ws://127.0.0.1:0/"), GN_OK);
+    const auto port = server->listen_port();
+    const std::string uri =
+        "ws://127.0.0.1:" + std::to_string(port) + "/";
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    ASSERT_TRUE(wait_for([&]() {
+        std::lock_guard lk(harness.mu);
+        return harness.connects.size() >= 2;
+    }));
+
+    gn_conn_id_t client_conn = 0;
+    {
+        std::lock_guard lk(harness.mu);
+        for (std::size_t i = 0; i < harness.roles.size(); ++i) {
+            if (harness.roles[i] == GN_ROLE_INITIATOR) {
+                client_conn = harness.connects[i];
+                break;
+            }
+        }
+    }
+    ASSERT_NE(client_conn, 0u);
+
+    /// A masked ping with a 32-byte payload is the wire shape a
+    /// browser-issued ping carries: bit 0x80 in byte 1, four mask
+    /// bytes, then the masked payload.
+    std::vector<std::uint8_t> ping_payload(32, 0xAB);
+    auto ping_frame = ws_wire::build_ping_frame(
+        std::span<const std::uint8_t>(ping_payload),
+        /*mask=*/true, 0x12345678U);
+
+    /// A handful of pings is enough to push the server's pong queue
+    /// over the cap; spamming many guarantees the abuse-edge fires
+    /// even if a couple of pongs drain in between.
+    for (int i = 0; i < 64; ++i) {
+        (void)client->send_raw_for_test(client_conn,
+            std::span<const std::uint8_t>(ping_frame));
+    }
+
+    /// The server publishes `notify_disconnect` when the next pong
+    /// would overflow the cap. Both sides observe the disconnect on
+    /// the shared harness.
+    ASSERT_TRUE(wait_for([&]() {
+        std::lock_guard lk(harness.mu);
+        return !harness.disconnects.empty();
+    }));
+
+    client->shutdown();
+    server->shutdown();
+}
+
 // ─── transport-extension capabilities ──────────────────────────
 
 TEST(WsTransport_Capabilities, AdvertisesStreamReliableOrdered) {

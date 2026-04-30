@@ -103,6 +103,32 @@ session record. The single rising / falling edge model suppresses
 duplicate signals while the queue oscillates inside the
 hysteresis band.
 
+### 3.1 Transport-internal control replies
+
+A transport that replies to peer-initiated control frames (for
+example WebSocket pong in response to ping, or a graceful close
+echo) shares the per-connection hard-cap budget. The reply path
+runs the same cap check as `send`:
+
+```
+on peer-initiated control frame:
+  reply_size = bytes_of(reply_frame)
+  if pending_queue_bytes_hard != 0
+     and bytes_buffered + reply_size > pending_queue_bytes_hard:
+      disconnect the connection                  # control-flood abuse
+  else:
+      bytes_buffered += reply_size
+      write_queue.push(reply_frame)
+```
+
+A control flood — for instance a peer issuing pings faster than the
+local socket drains pong replies — is treated as abuse rather than
+production traffic. Replying past the cap is a per-RAM amplifier;
+disconnect ends the buffer growth and the peer reconnects if the
+flood was unintentional. Application data submitted through
+`host_api->send` continues to receive `GN_ERR_LIMIT_REACHED` on the
+same edge, per §3.
+
 ---
 
 ## 4. Producer obligations
