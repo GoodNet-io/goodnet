@@ -22,8 +22,8 @@ public:
 
     SymmetricState(const SymmetricState&)            = delete;
     SymmetricState& operator=(const SymmetricState&) = delete;
-    SymmetricState(SymmetricState&&)                 = default;
-    SymmetricState& operator=(SymmetricState&&)      = default;
+    SymmetricState(SymmetricState&&) noexcept;
+    SymmetricState& operator=(SymmetricState&&) noexcept;
     ~SymmetricState();
 
     /// Initialise per Noise §5.2: if the protocol name fits in HASHLEN
@@ -58,6 +58,12 @@ public:
     /// Snapshot of the channel-binding hash. Returned by value so the
     /// internal state can be zeroised independently.
     [[nodiscard]] Digest handshake_hash() const noexcept { return h_; }
+
+    /// Forward-secrecy observable: the chaining key buffer inside this
+    /// state is fully zero. The regression suite that pins
+    /// `noise-handshake.md` §5 clause 4 consults this — production
+    /// callers do not.
+    [[nodiscard]] bool chaining_key_zeroised_for_test() const noexcept;
 
 private:
     Digest      ck_{};   ///< chaining key

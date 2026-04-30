@@ -84,6 +84,65 @@ HandshakeState::~HandshakeState() {
     sodium_memzero(re_.data(),   DH_PUBLIC_KEY_BYTES);
 }
 
+namespace {
+
+/// Move-time wipe — the moved-from source must not retain bytes
+/// after the move ends its purpose. SymmetricState handles its own
+/// chaining key and hash through its own move ops; this helper
+/// covers the DH key arrays embedded in HandshakeState directly.
+void wipe_dh_arrays(PrivateKey& s_sk, PublicKey& s_pk,
+                     PrivateKey& e_sk, PublicKey& e_pk,
+                     PublicKey&  rs,   PublicKey& re) noexcept {
+    sodium_memzero(s_sk.data(), DH_PRIVATE_KEY_BYTES);
+    sodium_memzero(s_pk.data(), DH_PUBLIC_KEY_BYTES);
+    sodium_memzero(e_sk.data(), DH_PRIVATE_KEY_BYTES);
+    sodium_memzero(e_pk.data(), DH_PUBLIC_KEY_BYTES);
+    sodium_memzero(rs.data(),   DH_PUBLIC_KEY_BYTES);
+    sodium_memzero(re.data(),   DH_PUBLIC_KEY_BYTES);
+}
+
+} // namespace
+
+HandshakeState::HandshakeState(HandshakeState&& other) noexcept
+    : pattern_(other.pattern_),
+      initiator_(other.initiator_),
+      step_(other.step_),
+      steps_total_(other.steps_total_),
+      symmetric_(std::move(other.symmetric_)),
+      s_sk_(other.s_sk_),
+      s_pk_(other.s_pk_),
+      e_sk_(other.e_sk_),
+      e_pk_(other.e_pk_),
+      rs_(other.rs_),
+      re_(other.re_),
+      rs_known_(other.rs_known_) {
+    wipe_dh_arrays(other.s_sk_, other.s_pk_,
+                    other.e_sk_, other.e_pk_,
+                    other.rs_,   other.re_);
+}
+
+HandshakeState& HandshakeState::operator=(HandshakeState&& other) noexcept {
+    if (this != &other) {
+        wipe_dh_arrays(s_sk_, s_pk_, e_sk_, e_pk_, rs_, re_);
+        pattern_     = other.pattern_;
+        initiator_   = other.initiator_;
+        step_        = other.step_;
+        steps_total_ = other.steps_total_;
+        symmetric_   = std::move(other.symmetric_);
+        s_sk_        = other.s_sk_;
+        s_pk_        = other.s_pk_;
+        e_sk_        = other.e_sk_;
+        e_pk_        = other.e_pk_;
+        rs_          = other.rs_;
+        re_          = other.re_;
+        rs_known_    = other.rs_known_;
+        wipe_dh_arrays(other.s_sk_, other.s_pk_,
+                        other.e_sk_, other.e_pk_,
+                        other.rs_,   other.re_);
+    }
+    return *this;
+}
+
 bool HandshakeState::is_complete() const noexcept {
     return step_ >= steps_total_;
 }
@@ -267,7 +326,29 @@ HandshakeState::read_message(std::span<const std::uint8_t> message) {
 }
 
 HandshakeState::TransportPair HandshakeState::split() {
-    auto pair = symmetric_.split();
+    /// Per noise-handshake.md §5 clause 4: the long-term static
+    /// private key, the ephemeral key pair, and the peer ephemeral
+    /// key have no remaining purpose inside the handshake state once
+    /// Split has produced the transport ciphers. The wipe runs on
+    /// both the success path and the failure path — if the
+    /// underlying split primitive throws, the secrets are still
+    /// cleared before the exception propagates. The symmetric state
+    /// clears its own chaining key inside `symmetric_.split()`.
+    auto eager_wipe = [this]() noexcept {
+        sodium_memzero(s_sk_.data(), DH_PRIVATE_KEY_BYTES);
+        sodium_memzero(e_sk_.data(), DH_PRIVATE_KEY_BYTES);
+        sodium_memzero(e_pk_.data(), DH_PUBLIC_KEY_BYTES);
+        sodium_memzero(re_.data(),   DH_PUBLIC_KEY_BYTES);
+    };
+
+    SymmetricState::SplitPair pair;
+    try {
+        pair = symmetric_.split();
+    } catch (...) {
+        eager_wipe();
+        throw;
+    }
+
     TransportPair tp;
     if (initiator_) {
         tp.send = std::move(pair.first);
@@ -277,20 +358,16 @@ HandshakeState::TransportPair HandshakeState::split() {
         tp.recv = std::move(pair.first);
     }
 
-    // Per noise-handshake.md §5: the long-term static private key has
-    // no remaining purpose inside the handshake state once Split has
-    // produced the transport ciphers. Zeroise eagerly so the buffer
-    // does not outlive its purpose. Ephemeral keys follow the same
-    // rule.
-    sodium_memzero(s_sk_.data(), DH_PRIVATE_KEY_BYTES);
-    sodium_memzero(e_sk_.data(), DH_PRIVATE_KEY_BYTES);
-    sodium_memzero(e_pk_.data(), DH_PUBLIC_KEY_BYTES);
-    sodium_memzero(re_.data(),   DH_PUBLIC_KEY_BYTES);
+    eager_wipe();
     return tp;
 }
 
 bool HandshakeState::static_secret_zeroised_for_test() const noexcept {
     return sodium_is_zero(s_sk_.data(), DH_PRIVATE_KEY_BYTES) != 0;
+}
+
+bool HandshakeState::chaining_key_zeroised_for_test() const noexcept {
+    return symmetric_.chaining_key_zeroised_for_test();
 }
 
 } // namespace gn::noise

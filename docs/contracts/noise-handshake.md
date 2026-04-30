@@ -144,16 +144,32 @@ The contract:
 2. After export, the source session's encrypt/decrypt entries return
    `GN_ERR_INVALID_STATE`. Reuse is rejected.
 3. The inline-crypto state zeroises its own keys when destroyed.
-4. The handshake state's `Split` step zeroises the long-term static
-   private key inside the handshake-state buffer at the moment the
-   transport ciphers are produced. After `Split` returns, no further
-   pattern message can be processed (`is_complete()` is true), so the
-   static private key has no remaining purpose inside the handshake
-   state. The ephemeral private key, ephemeral public key, and the
-   peer ephemeral key are zeroised at the same point. The destructor
+4. The handshake state's `Split` step zeroises every secret buffer
+   inside the handshake state at the moment the transport ciphers
+   are produced. The set is the long-term static private key, the
+   ephemeral private key, the ephemeral public key, the peer
+   ephemeral key, and the symmetric chaining key. After `Split`
+   returns, no further pattern message can be processed
+   (`is_complete()` is true), so none of these buffers have any
+   remaining purpose. The handshake hash stays readable for channel
+   binding and is wiped only at destruction. The destructor
    re-zeroises every key buffer as a defence-in-depth backstop; in
-   the steady-state path the destructor sees buffers already cleared
-   by `Split`.
+   the steady-state path the destructor sees buffers already
+   cleared by `Split`.
+
+   The eager wipe is exception-safe: if the underlying split
+   primitive throws (allocation failure, primitive failure), every
+   secret buffer is zeroised before the exception propagates. The
+   transport ciphers are not produced; the caller observes the
+   exception and discards the handshake state.
+
+   The eager wipe is also move-safe. The handshake state and its
+   embedded symmetric state both implement custom move construction
+   and move assignment that zeroise the moved-from source's secret
+   buffers after the bytes are transferred. A caller that moves a
+   live handshake state into another container leaves the source
+   with empty secret buffers — the move ends the source's lifetime
+   for cryptographic purposes.
 
 How a language zeroises memory is internal to the binding (libsodium
 `sodium_memzero` in C/C++; equivalent secure-erase primitives

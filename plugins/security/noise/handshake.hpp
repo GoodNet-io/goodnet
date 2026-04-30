@@ -56,8 +56,8 @@ public:
 
     HandshakeState(const HandshakeState&)            = delete;
     HandshakeState& operator=(const HandshakeState&) = delete;
-    HandshakeState(HandshakeState&&)                 = default;
-    HandshakeState& operator=(HandshakeState&&)      = default;
+    HandshakeState(HandshakeState&&) noexcept;
+    HandshakeState& operator=(HandshakeState&&) noexcept;
     ~HandshakeState();
 
     /// Produce the next handshake message. The payload may be empty.
@@ -116,6 +116,11 @@ public:
     /// production callers have no reason to consult this, the contract
     /// already states the handshake is unsafe to reuse after Split.
     [[nodiscard]] bool static_secret_zeroised_for_test() const noexcept;
+
+    /// Forward-secrecy observable: the symmetric chaining key buffer
+    /// embedded in this handshake state is fully zero. Same scope as
+    /// `static_secret_zeroised_for_test()`.
+    [[nodiscard]] bool chaining_key_zeroised_for_test() const noexcept;
 
 private:
     Pattern        pattern_;
