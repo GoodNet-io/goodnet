@@ -13,6 +13,7 @@
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
+#include "safe_invoke.hpp"
 
 namespace gn::core {
 
@@ -209,8 +210,9 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
     auto trans = kernel.transports().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) return;
 
-    const gn_result_t rc = trans->vtable->send(
-        trans->self, conn, cipher.data(), cipher.size());
+    const gn_result_t rc = safe_call_result("transport.send",
+        trans->vtable->send, trans->self, conn,
+        cipher.data(), cipher.size());
     if (rc != GN_OK) {
         ::gn::log::warn("attestation: producer transport send failed — "
                         "conn={} rc={}",

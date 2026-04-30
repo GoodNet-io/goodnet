@@ -5,6 +5,8 @@
 
 #include <cstring>
 
+#include "safe_invoke.hpp"
+
 namespace gn::core {
 
 namespace {
@@ -88,11 +90,21 @@ RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
     RouteOutcome outcome = RouteOutcome::DispatchedLocal;
 
     for (const auto& entry : snap.chain) {
+        /// Plugin handlers are C ABI; an exception escaping
+        /// `handle_message` would corrupt the kernel's stack.
+        /// `safe_call_value` catches every exception type, logs
+        /// the misbehaving plugin's tag, and treats the slot as
+        /// having returned `GN_PROP_REJECT` so the chain breaks
+        /// instead of silently re-running on a partial state.
+        const auto r_opt = safe_call_value<gn_propagation_t>(
+            "handler.handle_message",
+            entry.vtable->handle_message, entry.self, &env);
         const gn_propagation_t r =
-            entry.vtable->handle_message(entry.self, &env);
+            r_opt.value_or(GN_PROP_REJECT);
 
         if (entry.vtable->on_result != nullptr) {
-            entry.vtable->on_result(entry.self, &env, r);
+            safe_call_void("handler.on_result",
+                entry.vtable->on_result, entry.self, &env, r);
         }
 
         if (r == GN_PROP_REJECT) {

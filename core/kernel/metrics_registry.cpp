@@ -5,6 +5,8 @@
 
 #include <utility>
 
+#include "safe_invoke.hpp"
+
 namespace gn::core {
 
 namespace {
@@ -145,10 +147,16 @@ std::size_t MetricsRegistry::iterate(gn_counter_visitor_t visitor,
     std::size_t visited = 0;
     for (const auto& [name, slot] : counters_) {
         ++visited;
-        const std::int32_t verdict = visitor(
-            user_data, name.c_str(),
+        /// A throwing visitor would unwind through `mu_`'s held
+        /// shared lock, an `extern "C"` boundary in the middle of
+        /// the kernel's read-side critical section. Wrap the call
+        /// and break the walk on throw — same effect as a
+        /// non-zero verdict.
+        const auto verdict_opt = safe_call_value<std::int32_t>(
+            "metrics.iterate.visitor",
+            visitor, user_data, name.c_str(),
             slot->load(std::memory_order_relaxed));
-        if (verdict != 0) break;
+        if (verdict_opt.value_or(1) != 0) break;
     }
     return visited;
 }

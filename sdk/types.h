@@ -151,10 +151,16 @@ typedef enum gn_result_e {
     GN_ERR_INVALID_STATE      = -11, /**< callee in wrong phase for the requested op
                                        *   (Noise handshake on a transport-phase session,
                                        *   set_timer after shutdown, etc.) */
-    GN_ERR_INTEGRITY_FAILED   = -12  /**< integrity / authenticity check failed
+    GN_ERR_INTEGRITY_FAILED   = -12, /**< integrity / authenticity check failed
                                        *   (plugin SHA-256 manifest mismatch,
                                        *   tampered binary, manifest absent in
                                        *   strict mode) */
+    GN_ERR_INTERNAL           = -13  /**< kernel caught an exception that
+                                       *   crossed a plugin C ABI boundary;
+                                       *   the call was aborted before any
+                                       *   side effect reached the kernel.
+                                       *   Plugin authors must not throw
+                                       *   across `extern "C"`. */
 } gn_result_t;
 
 /* ── Kernel↔plugin envelope ─────────────────────────────────────────────── */

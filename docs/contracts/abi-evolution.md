@@ -175,6 +175,50 @@ ABI.
 
 ---
 
+## 4a. Exception safety across the C ABI
+
+C does not specify exception propagation; an exception that
+escapes a plugin callback through `extern "C"` corrupts the
+kernel's stack and is undefined behaviour even when both sides
+are compiled with the same C++ runtime. Plugin authors **must
+not** let exceptions leak across any function pointer that the
+kernel invokes.
+
+The kernel runs every call into plugin code through
+`safe_call_*` wrappers in `core/kernel/safe_invoke.hpp` so a
+misbehaving plugin cannot crash the kernel:
+
+- `gn_result_t`-returning slots that throw return `GN_ERR_INTERNAL`
+  (`= -13`).
+- `void`-returning slots that throw are logged at error level
+  and the call is treated as having run to completion (no other
+  signal is available).
+- Other value-returning slots that throw return `nullopt` to the
+  caller, which substitutes a documented default.
+
+The threat model covers three classes of plugin function
+pointer:
+
+| Surface | Coverage |
+|---|---|
+| Vtable slots — `gn_handler_vtable_t`, `gn_protocol_layer_vtable_t`, `gn_transport_vtable_t`, `gn_security_provider_vtable_t` | wrapped at every kernel-side dispatch |
+| Callback registration sinks — `gn_task_fn_t` (timer + executor task), conn-state subscriber, config-reload subscriber, `for_each_connection` visitor, `iterate_counters` visitor, `gn_secure_buffer_t::free_fn` | wrapped at every kernel-side dispatch |
+| Plugin lifecycle — `gn_plugin_init`, `gn_plugin_register`, `gn_plugin_unregister`, `gn_plugin_shutdown` | wrapped at every kernel-side dispatch |
+| Extension API vtables — `gn_heartbeat_api_t` etc. | not wrapped — the kernel hands an opaque pointer to consumer plugins; consumers are responsible for guarding their own dispatch |
+
+Every catch logs the misbehaving slot's site tag at error level
+so an operator can identify the plugin without reading kernel
+internals. The wrappers add one stack frame and one branch per
+call; the steady-state cost is negligible against the call's
+own work.
+
+The kernel's wrappers are a **runtime guard**, not a license to
+throw. A plugin that throws repeatedly will be rejected from
+production deployments via the audit trail; a plugin that throws
+once is a bug to fix.
+
+---
+
 ## 5. Forbidden patterns
 
 The following ABI patterns are explicitly prohibited inside `sdk/` and
