@@ -166,6 +166,25 @@ TEST(TlsTransport, RejectsListenWithoutCredentials) {
     t->shutdown();
 }
 
+TEST(TlsTransport_KeyHygiene, ListenZeroisesOverrideKey) {
+    /// `noise-handshake.md` §5b: once OpenSSL has copied the key
+    /// bytes into its own context, the override buffer has no
+    /// remaining purpose and is wiped eagerly. The observable
+    /// flips from non-zero to zero across the listen call.
+    std::string cert, key;
+    ASSERT_TRUE(generate_self_signed(cert, key));
+
+    auto t = std::make_shared<gn::transport::tls::TlsTransport>();
+    t->set_server_credentials(cert, key);
+    EXPECT_FALSE(t->key_pem_zeroised_for_test());
+
+    ASSERT_EQ(t->listen("tls://127.0.0.1:0"), GN_OK);
+
+    EXPECT_TRUE(t->key_pem_zeroised_for_test());
+
+    t->shutdown();
+}
+
 TEST(TlsTransport, LoopbackHandshakeAndPayloadRoundTrip) {
     std::string cert, key;
     ASSERT_TRUE(generate_self_signed(cert, key))

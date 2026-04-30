@@ -474,6 +474,15 @@ typed extension API.
   the kernel thunk. The "exactly once" upgrade guarantee comes
   from the registry's `upgrade_trust` policy gate — concurrent
   callers race through the gate and the loser exits silently.
+- **TLS transport wipes the override server private key per
+  `noise-handshake.md` §5b.** The override storage migrates from
+  `std::string` to a byte vector that the destructor and the
+  reassignment path zeroise explicitly. The bytes are also wiped
+  immediately after `OpenSSL` copies them into the SSL context
+  during `listen()`; subsequent reassignments hit a freshly
+  cleared buffer. Public material — the cert PEM — is exempt from
+  the wipe rule. The regression suite asserts the observable
+  flips from non-zero to zero across the listen call.
 - **WebSocket transport gates every control-frame path through
   the per-connection hard cap (`backpressure.md` §3.1).** Pong
   replies to peer-initiated pings, graceful-close echoes, and
