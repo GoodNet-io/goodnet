@@ -336,6 +336,14 @@ typed extension API.
 
 ### Changed
 
+- **PluginManager `set_manifest_required(true)` knob
+  (`plugin-manifest.md` §7).** The flag turns the empty-manifest
+  case into a hard error: `load` returns
+  `GN_ERR_INTEGRITY_FAILED` with a diagnostic that names "manifest
+  required but empty". The dev-mode flow keeps the flag clear and
+  empty-manifest loads keep working. Operators wire the flag from
+  `plugins.manifest_required` on the kernel config and pair it
+  with a populated manifest. Two regression tests pin both edges.
 - **TLS plugin: client peer-cert verification on by default.** A
   fresh `TlsTransport` client verifies the peer cert against
   OpenSSL's default trust store. Operators running TLS as link

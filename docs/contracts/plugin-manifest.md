@@ -210,13 +210,15 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 - **Capability manifest.** A separate manifest will pin per-plugin
   capabilities (filesystem, network, syscall) once the sandbox
   layer lands. v1 ships only the integrity manifest.
-- **Empty-manifest silent dev-mode.** A production deployment
-  that ships an empty manifest by accident gets no warning. The
-  v1 surface is permissive on purpose so in-tree fixtures and
-  the demo do not have to fabricate hashes; production builds
-  install a non-empty manifest, full stop. A future revision may
-  add a `set_manifest_required(true)` knob that turns the empty
-  case into a hard error.
+- **Empty-manifest dev-mode.** The default surface is permissive:
+  in-tree fixtures and the demo run with an empty manifest and
+  every `dlopen` succeeds. Production deployments install a
+  non-empty manifest and pair it with the
+  `set_manifest_required(true)` knob (`plugins.manifest_required`
+  on the kernel config). With the flag set, an empty manifest
+  refuses every load with `GN_ERR_INTEGRITY_FAILED` and the diag
+  names "manifest required but empty"; the dev-mode flow keeps
+  working only as long as the flag stays clear.
 
 ---
 

@@ -119,6 +119,19 @@ public:
         return manifest_;
     }
 
+    /// Demand a non-empty manifest. With this flag set, `load` fails
+    /// with `GN_ERR_INTEGRITY_FAILED` whenever the manifest is empty,
+    /// even for in-tree paths the developer-mode flow would accept.
+    /// Production deployments wire this from `plugins.manifest_required`
+    /// on the kernel config and pair it with a populated manifest;
+    /// dev fixtures leave the flag at its default `false`. See
+    /// `plugin-manifest.md`.
+    void set_manifest_required(bool required) noexcept;
+
+    [[nodiscard]] bool manifest_required() const noexcept {
+        return manifest_required_;
+    }
+
 private:
     /// Build a ServiceDescriptor from the loaded plugin. Reads the
     /// optional `gn_plugin_descriptor` symbol; absence yields an
@@ -146,6 +159,7 @@ private:
     std::chrono::milliseconds       quiescence_timeout_{std::chrono::seconds{1}};
     std::size_t                     leaked_handles_{0};
     PluginManifest                  manifest_;
+    bool                            manifest_required_{false};
 };
 
 } // namespace gn::core
