@@ -11,7 +11,7 @@ backend may swap.
 ## 1. Purpose
 
 `uri.md` §1 declares that the URI parser is pure string work — no
-DNS lookup, no decoding. The orchestrator layer that turns a
+DNS lookup, no decoding. The connect path that turns a
 `connect("tcp://example.com:443")` into a `notify_connect` needs
 the hostname turned into an IP literal before it reaches the
 registry, so:
@@ -22,7 +22,7 @@ registry, so:
    one per A/AAAA record).
 2. Cached `?peer=<hex>` keys keyed by `host:port` line up with
    the `ip:port` the transport reports back through
-   `notify_connect`. Without resolution the orchestrator's stash
+   `notify_connect`. Without resolution the connect path's stash
    misses on the on-connect callback, the cached peer pk is
    dropped, and Noise IK silently falls back to a fresh handshake
    or fails outright.

@@ -176,8 +176,8 @@ not invent their own. Where a transport-local correlator is needed
 state and is mapped to the kernel-allocated id exactly once at
 `notify_connect` time.
 
-If a transport mints its own id while the orchestrator dispatches on
-the externally-allocated id, every send through that transport is
+If a transport mints its own id while the kernel dispatches on the
+externally-allocated id, every send through that transport is
 silently dropped because the indexes disagree. The single-source rule
 removes that class of failure by construction.
 

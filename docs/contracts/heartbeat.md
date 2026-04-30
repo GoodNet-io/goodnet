@@ -22,7 +22,7 @@ derived signals through the `gn.heartbeat` extension:
   STUN-on-the-wire: no STUN server, no separate UDP traffic, the
   observation rides the same encrypted frame as application data.
 
-The handler does not own a timer. The orchestrator or a
+The handler does not own a timer. An application plugin or a
 test harness drives `send_ping(conn)` on its own cadence; the
 default policy decision (interval, miss tolerance) belongs to the
 caller, not to this contract.

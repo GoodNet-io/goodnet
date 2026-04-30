@@ -1,7 +1,7 @@
 # Contract: FSM Events
 
 **Status:** active · v1
-**Owner:** `core/kernel`, `core/signal`, `core/orchestrator`
+**Owner:** `core/kernel`, `core/signal`
 **Last verified:** 2026-04-27
 **Stability:** v1.x
 

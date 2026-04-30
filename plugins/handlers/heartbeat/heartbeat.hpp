@@ -119,9 +119,10 @@ using ClockNowUs = std::function<std::uint64_t()>;
 
 /// PING/PONG handler with per-connection RTT and observed-address
 /// state. Reactive only — periodic PING emission is left to the
-/// orchestrator/test harness via `send_ping(conn)`. The handler
-/// implements `gn_handler_vtable_t` directly through the static
-/// thunks declared at the bottom of this header.
+/// caller (an application plugin or a test harness) via
+/// `send_ping(conn)`. The handler implements `gn_handler_vtable_t`
+/// directly through the static thunks declared at the bottom of
+/// this header.
 class HeartbeatHandler {
 public:
     explicit HeartbeatHandler(const host_api_t* api,
@@ -136,8 +137,8 @@ public:
     /// RTT and the peer's reported observation of our own endpoint.
     [[nodiscard]] gn_propagation_t handle_message(const gn_message_t* env);
 
-    /// Send a PING to @p conn. Used by the orchestrator's periodic
-    /// driver and by tests; the handler does not own a timer.
+    /// Send a PING to @p conn. Used by an application plugin's
+    /// periodic driver and by tests; the handler does not own a timer.
     [[nodiscard]] gn_result_t send_ping(gn_conn_id_t conn);
 
     /// Snapshot the aggregate RTT statistics across every peer that
