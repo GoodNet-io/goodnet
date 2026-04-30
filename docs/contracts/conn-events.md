@@ -173,7 +173,7 @@ gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
 ```
 
 Every subscription carries a weak observer of the calling plugin's
-quiescence sentinel (`plugin-lifetime.md` §4); a callback whose
+lifetime anchor (`plugin-lifetime.md` §4); a callback whose
 plugin already unloaded is dropped silently. `unsubscribe` is
 idempotent — calling on an already-removed id returns `GN_OK`.
 

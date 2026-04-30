@@ -64,7 +64,7 @@ public:
     /// the caller hands back on `unregister_handler`.
     ///
     /// @p lifetime_anchor is a strong reference to the registering
-    /// plugin's quiescence sentinel. The registry stores it on the
+    /// plugin's lifetime anchor. The registry stores it on the
     /// entry so dispatch-time snapshots automatically extend the
     /// plugin's lifetime; PluginManager drains the corresponding
     /// `weak_ptr` between unregister and `dlclose`. Callers that do

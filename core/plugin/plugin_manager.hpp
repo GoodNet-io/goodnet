@@ -10,7 +10,7 @@
 ///
 /// The reference-counted ownership invariant from
 /// `plugin-lifetime.md` §4 is enforced here: every loaded plugin
-/// owns a `std::shared_ptr<PluginAnchor>` quiescence sentinel that
+/// owns a `std::shared_ptr<PluginAnchor>` lifetime anchor that
 /// registry entries copy at registration time. The anchor carries
 /// the `shutdown_requested` flag and the `in_flight` counter that
 /// `GateGuard` maintains around every async callback. Unload waits

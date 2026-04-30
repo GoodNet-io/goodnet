@@ -105,7 +105,7 @@ thread-local state survives the dispatch.
 ## 4. Lifetime safety
 
 Every scheduled task carries a **weak observer** of the calling
-plugin's quiescence sentinel (`plugin-lifetime.md` §4). Registry
+plugin's lifetime anchor (`plugin-lifetime.md` §4). Registry
 entries hold the sentinel through a strong reference (the
 "lifetime anchor"); async tasks like timers and posted callbacks
 hold the matching weak observer so a stale callback cannot extend

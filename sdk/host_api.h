@@ -365,7 +365,7 @@ typedef struct host_api_s {
      *
      * `fn(user_data)` runs on the kernel's single-thread service
      * executor. The kernel pairs every timer with a weak observer
-     * of the calling plugin's quiescence sentinel; a callback whose
+     * of the calling plugin's lifetime anchor; a callback whose
      * plugin already unloaded is dropped silently (`timer.md` §4).
      *
      * @return `GN_OK` on success, `GN_ERR_NULL_ARG` on null
@@ -399,7 +399,7 @@ typedef struct host_api_s {
      * @brief Subscribe to connection-lifecycle events.
      *
      * The kernel pairs each subscription with a weak observer of
-     * the calling plugin's quiescence sentinel; a callback whose
+     * the calling plugin's lifetime anchor; a callback whose
      * plugin already unloaded is dropped silently
      * (`conn-events.md` §3).
      */

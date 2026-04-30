@@ -103,7 +103,7 @@ Three observable properties:
 The kernel applies the same pattern at registry granularity. Every
 registry entry — handler, transport, extension, security — carries a
 **lifetime anchor**: a strong reference to the registering plugin's
-quiescence sentinel. Dispatch-time snapshots (`HandlerRegistry::lookup`,
+lifetime anchor. Dispatch-time snapshots (`HandlerRegistry::lookup`,
 `TransportRegistry::find_by_*`, `SecurityRegistry::current`,
 `ExtensionRegistry::query_prefix`) are returned by value, so the
 snapshot's anchor copy keeps the sentinel's reference count above zero

@@ -49,7 +49,7 @@ public:
     TimerRegistry& operator=(const TimerRegistry&) = delete;
 
     /// Schedule a one-shot callback after @p delay_ms milliseconds.
-    /// @p anchor is the calling plugin's quiescence sentinel
+    /// @p anchor is the calling plugin's lifetime anchor
     /// (`PluginContext::plugin_anchor`); a null anchor disables
     /// the lifetime gate, which is the in-tree-test convention.
     /// @return `GN_OK` and `*out_id` on success;
