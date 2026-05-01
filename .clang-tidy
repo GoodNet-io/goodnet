@@ -25,7 +25,8 @@ Checks: >
   -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
   -misc-use-anonymous-namespace,
-  -clang-diagnostic-deprecated-declarations
+  -clang-diagnostic-deprecated-declarations,
+  -clang-diagnostic-ignored-gch
 WarningsAsErrors: '*'
 HeaderFilterRegex: '(core|sdk|plugins)/.*\.(hpp|h)$'
 FormatStyle: none

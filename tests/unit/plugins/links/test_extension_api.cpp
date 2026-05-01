@@ -79,7 +79,7 @@ struct TransportInstance {
 
         EXPECT_EQ(f.api.register_extension(
             f.ctx.kernel ? &f.ctx : nullptr,
-            ext_name.c_str(), GN_EXT_TRANSPORT_VERSION,
+            ext_name.c_str(), GN_EXT_LINK_VERSION,
             &ext_vtable), GN_OK);
     }
 
@@ -136,7 +136,7 @@ const gn_link_api_t* lookup_extension(ExtensionFixture& f,
                                             const std::string& name) {
     const void* raw = nullptr;
     if (f.api.query_extension_checked(&f.ctx, name.c_str(),
-                                       GN_EXT_TRANSPORT_VERSION,
+                                       GN_EXT_LINK_VERSION,
                                        &raw) != GN_OK) {
         return nullptr;
     }

@@ -21,8 +21,8 @@
  * the per-link `<scheme>.h` headers for capability flag values
  * specific to a scheme.
  */
-#ifndef GOODNET_SDK_EXTENSIONS_TRANSPORT_H
-#define GOODNET_SDK_EXTENSIONS_TRANSPORT_H
+#ifndef GOODNET_SDK_EXTENSIONS_LINK_H
+#define GOODNET_SDK_EXTENSIONS_LINK_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -38,10 +38,10 @@ extern "C" {
  * @brief Naming convention prefix. The full extension identifier is
  *        `"gn.link." + scheme`, lowercase.
  */
-#define GN_EXT_TRANSPORT_PREFIX "gn.link."
+#define GN_EXT_LINK_PREFIX "gn.link."
 
 /** v1.0.0 — initial release. */
-#define GN_EXT_TRANSPORT_VERSION 0x00010000u
+#define GN_EXT_LINK_VERSION 0x00010000u
 
 /**
  * @brief Capability flags, ORed into `gn_link_caps_t::flags`.
@@ -107,7 +107,7 @@ typedef void (*gn_link_data_callback_t)(
  * @brief Vtable surfaced under `gn.link.<scheme>`.
  *
  * `ctx` is the plugin's `self` pointer; every entry takes it as the
- * first argument. Versioned with @ref GN_EXT_TRANSPORT_VERSION.
+ * first argument. Versioned with @ref GN_EXT_LINK_VERSION.
  *
  * Slots split into three groups by maturity in v1.x:
  *
@@ -220,4 +220,4 @@ typedef struct gn_link_api_s {
 } /* extern "C" */
 #endif
 
-#endif /* GOODNET_SDK_EXTENSIONS_TRANSPORT_H */
+#endif /* GOODNET_SDK_EXTENSIONS_LINK_H */
