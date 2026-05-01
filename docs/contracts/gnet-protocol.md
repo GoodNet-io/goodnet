@@ -189,9 +189,15 @@ authors and future format successors:
   the relay capability cannot drive `EXPLICIT_SENDER` or
   `EXPLICIT_RECEIVER` flags on the inbound side. The deframer reads
   `gn_connection_context_t::allows_relay`; when false, an inbound
-  frame with `EXPLICIT_SENDER` or `BROADCAST` is rejected with
-  `GN_ERR_INTEGRITY_FAILED` because it represents a sender_pk
-  spoofing attempt by an authenticated-but-non-relay peer.
+  frame with either flag set (or `BROADCAST`, which mandates
+  `EXPLICIT_SENDER` per §3.2) is rejected with
+  `GN_ERR_INTEGRITY_FAILED`:
+  - `EXPLICIT_SENDER` would let the peer spoof an arbitrary
+    `sender_pk` and compromise handlers that authenticate by sender.
+  - `EXPLICIT_RECEIVER` would let the peer redirect the dispatch to
+    an identity it does not in fact own — the kernel would route
+    the frame to handlers under that receiver_pk while the
+    transport channel was authenticated against a different peer.
   Operators flip the flag on connections that legitimately carry
   forwarded traffic; a future relay handler will own that
   configuration. Pre-RC the default-deny path applies everywhere,
