@@ -45,10 +45,6 @@ typedef struct host_api_s {
                         uint32_t msg_id,
                         const uint8_t* payload, size_t payload_size);
 
-    gn_result_t (*send_uri)(void* host_ctx, const char* uri,
-                            uint32_t msg_id,
-                            const uint8_t* payload, size_t payload_size);
-
     gn_result_t (*disconnect)(void* host_ctx, gn_conn_id_t conn);
 
     /* ── Handler registration ────────────────────────────────────────── */
