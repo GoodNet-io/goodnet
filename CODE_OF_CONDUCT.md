@@ -19,11 +19,14 @@ The covenant applies to:
 
 ## Enforcement contact
 
-Reports of covenant violations go to **<conduct@goodnet.io>**. The
-mailbox is read by the core maintainer team; reports are kept
-confidential. Reporters receive an acknowledgement within 72 hours
-and a follow-up within seven calendar days describing the
-investigation outcome and any action taken.
+Reports of covenant violations go to the project maintainer through
+their GitHub profile at <https://github.com/Vaniell0>. For a
+confidential channel, open a
+[private security advisory](https://github.com/GoodNet-io/goodnet/security/advisories/new)
+with `[conduct]` in the title — the maintainer reads both queues.
+Reports are kept confidential. Reporters receive an acknowledgement
+within 72 hours and a follow-up within seven calendar days describing
+the investigation outcome and any action taken.
 
 The enforcement timeline mirrors the security disclosure timeline
 in `SECURITY.md`. Conduct violations are resolved with the

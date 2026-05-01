@@ -2,10 +2,11 @@
 
 ## Reporting a vulnerability
 
-Email **<security@goodnet.io>** with the subject prefix `[security]`. Use
-the GPG key fingerprint listed at <https://goodnet.io/security/key.asc>
-for sensitive details. Do **not** open a public GitHub issue or pull
-request for an unpatched vulnerability.
+Use GitHub's private vulnerability reporting:
+**[open a security advisory](https://github.com/GoodNet-io/goodnet/security/advisories/new)**.
+The form is encrypted in transit, scoped to project maintainers, and
+keeps the report private until coordinated disclosure. Do **not** open
+a public GitHub issue or pull request for an unpatched vulnerability.
 
 A confirmation reply lands within 72 hours; an initial assessment within
 seven calendar days. We coordinate disclosure with the reporter — the
@@ -44,7 +45,7 @@ Out of scope:
   TrustClass policy (loopback / IntraNode / Untrusted / Peer per
   `security-trust.md`), bridge identity binding (`attestation.md`).
 - The kernel **does not enforce** denial-of-service resistance against
-  a peer-priviledged attacker (the attacker can flood the link layer;
+  a peer-privileged attacker (the attacker can flood the link layer;
   per-source rate limits live in `host_api->inject` and the link
   plugins' own backpressure paths, not at L1), traffic-pattern
   obscuring, anonymity at the link layer (a peer pk is the address
@@ -54,11 +55,10 @@ Out of scope:
 
 | Time | Event |
 |---|---|
-| T+0 | Report received. |
+| T+0 | Report received via GitHub Security Advisory. |
 | T+72h | Confirmation reply, triage owner assigned. |
 | T+7d | Initial severity assessment, embargo proposed. |
-| T+30d | Fix in `main` behind the linker exception's embargo branch. |
-| T+90d | Public disclosure — GitHub Security Advisory + release note. |
+| T+90d | Public advisory + release note. |
 
 Embargo can be shortened with reporter consent if a fix lands sooner;
 extension only with reporter consent.
@@ -89,6 +89,6 @@ patch and a Noise-handshake version bump.
 ## Out-of-band channels
 
 We never request credentials, key material, or remote execution
-through the security email; if you receive such a request claiming
-to be from the GoodNet maintainers, treat it as adversarial and
-report it to the same address.
+through any GoodNet channel; a request claiming to be from the
+maintainers that asks for any of the above is adversarial — report
+it through the same security advisory form.

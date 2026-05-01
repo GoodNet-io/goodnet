@@ -2,8 +2,9 @@
 
 GoodNet is a small kernel surrounded by independent plugins. The
 kernel and the SDK live here; the bundled plugins live in this tree
-during the pre-RC window and may move to per-plugin repositories
-after `v1.0.0-rc1`.
+through the reshape window (see
+[`docs/contracts/abi-evolution.md`](docs/contracts/abi-evolution.md) §3b)
+and may move to per-plugin repositories once the surface stabilises.
 
 ## Where contributions land
 
@@ -129,14 +130,15 @@ how it got there.
   kernel earns slot count back through real wins, not aesthetic
   rebalancing.
 
-## Pre-RC reshape window
+## Reshape window
 
-Until the `v1.0.0-rc1` tag the C ABI in `sdk/host_api.h` is open
-for reshape per `docs/contracts/abi-evolution.md` §3b. Existing
-slots may be removed, renamed, or replaced; the size-prefix gating
-in §3 stays useful as a forward-compatibility helper while shape
-settles. Once `rc1` lands every rule in §3 (append-only, reserved-
-tail-only, size-prefix gating) applies without exception.
+While the reshape window in
+[`docs/contracts/abi-evolution.md`](docs/contracts/abi-evolution.md) §3b
+is open, the C ABI in `sdk/host_api.h` permits removal, rename, and
+replacement of slots. The size-prefix gating in §3 stays useful as a
+forward-compatibility helper while shape settles. Once the window
+closes every rule in §3 (append-only, reserved-tail-only, size-prefix
+gating) applies without exception.
 
 A contributor who lands a slot reshape during the window updates
 `tests/abi/test_layout.c` and the relevant contracts in the same
@@ -146,10 +148,11 @@ the audit pass.
 ## Reporting a bug
 
 Open an issue against this repository for kernel and SDK bugs;
-report security issues to <security@goodnet.io> per `SECURITY.md`.
-A good bug report carries the kernel commit hash, the operator's
-config, the failure log, and the smallest reproduction the
-reporter can build.
+report security issues through GitHub's
+[private vulnerability reporting](https://github.com/GoodNet-io/goodnet/security/advisories/new)
+per [`SECURITY.md`](SECURITY.md). A good bug report carries the
+kernel commit hash, the operator's config, the failure log, and the
+smallest reproduction the reporter can build.
 
 ## Code of conduct
 
