@@ -628,7 +628,11 @@ WsTransport::~WsTransport() {
         shutdown();
     } catch (const std::exception& e) {
         if (api_) {
-            gn_log_debug(api_, "ws: shutdown threw: %s", e.what());
+            gn_log_warn(api_, "ws: shutdown threw: %s", e.what());
+        }
+    } catch (...) {
+        if (api_) {
+            gn_log_warn(api_, "ws: shutdown threw non-std exception");
         }
     }
     /// `shutdown()` joins the worker only when called from outside
