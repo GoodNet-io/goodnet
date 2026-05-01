@@ -114,6 +114,41 @@ if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# ── Install / find_package(GoodNet) support ──────────────────────────────────
+# Plugins outside this repository import GoodNet through:
+#
+#     find_package(GoodNet REQUIRED)
+#     add_library(my_plugin SHARED my_plugin.cpp)
+#     target_link_libraries(my_plugin PRIVATE GoodNet::sdk)
+#
+# The kernel target (`GoodNet::kernel`) is for hosts that embed the
+# kernel; plugins do not link against it.
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+set(GOODNET_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/GoodNet")
+
+install(EXPORT GoodNetTargets
+        FILE        GoodNetTargets.cmake
+        NAMESPACE   GoodNet::
+        DESTINATION "${GOODNET_CMAKE_DIR}")
+
+configure_package_config_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetConfig.cmake.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfig.cmake"
+    INSTALL_DESTINATION "${GOODNET_CMAKE_DIR}")
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfigVersion.cmake"
+    VERSION       "${PROJECT_VERSION}"
+    COMPATIBILITY SameMajorVersion)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfigVersion.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake"
+    DESTINATION "${GOODNET_CMAKE_DIR}")
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 message(STATUS "")
 message(STATUS "GoodNet ${PROJECT_VERSION}")

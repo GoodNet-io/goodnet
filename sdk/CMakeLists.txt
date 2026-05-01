@@ -14,3 +14,19 @@ target_include_directories(goodnet_sdk INTERFACE
 )
 
 target_compile_features(goodnet_sdk INTERFACE cxx_std_23)
+
+# ── Install ──────────────────────────────────────────────────────────────────
+# `find_package(GoodNet REQUIRED)` after `make install` exposes
+# `GoodNet::sdk` as the C ABI header-only target. Plugins outside this tree
+# link against it, never against the kernel — the kernel side stays MIT/GPL
+# split per the linker exception in the top-level LICENSE.
+install(TARGETS goodnet_sdk EXPORT GoodNetTargets)
+
+install(
+    DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"
+    DESTINATION "include/sdk"
+    FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        PATTERN "CMakeLists.txt" EXCLUDE
+)

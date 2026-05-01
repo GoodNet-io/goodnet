@@ -25,9 +25,11 @@ add_library(goodnet_kernel STATIC
     util/log.cpp
 )
 add_library(GoodNet::kernel ALIAS goodnet_kernel)
+set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
 
 target_include_directories(goodnet_kernel PUBLIC
-    "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>"
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+    "$<INSTALL_INTERFACE:include>"
 )
 
 target_link_libraries(goodnet_kernel
@@ -43,3 +45,19 @@ target_link_libraries(goodnet_kernel
 )
 
 target_compile_features(goodnet_kernel PUBLIC cxx_std_23)
+
+# ── Install ──────────────────────────────────────────────────────────────────
+# Hosts that embed GoodNet through `find_package(GoodNet REQUIRED)` link
+# against `GoodNet::kernel`. Plugins outside this tree usually need only
+# `GoodNet::sdk`; the kernel target is for the host binary that owns the
+# kernel instance.
+install(TARGETS goodnet_kernel EXPORT GoodNetTargets ARCHIVE)
+
+install(
+    DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"
+    DESTINATION "include/core"
+    FILES_MATCHING
+        PATTERN "*.h"
+        PATTERN "*.hpp"
+        PATTERN "CMakeLists.txt" EXCLUDE
+)

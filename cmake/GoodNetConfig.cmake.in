@@ -1,0 +1,43 @@
+@PACKAGE_INIT@
+
+# GoodNet — find_package() entry point.
+#
+# Out-of-tree plugins consume the SDK through `GoodNet::sdk`:
+#
+#     find_package(GoodNet REQUIRED)
+#     add_library(my_link SHARED my_link.cpp)
+#     target_link_libraries(my_link PRIVATE GoodNet::sdk)
+#
+# Hosts that embed the kernel link `GoodNet::kernel` and pull in the
+# transitive runtime dependencies (libsodium, asio, spdlog, fmt,
+# nlohmann_json, threads, dl) through CMake's transitive linking.
+
+include(CMakeFindDependencyMacro)
+
+# SDK is header-only and has no runtime dependencies of its own —
+# C ABI types only. Listed for forward compatibility if the SDK gains
+# header-resident inline helpers that pull in C++ stdlib headers
+# beyond `<cstddef>` and `<cstdint>`.
+
+# Kernel pulls in everything the static archive needs at link time.
+# Consumers building against `GoodNet::kernel` get the closure for free.
+find_dependency(Threads)
+find_dependency(spdlog)
+find_dependency(fmt)
+find_dependency(nlohmann_json)
+find_dependency(OpenSSL)
+find_dependency(PkgConfig)
+if(NOT TARGET PkgConfig::SODIUM)
+    pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
+endif()
+if(NOT TARGET asio::asio)
+    pkg_check_modules(ASIO REQUIRED IMPORTED_TARGET asio)
+    add_library(asio::asio INTERFACE IMPORTED)
+    target_link_libraries(asio::asio INTERFACE PkgConfig::ASIO)
+    target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
+endif()
+
+include("${CMAKE_CURRENT_LIST_DIR}/GoodNetTargets.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/AddPlugin.cmake")
+
+check_required_components(GoodNet)
