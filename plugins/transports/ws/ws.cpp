@@ -824,6 +824,17 @@ void WsTransport::start_accept() {
             if (!self) return;
             if (self->shutdown_.load(std::memory_order_acquire)) return;
             if (ec) { self->start_accept(); return; }
+            /// Disable Nagle: WS pings, pongs, and small framed
+            /// app messages must not wait on the kernel's
+            /// coalescing timer. Best-effort.
+            std::error_code nodelay_ec;
+            // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+            session->socket().set_option(
+                asio::ip::tcp::no_delay{true}, nodelay_ec);
+            if (nodelay_ec && self->api_) {
+                gn_log_debug(self->api_, "ws: TCP_NODELAY refused: %s",
+                             nodelay_ec.message().c_str());
+            }
             session->start_server_handshake();
             self->start_accept();
         });
@@ -858,6 +869,13 @@ gn_result_t WsTransport::connect(std::string_view uri) {
          host = parsed->host + ":" + std::to_string(parsed->port),
          path = parsed->path](const std::error_code& cec) {
             if (cec) return;
+            /// Disable Nagle on the outbound side, mirroring the
+            /// accept path. Best-effort.
+            std::error_code nodelay_ec;
+            // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+            session->socket().set_option(
+                asio::ip::tcp::no_delay{true}, nodelay_ec);
+            (void)nodelay_ec;
             session->start_client_handshake(host, path);
         });
     return GN_OK;

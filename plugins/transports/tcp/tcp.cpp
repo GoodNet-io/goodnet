@@ -414,6 +414,22 @@ void TcpTransport::on_accept(std::shared_ptr<Session> session,
         return;
     }
 
+    /// Disable Nagle: GoodNet ships small framed messages that must
+    /// not wait on the kernel's coalescing timer. Without this, a
+    /// pong or a heartbeat sits behind a 200 ms delay on the local
+    /// loopback and the LAN baseline ceases to be a baseline.
+    /// Best-effort — a kernel that refuses the option leaves the
+    /// connection on the default scheduler rather than failing the
+    /// accept.
+    std::error_code nodelay_ec;
+    // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+    session->socket().set_option(asio::ip::tcp::no_delay{true},
+                                  nodelay_ec);
+    if (nodelay_ec && api_) {
+        gn_log_debug(api_, "tcp: TCP_NODELAY refused: %s",
+                     nodelay_ec.message().c_str());
+    }
+
     if (api_ && api_->notify_connect) {
         std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};  // unknown until handshake
         gn_conn_id_t conn = GN_INVALID_ID;
@@ -490,6 +506,16 @@ gn_result_t TcpTransport::connect(std::string_view uri_sv) {
                 /// Connect failure surfaces through the disconnect
                 /// notify path so the kernel's session map cleans up.
                 return;
+            }
+            /// Disable Nagle on the outbound side; same rationale as
+            /// the accept path. Best-effort.
+            std::error_code nodelay_ec;
+            // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+            session->socket().set_option(
+                asio::ip::tcp::no_delay{true}, nodelay_ec);
+            if (nodelay_ec && t->api_) {
+                gn_log_debug(t->api_, "tcp: TCP_NODELAY refused: %s",
+                             nodelay_ec.message().c_str());
             }
             if (!t->api_ || !t->api_->notify_connect) {
                 session->do_close();

@@ -583,6 +583,19 @@ void TlsTransport::on_accept(std::shared_ptr<Session> session,
         return;
     }
 
+    /// Disable Nagle on the underlying TCP socket before the TLS
+    /// handshake runs. Small framed messages must not wait on the
+    /// kernel's coalescing timer; the LAN baseline depends on
+    /// every frame leaving immediately. Best-effort.
+    std::error_code nodelay_ec;
+    // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+    session->lowest_layer().set_option(
+        asio::ip::tcp::no_delay{true}, nodelay_ec);
+    if (nodelay_ec && api_) {
+        gn_log_debug(api_, "tls: TCP_NODELAY refused: %s",
+                     nodelay_ec.message().c_str());
+    }
+
     session->start_handshake_then([weak = weak_from_this(),
                                     session = std::move(session), remote] {
         auto t = weak.lock();
@@ -688,6 +701,16 @@ gn_result_t TlsTransport::connect(std::string_view uri) {
             if (!t || t->shutdown_.load(std::memory_order_acquire)) {
                 session->do_close();
                 return;
+            }
+            /// Disable Nagle on the outbound side, mirroring the
+            /// accept path. Best-effort.
+            std::error_code nodelay_ec;
+            // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+            session->lowest_layer().set_option(
+                asio::ip::tcp::no_delay{true}, nodelay_ec);
+            if (nodelay_ec && t->api_) {
+                gn_log_debug(t->api_, "tls: TCP_NODELAY refused: %s",
+                             nodelay_ec.message().c_str());
             }
             session->start_handshake_then(
                 [weak, session, ep]() mutable {
