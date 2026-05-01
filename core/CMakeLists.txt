@@ -46,6 +46,11 @@ target_link_libraries(goodnet_kernel
 
 target_compile_features(goodnet_kernel PUBLIC cxx_std_23)
 
+# Precompiled-header umbrella for the asio / spdlog / fmt block plus
+# the C++23 stdlib slices the kernel reaches everywhere. Single
+# biggest clean-build win per `cmake/Pch.cmake`.
+goodnet_apply_pch(goodnet_kernel)
+
 # ── Install ──────────────────────────────────────────────────────────────────
 # Hosts that embed GoodNet through `find_package(GoodNet REQUIRED)` link
 # against `GoodNet::kernel`. Plugins outside this tree usually need only

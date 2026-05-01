@@ -44,6 +44,8 @@ endif()
 
 # Plugin-author build helper. Defines `add_plugin(NAME sources...)`.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
+# Precompiled-header umbrella. Defines `goodnet_apply_pch(target)`.
+include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pch.cmake")
 
 # ── Options ──────────────────────────────────────────────────────────────────
 # This build covers the platform — kernel + SDK + the mandatory mesh-framing
@@ -53,7 +55,50 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
 option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
-option(GOODNET_USE_LTO                "Link-time optimization (Release)" OFF)
+
+# Build-acceleration toggles. Defaults pick the right path per build
+# type: Release gets LTO + `-O3`, every type gets the mold linker + a
+# precompiled-header umbrella for the asio / spdlog / fmt block that
+# would otherwise be re-parsed once per translation unit.
+set(_goodnet_lto_default OFF)
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(_goodnet_lto_default ON)
+endif()
+option(GOODNET_USE_LTO  "Link-time optimization (Release default ON)" ${_goodnet_lto_default})
+option(GOODNET_USE_PCH  "Precompile <asio.hpp> + spdlog + fmt umbrella" ON)
+option(GOODNET_USE_MOLD "Use mold linker if available"                  ON)
+
+# Release strips the implicit `-O2` GCC default for `-O3`. Sanitizer
+# builds set their own `-O1 -g` per `nix/sanitize.nix`; Debug stays
+# unoptimised so stack traces remain readable.
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    add_compile_options(-O3)
+endif()
+
+# `mold` is the single biggest link-time win for a multi-target build
+# like this one (kernel + 8 plugins + 3 test binaries). Auto-detect at
+# configure time; absence is silent — the default ld stays in use.
+if(GOODNET_USE_MOLD)
+    find_program(GOODNET_MOLD_BIN mold)
+    if(GOODNET_MOLD_BIN)
+        add_link_options(-fuse-ld=mold)
+    endif()
+endif()
+
+# IPO / LTO across translation units. Only fires for Release —
+# Debug / sanitizer trees are unaffected even when a stale option
+# value persists in `CMakeCache.txt` from a prior Release configure.
+# `check_ipo_supported` guards against compilers that decline so the
+# build survives an unexpected toolchain.
+if(GOODNET_USE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
+    include(CheckIPOSupported)
+    check_ipo_supported(RESULT _goodnet_ipo_ok OUTPUT _goodnet_ipo_msg)
+    if(_goodnet_ipo_ok)
+        set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+    else()
+        message(STATUS "  LTO requested but compiler declined: ${_goodnet_ipo_msg}")
+    endif()
+endif()
 
 # ── Dependencies ─────────────────────────────────────────────────────────────
 # Standalone Asio is the same library as Boost.Asio without the Boost
@@ -158,5 +203,19 @@ message(STATUS "  C++ standard      : ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Tests             : ${GOODNET_BUILD_TESTS}")
 message(STATUS "  Examples          : ${GOODNET_BUILD_EXAMPLES}")
 message(STATUS "  Bundled plugins   : ${GOODNET_BUILD_BUNDLED_PLUGINS}")
-message(STATUS "  LTO               : ${GOODNET_USE_LTO}")
+if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    message(STATUS "  LTO               : ON (Release IPO)")
+elseif(GOODNET_USE_LTO)
+    message(STATUS "  LTO               : requested but inactive (build type ${CMAKE_BUILD_TYPE})")
+else()
+    message(STATUS "  LTO               : OFF")
+endif()
+message(STATUS "  PCH               : ${GOODNET_USE_PCH}")
+if(GOODNET_USE_MOLD AND GOODNET_MOLD_BIN)
+    message(STATUS "  Linker            : mold (${GOODNET_MOLD_BIN})")
+elseif(GOODNET_USE_MOLD)
+    message(STATUS "  Linker            : default (mold not found on PATH)")
+else()
+    message(STATUS "  Linker            : default")
+endif()
 message(STATUS "")
