@@ -291,6 +291,37 @@ TEST(NoiseTcpE2E, HandshakeOverRealSocketReachesTransportPhase) {
     EXPECT_TRUE(bob_loopback_held)
         << "loopback upgrade gate leaked: bob's trust mutated";
 
+    /// Cross-session pin gate (registry.md §7a + §8a) lives on
+    /// the responder side: every connection record carries a real
+    /// peer pk after the Noise handshake completes, not the zero
+    /// placeholder TCP passed at notify_connect time. The propagated
+    /// value is the Noise X25519 static — derived from the peer's
+    /// Ed25519 device key but a different curve, so the test asserts
+    /// "no longer zeros" rather than equality with `alice.local_pk`.
+    /// Pre-fix the gate keyed on the placeholder and was
+    /// structurally dead — any reconnect under a forged device key
+    /// escaped detection.
+    const PublicKey kZero{};
+    bool bob_pk_propagated = false;
+    bool alice_pk_propagated = false;
+    for (gn_conn_id_t id = 1; id <= 8; ++id) {
+        if (auto rec = bob->kernel->connections().find_by_id(id);
+            rec && rec->remote_pk != kZero) {
+            bob_pk_propagated = true;
+        }
+        if (auto rec = alice->kernel->connections().find_by_id(id);
+            rec && rec->remote_pk != kZero) {
+            alice_pk_propagated = true;
+        }
+    }
+    EXPECT_TRUE(bob_pk_propagated)
+        << "bob (responder) remote_pk did not propagate from the "
+           "Noise peer_static_pk after the handshake";
+    EXPECT_TRUE(alice_pk_propagated)
+        << "alice (initiator) remote_pk did not propagate (TCP "
+           "passes zeros for both roles, so the propagation must "
+           "fire on the initiator side too)";
+
     /// Tear down — destruction joins worker threads and closes the
     /// listening socket.
     bob.reset();

@@ -177,6 +177,39 @@ gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
     return GN_OK;
 }
 
+gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
+                                                 const PublicKey& new_pk) noexcept {
+    if (id == GN_INVALID_ID) return GN_ERR_NULL_ARG;
+    Shard& s = shard_for(id);
+    /// Lock both shard and pk index in the canonical order so concurrent
+    /// inserters / erasers / updaters cannot interleave.
+    std::scoped_lock lock(s.mu, pk_mu_);
+
+    auto it = s.records.find(id);
+    if (it == s.records.end()) return GN_ERR_NOT_FOUND;
+
+    const PublicKey old_pk = it->second.remote_pk;
+    if (old_pk == new_pk) return GN_OK;  /// idempotent no-op
+
+    /// Reject `new_pk` already pointing at a different conn id —
+    /// either a registry collision (two responder connections from
+    /// the same peer at once) or an identity-collision attempt.
+    if (auto pk_it = pk_index_.find(new_pk);
+        pk_it != pk_index_.end() && pk_it->second != id) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    /// Drop the placeholder pk entry (typically all-zeros for a
+    /// responder pre-handshake) before adding the real one. The pk
+    /// index keeps the new mapping; a duplicate-key insert is
+    /// harmless because the only way to land here is the previous
+    /// `find` above said "no match" or "matches this same id".
+    pk_index_.erase(old_pk);
+    pk_index_.insert_or_assign(new_pk, id);
+    it->second.remote_pk = new_pk;
+    return GN_OK;
+}
+
 std::optional<ConnectionRecord> ConnectionRegistry::find_by_uri(std::string_view uri) const {
     gn_conn_id_t id = GN_INVALID_ID;
     {

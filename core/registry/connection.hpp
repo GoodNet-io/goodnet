@@ -116,6 +116,26 @@ public:
                                              gn_trust_class_t target,
                                              ConnectionRecord* out_record = nullptr) noexcept;
 
+    /// Update the record's `remote_pk` after a security session has
+    /// completed its handshake and the peer's static public key is
+    /// available (Noise `peer_static_pk`, TLS SPKI, etc).
+    ///
+    /// Drives `registry.md` §7a post-handshake peer-pk propagation:
+    /// until this update fires the responder's `remote_pk` is
+    /// whatever placeholder the link plugin passed at
+    /// `notify_connect` (typically zeros), so the cross-session pin
+    /// gate (§8a) keys on the placeholder and is structurally dead.
+    ///
+    /// Returns:
+    /// - `GN_OK` on success or no-op (`remote_pk` already equals
+    ///   @p new_pk, which is the initiator path).
+    /// - `GN_ERR_NOT_FOUND` if no record carries id @p id.
+    /// - `GN_ERR_LIMIT_REACHED` if @p new_pk is already mapped to a
+    ///   different `conn_id` in the pk index — an identity-collision
+    ///   attempt; the caller should tear down the connection.
+    [[nodiscard]] gn_result_t update_remote_pk(gn_conn_id_t id,
+                                                const PublicKey& new_pk) noexcept;
+
     /// Snapshot lookup by URI string.
     [[nodiscard]] std::optional<ConnectionRecord> find_by_uri(std::string_view uri) const;
 
