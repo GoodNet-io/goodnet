@@ -220,3 +220,133 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
               GN_ERR_LIMIT_REACHED)
         << "bucket keyed on remote_pk must persist across conn_id reuse";
 }
+
+// ── argument validation does not consume a token ──────────────────
+//
+// A rejected call (NULL_ARG, INVALID_ENVELOPE, PAYLOAD_TOO_LARGE,
+// unknown layer enum) must surface its diagnostic without debiting
+// the per-source bucket; otherwise a misbehaving plugin's own bad
+// inputs become a DoS against legitimate inject traffic from the same
+// source.
+
+TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
+    InjectHarness h;
+    PublicKey peer_pk;
+    peer_pk.fill(0x77);
+    const gn_conn_id_t source =
+        h.install_source(peer_pk, "test://inject-noburn");
+
+    /// Tight bucket: exactly three tokens, no refill.
+    h.install_tight_bucket(/*rate*/ 0.0, /*burst*/ 3.0);
+
+    /// Cap MESSAGE size to a value that the test deliberately exceeds.
+    gn_limits_t lim{};
+    lim.max_payload_bytes = 8;
+    lim.max_frame_bytes   = 8;
+    h.kernel->set_limits(lim);
+
+    const std::vector<std::uint8_t> oversized(32, 0xAA);
+    const std::uint8_t small[] = {1};
+    constexpr std::uint32_t kMsgId = 0x42;
+
+    /// Each rejected call below would silently drain the bucket if
+    /// the kernel consumed a token before the validation branch.
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            /*msg_id=*/0, small, sizeof(small)),
+              GN_ERR_INVALID_ENVELOPE);
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, oversized.data(), oversized.size()),
+              GN_ERR_PAYLOAD_TOO_LARGE);
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+                            /*bytes=*/nullptr, 0),
+              GN_ERR_NULL_ARG);
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+                            oversized.data(), oversized.size()),
+              GN_ERR_PAYLOAD_TOO_LARGE);
+
+    /// Out-of-range enum cast is the point of the assertion: the
+    /// kernel must reject unknown layer values without consuming a
+    /// token, so we deliberately ignore the analyzer's warning.
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    EXPECT_EQ(h.api.inject(h.api.host_ctx,
+                            static_cast<gn_inject_layer_t>(99),
+                            source, kMsgId, small, sizeof(small)),
+              GN_ERR_INVALID_ENVELOPE);
+
+    /// Restore generous size limits so the three valid sends below
+    /// don't trip the size cap.
+    gn_limits_t open{};
+    open.max_payload_bytes = 1 << 20;
+    open.max_frame_bytes   = 1 << 20;
+    h.kernel->set_limits(open);
+
+    /// Bucket must still hold three tokens. Three accepted calls
+    /// drain it; the fourth surfaces GN_ERR_LIMIT_REACHED.
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, small, sizeof(small)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, small, sizeof(small)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, small, sizeof(small)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, small, sizeof(small)),
+              GN_ERR_LIMIT_REACHED);
+}
+
+// ── kernel without a protocol layer does not consume tokens ───────
+//
+// `inject` returns `GN_ERR_NOT_IMPLEMENTED` when no protocol layer is
+// attached. The bucket must stay full so the kernel does not leak
+// tokens against a misconfiguration.
+
+TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
+    /// Standalone harness that deliberately skips `set_protocol_layer`.
+    Kernel kernel;
+    PluginContext plugin_ctx;
+    plugin_ctx.plugin_name = "inject-noproto-test";
+    plugin_ctx.kind        = GN_PLUGIN_KIND_HANDLER;
+    plugin_ctx.kernel      = &kernel;
+    host_api_t api = build_host_api(plugin_ctx);
+
+    PublicKey peer_pk;
+    peer_pk.fill(0x88);
+    const gn_conn_id_t source = kernel.connections().alloc_id();
+    {
+        ConnectionRecord rec;
+        rec.id              = source;
+        rec.remote_pk       = peer_pk;
+        rec.uri             = "test://inject-noproto";
+        rec.trust           = GN_TRUST_PEER;
+        rec.role            = GN_ROLE_RESPONDER;
+        rec.link_scheme     = "test";
+        ASSERT_EQ(kernel.connections().insert_with_index(std::move(rec)),
+                  GN_OK);
+    }
+
+    kernel.inject_rate_limiter().reset(/*rate*/ 0.0, /*burst*/ 1.0);
+
+    const std::uint8_t payload[] = {0xCC};
+    constexpr std::uint32_t kMsgId = 0x33;
+
+    /// Exhaust nothing: the protocol layer is null, the kernel has to
+    /// surface NOT_IMPLEMENTED before the bucket sees the call.
+    EXPECT_EQ(api.inject(api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                          kMsgId, payload, sizeof(payload)),
+              GN_ERR_NOT_IMPLEMENTED);
+
+    /// Re-attach a protocol layer; the bucket must still hold its one
+    /// token. If the previous call drained it, the next call surfaces
+    /// LIMIT_REACHED — which fails this assertion.
+    auto proto = std::make_shared<GnetProtocol>();
+    kernel.set_protocol_layer(proto);
+    EXPECT_EQ(api.inject(api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                          kMsgId, payload, sizeof(payload)),
+              GN_OK);
+}

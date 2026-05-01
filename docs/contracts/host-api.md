@@ -354,6 +354,14 @@ share the same bucket. The bucket key is the source connection's
 map at 4 096 entries so unbounded source-id growth cannot exhaust
 memory.
 
+A token is consumed only when the call has cleared every other gate:
+argument validation, layer-specific size cap, and presence of a
+protocol layer. Calls that fail with `GN_ERR_NULL_ARG`,
+`GN_ERR_INVALID_ENVELOPE`, `GN_ERR_PAYLOAD_TOO_LARGE`, or
+`GN_ERR_NOT_IMPLEMENTED` leave the bucket untouched; otherwise a
+plugin's own bad inputs would burn through legitimate budget for the
+same source.
+
 The contract is **not** a downgrade from peer-direct delivery: the
 envelope's `sender_pk` is whatever the source connection records as
 the remote pk, signed metadata is unchanged, the trust class stays
