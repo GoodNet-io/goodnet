@@ -168,7 +168,7 @@ gn_result_t UdpTransport::listen(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
     const auto parts = ::gn::parse_uri(uri_sv);
-    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+    if (!parts || parts->is_path_style()) return GN_ERR_INVALID_ENVELOPE;
 
     std::error_code ec;
     const auto addr = asio_ip::make_address(parts->host, ec);
@@ -211,14 +211,14 @@ gn_result_t UdpTransport::connect(std::string_view uri_sv) {
     /// Hostname → IP literal up-front per `dns.md` §1; IP-literal
     /// hosts short-circuit through the helper without a lookup.
     auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri_sv);
-    if (!resolved) return GN_ERR_NULL_ARG;
+    if (!resolved) return GN_ERR_INVALID_ENVELOPE;
 
     const auto parts = ::gn::parse_uri(*resolved);
-    if (!parts || parts->is_path_style()) return GN_ERR_NULL_ARG;
+    if (!parts || parts->is_path_style()) return GN_ERR_INVALID_ENVELOPE;
     /// `connect`-side rejects port 0 per `uri.md` §5 — listen accepts
     /// it for ephemeral allocation, but a zero target port is never a
     /// real peer.
-    if (parts->port == 0) return GN_ERR_NULL_ARG;
+    if (parts->port == 0) return GN_ERR_INVALID_ENVELOPE;
 
     std::error_code ec;
     const auto addr = asio_ip::make_address(parts->host, ec);

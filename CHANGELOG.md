@@ -336,6 +336,14 @@ typed extension API.
 
 ### Changed
 
+- **URI parse and DNS-resolve failures uniformly return
+  `GN_ERR_INVALID_ENVELOPE`.** TCP, UDP, IPC, TLS plugins now
+  agree on the diagnostic for malformed URIs, unresolvable
+  hostnames, and connect-side `port == 0`. Previously TCP/UDP/IPC
+  returned `GN_ERR_NULL_ARG` for the same conditions while
+  TLS/WS already returned `GN_ERR_INVALID_ENVELOPE`; the split
+  meant a wrapper layer had to inspect the call site to know
+  which fault class fired.
 - **Result-code split for lookup misses
   (`sdk/types.h::gn_result_t`).** `GN_ERR_NOT_FOUND` (-14) covers
   registry id misses, config key absences, transport session

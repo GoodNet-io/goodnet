@@ -676,7 +676,7 @@ gn_result_t TlsTransport::connect(std::string_view uri) {
             port = static_cast<std::uint16_t>(p);
         }
     }
-    if (port == 0) return GN_ERR_NULL_ARG;
+    if (port == 0) return GN_ERR_INVALID_ENVELOPE;
 
     asio::ip::tcp::endpoint ep;
     try {

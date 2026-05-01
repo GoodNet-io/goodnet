@@ -284,7 +284,7 @@ gn_result_t IpcTransport::listen(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
     const auto path = path_from_uri(uri_sv);
-    if (path.empty()) return GN_ERR_NULL_ARG;
+    if (path.empty()) return GN_ERR_INVALID_ENVELOPE;
 
     /// Lock the parent directory to owner-only access *before* bind so
     /// the socket inode is never reachable by other users — eliminates
@@ -376,7 +376,7 @@ gn_result_t IpcTransport::connect(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
     const auto path = path_from_uri(uri_sv);
-    if (path.empty()) return GN_ERR_NULL_ARG;
+    if (path.empty()) return GN_ERR_INVALID_ENVELOPE;
 
     auto session = std::make_shared<Session>(
         local_proto::stream_protocol::socket(ioc_),
