@@ -264,6 +264,38 @@ plaintext path through pure source-level reachability.
 
 ---
 
+## 6a. Conn-id ownership gate
+
+A link plugin holds the only legitimate path for delivering inbound
+bytes, tearing down a connection, or publishing transport-level events
+(backpressure, handshake kicks) for the connections it created. A
+second loaded link plugin attempting any of those operations on a
+foreign `gn_conn_id_t` is rejected.
+
+The kernel enforces this at host_api entry: the connection record
+carries `link_scheme`; the link registry maps each scheme to the
+`lifetime_anchor` of the registering plugin; the calling plugin's
+`PluginContext` carries that same anchor. Equal anchors → same
+plugin. Failure surfaces as `GN_ERR_NOT_FOUND`, identical to the
+shape of a missing connection id, so a probing plugin cannot use
+the error code to enumerate foreign connections.
+
+Without this gate any loaded link plugin could spoof inbound bytes
+on a peer transport's connection id — feeding hostile frames into
+the security session of a connection it does not own, or tearing
+down its rivals' connections from outside their scheme.
+
+In-tree fixtures construct kernels and call host_api thunks without
+ever loading a plugin shared object; in that case both anchors are
+null and the gate is permissive. The loader path always produces
+non-null anchors, so the gate is active in production.
+
+The gated thunks: `notify_inbound_bytes`, `notify_disconnect`,
+`notify_backpressure`, `kick_handshake`. `notify_connect` is the
+creation point and runs unowned.
+
+---
+
 ## 7. Per-message TrustClass propagation
 
 The kernel records TrustClass on every connection record and surfaces

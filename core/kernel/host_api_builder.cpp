@@ -68,6 +68,33 @@ namespace {
            pc->kind == GN_PLUGIN_KIND_UNKNOWN;
 }
 
+/// Verify the calling link plugin owns the connection it is acting on.
+///
+/// A link plugin is permitted to drive `notify_inbound_bytes`,
+/// `notify_disconnect`, `notify_link_event`, and `kick_handshake` only
+/// for connections backed by a scheme it itself registered. Without
+/// this gate any loaded link plugin could spoof inbound bytes on a
+/// peer transport's connection id (security-trust.md §6a).
+///
+/// The match is by plugin anchor identity: the connection record
+/// carries a `link_scheme`, and the link registry maps scheme →
+/// `LinkEntry::lifetime_anchor`. The caller's anchor lives on
+/// `pc->plugin_anchor`. Equal anchors → same plugin.
+///
+/// In-tree fixtures construct kernels and call host_api thunks
+/// without ever loading a plugin shared object; in that case both
+/// anchors are null and the check is permissive. The loader-driven
+/// path always produces non-null anchors.
+[[nodiscard]] bool conn_owned_by_caller(const PluginContext* pc,
+                                        const ConnectionRecord& rec) {
+    if (pc == nullptr || pc->kernel == nullptr) return false;
+    if (!pc->plugin_anchor) return true;  // in-tree fixture
+    auto link = pc->kernel->links().find_by_scheme(rec.link_scheme);
+    if (!link) return true;  // scheme already torn down — let downstream NOT_FOUND fire
+    if (!link->lifetime_anchor) return true;  // anchorless link entry — fixture
+    return link->lifetime_anchor == pc->plugin_anchor;
+}
+
 /// Stable name per `RouteOutcome` value for diagnostic logs.
 [[nodiscard]] const char* route_outcome_str(RouteOutcome o) noexcept {
     switch (o) {
@@ -512,15 +539,24 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
         return GN_ERR_INVALID_ENVELOPE;
     }
 
+    /// Ownership gate (security-trust.md §6a): backpressure signals
+    /// describe a transport's own write queue, so only the owning link
+    /// plugin may publish them. A foreign plugin spoofing SOFT/CLEAR
+    /// would freeze or unfreeze a peer's senders.
+    auto rec_for_check = pc->kernel->connections().find_by_id(conn);
+    if (rec_for_check && !conn_owned_by_caller(pc, *rec_for_check)) {
+        return GN_ERR_NOT_FOUND;
+    }
+
     ConnEvent ev{};
     ev.kind          = kind;
     ev.conn          = conn;
     ev.pending_bytes = pending_bytes;
     /// Snapshot trust + pk from the registry so subscribers get
     /// the same payload shape as the lifecycle events.
-    if (auto rec = pc->kernel->connections().find_by_id(conn)) {
-        ev.trust     = rec->trust;
-        ev.remote_pk = rec->remote_pk;
+    if (rec_for_check) {
+        ev.trust     = rec_for_check->trust;
+        ev.remote_pk = rec_for_check->remote_pk;
     }
     /// Persist the queue depth on the record so `get_endpoint`
     /// surfaces the same value that just hit subscribers.
@@ -987,6 +1023,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
 
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
+    if (!conn_owned_by_caller(pc, *rec)) return GN_ERR_NOT_FOUND;
 
     std::vector<std::uint8_t> first;
     const gn_result_t adv_rc = session->advance_handshake({}, first);
@@ -1037,6 +1074,14 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
+
+    /// Ownership gate (security-trust.md §6a): only the link plugin
+    /// that registered the scheme backing this connection may deliver
+    /// inbound bytes for it. Without the gate any loaded link plugin
+    /// could spoof inbound bytes on a peer transport's connection id.
+    /// Failure surfaces as `GN_ERR_NOT_FOUND` to avoid revealing the
+    /// existence of connections owned by other plugins.
+    if (!conn_owned_by_caller(pc, *rec)) return GN_ERR_NOT_FOUND;
 
     /// Account inbound traffic on the per-conn record; this counts
     /// every transport-delivered byte regardless of whether the
@@ -1219,6 +1264,17 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+
+    /// Ownership gate (security-trust.md §6a): a link plugin must own
+    /// the conn before it may tear it down. Snapshot the record first
+    /// — without erasing — so the ownership check runs against current
+    /// state; only then commit the destructive snapshot+erase. The
+    /// pre-check is permissive when the conn is already gone (let
+    /// the snapshot_and_erase return NOT_FOUND on its own).
+    if (auto rec = pc->kernel->connections().find_by_id(conn);
+        rec && !conn_owned_by_caller(pc, *rec)) {
+        return GN_ERR_NOT_FOUND;
+    }
 
     /// Implements `conn-events.md` §2a: drop the security session,
     /// then atomic snapshot+erase from `registry.md` §4a, then publish
