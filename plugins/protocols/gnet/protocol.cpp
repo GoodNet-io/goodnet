@@ -106,7 +106,21 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
 
         /// receiver_pk — wire-explicit when EXPLICIT_RECEIVER set,
         /// ZERO when BROADCAST flag set, otherwise the local node pk.
+        ///
+        /// Same relay-capability gate (`gnet-protocol.md` §5):
+        /// EXPLICIT_RECEIVER lets the peer redirect a frame to a
+        /// wire-supplied receiver_pk. On a non-relay connection that
+        /// is a direct routing-mismatch attack — the peer claims to
+        /// be sending to identity X, the kernel dispatches to X's
+        /// handlers, but the frame arrived through a connection
+        /// authenticated as Y. Reject up front.
         if (hdr.has_explicit_receiver()) {
+            if (gn_ctx_allows_relay(&ctx) == 0) {
+                return std::unexpected(::gn::Error{
+                    GN_ERR_INTEGRITY_FAILED,
+                    "GNET deframe rejected EXPLICIT_RECEIVER on a "
+                    "non-relay connection (receiver_pk redirect gate)"});
+            }
             std::memcpy(env.receiver_pk, frame_start + pk_offset,
                         wire::kPublicKeySize);
         } else if (hdr.is_broadcast()) {

@@ -260,6 +260,63 @@ TEST(GnetProtocolRoundTrip, RelayTransitForwardingPreservesEndToEnd) {
     EXPECT_EQ(std::memcmp(got.receiver_pk, edge_ab.bob_pk.data(), GN_PUBLIC_KEY_BYTES), 0);
 }
 
+TEST(GnetProtocolRoundTrip, ExplicitReceiverRejectedOnNonRelayContext) {
+    /// Mirror gate to EXPLICIT_SENDER: a peer that has not been
+    /// granted relay capability cannot redirect a frame to a
+    /// wire-supplied `receiver_pk` either. The combination
+    /// `EXPLICIT_RECEIVER` alone (without `EXPLICIT_SENDER`) is
+    /// legal in the wire format (see `test_wire_property.cpp` §3.3
+    /// generator), so the deframe gate is the choke point.
+    ///
+    /// The frame layout is hand-built so the test covers the
+    /// EXPLICIT_RECEIVER-only path that `GnetProtocol::frame()`
+    /// does not normally produce (`frame()` infers EXPLICIT_SENDER
+    /// from the envelope's identity-mismatch heuristic).
+    auto mc = make_mirrored_contexts();
+    /// Default `allows_relay = false` — receiver is a regular peer.
+    GnetProtocol bob_proto;
+
+    const PublicKey foreign_receiver = make_pk(0xCC00FFEE);
+    /// Hand-build the wire bytes: magic(4) + ver(1) + flags(1) +
+    /// msg_id(4) + total_length(4) + receiver_pk(32) + payload(2).
+    /// Total = 14 + 32 + 2 = 48 bytes.
+    std::vector<std::uint8_t> frame_bytes;
+    frame_bytes.reserve(48);
+    /// Magic — ASCII "GNET".
+    frame_bytes.insert(frame_bytes.end(),
+                        wire::kMagic.begin(), wire::kMagic.end());
+    frame_bytes.push_back(wire::kVersion);
+    frame_bytes.push_back(wire::kFlagExplicitReceiver);
+    /// msg_id (BE) = 5.
+    constexpr std::array<std::uint8_t, 4> msg_id_be{0x00, 0x00, 0x00, 0x05};
+    frame_bytes.insert(frame_bytes.end(),
+                        msg_id_be.begin(), msg_id_be.end());
+    /// total_length (BE) = 48.
+    constexpr std::array<std::uint8_t, 4> total_be{0x00, 0x00, 0x00, 0x30};
+    frame_bytes.insert(frame_bytes.end(),
+                        total_be.begin(), total_be.end());
+    /// receiver_pk — first 4 bytes from `foreign_receiver`, rest zero.
+    frame_bytes.insert(frame_bytes.end(),
+                        foreign_receiver.begin(), foreign_receiver.end());
+    /// payload.
+    frame_bytes.push_back(0xDE);
+    frame_bytes.push_back(0xAD);
+
+    auto deframed = bob_proto.deframe(mc.bob, frame_bytes);
+    EXPECT_FALSE(deframed.has_value());
+    if (!deframed.has_value()) {
+        EXPECT_EQ(deframed.error().code, GN_ERR_INTEGRITY_FAILED);
+    }
+
+    /// Same wire bytes succeed once relay capability is granted.
+    mc.bob.allows_relay = true;
+    auto deframed2 = bob_proto.deframe(mc.bob, frame_bytes);
+    ASSERT_TRUE(deframed2.has_value());
+    ASSERT_EQ(deframed2->messages.size(), 1u);
+    EXPECT_EQ(std::memcmp(deframed2->messages[0].receiver_pk,
+                           foreign_receiver.data(), GN_PUBLIC_KEY_BYTES), 0);
+}
+
 TEST(GnetProtocolRoundTrip, ExplicitSenderRejectedOnNonRelayContext) {
     /// `gnet-protocol.md` §5: a peer that has not been granted relay
     /// capability must not be permitted to claim a sender_pk other
