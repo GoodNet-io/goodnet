@@ -111,14 +111,14 @@ TEST(ExtensionRegistry_Unregister, RemovesEntry) {
     const void* out = nullptr;
     EXPECT_EQ(r.query_extension_checked("gn.x",
                                          gn_version_pack(1, 0, 0), &out),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
     EXPECT_EQ(out, nullptr);
 }
 
 TEST(ExtensionRegistry_Unregister, MissingNameRejected) {
     ExtensionRegistry r;
     EXPECT_EQ(r.unregister_extension("missing"),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(ExtensionRegistry_Unregister, AllowsReuseAfterRemoval) {
@@ -276,7 +276,7 @@ TEST(ExtensionRegistry_Concurrency, FourThreadsRegisterQuery) {
             const void* out = nullptr;
             auto rc = r.query_extension_checked(
                 "gn.t0.0", gn_version_pack(1, 0, 0), &out);
-            if (rc == GN_OK || rc == GN_ERR_UNKNOWN_RECEIVER) {
+            if (rc == GN_OK || rc == GN_ERR_NOT_FOUND) {
                 ++query_ok;
             }
         }

@@ -200,7 +200,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
             diag += path;
             diag += ": ";
             if (const char* err = ::dlerror()) diag += err;
-            return GN_ERR_UNKNOWN_RECEIVER;
+            return GN_ERR_NOT_FOUND;
         }
     } else {
         out.so_handle = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
@@ -209,7 +209,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
             diag += path;
             diag += ": ";
             if (const char* err = ::dlerror()) diag += err;
-            return GN_ERR_UNKNOWN_RECEIVER;
+            return GN_ERR_NOT_FOUND;
         }
     }
 #else
@@ -228,7 +228,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
         diag += path;
         diag += ": ";
         if (const char* err = ::dlerror()) diag += err;
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 #endif
 

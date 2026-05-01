@@ -656,7 +656,7 @@ gn_result_t WsTransport::send_raw_for_test(
     gn_conn_id_t conn,
     std::span<const std::uint8_t> bytes) {
     auto s = find_session(conn);
-    if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!s) return GN_ERR_NOT_FOUND;
     auto data = std::make_shared<std::vector<std::uint8_t>>(
         bytes.begin(), bytes.end());
     s->send_raw_for_test(data);
@@ -885,7 +885,7 @@ gn_result_t WsTransport::send(gn_conn_id_t conn,
                                 std::span<const std::uint8_t> bytes) {
     if (bytes.size() > kMaxFramePayload) return GN_ERR_PAYLOAD_TOO_LARGE;
     auto s = find_session(conn);
-    if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!s) return GN_ERR_NOT_FOUND;
     /// Account against the framed wire size — header overhead +
     /// payload — so the cap mirrors what actually sits in
     /// `write_queue_`.
@@ -911,7 +911,7 @@ gn_result_t WsTransport::send_batch(
         coalesced.insert(coalesced.end(), f.begin(), f.end());
     }
     auto s = find_session(conn);
-    if (!s) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!s) return GN_ERR_NOT_FOUND;
     const auto framed = total + 14U;
     if (pending_queue_bytes_hard_ != 0 &&
         s->bytes_buffered() + framed > pending_queue_bytes_hard_) {

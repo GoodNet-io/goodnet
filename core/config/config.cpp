@@ -304,7 +304,7 @@ std::optional<nlohmann::json> Config::resolve(std::string_view dotted_key) const
 
 gn_result_t Config::get_string(std::string_view key, std::string& out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_string()) return GN_ERR_INVALID_ENVELOPE;
     out = found->get<std::string>();
     return GN_OK;
@@ -312,7 +312,7 @@ gn_result_t Config::get_string(std::string_view key, std::string& out) const {
 
 gn_result_t Config::get_int64(std::string_view key, std::int64_t& out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_number_integer()) return GN_ERR_INVALID_ENVELOPE;
     out = found->get<std::int64_t>();
     return GN_OK;
@@ -320,7 +320,7 @@ gn_result_t Config::get_int64(std::string_view key, std::int64_t& out) const {
 
 gn_result_t Config::get_bool(std::string_view key, bool& out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_boolean()) return GN_ERR_INVALID_ENVELOPE;
     out = found->get<bool>();
     return GN_OK;
@@ -328,7 +328,7 @@ gn_result_t Config::get_bool(std::string_view key, bool& out) const {
 
 gn_result_t Config::get_double(std::string_view key, double& out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     /// Accept both integer and float literals — `is_number()` is
     /// the union check. Operators reach the same knob whether they
     /// write `1` or `1.0`, and the SDK consumer always sees a
@@ -341,7 +341,7 @@ gn_result_t Config::get_double(std::string_view key, double& out) const {
 gn_result_t Config::get_array_size(std::string_view key,
                                     std::size_t&     out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_array()) return GN_ERR_INVALID_ENVELOPE;
     out = found->size();
     return GN_OK;
@@ -351,9 +351,9 @@ gn_result_t Config::get_array_string(std::string_view key,
                                       std::size_t      index,
                                       std::string&     out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_array()) return GN_ERR_INVALID_ENVELOPE;
-    if (index >= found->size()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (index >= found->size()) return GN_ERR_OUT_OF_RANGE;
     const auto& element = (*found)[index];
     if (!element.is_string()) return GN_ERR_INVALID_ENVELOPE;
     out = element.get<std::string>();
@@ -364,9 +364,9 @@ gn_result_t Config::get_array_int64(std::string_view key,
                                      std::size_t      index,
                                      std::int64_t&    out) const {
     auto found = resolve(key);
-    if (!found) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!found) return GN_ERR_NOT_FOUND;
     if (!found->is_array()) return GN_ERR_INVALID_ENVELOPE;
-    if (index >= found->size()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (index >= found->size()) return GN_ERR_OUT_OF_RANGE;
     const auto& element = (*found)[index];
     if (!element.is_number_integer()) return GN_ERR_INVALID_ENVELOPE;
     out = element.get<std::int64_t>();
@@ -450,12 +450,12 @@ gn_result_t Config::load_file(const std::string& path) {
     /// branch surfaces the missing-file case cleanly.
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
     std::ostringstream buf;
     buf << in.rdbuf();
     if (in.bad()) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
     return load_json(buf.str());
 }

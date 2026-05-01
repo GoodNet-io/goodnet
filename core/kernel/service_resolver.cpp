@@ -58,7 +58,7 @@ gn_result_t ServiceResolver::resolve(
                 diag += "' required by ";
                 diag += input[i].plugin_name;
                 note(out_diagnostic, diag);
-                return GN_ERR_UNKNOWN_RECEIVER;
+                return GN_ERR_NOT_FOUND;
             }
             const std::size_t provider_idx = it->second;
             if (provider_idx == i) continue; // self-provide is fine

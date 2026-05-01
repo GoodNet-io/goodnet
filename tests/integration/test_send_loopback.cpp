@@ -198,7 +198,7 @@ TEST(SendLoopback, SendUnknownConnectionRejected) {
     EXPECT_EQ(alice.api.send(alice.api.host_ctx,
                              /* unknown */ 9999,
                              0x1, nullptr, 0),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(SendLoopback, DisconnectThroughTransport) {

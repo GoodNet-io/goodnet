@@ -59,7 +59,7 @@ kernel-facing `Kernel::reload_config` / `reload_config_merge`
 wrap them with the registry propagation + signal fire.
 
 Default-constructed `Config` is usable: every key lookup returns
-`GN_ERR_UNKNOWN_RECEIVER`, `limits()` returns the canonical defaults
+`GN_ERR_NOT_FOUND`, `limits()` returns the canonical defaults
 from `sdk/limits.h` (the `GN_LIMITS_DEFAULT_*` macros).
 
 ---
@@ -238,7 +238,7 @@ gn_limits_t Config::limits() const noexcept;
 | Return | Meaning |
 |---|---|
 | `GN_OK` | found, `out` populated |
-| `GN_ERR_UNKNOWN_RECEIVER` | key missing or path resolves to a non-leaf node |
+| `GN_ERR_NOT_FOUND` | key missing or path resolves to a non-leaf node |
 | `GN_ERR_INVALID_ENVELOPE` | (load) JSON parse failed |
 | `GN_ERR_LIMIT_REACHED` | (validate) cross-field invariant failed; `out_reason` names the field |
 
@@ -296,7 +296,7 @@ kernel into a path-handling argument.
   deployments drive one.
 - **Per-plugin schema discovery.** Plugins do not register the
   keys they read. A typo in an operator's config silently maps
-  to a `GN_ERR_UNKNOWN_RECEIVER` and the plugin falls through to
+  to a `GN_ERR_NOT_FOUND` and the plugin falls through to
   its built-in default — the operator gets no warning. v1.1
   adds a `reads_config` whitelist in `plugin-manifest.md` so
   the kernel logs unknown-key warnings at load time and gates

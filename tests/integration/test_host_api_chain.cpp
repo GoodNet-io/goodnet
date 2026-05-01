@@ -171,7 +171,7 @@ TEST(HostApiChain, NotifyInboundUnknownConnRejected) {
     EXPECT_EQ(h.api.notify_inbound_bytes(h.api.host_ctx,
                                          /* unknown */ 9999,
                                          bytes, 1),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(HostApiChain, LimitsSlotReturnsKernelLimits) {

@@ -127,7 +127,7 @@ gn_result_t stub_register_security(void* /*host_ctx*/,
 gn_result_t stub_unregister_security(void* /*host_ctx*/,
                                      const char* provider_id) {
     if (!provider_id) return GN_ERR_NULL_ARG;
-    if (g_captured.provider_id != provider_id) return GN_ERR_UNKNOWN_RECEIVER;
+    if (g_captured.provider_id != provider_id) return GN_ERR_NOT_FOUND;
     g_captured.provider_id.clear();
     g_captured.vtable = nullptr;
     g_captured.self   = nullptr;

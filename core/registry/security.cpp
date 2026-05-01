@@ -35,7 +35,7 @@ gn_result_t SecurityRegistry::unregister_provider(
 
     std::unique_lock lock(mu_);
     if (!active_ || entry_.provider_id != provider_id) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
     entry_ = SecurityEntry{};
     active_ = false;

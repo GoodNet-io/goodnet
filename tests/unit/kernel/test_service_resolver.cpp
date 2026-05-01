@@ -157,7 +157,7 @@ TEST(ServiceResolver_Unresolved, RejectedWithDiagnostic) {
     std::vector<ServiceDescriptor> ordered;
     std::string diag;
     EXPECT_EQ(ServiceResolver::resolve(input, ordered, &diag),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
     EXPECT_FALSE(diag.empty());
     EXPECT_NE(diag.find("missing"), std::string::npos);
     EXPECT_TRUE(ordered.empty());

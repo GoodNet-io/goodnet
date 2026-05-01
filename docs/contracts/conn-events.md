@@ -100,7 +100,7 @@ synthetic re-delivery.
 | Status | Meaning | Side effects |
 |---|---|---|
 | `GN_OK` | record removed and event published | security session destroyed; record erased from all three keys (`registry.md` §1); every existing subscriber invoked once before return |
-| `GN_ERR_UNKNOWN_RECEIVER` | no record matched `conn` at the moment the registry critical section started; also returned when `conn == GN_INVALID_ID` | session-destroy attempt is idempotent; no event published; no registry state changed |
+| `GN_ERR_NOT_FOUND` | no record matched `conn` at the moment the registry critical section started; also returned when `conn == GN_INVALID_ID` | session-destroy attempt is idempotent; no event published; no registry state changed |
 | `GN_ERR_NULL_ARG` | `host_ctx == NULL` | none |
 | `GN_ERR_NOT_IMPLEMENTED` | calling plugin's kind is not `GN_PLUGIN_KIND_TRANSPORT` (`sdk/plugin.h` `gn_plugin_kind_t`); `GN_PLUGIN_KIND_UNKNOWN` is permitted as a legacy carve-out for descriptors that predate the `kind` field | none |
 
@@ -132,7 +132,7 @@ is gone by design and the counters with it.
 
 - Concurrent `notify_disconnect(_, conn, _)` against the same
   `conn`: at most one call returns `GN_OK` and publishes the
-  event; the rest return `GN_ERR_UNKNOWN_RECEIVER` and publish
+  event; the rest return `GN_ERR_NOT_FOUND` and publish
   nothing.
 - Between the snapshot capture inside the registry critical
   section and the event publish, no other observer finds the
@@ -142,7 +142,7 @@ is gone by design and the counters with it.
 - A subscriber callback may invoke `notify_disconnect` against
   the same `conn` re-entrantly. The re-entrant call observes
   the record already removed and returns
-  `GN_ERR_UNKNOWN_RECEIVER` without publishing a second event.
+  `GN_ERR_NOT_FOUND` without publishing a second event.
 
 **Delivery.** Per §5 (Ordering and dropped events): one event
 per real removal, fire-and-forget, no synthetic re-delivery for

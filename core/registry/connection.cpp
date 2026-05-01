@@ -80,7 +80,7 @@ gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
 
     auto it = s.records.find(id);
     if (it == s.records.end()) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 
     /// Copy index keys before erasing the record itself; after the
@@ -162,7 +162,7 @@ gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
     Shard& s = shard_for(id);
     std::unique_lock lock(s.mu);
     auto it = s.records.find(id);
-    if (it == s.records.end()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (it == s.records.end()) return GN_ERR_NOT_FOUND;
     if (!gn_trust_can_upgrade(it->second.trust, target)) {
         /// Helper from `sdk/trust.h` rejects: only `Untrusted → Peer`
         /// or identity transitions. The shard mutex serialises the

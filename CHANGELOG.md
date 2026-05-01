@@ -336,6 +336,17 @@ typed extension API.
 
 ### Changed
 
+- **Result-code split for lookup misses
+  (`sdk/types.h::gn_result_t`).** `GN_ERR_NOT_FOUND` (-14) covers
+  registry id misses, config key absences, transport session
+  misses, and inject-target misses across the kernel and the
+  plugin tree. `GN_ERR_OUT_OF_RANGE` (-15) covers array indices
+  past the array length on `config_get_array_*`.
+  `GN_ERR_UNKNOWN_RECEIVER` (-4) is reserved for the
+  message-routing path: a `receiver_pk` that does not match any
+  local identity and has no relay loaded. The split lets a plugin
+  author distinguish "key not configured" from "envelope cannot
+  reach its receiver" without inspecting the call site.
 - **TCP_NODELAY across stream transports.** TCP, TLS, and WS
   sessions disable Nagle on the underlying socket immediately
   after the accept and connect callbacks fire. Small framed

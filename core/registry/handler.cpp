@@ -89,7 +89,7 @@ gn_result_t HandlerRegistry::unregister_handler(gn_handler_id_t id) noexcept {
 
     auto by_id_it = by_id_.find(id);
     if (by_id_it == by_id_.end()) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 
     const Key key = by_id_it->second;

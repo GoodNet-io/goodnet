@@ -141,7 +141,14 @@ typedef enum gn_result_e {
     GN_ERR_NULL_ARG           = -1,  /**< caller passed NULL where required */
     GN_ERR_OUT_OF_MEMORY      = -2,
     GN_ERR_INVALID_ENVELOPE   = -3,  /**< sender_pk == ZERO, msg_id == 0, _reserved non-zero */
-    GN_ERR_UNKNOWN_RECEIVER   = -4,  /**< receiver_pk not in local_identities, no relay loaded */
+    GN_ERR_UNKNOWN_RECEIVER   = -4,  /**< receiver_pk not in local_identities, no relay loaded.
+                                       *   Reserved for the message-routing
+                                       *   path; lookup misses elsewhere
+                                       *   (registry id miss, config key
+                                       *   absent, transport session miss)
+                                       *   return `GN_ERR_NOT_FOUND` (-14).
+                                       *   Out-of-bounds array indices
+                                       *   return `GN_ERR_OUT_OF_RANGE` (-15). */
     GN_ERR_PAYLOAD_TOO_LARGE  = -5,  /**< payload_size > plugin.max_payload_size() */
     GN_ERR_DEFRAME_INCOMPLETE = -6,  /**< partial frame — kernel buffers and retries */
     GN_ERR_DEFRAME_CORRUPT    = -7,  /**< magic mismatch / bad version / overflow */
@@ -155,12 +162,25 @@ typedef enum gn_result_e {
                                        *   (plugin SHA-256 manifest mismatch,
                                        *   tampered binary, manifest absent in
                                        *   strict mode) */
-    GN_ERR_INTERNAL           = -13  /**< kernel caught an exception that
+    GN_ERR_INTERNAL           = -13, /**< kernel caught an exception that
                                        *   crossed a plugin C ABI boundary;
                                        *   the call was aborted before any
                                        *   side effect reached the kernel.
                                        *   Plugin authors must not throw
                                        *   across `extern "C"`. */
+    GN_ERR_NOT_FOUND          = -14, /**< lookup miss — config key absent,
+                                       *   handler/transport id unknown,
+                                       *   inject-target id absent. Distinct
+                                       *   from `GN_ERR_UNKNOWN_RECEIVER`
+                                       *   which is reserved for the
+                                       *   message-routing receiver_pk path
+                                       *   (no local identity matches /
+                                       *   no relay loaded). */
+    GN_ERR_OUT_OF_RANGE       = -15  /**< value outside the contract's
+                                       *   permitted range — config integer
+                                       *   above the cap declared in
+                                       *   `limits.md`, array index past
+                                       *   end, etc. */
 } gn_result_t;
 
 /* ── Kernel↔plugin envelope ─────────────────────────────────────────────── */

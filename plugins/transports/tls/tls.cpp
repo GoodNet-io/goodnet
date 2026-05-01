@@ -745,7 +745,7 @@ gn_result_t TlsTransport::connect(std::string_view uri) {
 gn_result_t TlsTransport::send(gn_conn_id_t conn,
                                 std::span<const std::uint8_t> bytes) {
     auto session = find_session(conn);
-    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!session) return GN_ERR_NOT_FOUND;
     if (pending_queue_bytes_hard_ != 0 &&
         session->bytes_buffered() + bytes.size() >
             pending_queue_bytes_hard_) {
@@ -761,7 +761,7 @@ gn_result_t TlsTransport::send_batch(
     if (frames.empty()) return GN_OK;
     if (frames.size() == 1) return send(conn, frames[0]);
     auto session = find_session(conn);
-    if (!session) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!session) return GN_ERR_NOT_FOUND;
     std::size_t total = 0;
     for (const auto& f : frames) total += f.size();
     if (pending_queue_bytes_hard_ != 0 &&

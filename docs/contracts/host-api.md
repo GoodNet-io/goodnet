@@ -337,7 +337,7 @@ Failure modes:
 
 | Condition | Result |
 |---|---|
-| `source` does not refer to a known connection | `GN_ERR_UNKNOWN_RECEIVER` |
+| `source` does not refer to a known connection | `GN_ERR_NOT_FOUND` |
 | `payload == NULL && size > 0` | `GN_ERR_NULL_ARG` |
 | `payload_size > limits.max_payload_bytes` | `GN_ERR_PAYLOAD_TOO_LARGE` |
 | `msg_id == 0` (envelope invariant per `protocol-layer.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
