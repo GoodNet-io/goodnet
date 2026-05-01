@@ -34,20 +34,22 @@ The operational tax that grows with a distributed system — service mesh,
 mTLS termination, GeoDNS, etcd, sidecar mesh, configmaps — collapses into
 the kernel. Adding a node costs one binary and a keypair.
 
-**Design goals (post-rc1):**
+**Architectural directions (not implemented today):**
 
 - **Multi-path transport.** Run TCP, UDP, WebSocket and TLS in parallel per
   connection so a path failure switches over without dropping the session.
   The single-path baseline is in the tree today; the multi-path scheduler
-  is on the [roadmap](docs/ROADMAP.md).
+  is a roadmap item.
 - **Directed relay → direct.** Open through a relay, upgrade to a direct
-  path once both ends have discovered each other. The relay plugin and
-  the discovery contract land in v0.3+.
+  path once both ends have discovered each other. The relay plugin and the
+  discovery contract are roadmap items.
 - **Address-based routing.** Public-key-as-address with logarithmic-hop
-  forwarding under a DHT. The DHT plugin lands in v0.5.
+  forwarding under a DHT. The DHT plugin is a roadmap item.
 
-These are the directions the architecture is shaped for; what is
-actually shipped today is in §"Status" below.
+These are the directions the architecture is shaped for, listed in
+[docs/ROADMAP.md](docs/ROADMAP.md). What is actually shipped today
+is in §"Status" below — no release tag is claimed for any of the
+directions above.
 
 ## Where it fits
 
