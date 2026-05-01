@@ -564,6 +564,20 @@ gn_result_t thunk_config_get(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
+    /// Reject unknown enum values before any per-type validation —
+    /// the failure-mode table promises `INVALID_ENVELOPE` for them
+    /// regardless of the index / out_free shape.
+    switch (type) {
+    case GN_CONFIG_VALUE_INT64:
+    case GN_CONFIG_VALUE_BOOL:
+    case GN_CONFIG_VALUE_DOUBLE:
+    case GN_CONFIG_VALUE_STRING:
+    case GN_CONFIG_VALUE_ARRAY_SIZE:
+        break;
+    default:
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
     /// `out_free` is meaningful only for STRING reads. Anything else
     /// must pass NULL — otherwise the plugin author confused the
     /// shape and would observe an undefined free callback after a
