@@ -263,13 +263,18 @@ identities sharing one process. Single-identity case = vector of size 1.
 ## 7. Handler registration
 
 ```c
-host_api->register_handler(host_ctx,
-                           "gnet-v1",   /* active protocol; handler bound to this layer */
-                           0x1001,      /* msg_id — per-protocol namespace */
-                           priority,
-                           &handler_vtable,
-                           handler_self,
-                           &out_handler_id);
+gn_register_meta_t meta = {
+    .api_size = sizeof(gn_register_meta_t),
+    .name     = "gnet-v1",   /* active protocol; handler bound to this layer */
+    .msg_id   = 0x1001,      /* per-protocol namespace */
+    .priority = priority,
+};
+host_api->register_vtable(host_ctx,
+                          GN_REGISTER_HANDLER,
+                          &meta,
+                          &handler_vtable,
+                          handler_self,
+                          &out_handler_id);
 ```
 
 Handlers are scoped to a `(protocol_id, msg_id)` pair. The same `msg_id`

@@ -18,15 +18,24 @@ rules, the chain depth limit, and the pin-handler fast-path.
 
 ## 2. Registration
 
-```c
-gn_result_t (*register_handler)(void* host_ctx,
-                                const char* protocol_id,   /* e.g. "gnet-v1" */
-                                uint32_t   msg_id,         /* per-protocol */
-                                uint8_t    priority,       /* 0..255 */
-                                const gn_handler_vtable_t* vtable,
-                                void* handler_self,
-                                gn_handler_id_t* out_id);
-```
+Handlers register through the universal `register_vtable` slot in
+`host_api_t`; see `host-api.md` §2 for the canonical signature.
+The handler-specific shape:
+
+- `kind = GN_REGISTER_HANDLER`
+- `meta->name`     — protocol id (e.g. `"gnet-v1"`)
+- `meta->msg_id`   — per-protocol message id
+- `meta->priority` — 0..255 dispatch priority
+- `vtable`         — `const gn_handler_vtable_t*`
+- `self`           — per-handler state, opaque to the kernel
+- `*out_id`        — populated on success; encodes the
+  `GN_REGISTER_HANDLER` tag in its top 4 bits so a later
+  `unregister_vtable(id)` routes back to `HandlerRegistry`
+  without naming the kind a second time.
+
+The pure-C convenience wrapper `gn_register_handler` in
+`sdk/convenience.h` keeps the historical 7-argument shape and
+expands to `register_vtable(GN_REGISTER_HANDLER, &meta, …)`.
 
 Rules:
 
@@ -51,13 +60,13 @@ Rules:
 - Maximum chain length per `(protocol_id, msg_id)` is `Limits::max_handlers_per_msg_id`
   (default 8). Exceeding returns `GN_ERR_LIMIT_REACHED`.
 
-The returned `gn_handler_id_t` is opaque, stable until `unregister_handler`.
+The returned `gn_handler_id_t` is opaque, stable until `unregister_vtable(id)`.
 Plugins keep it for their own bookkeeping; the kernel does not require it
 back during dispatch.
 
 ### 2.1 `gn_handler_vtable_t` layout
 
-The vtable carried by `register_handler`. Begins with `api_size`
+The vtable carried by `register_vtable(GN_REGISTER_HANDLER)`. Begins with `api_size`
 for size-prefix evolution per `abi-evolution.md` §3; the kernel
 rejects a registration whose `api_size < sizeof(gn_handler_vtable_t)`
 with `GN_ERR_VERSION_MISMATCH` per §3a. Every remaining slot is a
@@ -103,7 +112,7 @@ this vtable as fixed-shape at v1; growth happens through
 ## 2a. Reserved msg_id values
 
 Some msg_ids are reserved for kernel-internal dispatch and may not
-be registered through this surface. `register_handler` rejects
+be registered through this surface. `register_vtable(GN_REGISTER_HANDLER)` rejects
 registrations against these ids with `GN_ERR_INVALID_ENVELOPE`;
 the failed call has no effect on registry state.
 
@@ -207,7 +216,9 @@ own implementation.
 ## 6. Unregistration semantics
 
 ```c
-gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
+gn_result_t (*unregister_vtable)(void* host_ctx, uint64_t id);
+/* `gn_handler_id_t` and the universal id share the uint64_t shape;
+   the kind tag in the top 4 bits routes back to HandlerRegistry. */
 ```
 
 - Removes the handler from the chain immediately for **future** dispatches.
@@ -225,7 +236,7 @@ gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
 ## 7. Cross-references
 
 - The vtable plugin-side: `protocol-layer.md` §3.
-- The C ABI declaration: `host-api.md` §2 (`register_handler`).
+- The C ABI declaration: `host-api.md` §2 (`register_vtable` family).
 - Quiescence wait between unregister and dlclose: `plugin-lifetime.md` §6.
 - Generation counter: `fsm-events.md` §6.
 - Chain depth limit: `limits.md` §7.

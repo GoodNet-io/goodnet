@@ -20,6 +20,13 @@
  * macro style.
  *
  * Include order: any time after `sdk/host_api.h`.
+ *
+ * Compiler portability: the `gn_register_handler` / `gn_register_link`
+ * macros expand to a C99 compound literal (`&(gn_register_meta_t){…}`).
+ * GCC and clang accept compound literals in C++ as a documented
+ * extension. MSVC C++ rejects them — C++ plugins built with MSVC
+ * declare a named local instead and call `register_vtable` directly,
+ * mirroring the pattern in `sdk/cpp/link_plugin.hpp`.
  */
 #ifndef GOODNET_SDK_CONVENIENCE_H
 #define GOODNET_SDK_CONVENIENCE_H

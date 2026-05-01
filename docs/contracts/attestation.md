@@ -52,7 +52,7 @@ consumer rejects.
 ## 3. Reserved msg_id
 
 `msg_id = 0x11` is reserved for the kernel-internal attestation
-dispatcher. Plugin registration through `register_handler` against
+dispatcher. Plugin registration through `register_vtable(GN_REGISTER_HANDLER)` against
 `(any protocol_id, msg_id == 0x11)` is rejected with
 `GN_ERR_INVALID_ENVELOPE` per `handler-registration.md` §2a.
 

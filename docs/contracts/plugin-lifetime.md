@@ -66,7 +66,7 @@ are forbidden.
 |---|---|---|
 | `gn_plugin_sdk_version(major*, minor*, patch*)` | 3 | report build-time SDK version triple; no side effects |
 | `gn_plugin_init(host_api*, host_ctx, out_self*)` | 4 | construct internal state; **must not** register anything |
-| `gn_plugin_register(self)` | 5 | call `host_api->register_handler` / `register_link` / `register_extension` |
+| `gn_plugin_register(self)` | 5 | call `host_api->register_vtable(KIND, …)` / `register_extension` |
 | `gn_plugin_unregister(self)` | 8 | undo every registration done in phase 5 |
 | `gn_plugin_shutdown(self)` | 9 | release internal state; **must not** call `host_api` after return |
 
@@ -226,7 +226,7 @@ ownership tags from `abi-evolution.md` §6. The most common cases:
 | `gn_message_t::payload` in `handle_message` | kernel → plugin | `@borrowed` for the dispatch call |
 | Frame bytes returned from `frame()` | plugin → kernel | `@owned` — paired with `out_free` |
 | `host_api_t` itself | kernel → plugin | `@borrowed` for the plugin's lifetime |
-| Vtable registered via `register_handler` | plugin → kernel | `@borrowed` until `unregister` |
+| Vtable registered via `register_vtable(KIND_HANDLER, …)` | plugin → kernel | `@borrowed` until `unregister` |
 | Extension vtable from `query_extension_checked` | provider → consumer | `@borrowed` while the provider is loaded |
 
 Omitting an ownership tag is a code-review failure pre-RC.
