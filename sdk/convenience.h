@@ -40,9 +40,6 @@ extern "C" {
 #define gn_send_uri(api, uri, msg_id, payload, size) \
     (api)->send_uri((api)->host_ctx, (uri), (msg_id), (payload), (size))
 
-#define gn_broadcast(api, msg_id, payload, size) \
-    (api)->broadcast((api)->host_ctx, (msg_id), (payload), (size))
-
 #define gn_disconnect(api, conn) \
     (api)->disconnect((api)->host_ctx, (conn))
 

@@ -84,11 +84,6 @@ typedef struct host_api_s {
                             uint32_t msg_id,
                             const uint8_t* payload, size_t payload_size);
 
-    /** Broadcast to every currently connected peer. */
-    gn_result_t (*broadcast)(void* host_ctx,
-                             uint32_t msg_id,
-                             const uint8_t* payload, size_t payload_size);
-
     /** Close a connection. Safe from any thread. */
     gn_result_t (*disconnect)(void* host_ctx, gn_conn_id_t conn);
 
@@ -371,15 +366,6 @@ typedef struct host_api_s {
      *        already-fired or already-cancelled timer is success.
      */
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
-
-    /**
-     * @brief Run @p fn(user_data) on the service executor at the
-     *        next available point. Used to hand work back from a
-     *        link's strand into the kernel's serialised loop.
-     */
-    gn_result_t (*post_to_executor)(void* host_ctx,
-                                    gn_task_fn_t fn,
-                                    void* user_data);
 
     /* ── Connection events (conn-events.md is authoritative) ───────────── */
 
