@@ -257,7 +257,8 @@ gn_result_t thunk_send(void* host_ctx,
     gn_connection_context_t ctx{};
     ctx.conn_id   = conn;
     ctx.trust     = rec->trust;
-    ctx.remote_pk = rec->remote_pk;
+    ctx.remote_pk    = rec->remote_pk;
+    ctx.allows_relay = rec->allows_relay;
     if (auto local = pc->kernel->identities().any(); local) {
         ctx.local_pk = *local;
     }
@@ -1235,7 +1236,8 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     gn_connection_context_t ctx{};
     ctx.conn_id   = conn;
     ctx.trust     = rec->trust;
-    ctx.remote_pk = rec->remote_pk;
+    ctx.remote_pk    = rec->remote_pk;
+    ctx.allows_relay = rec->allows_relay;
     if (auto local = pc->kernel->identities().any(); local) {
         ctx.local_pk = *local;
     }
@@ -1338,7 +1340,8 @@ gn_result_t thunk_inject(void* host_ctx,
     gn_connection_context_t ctx{};
     ctx.conn_id   = source;
     ctx.trust     = rec->trust;
-    ctx.remote_pk = rec->remote_pk;
+    ctx.remote_pk    = rec->remote_pk;
+    ctx.allows_relay = rec->allows_relay;
     if (auto local = pc->kernel->identities().any(); local) {
         ctx.local_pk = *local;
     }

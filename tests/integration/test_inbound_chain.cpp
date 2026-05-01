@@ -145,6 +145,9 @@ TEST(InboundChain, DirectFrameReachesHandler) {
 
 TEST(InboundChain, BroadcastFrameDispatches) {
     auto ctxs = PairedContexts::make(0xA2, 0xB2);
+    /// Broadcast carries EXPLICIT_SENDER; receiving context must
+    /// declare relay capability (`gnet-protocol.md` §5).
+    ctxs.bob.allows_relay = true;
 
     LocalIdentitySet ids;
     ids.add(ctxs.bob.local_pk);

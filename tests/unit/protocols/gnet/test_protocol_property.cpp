@@ -52,13 +52,10 @@ rc::Gen<PublicKey> nonzero_pk_gen() {
         });
 }
 
-/// Cap on payload size matches the contract `max_payload_size()`.
-inline constexpr std::size_t kMaxPayload =
-    wire::kMaxFrameBytes - wire::kFixedHeaderSize - 2 * wire::kPublicKeySize;
-
-/// Generate a payload of size ≤ `kMaxPayload` so framing never trips
-/// `GN_ERR_PAYLOAD_TOO_LARGE`. Capped lower than the absolute max so
-/// the test suite remains fast.
+/// Generate a payload sized below the contract's per-frame ceiling
+/// (`wire::kMaxFrameBytes - kFixedHeaderSize - 2 * kPublicKeySize`)
+/// so framing never trips `GN_ERR_PAYLOAD_TOO_LARGE`. Capped well
+/// below the absolute max so the test suite remains fast.
 rc::Gen<std::vector<std::uint8_t>> payload_gen() {
     /// 1 KiB cap keeps the tests fast while still exercising the
     /// payload memcpy path. The boundary case `payload == max` is
@@ -173,6 +170,9 @@ RC_GTEST_PROP(GnetProtocolProperty,
     const auto payload = *payload_gen();
 
     auto mc = mirror(alice_pk, bob_pk);
+    /// Broadcast carries EXPLICIT_SENDER, so the receiving context
+    /// must opt in to relay framing per `gnet-protocol.md` §5.
+    mc.bob.allows_relay = true;
     GnetProtocol alice_proto, bob_proto;
 
     auto env    = make_envelope(alice_pk, kBroadcastPk, msg_id, payload);
@@ -219,6 +219,8 @@ RC_GTEST_PROP(GnetProtocolProperty,
     const auto payload = *payload_gen();
 
     auto mc = mirror(alice_pk, bob_pk);
+    /// Relay-transit needs the receiving context to allow EXPLICIT_SENDER.
+    mc.bob.allows_relay = true;
     GnetProtocol alice_proto, bob_proto;
 
     auto env    = make_envelope(origin_pk, bob_pk, msg_id, payload);

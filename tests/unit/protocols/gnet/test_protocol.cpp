@@ -159,8 +159,12 @@ TEST(GnetProtocolRoundTrip, DirectFrameWireBytesMatchPayload) {
 TEST(GnetProtocolRoundTrip, BroadcastFrameSenderOnWireReceiverZero) {
     /// Alice broadcasts: receiver_pk = ZERO. Wire size must be
     /// 14 + 32 + payload. Bob's deframe surfaces sender=Alice (from
-    /// wire) and receiver=ZERO.
+    /// wire) and receiver=ZERO. Broadcast carries `EXPLICIT_SENDER`,
+    /// so the receiving context must declare `allows_relay` per
+    /// `gnet-protocol.md` §5 — broadcast frames inherently come from
+    /// a relay-shaped path.
     auto mc = make_mirrored_contexts();
+    mc.bob.allows_relay = true;
     GnetProtocol alice_proto, bob_proto;
 
     const std::array<std::uint8_t, 4> payload = {0xCA, 0xFE, 0xBA, 0xBE};
@@ -194,7 +198,11 @@ TEST(GnetProtocolRoundTrip, RelayTransitBothPksOnWire) {
     /// Alice forwards a message originated by ThirdParty to Bob.
     /// sender ≠ ctx.local → wire carries both PKs (78 + payload) and
     /// Bob's deframe preserves end-to-end identity.
+    /// `allows_relay` declares that bob's connection trusts alice to
+    /// inject foreign sender_pk values; without the flag the deframe
+    /// would reject EXPLICIT_SENDER as a spoof attempt.
     auto mc = make_mirrored_contexts();
+    mc.bob.allows_relay = true;
     GnetProtocol alice_proto, bob_proto;
 
     const PublicKey third_party = make_pk(0xC0FFEE);
@@ -229,6 +237,7 @@ TEST(GnetProtocolRoundTrip, RelayTransitForwardingPreservesEndToEnd) {
     /// and receiver (Bob) untouched.
     auto edge_ab = make_mirrored_contexts(0xA11CE, 0xB0B);
     auto edge_ac = make_mirrored_contexts(0xA11CE, 0xCA401);  // Alice ↔ Carol
+    edge_ac.bob.allows_relay = true;  /// transit context trusts the relay edge
     GnetProtocol alice_proto, transit_proto;
 
     const PublicKey origin = make_pk(0xDEADBEEF);
@@ -249,6 +258,47 @@ TEST(GnetProtocolRoundTrip, RelayTransitForwardingPreservesEndToEnd) {
     EXPECT_EQ(got.msg_id, 0x10u);
     EXPECT_EQ(std::memcmp(got.sender_pk,   origin.data(),         GN_PUBLIC_KEY_BYTES), 0);
     EXPECT_EQ(std::memcmp(got.receiver_pk, edge_ab.bob_pk.data(), GN_PUBLIC_KEY_BYTES), 0);
+}
+
+TEST(GnetProtocolRoundTrip, ExplicitSenderRejectedOnNonRelayContext) {
+    /// `gnet-protocol.md` §5: a peer that has not been granted relay
+    /// capability must not be permitted to claim a sender_pk other
+    /// than the connection's authenticated remote pk. Without the
+    /// gate, every authenticated peer could spoof `sender_pk` on
+    /// inbound frames and compromise handlers that authenticate
+    /// by-sender.
+    auto mc = make_mirrored_contexts();
+    /// Default `allows_relay = false` — the receiver is a regular peer.
+    GnetProtocol alice_proto, bob_proto;
+
+    const std::array<std::uint8_t, 4> payload = {0x01, 0x02, 0x03, 0x04};
+    /// Alice tries to frame a message claiming a third-party origin
+    /// (relay-transit shape, EXPLICIT_SENDER on wire).
+    const PublicKey foreign = make_pk(0xFA1CE);
+    auto env = make_envelope(foreign, mc.bob_pk, /*msg_id=*/9, payload);
+
+    auto framed = alice_proto.frame(mc.alice, env);
+    ASSERT_TRUE(framed.has_value());
+    /// Frame produces EXPLICIT_SENDER + EXPLICIT_RECEIVER as expected.
+    EXPECT_EQ((*framed)[wire::kOffsetFlags],
+              wire::kFlagExplicitSender | wire::kFlagExplicitReceiver);
+
+    /// Bob's deframe rejects with INTEGRITY_FAILED — the gate fires
+    /// before any envelope is yielded.
+    auto deframed = bob_proto.deframe(mc.bob, *framed);
+    EXPECT_FALSE(deframed.has_value());
+    if (!deframed.has_value()) {
+        EXPECT_EQ(deframed.error().code, GN_ERR_INTEGRITY_FAILED);
+    }
+
+    /// Same frame on a relay-capable context succeeds — same wire
+    /// bytes, different policy.
+    mc.bob.allows_relay = true;
+    auto deframed2 = bob_proto.deframe(mc.bob, *framed);
+    ASSERT_TRUE(deframed2.has_value());
+    ASSERT_EQ(deframed2->messages.size(), 1u);
+    EXPECT_EQ(std::memcmp(deframed2->messages[0].sender_pk,
+                           foreign.data(), GN_PUBLIC_KEY_BYTES), 0);
 }
 
 /* ── Identity sourcing rules per protocol-layer §5 ───────────────────────── */
