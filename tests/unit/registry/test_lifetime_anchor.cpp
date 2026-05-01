@@ -19,11 +19,11 @@
 #include <core/registry/extension.hpp>
 #include <core/registry/handler.hpp>
 #include <core/registry/security.hpp>
-#include <core/registry/transport.hpp>
+#include <core/registry/link.hpp>
 
 #include <sdk/handler.h>
 #include <sdk/security.h>
-#include <sdk/transport.h>
+#include <sdk/link.h>
 #include <sdk/types.h>
 
 namespace {
@@ -37,10 +37,10 @@ const gn_handler_vtable_t* dummy_handler_vtable() {
     return &vt;
 }
 
-const gn_transport_vtable_t* dummy_transport_vtable() {
-    static const gn_transport_vtable_t vt = []() {
-        gn_transport_vtable_t v{};
-        v.api_size = sizeof(gn_transport_vtable_t);
+const gn_link_vtable_t* dummy_transport_vtable() {
+    static const gn_link_vtable_t vt = []() {
+        gn_link_vtable_t v{};
+        v.api_size = sizeof(gn_link_vtable_t);
         return v;
     }();
     return &vt;
@@ -118,16 +118,16 @@ TEST(HandlerAnchor, LookupSnapshotInheritsAnchor) {
     EXPECT_TRUE(watch.expired());
 }
 
-// ─── TransportRegistry: same shape ──────────────────────────────────
+// ─── LinkRegistry: same shape ──────────────────────────────────
 
 TEST(TransportAnchor, EntryHoldsAnchorThroughLookup) {
-    TransportRegistry reg;
+    LinkRegistry reg;
 
     auto anchor = std::make_shared<int>(0);
     std::weak_ptr<int> watch = anchor;
 
-    gn_transport_id_t id = GN_INVALID_ID;
-    ASSERT_EQ(reg.register_transport("test-scheme",
+    gn_link_id_t id = GN_INVALID_ID;
+    ASSERT_EQ(reg.register_link("test-scheme",
                                      dummy_transport_vtable(),
                                      nullptr, &id, anchor),
               GN_OK);
@@ -136,7 +136,7 @@ TEST(TransportAnchor, EntryHoldsAnchorThroughLookup) {
     ASSERT_TRUE(snapshot.has_value());
 
     anchor.reset();
-    ASSERT_EQ(reg.unregister_transport(id), GN_OK);
+    ASSERT_EQ(reg.unregister_link(id), GN_OK);
     EXPECT_FALSE(watch.expired())
         << "transport snapshot must keep the .so mapped via the anchor";
 

@@ -178,7 +178,7 @@ typed extension API.
   `host_api->get_endpoint`. 88-byte big-endian wire layout with
   explicit `serialize_payload` / `parse_payload`.
 - **End-to-end loopback test** — two kernels with their own
-  `NodeIdentity` plus `TcpTransport` plus the Noise provider drive
+  `NodeIdentity` plus `TcpLink` plus the Noise provider drive
   a real Noise XX handshake over a `127.0.0.1` socket and reach
   the Transport phase with matching channel-binding hashes.
 - **`nix run .#install-hooks`** — opt-in pre-commit hook that runs
@@ -194,8 +194,8 @@ typed extension API.
   structurally impossible — the snapshot keeps the .so mapped
   until the call returns. A bounded drain timeout falls through
   to `log warn + leak handle` rather than blocking shutdown.
-- **`gn.transport.<scheme>` extension API** — every baseline
-  transport publishes `gn_transport_api_t` from
+- **`gn.link.<scheme>` extension API** — every baseline
+  transport publishes `gn_link_api_t` from
   `sdk/extensions/transport.h` with steady slots
   (`get_stats`, `get_capabilities`, `send`, `send_batch`,
   `close`) functional and composer slots
@@ -204,7 +204,7 @@ typed extension API.
   L2-over-L1 plugin (WSS, TLS) drives them. TCP / IPC / UDP
   expose monotonic byte / frame / connection counters; UDP
   surfaces its MTU through the capability descriptor.
-- **`TRANSPORT_PLUGIN(Class, "scheme")` macro** — collapses
+- **`LINK_PLUGIN(Class, "scheme")` macro** — collapses
   per-transport `plugin_entry.cpp` boilerplate (five
   `gn_plugin_*` exports, kernel-facing vtable, extension
   vtable, descriptor) into a single one-line invocation in
@@ -215,16 +215,16 @@ typed extension API.
   existing `register_extension` so plugins can drop their
   extension registration on `gn_plugin_unregister` instead of
   leaking the entry. Auto-wired through the
-  `TRANSPORT_PLUGIN` macro.
+  `LINK_PLUGIN` macro.
 
-- **WebSocket transport** — `goodnet_transport_ws.so` registers
-  `ws://` and the `gn.transport.ws` extension via the
-  `TRANSPORT_PLUGIN` macro. RFC 6455 §5 binary framing with FIN
+- **WebSocket transport** — `goodnet_link_ws.so` registers
+  `ws://` and the `gn.link.ws` extension via the
+  `LINK_PLUGIN` macro. RFC 6455 §5 binary framing with FIN
   / opcode / mask handling, RFC 6455 §1.3 upgrade handshake
   (inline SHA-1 + base64 — the algorithms the spec hard-codes,
   not a security primitive: identity / Noise lives above the
   transport). Self-contained TCP socket; full `wss://` support
-  rides on top once the `gn.transport.tls` composer plugin
+  rides on top once the `gn.link.tls` composer plugin
   ships.
 - **Backpressure watermark events** — every baseline transport now
   publishes `GN_CONN_EVENT_BACKPRESSURE_SOFT` once a connection's
@@ -324,18 +324,33 @@ typed extension API.
   unloaded is dropped silently. `gn_limits_t::max_timers` and
   `max_pending_tasks` (default `4096`) cap the queue. New
   `docs/contracts/timer.md`. SDK_VERSION_MINOR bumped to 1.4.
-- **TLS transport** — `goodnet_transport_tls.so` registers `tls://`
-  and the `gn.transport.tls` extension. Asio-on-OpenSSL
+- **TLS transport** — `goodnet_link_tls.so` registers `tls://`
+  and the `gn.link.tls` extension. Asio-on-OpenSSL
   `ssl::stream<tcp::socket>` with TLS 1.2 minimum, sslv2/sslv3/
   tlsv1.0/tlsv1.1 disabled, no_compression. Server reads cert and
-  key from kernel config (`transports.tls.cert_path` /
-  `transports.tls.key_path`); client defaults to `verify_none`
+  key from kernel config (`links.tls.cert_path` /
+  `links.tls.key_path`); client defaults to `verify_none`
   because the kernel's identity / Noise pipeline is the
   authentication gate (`security-trust.md` §3 single source).
   Capability descriptor adds `EncryptedPath`.
 
 ### Changed
 
+- **Naming: `transport` → `link` across the wire-byte layer.**
+  The plugin family that owns wire-byte channels (TCP, UDP, IPC,
+  WS, TLS) is named `link`; security providers (Noise) operate
+  one envelope above. The rename touches the public C ABI
+  (`gn_link_vtable_t`, `gn_link_id_t`, `gn_link_caps_t`,
+  `gn_link_stats_t`, `GN_LINK_CAP_*`, `GN_PLUGIN_KIND_LINK`,
+  `register_link` / `unregister_link` in `host_api_t`), the SDK
+  headers (`sdk/link.h`, `sdk/extensions/link.h`,
+  `sdk/cpp/link.hpp`, `sdk/cpp/link_plugin.hpp`), the kernel
+  registry (`LinkRegistry`, `LinkEntry`, `Kernel::links()`), the
+  plugin tree (`plugins/links/{tcp,udp,ipc,ws,tls}/`), the
+  `gn.transport.*` extension namespace (now `gn.link.*`), and the
+  contract `docs/contracts/link.md`. The Noise plugin's
+  Noise-protocol "transport phase" naming is preserved — that is
+  the cipherstate term from the spec, not the wire-channel layer.
 - **TLS and WS plugins reuse the canonical URI parser.** The
   authority parsing (host, port, IPv6 brackets, scheme stripping)
   in TLS and WS now flows through `gn::parse_uri` from
@@ -403,10 +418,10 @@ typed extension API.
   `set_manifest_required` and `set_manifest` from the bootstrap
   thread before `load`. Two regression tests pin both edges.
 - **TLS plugin: client peer-cert verification on by default.** A
-  fresh `TlsTransport` client verifies the peer cert against
+  fresh `TlsLink` client verifies the peer cert against
   OpenSSL's default trust store. Operators running TLS as link
   encryption beneath Noise authentication opt out through
-  `transports.tls.verify_peer = false` on the kernel config; the
+  `links.tls.verify_peer = false` on the kernel config; the
   transport reads the flag in `set_host_api` and flips the verify
   mode accordingly. The regression suite asserts the handshake
   fails when the client opts in (the default) and the peer
@@ -422,7 +437,7 @@ typed extension API.
   contract that callbacks may raise. Tests cover the null-handler
   path and the multi-subscriber-with-thrower path.
 - **FFI spec: kernel-side validation of plugin-provided vtables
-  (`abi-evolution.md` §3a).** `TransportRegistry::register_transport`
+  (`abi-evolution.md` §3a).** `LinkRegistry::register_link`
   and `SecurityRegistry::register_provider` now reject vtables
   whose `api_size` is smaller than the minimum the kernel knows
   about; the rejection returns `GN_ERR_VERSION_MISMATCH` before
@@ -498,7 +513,7 @@ typed extension API.
   (`sdk/cpp/capability_tlv.hpp`) is unchanged; the
   category-specific encoders ride on top of it.
 - **TLS plugin: minimum protocol version bumped to 1.3.** Both
-  server and client SSL contexts in `plugins/transports/tls/`
+  server and client SSL contexts in `plugins/links/tls/`
   now disable TLSv1.2 explicitly in addition to TLSv1.0 and
   TLSv1.1. A peer that only speaks pre-1.3 fails the handshake
   at hello rather than silently negotiating an obsolete suite.

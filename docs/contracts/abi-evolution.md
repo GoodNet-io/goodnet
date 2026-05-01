@@ -105,7 +105,7 @@ and wrappers belong to the binding's own contract, not to this one.
 ## 3a. Kernel-side validation of plugin-provided vtables
 
 The size-prefix rule (§3) is symmetric: when a **plugin** registers
-a vtable with the kernel — `gn_transport_vtable_t`,
+a vtable with the kernel — `gn_link_vtable_t`,
 `gn_security_provider_vtable_t`, `gn_handler_vtable_t`, and any
 future plugin-provided table — the kernel is the consumer and the
 plugin is the producer. The kernel validates `api_size`
@@ -201,7 +201,7 @@ pointer:
 
 | Surface | Coverage |
 |---|---|
-| Vtable slots — `gn_handler_vtable_t`, `gn_protocol_layer_vtable_t`, `gn_transport_vtable_t`, `gn_security_provider_vtable_t` | wrapped at every kernel-side dispatch |
+| Vtable slots — `gn_handler_vtable_t`, `gn_protocol_layer_vtable_t`, `gn_link_vtable_t`, `gn_security_provider_vtable_t` | wrapped at every kernel-side dispatch |
 | Callback registration sinks — `gn_task_fn_t` (timer + executor task), conn-state subscriber, config-reload subscriber, `for_each_connection` visitor, `iterate_counters` visitor, `gn_secure_buffer_t::free_fn` | wrapped at every kernel-side dispatch |
 | Plugin lifecycle — `gn_plugin_init`, `gn_plugin_register`, `gn_plugin_unregister`, `gn_plugin_shutdown` | wrapped at every kernel-side dispatch |
 | Extension API vtables — `gn_heartbeat_api_t` etc. | not wrapped — the kernel hands an opaque pointer to consumer plugins; consumers are responsible for guarding their own dispatch |

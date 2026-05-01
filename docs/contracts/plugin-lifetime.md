@@ -66,7 +66,7 @@ are forbidden.
 |---|---|---|
 | `gn_plugin_sdk_version(major*, minor*, patch*)` | 3 | report build-time SDK version triple; no side effects |
 | `gn_plugin_init(host_api*, host_ctx, out_self*)` | 4 | construct internal state; **must not** register anything |
-| `gn_plugin_register(self)` | 5 | call `host_api->register_handler` / `register_transport` / `register_extension` |
+| `gn_plugin_register(self)` | 5 | call `host_api->register_handler` / `register_link` / `register_extension` |
 | `gn_plugin_unregister(self)` | 8 | undo every registration done in phase 5 |
 | `gn_plugin_shutdown(self)` | 9 | release internal state; **must not** call `host_api` after return |
 
@@ -104,7 +104,7 @@ The kernel applies the same pattern at registry granularity. Every
 registry entry — handler, transport, extension, security — carries a
 **lifetime anchor**: a strong reference to the registering plugin's
 lifetime anchor. Dispatch-time snapshots (`HandlerRegistry::lookup`,
-`TransportRegistry::find_by_*`, `SecurityRegistry::current`,
+`LinkRegistry::find_by_*`, `SecurityRegistry::current`,
 `ExtensionRegistry::query_prefix`) are returned by value, so the
 snapshot's anchor copy keeps the sentinel's reference count above zero
 for the duration of the call.

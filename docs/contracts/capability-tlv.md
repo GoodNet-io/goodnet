@@ -67,7 +67,7 @@ contract, alphabetised by name to make merge conflicts loud.
 
 | Type | Name | Value layout |
 |---|---|---|
-| `0x0000` | `transport-set` | bitmap of `1u << GN_TRANSPORT_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
+| `0x0000` | `transport-set` | bitmap of `1u << GN_LINK_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
 | `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs in declaration order; `protocol-list` (type `0x0002`) carries the canonical ordering |
 | `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
 | `0x0100 – 0x01ff` | _reserved_ | do not allocate; the range is held for future cross-cutting families |
@@ -130,6 +130,6 @@ to implement; the contract here scopes only the one-frame case.
 
 - Frame layer that wraps the blob: `gnet-protocol.md`.
 - Transport capability flags referenced by `transport-set`:
-  `sdk/extensions/transport.h` (`GN_TRANSPORT_CAP_*`).
+  `sdk/extensions/transport.h` (`GN_LINK_CAP_*`).
 - Limits the value size honours: `limits.md` §2
   (`max_payload_bytes`).

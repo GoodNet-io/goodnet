@@ -64,7 +64,7 @@ namespace {
 /// legacy descriptors that predate the field.
 [[nodiscard]] bool transport_role(const PluginContext* pc) noexcept {
     if (pc == nullptr) return false;
-    return pc->kind == GN_PLUGIN_KIND_TRANSPORT ||
+    return pc->kind == GN_PLUGIN_KIND_LINK ||
            pc->kind == GN_PLUGIN_KIND_UNKNOWN;
 }
 
@@ -131,7 +131,7 @@ gn_result_t thunk_send(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -270,7 +270,7 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
-    auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->disconnect) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -506,23 +506,23 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
     return GN_OK;
 }
 
-gn_result_t thunk_register_transport(void* host_ctx,
+gn_result_t thunk_register_link(void* host_ctx,
                                      const char* scheme,
-                                     const gn_transport_vtable_t* vtable,
+                                     const gn_link_vtable_t* vtable,
                                      void* transport_self,
-                                     gn_transport_id_t* out_id) {
+                                     gn_link_id_t* out_id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->transports().register_transport(
+    return pc->kernel->links().register_link(
         scheme, vtable, transport_self, out_id, pc->plugin_anchor);
 }
 
-gn_result_t thunk_unregister_transport(void* host_ctx, gn_transport_id_t id) {
+gn_result_t thunk_unregister_link(void* host_ctx, gn_link_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->transports().unregister_transport(id);
+    return pc->kernel->links().unregister_link(id);
 }
 
 gn_result_t thunk_register_handler(void* host_ctx,
@@ -713,7 +713,7 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
                                     std::string_view scheme,
                                     std::span<const std::uint8_t> bytes) {
     if (bytes.empty()) return GN_OK;
-    auto trans = pc->kernel->transports().find_by_scheme(scheme);
+    auto trans = pc->kernel->links().find_by_scheme(scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -763,7 +763,7 @@ void drain_handshake_pending(PluginContext* pc,
                               gn_conn_id_t conn,
                               SecuritySession& session,
                               std::string_view transport_scheme) {
-    auto trans = pc->kernel->transports().find_by_scheme(transport_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         publish_kernel_disconnect(pc, conn);
         return;
@@ -1175,8 +1175,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.register_handler      = &thunk_register_handler;
     a.unregister_handler    = &thunk_unregister_handler;
 
-    a.register_transport    = &thunk_register_transport;
-    a.unregister_transport  = &thunk_unregister_transport;
+    a.register_link    = &thunk_register_link;
+    a.unregister_link  = &thunk_unregister_link;
 
     a.query_extension_checked = &thunk_query_extension_checked;
     a.register_extension      = &thunk_register_extension;

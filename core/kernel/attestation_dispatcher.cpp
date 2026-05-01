@@ -211,7 +211,7 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
         return;
     }
 
-    auto trans = kernel.transports().find_by_scheme(rec->transport_scheme);
+    auto trans = kernel.links().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) return;
 
     const gn_result_t rc = safe_call_result("transport.send",
