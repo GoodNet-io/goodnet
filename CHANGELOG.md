@@ -104,8 +104,6 @@ typed extension API.
   invariant fails the load with `GN_ERR_LIMIT_REACHED` and rolls
   the kernel state back to the prior load. Per `limits.md` §2.
 
-### Added
-
 - **Counter surface for kernel and plugin metrics** —
   `host_api->emit_counter(name)` and `iterate_counters(visitor)`
   expose a flat map of named monotonic 64-bit counters. The
@@ -594,7 +592,7 @@ typed extension API.
 
 ### Tests
 
-555 across unit, integration, scenario, and property suites.
+742 across unit, integration, scenario, and property suites.
 ASan / UBSan / TSan / clang-tidy strict-clean. The
 `ConnectionRegistry_SnapshotAndErase` suite covers the §4a
 atomicity claim (cross-shard non-deadlock and
