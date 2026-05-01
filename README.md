@@ -22,8 +22,9 @@ cadence.
 
 **The kernel does not know:**
 
-- How bits move — TCP, UDP, ICE, WebSocket, BLE, IPC are transport plugins.
-- How bytes are encrypted — Noise and TLS are security plugins.
+- How bits move — TCP, UDP, ICE, WebSocket, BLE, IPC are link plugins.
+- How bytes are encrypted — Noise (XX / IK) is the security plugin;
+  TLS sits in the link layer as a wire-byte channel.
 - What an application is — chat, files, sensors, games are handlers above.
 - Economics — relay payments, tokens, billing are policy, not kernel.
 
@@ -61,28 +62,37 @@ The kernel does not pick a use case; the SDK and plugins do.
 
 ## Status
 
-`v0.1.0` — bring-up release. The kernel core, the plugin C ABI,
-and the canonical security crypto have landed. Real transports,
-the security pipeline that drives the handshake, the NAT-traversal
-stack, and the multi-path scheduler are on the [roadmap](docs/ROADMAP.md)
-for v0.2.0 and beyond.
+Pre-release. The C ABI surface is open for reshape until the
+`v1.0.0-rc1` tag (`abi-evolution.md` §3b); after the tag every
+slot is append-only. The kernel runs end-to-end: two processes
+exchange application envelopes over a real socket through a Noise
+handshake, with backpressure, config reload, connection-event
+subscriptions and a dispatching router in between.
 
-What is in v0.1.0:
+What's in the tree today:
 
-- Kernel: connection registry, identity, handler/transport/extension
-  registries, plugin manager (`dlopen` + size-prefix vtable), service
-  resolver (Kahn topo-sort over plugin deps), signal channel, config
-  loader.
-- SDK: C ABI plugin boundary (`gn_*` types, vtables, host-API), C++
-  convenience wrappers, ABI evolution rules.
-- Crypto: full Noise XX and IK state machines on libsodium primitives —
+- **Kernel:** connection / handler / link / security / extension
+  registries, plugin manager (`dlopen` + size-prefix vtable + manifest
+  pinning), service resolver, signal channel, hot config reload, kernel
+  logger, metrics surface.
+- **SDK:** C ABI plugin boundary (`gn_*` types, size-prefix vtables,
+  host-API), C++23 convenience wrappers (`std::span`, `std::expected`,
+  `std::format`), ABI evolution rules.
+- **Crypto:** full Noise XX and IK state machines on libsodium —
   X25519, ChaCha20-Poly1305 IETF, BLAKE2b, RFC-2104 HMAC-BLAKE2b, Noise
-  HKDF; CipherState / SymmetricState / HandshakeState / TransportState.
-- Reference security plugin: `null` (loopback / debug pass-through).
-- Mandatory mesh framing: GNET protocol v1, statically linked into the
-  kernel.
-- 304 tests passing across unit, integration, and property suites.
-  ASan/UBSan/TSan wired into CI.
+  HKDF.
+- **Link plugins (`plugins/links/`):** `tcp`, `udp`, `ipc`, `ws`, `tls`.
+  Each ships as both a statically-linked archive and a dynamically-loaded
+  `.so`; the operator picks per deployment.
+- **Security plugins (`plugins/security/`):** `noise` (XX / IK), `null`
+  (loopback / IntraNode-only).
+- **Protocol layer:** GNET v1 envelope framing, statically linked into
+  the kernel.
+- **Reference handler (`plugins/handlers/`):** `heartbeat` — RTT
+  measurement through the typed extension API.
+
+Sanitiser matrix (ASan + UBSan, TSan) and strict clang-tidy are gates
+on every merge into `main`.
 
 Roadmap and version history: [`docs/ROADMAP.md`](docs/ROADMAP.md),
 [`CHANGELOG.md`](CHANGELOG.md).
@@ -132,7 +142,7 @@ nix run .#test-tsan   # ThreadSanitizer
 ├────────────────────────────────────────────────────────────┤
 │ ┄ plugins ┄  Security (Noise XX / IK / …)                 │
 ├────────────────────────────────────────────────────────────┤
-│ ┄ plugins ┄  Transports (TCP, UDP, WebSocket, IPC, BLE …) │
+│ ┄ plugins ┄  Links (TCP, UDP, WebSocket, IPC, TLS, BLE …) │
 └────────────────────────────────────────────────────────────┘
 
   Platform = kernel + SDK.   Plugins build independently against the SDK.
@@ -166,6 +176,6 @@ propagation: a plugin that interfaces with the kernel only through the
 stable C ABI in `sdk/` may carry any license — MIT, BSD, Apache 2.0,
 proprietary — and link statically or dynamically. SDK (`sdk/`) is MIT.
 Plugins are independent builds; each carries its own LICENSE file.
-Bundled-tree convention: templates and common transports are MIT,
+Bundled-tree convention: templates and common link plugins are MIT,
 original implementations with no upstream analogue are Apache 2.0.
 See [`LICENSE`](LICENSE) for the full text and rationale.
