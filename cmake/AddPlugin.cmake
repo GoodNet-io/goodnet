@@ -84,4 +84,27 @@ function(add_plugin NAME)
 
     # PIC required for SHARED on POSIX; harmless for OBJECT.
     set_target_properties(${NAME} PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    # ── Install ──────────────────────────────────────────────────────────
+    # Operators that ran `make install` on this tree get every plugin's
+    # `.so` under `${prefix}/lib/goodnet/plugins/`; the kernel's
+    # PluginManager finds them through the manifest
+    # (see `plugin-manifest.md`). OBJECT builds (static-plugin mode)
+    # skip the install — they are linked into the host binary at build
+    # time and have no standalone artefact to ship.
+    #
+    # The `LICENSE` file next to each plugin's CMakeLists.txt installs
+    # alongside the `.so` so a deployment that ships only the install
+    # tree still carries the plugin's license. Plugins authored from
+    # the bundled-tree templates are MIT or Apache-2.0; the linker
+    # exception in the kernel `LICENSE` covers the GPL boundary.
+    if(NOT GOODNET_STATIC_PLUGINS)
+        install(TARGETS ${NAME}
+                LIBRARY DESTINATION lib/goodnet/plugins)
+        if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+            install(FILES   "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+                    DESTINATION lib/goodnet/plugins
+                    RENAME      "LICENSE.${NAME}")
+        endif()
+    endif()
 endfunction()
