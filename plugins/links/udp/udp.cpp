@@ -49,23 +49,20 @@ UdpLink::~UdpLink() {
 namespace {
 void apply_udp_config(::gn::link::udp::UdpLink* self,
                       const host_api_t*                   api) noexcept {
-    if (api == nullptr || api->config_get_int64 == nullptr) return;
+    if (api == nullptr || api->config_get == nullptr) return;
     double      rate    = ::gn::link::udp::kNewConnRate;
     double      burst   = ::gn::link::udp::kNewConnBurst;
     std::size_t lru_cap = 4096;
     std::int64_t v      = 0;
-    if (api->config_get_int64(api->host_ctx,
-                                "udp.new_conn_rate", &v) == GN_OK
+    if (gn_config_get_int64(api, "udp.new_conn_rate", &v) == GN_OK
         && v > 0) {
         rate = static_cast<double>(v);
     }
-    if (api->config_get_int64(api->host_ctx,
-                                "udp.new_conn_burst", &v) == GN_OK
+    if (gn_config_get_int64(api, "udp.new_conn_burst", &v) == GN_OK
         && v > 0) {
         burst = static_cast<double>(v);
     }
-    if (api->config_get_int64(api->host_ctx,
-                                "udp.new_conn_lru_cap", &v) == GN_OK
+    if (gn_config_get_int64(api, "udp.new_conn_lru_cap", &v) == GN_OK
         && v > 0) {
         lru_cap = static_cast<std::size_t>(v);
     }

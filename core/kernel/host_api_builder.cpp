@@ -554,112 +554,89 @@ const gn_limits_t* thunk_limits(void* host_ctx) {
     return &pc->kernel->limits();
 }
 
-gn_result_t thunk_config_get_string(void* host_ctx,
-                                    const char* key,
-                                    char** out_str,
-                                    void (**out_free)(char*)) {
-    if (!host_ctx || !key || !out_str || !out_free) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-
-    std::string buf;
-    const auto rc = pc->kernel->config().get_string(key, buf);
-    if (rc != GN_OK) return rc;
-
-    /// Plain malloc'd C string the caller frees through *out_free.
-    auto* heap = static_cast<char*>(std::malloc(buf.size() + 1));
-    if (!heap) return GN_ERR_OUT_OF_MEMORY;
-    std::memcpy(heap, buf.data(), buf.size());
-    heap[buf.size()] = '\0';
-
-    *out_str  = heap;
-    *out_free = +[](char* p) { std::free(p); };
-    return GN_OK;
-}
-
-gn_result_t thunk_config_get_int64(void* host_ctx,
-                                   const char* key,
-                                   int64_t* out_value) {
+gn_result_t thunk_config_get(void* host_ctx,
+                              const char* key,
+                              gn_config_value_type_t type,
+                              std::size_t index,
+                              void* out_value,
+                              void (**out_free)(void*)) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    std::int64_t v = 0;
-    const auto rc = pc->kernel->config().get_int64(key, v);
-    if (rc != GN_OK) return rc;
-    *out_value = v;
-    return GN_OK;
-}
 
-gn_result_t thunk_config_get_bool(void* host_ctx,
-                                   const char* key,
-                                   int32_t* out_value) {
-    if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    bool v = false;
-    const auto rc = pc->kernel->config().get_bool(key, v);
-    if (rc != GN_OK) return rc;
-    *out_value = v ? 1 : 0;
-    return GN_OK;
-}
+    /// `out_free` is meaningful only for STRING reads. Anything else
+    /// must pass NULL — otherwise the plugin author confused the
+    /// shape and would observe an undefined free callback after a
+    /// non-STRING read.
+    const bool is_string =
+        (type == GN_CONFIG_VALUE_STRING);
+    if (is_string && !out_free)  return GN_ERR_NULL_ARG;
+    if (!is_string && out_free)  return GN_ERR_NULL_ARG;
 
-gn_result_t thunk_config_get_double(void* host_ctx,
-                                     const char* key,
-                                     double* out_value) {
-    if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->config().get_double(key, *out_value);
-}
+    /// Index sentinel rules: scalar / ARRAY_SIZE require
+    /// GN_CONFIG_NO_INDEX; INT64 and STRING accept either form
+    /// (sentinel = scalar lookup, real index = array element).
+    const bool is_array_size =
+        (type == GN_CONFIG_VALUE_ARRAY_SIZE);
+    const bool is_indexable =
+        (type == GN_CONFIG_VALUE_INT64) ||
+        (type == GN_CONFIG_VALUE_STRING);
+    if (is_array_size && index != GN_CONFIG_NO_INDEX) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    if (!is_indexable && !is_array_size && index != GN_CONFIG_NO_INDEX) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
 
-gn_result_t thunk_config_get_array_size(void* host_ctx,
-                                         const char* key,
-                                         size_t* out_size) {
-    if (!host_ctx || !key || !out_size) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    std::size_t v = 0;
-    const auto rc = pc->kernel->config().get_array_size(key, v);
-    if (rc != GN_OK) return rc;
-    *out_size = v;
-    return GN_OK;
-}
+    auto& cfg = pc->kernel->config();
 
-gn_result_t thunk_config_get_array_string(void* host_ctx,
-                                           const char* key,
-                                           size_t index,
-                                           char** out_str,
-                                           void (**out_free)(char*)) {
-    if (!host_ctx || !key || !out_str || !out_free) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+    switch (type) {
+    case GN_CONFIG_VALUE_INT64: {
+        std::int64_t v = 0;
+        const auto rc = (index == GN_CONFIG_NO_INDEX)
+            ? cfg.get_int64(key, v)
+            : cfg.get_array_int64(key, index, v);
+        if (rc != GN_OK) return rc;
+        *static_cast<std::int64_t*>(out_value) = v;
+        return GN_OK;
+    }
+    case GN_CONFIG_VALUE_BOOL: {
+        bool v = false;
+        const auto rc = cfg.get_bool(key, v);
+        if (rc != GN_OK) return rc;
+        *static_cast<std::int32_t*>(out_value) = v ? 1 : 0;
+        return GN_OK;
+    }
+    case GN_CONFIG_VALUE_DOUBLE: {
+        return cfg.get_double(key, *static_cast<double*>(out_value));
+    }
+    case GN_CONFIG_VALUE_STRING: {
+        std::string buf;
+        const auto rc = (index == GN_CONFIG_NO_INDEX)
+            ? cfg.get_string(key, buf)
+            : cfg.get_array_string(key, index, buf);
+        if (rc != GN_OK) return rc;
 
-    std::string buf;
-    const auto rc = pc->kernel->config().get_array_string(key, index, buf);
-    if (rc != GN_OK) return rc;
+        /// Plain malloc'd C string the caller frees through
+        /// *out_free. Cast to `char*` discards the void* tag.
+        auto* heap = static_cast<char*>(std::malloc(buf.size() + 1));
+        if (!heap) return GN_ERR_OUT_OF_MEMORY;
+        std::memcpy(heap, buf.data(), buf.size());
+        heap[buf.size()] = '\0';
 
-    auto* heap = static_cast<char*>(std::malloc(buf.size() + 1));
-    if (!heap) return GN_ERR_OUT_OF_MEMORY;
-    std::memcpy(heap, buf.data(), buf.size());
-    heap[buf.size()] = '\0';
-
-    *out_str  = heap;
-    *out_free = +[](char* p) { std::free(p); };
-    return GN_OK;
-}
-
-gn_result_t thunk_config_get_array_int64(void* host_ctx,
-                                          const char* key,
-                                          size_t index,
-                                          int64_t* out_value) {
-    if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    std::int64_t v = 0;
-    const auto rc = pc->kernel->config().get_array_int64(key, index, v);
-    if (rc != GN_OK) return rc;
-    *out_value = v;
-    return GN_OK;
+        *static_cast<char**>(out_value) = heap;
+        *out_free = +[](void* p) { std::free(p); };
+        return GN_OK;
+    }
+    case GN_CONFIG_VALUE_ARRAY_SIZE: {
+        std::size_t v = 0;
+        const auto rc = cfg.get_array_size(key, v);
+        if (rc != GN_OK) return rc;
+        *static_cast<std::size_t*>(out_value) = v;
+        return GN_OK;
+    }
+    }
+    return GN_ERR_INVALID_ENVELOPE;
 }
 
 [[nodiscard]] ::spdlog::level::level_enum
@@ -1195,13 +1172,7 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.log.should_log        = &thunk_log_should_log;
     a.log.emit              = &thunk_log_emit;
 
-    a.config_get_string     = &thunk_config_get_string;
-    a.config_get_int64      = &thunk_config_get_int64;
-    a.config_get_bool       = &thunk_config_get_bool;
-    a.config_get_double     = &thunk_config_get_double;
-    a.config_get_array_size = &thunk_config_get_array_size;
-    a.config_get_array_string = &thunk_config_get_array_string;
-    a.config_get_array_int64 = &thunk_config_get_array_int64;
+    a.config_get            = &thunk_config_get;
 
     a.notify_connect        = &thunk_notify_connect;
     a.notify_inbound_bytes  = &thunk_notify_inbound_bytes;
