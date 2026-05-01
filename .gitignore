@@ -13,6 +13,10 @@
 !LICENSE
 !README.md
 !CHANGELOG.md
+!SECURITY.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!GOVERNANCE.md
 
 # Git hooks (opt-in via `nix run .#install-hooks`)
 !.githooks/*
