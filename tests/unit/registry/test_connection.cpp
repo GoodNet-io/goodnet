@@ -718,6 +718,37 @@ TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
     if (fetched.has_value()) EXPECT_EQ(*fetched, device);
 }
 
+TEST(ConnectionRegistry_PinDevicePk, ConcurrentDifferentDeviceLeavesOneWinner) {
+    /// Two threads pin the same `peer_pk` with different
+    /// `device_pk` values simultaneously. Exactly one returns
+    /// `GN_OK`; the other must receive `GN_ERR_INVALID_ENVELOPE`,
+    /// which the dispatcher treats as an identity-change attempt
+    /// and translates into a peer disconnect.
+    ConnectionRegistry reg;
+    const auto peer = make_pk(42);
+    const auto dev_a = make_pk(1);
+    const auto dev_b = make_pk(2);
+
+    constexpr int rounds = 64;
+    for (int round = 0; round < rounds; ++round) {
+        ConnectionRegistry r;
+        std::atomic<int> ok_count{0};
+        std::atomic<int> reject_count{0};
+        auto worker = [&](const PublicKey& dev) {
+            const auto rc = r.pin_device_pk(peer, dev);
+            if (rc == GN_OK) ok_count.fetch_add(1);
+            else if (rc == GN_ERR_INVALID_ENVELOPE) reject_count.fetch_add(1);
+        };
+        std::thread t1([&] { worker(dev_a); });
+        std::thread t2([&] { worker(dev_b); });
+        t1.join();
+        t2.join();
+        EXPECT_EQ(ok_count.load(), 1) << "round " << round;
+        EXPECT_EQ(reject_count.load(), 1) << "round " << round;
+    }
+    (void)reg;
+}
+
 TEST(ConnectionRegistry_PinDevicePk, ClearRemovesPin) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
