@@ -1,7 +1,8 @@
 /// @file   core/kernel/timer_registry.hpp
-/// @brief  Kernel-owned service executor — backs the `set_timer`,
-///         `cancel_timer`, and `post_to_executor` host_api slots
-///         per `docs/contracts/timer.md`.
+/// @brief  Kernel-owned service executor — backs the `set_timer`
+///         and `cancel_timer` host_api slots per
+///         `docs/contracts/timer.md`. Fire-and-forget work uses
+///         `set_timer(delay_ms = 0, …, out_id = NULL)`.
 ///
 /// The registry owns one `asio::io_context` and the worker thread
 /// that drives it. The thread serialises every task and timer
@@ -52,8 +53,10 @@ public:
     /// @p anchor is the calling plugin's lifetime anchor
     /// (`PluginContext::plugin_anchor`); a null anchor disables
     /// the lifetime gate, which is the in-tree-test convention.
-    /// @return `GN_OK` and `*out_id` on success;
-    ///         `GN_ERR_NULL_ARG` on null `fn` / `out_id`;
+    /// @p out_id is optional — pass `nullptr` for fire-and-forget
+    /// work that does not need a cancel handle.
+    /// @return `GN_OK` (and `*out_id` written when `out_id != nullptr`);
+    ///         `GN_ERR_NULL_ARG` on null `fn`;
     ///         `GN_ERR_LIMIT_REACHED` on quota exhaustion.
     [[nodiscard]] gn_result_t set_timer(std::uint32_t  delay_ms,
                                          gn_task_fn_t   fn,
@@ -68,7 +71,10 @@ public:
 
     /// Post a task to the service executor. Same lifetime rules as
     /// `set_timer`: anchor is observed weakly and a dropped plugin
-    /// silently skips the dispatch.
+    /// silently skips the dispatch. Equivalent to
+    /// `set_timer(delay_ms = 0, fn, user_data, anchor, out_id = nullptr)`;
+    /// remains as a kernel-internal helper for kernel components
+    /// that schedule serialised work outside the host_api surface.
     [[nodiscard]] gn_result_t post(gn_task_fn_t fn,
                                     void*        user_data,
                                     const std::shared_ptr<PluginAnchor>& anchor) noexcept;
