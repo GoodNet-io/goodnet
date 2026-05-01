@@ -120,7 +120,7 @@ TEST(HandlerAnchor, LookupSnapshotInheritsAnchor) {
 
 // ─── LinkRegistry: same shape ──────────────────────────────────
 
-TEST(TransportAnchor, EntryHoldsAnchorThroughLookup) {
+TEST(LinkAnchor, EntryHoldsAnchorThroughLookup) {
     LinkRegistry reg;
 
     auto anchor = std::make_shared<int>(0);

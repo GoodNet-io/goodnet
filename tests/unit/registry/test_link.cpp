@@ -34,7 +34,7 @@ const gn_link_vtable_t* make_dummy_vtable() {
 
 // ─── argument validation ────────────────────────────────────────────
 
-TEST(TransportRegistry_Args, RejectsEmptyScheme) {
+TEST(LinkRegistry_Args, RejectsEmptyScheme) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
     EXPECT_EQ(r.register_link("",
@@ -45,14 +45,14 @@ TEST(TransportRegistry_Args, RejectsEmptyScheme) {
     EXPECT_EQ(r.size(), 0u);
 }
 
-TEST(TransportRegistry_Args, RejectsNullVtable) {
+TEST(LinkRegistry_Args, RejectsNullVtable) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
     EXPECT_EQ(r.register_link("tcp", nullptr, nullptr, &id),
               GN_ERR_NULL_ARG);
 }
 
-TEST(TransportRegistry_Args, RejectsNullOutId) {
+TEST(LinkRegistry_Args, RejectsNullOutId) {
     LinkRegistry r;
     EXPECT_EQ(r.register_link("tcp", make_dummy_vtable(),
                                     nullptr, nullptr),
@@ -60,7 +60,7 @@ TEST(TransportRegistry_Args, RejectsNullOutId) {
     EXPECT_EQ(r.size(), 0u);
 }
 
-TEST(TransportRegistry_Args, UnregisterInvalidIdRejected) {
+TEST(LinkRegistry_Args, UnregisterInvalidIdRejected) {
     LinkRegistry r;
     EXPECT_EQ(r.unregister_link(GN_INVALID_ID),
               GN_ERR_INVALID_ENVELOPE);
@@ -68,7 +68,7 @@ TEST(TransportRegistry_Args, UnregisterInvalidIdRejected) {
 
 // ─── register / find round-trip ─────────────────────────────────────
 
-TEST(TransportRegistry_Register, RoundTripById) {
+TEST(LinkRegistry_Register, RoundTripById) {
     LinkRegistry r;
     int dummy_self = 0;
     gn_link_id_t id = GN_INVALID_ID;
@@ -89,7 +89,7 @@ TEST(TransportRegistry_Register, RoundTripById) {
     }
 }
 
-TEST(TransportRegistry_Register, RoundTripByScheme) {
+TEST(LinkRegistry_Register, RoundTripByScheme) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
     ASSERT_EQ(r.register_link("udp",
@@ -104,7 +104,7 @@ TEST(TransportRegistry_Register, RoundTripByScheme) {
     }
 }
 
-TEST(TransportRegistry_Register, DuplicateSchemeRejected) {
+TEST(LinkRegistry_Register, DuplicateSchemeRejected) {
     LinkRegistry r;
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
@@ -126,7 +126,7 @@ TEST(TransportRegistry_Register, DuplicateSchemeRejected) {
     }
 }
 
-TEST(TransportRegistry_Register, DistinctSchemesGetDistinctIds) {
+TEST(LinkRegistry_Register, DistinctSchemesGetDistinctIds) {
     LinkRegistry r;
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
@@ -140,7 +140,7 @@ TEST(TransportRegistry_Register, DistinctSchemesGetDistinctIds) {
 
 // ─── miss paths ─────────────────────────────────────────────────────
 
-TEST(TransportRegistry_Find, MissReturnsNullopt) {
+TEST(LinkRegistry_Find, MissReturnsNullopt) {
     LinkRegistry r;
     EXPECT_FALSE(r.find_by_scheme("tcp").has_value());
     EXPECT_FALSE(r.find_by_id(static_cast<gn_link_id_t>(42)).has_value());
@@ -148,7 +148,7 @@ TEST(TransportRegistry_Find, MissReturnsNullopt) {
 
 // ─── unregister ─────────────────────────────────────────────────────
 
-TEST(TransportRegistry_Unregister, RemovesEntry) {
+TEST(LinkRegistry_Unregister, RemovesEntry) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
     ASSERT_EQ(r.register_link("tcp", make_dummy_vtable(),
@@ -159,14 +159,14 @@ TEST(TransportRegistry_Unregister, RemovesEntry) {
     EXPECT_FALSE(r.find_by_scheme("tcp").has_value());
 }
 
-TEST(TransportRegistry_Unregister, NonExistentReturnsNotFound) {
+TEST(LinkRegistry_Unregister, NonExistentReturnsNotFound) {
     LinkRegistry r;
     /// Some random plausible id with a non-zero pattern.
     EXPECT_EQ(r.unregister_link(static_cast<gn_link_id_t>(99)),
               GN_ERR_NOT_FOUND);
 }
 
-TEST(TransportRegistry_Unregister, FreesSchemeForReuse) {
+TEST(LinkRegistry_Unregister, FreesSchemeForReuse) {
     LinkRegistry r;
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
@@ -182,7 +182,7 @@ TEST(TransportRegistry_Unregister, FreesSchemeForReuse) {
 /// Hammer the registry from multiple threads doing distinct-scheme
 /// register + unregister + find. Verifies deadlock-free claim and the
 /// scheme-uniqueness rule under contention.
-TEST(TransportRegistry_Concurrency, FourThreadsRegisterUnregister) {
+TEST(LinkRegistry_Concurrency, FourThreadsRegisterUnregister) {
     constexpr int kThreads   = 4;
     constexpr int kPerThread = 128;
     LinkRegistry r;
@@ -245,7 +245,7 @@ TEST(TransportRegistry_Concurrency, FourThreadsRegisterUnregister) {
 
 // ─── §3a vtable api_size validation ─────────────────────────────────
 
-TEST(TransportRegistry_VtableApiSize, RejectsZeroApiSize) {
+TEST(LinkRegistry_VtableApiSize, RejectsZeroApiSize) {
     /// `abi-evolution.md` §3a: a vtable that declares an api_size
     /// smaller than the kernel's known minimum is from an SDK older
     /// than the slots the kernel intends to call. Reject before any
@@ -259,7 +259,7 @@ TEST(TransportRegistry_VtableApiSize, RejectsZeroApiSize) {
     EXPECT_EQ(r.size(), 0u);
 }
 
-TEST(TransportRegistry_VtableApiSize, RejectsTruncatedVtable) {
+TEST(LinkRegistry_VtableApiSize, RejectsTruncatedVtable) {
     LinkRegistry r;
     gn_link_vtable_t vt{};
     /// Producer claims it is older than even the minimum kernel
@@ -272,7 +272,7 @@ TEST(TransportRegistry_VtableApiSize, RejectsTruncatedVtable) {
     EXPECT_EQ(id, GN_INVALID_ID);
 }
 
-TEST(TransportRegistry_VtableApiSize, AcceptsExactlyMinimumApiSize) {
+TEST(LinkRegistry_VtableApiSize, AcceptsExactlyMinimumApiSize) {
     LinkRegistry r;
     gn_link_vtable_t vt{};
     vt.api_size = sizeof(gn_link_vtable_t);
