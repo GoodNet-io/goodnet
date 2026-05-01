@@ -170,14 +170,24 @@ typedef enum gn_register_kind_e {
  *
  * Begins with @ref api_size for size-prefix evolution per
  * `abi-evolution.md` §3. New fields land before `_reserved`.
+ *
+ * **Zero-initialisation contract** (`abi-evolution.md` §4): the
+ * caller MUST zero `_pad` and `_reserved` before populating named
+ * fields. C++ code achieves this with `gn_register_meta_t mt{};`
+ * (value-init); C code uses `memset(&mt, 0, sizeof(mt))` or per-field
+ * assignment that hits every byte. The kernel may read these bytes as
+ * a contiguous range for ABI evolution / hashing / equality checks; a
+ * non-zero `_pad` byte from a partially-initialised struct will
+ * silently break those reads. Per-field assignment without an explicit
+ * zero pass leaks stack garbage and is forbidden.
  */
 typedef struct gn_register_meta_s {
     uint32_t      api_size;        /**< sizeof(gn_register_meta_t) */
     const char*   name;            /**< @borrowed for the call */
     uint32_t      msg_id;          /**< HANDLER only; zero otherwise */
     uint8_t       priority;        /**< HANDLER only; zero otherwise */
-    uint8_t       _pad[3];
-    void*         _reserved[4];
+    uint8_t       _pad[3];         /**< MUST be zero; see contract above */
+    void*         _reserved[4];    /**< MUST be zero; see contract above */
 } gn_register_meta_t;
 
 /**
