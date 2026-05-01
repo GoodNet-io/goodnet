@@ -1,130 +1,104 @@
 # Roadmap
 
-A statement of intent. Versions land when the goals are met, not on a
-calendar — every release ships a tag and a CHANGELOG entry; nothing
-ships before the contracts that govern it.
+A statement of direction. The platform ships when its goals are met,
+not on a calendar; every release carries a tag and a CHANGELOG entry,
+and nothing ships before the contracts that govern it.
+
+The state of the tree right now lives in [`README.md`](../README.md)
+under "Status" and in [`CHANGELOG.md`](../CHANGELOG.md). The list
+below is the order of work that follows.
 
 ---
 
-## v0.1.0 — Bring-up (current)
+## Reachability
 
-The kernel core, the plugin C ABI, and the canonical security
-crypto. Enough surface to write plugins against; not yet enough to
-move bytes between two nodes.
+A pair of nodes finds each other and sustains a path even when neither
+side has a public address.
 
-| Area | Status |
-|---|---|
-| Kernel registries (connection / handler / transport / security / extension) | shipped |
-| Plugin manager — `dlopen` + size-prefix vtable + service resolver | shipped |
-| Identity — Ed25519 keypair, two-key derivation, attestation, NodeIdentity | shipped |
-| Config loader — JSON, schema validation | shipped |
-| Signal channel — typed pub/sub `SignalChannel<Event>` | shipped |
-| GNET protocol v1 — mandatory mesh framing, static-linked into kernel | shipped |
-| Null security provider — loopback pass-through | shipped |
-| Noise crypto state machines — XX + IK on libsodium primitives | shipped |
-| Kernel security pipeline — per-connection SecuritySession + Sessions registry, drives handshake_open through encrypt/decrypt | shipped |
-| Noise plugin `.so` wrapper — `gn_security_provider_vtable` bound to the XX state machines, dlopen-tested with two-session handshake | shipped |
-| Linking exception license model | shipped |
-| CI/CD — ASan / UBSan / TSan / clang-tidy strict / nix flake check | shipped |
+- **NAT-traversal pipeline** — AutoNAT-style mapping classification,
+  relay candidate selection. Builds on the `gn.heartbeat` extension
+  (RTT measurement) by adding a NAT-mapping classifier on top.
+- **Multi-path scheduler** — TCP, UDP, WebSocket and TLS in parallel
+  per connection so a path failure switches over without dropping the
+  session.
+- **Directed relay → direct upgrade** — connection opens through a
+  relay, upgrades to a direct path once both ends have discovered each
+  other.
 
-Tests: 319 passing across unit, integration, scenario, property suites.
+These ride on top of the existing link / security / protocol layers
+through plugins; the kernel does not grow new surfaces.
 
 ---
 
-## v0.2.0 — Two nodes talk
+## Address routing
 
-Goal: a real handshake between two processes over a real socket. Once
-this lands, every later layer can rely on a working secured byte pipe.
+Messages reach a peer by its public key alone, with bounded hop count
+regardless of cluster size.
 
-| Area | Plan |
-|---|---|
-| URI parser foundation | shipped — `sdk/cpp/uri.hpp` (header-only, no libsodium) + `core/util/uri_query.hpp` (libsodium peer-pk decode); 33 unit + property tests; contract `docs/contracts/uri.md` |
-| Kernel injection API | shipped — `host_api->inject_external_message` + `inject_frame` per `host-api.md` §8; per-source `RateLimiterMap` with `Clock`-injection token bucket per `clock.md` §2 |
-| TCP transport plugin | shipped — Asio with strand-per-session writes (`link.md` §4 single-writer), idempotent `shutdown_.exchange(true)`, IPv6 wildcard `IPV6_V6ONLY=false` for dual-stack listens; OBJECT lib for in-tree tests + `goodnet_link_tcp.so` plugin entry |
-| IPC transport plugin | shipped — Asio `local::stream_protocol` with strand-per-session writes (mirrors TCP shape per `link.md` §4); listen `chmod 0700` on the parent directory before bind to close the TR-C6 TOCTOU window, `unlink` only when the existing path is a socket; declares `GN_TRUST_LOOPBACK`; URI form `ipc:///path/to/sock` per `uri.md` is_path_style; ASan + TSan clean |
-| UDP transport plugin | shipped — Asio `udp::socket` with single strand for both send and recv (datagram transports cannot serialise with per-session strands), MTU-gated send path with all-or-nothing batch precheck, per-source `RateLimiterMap` on new-conn allocation, `notify_disconnect` on every released peer; URI form `udp://host:port` per `uri.md`, `connect`-side rejects port 0 per §5; ASan + TSan + clang-tidy strict clean |
-| Raw protocol plugin | shipped — `plugins/protocols/raw/` opaque-payload `IProtocolLayer` for simulation harness, PCAP replay, and foreign-protocol passthrough; trust-gated to `LOOPBACK` / `INTRA_NODE` per `security-trust.md` §4; static-link alternative to `gnet-v1` |
-| Heartbeat handler + `gn.heartbeat` extension | shipped — 88-byte PING/PONG payload with timestamp echo, per-peer RTT under injected clock per `clock.md` §2, observed-address reflection (STUN-on-the-wire) sourced from `host_api->get_endpoint`; extension `gn.heartbeat` v1.0.0 exports `get_stats` / `get_rtt` / `get_observed_address` |
-| End-to-end loopback test | shipped — two kernels with their own NodeIdentity + TcpLink + Noise provider drive a real Noise XX handshake over a 127.0.0.1 socket and reach Transport phase with matching channel-binding hashes; ASan/TSan clean |
+- **Kademlia-style DHT** — XOR-distance routing table with k-buckets,
+  authored as a handler plugin.
+- **Address-based forwarding** — `find_node` and `route_to_pk`
+  dispatched through the handler API.
+
+The kernel-side prerequisites are in tree: `receiver_pk` in the
+envelope, the timer / executor surface, the connection-event observer.
+Routing itself is a handler-side concern.
 
 ---
 
-## v0.3.0 — Reachability
+## Persistence
 
-Goal: nodes find each other and sustain a path even when neither side
-has a public IP.
+Nodes that go offline keep their state and resume cleanly.
 
-| Area | Plan |
-|---|---|
-| NAT pipeline | heartbeat keepalive, AutoNAT-style classification, relay candidates |
-| Multi-path scheduler | TCP + ICE simultaneously, sub-50ms failover budget |
-| Directed relay → direct upgrade | connection starts through a relay, upgrades to direct in ~7s once a path is found |
-| AutoNAT classification | mapping behaviour detected over a small probe budget |
+- **KV storage handler** — per-key TTL, signed updates.
+- **Gossip sync handler** — reconciliation between known peers.
+- **Offline outbound queue** — envelopes survive a process restart.
 
 ---
 
-## v0.4.0 — Address routing
+## Stable platform
 
-Goal: messages reach a peer by its public key alone, with bounded hop
-count regardless of cluster size.
+A frozen kernel ABI, a documented operator surface, an audited
+security boundary.
 
-| Area | Plan |
-|---|---|
-| Kademlia-style DHT | XOR-distance routing table with k-buckets |
-| Address-based forwarding | `find_node` and `route_to_pk` in handler space |
-| Bucket sizing | targeting around 4.6 hops at one million nodes; 400 entries per routing table |
-
----
-
-## v0.5.0 — Persistence
-
-Goal: nodes that go offline keep their state and resume cleanly.
-
-| Area | Plan |
-|---|---|
-| Storage handler | KV store with per-key TTL and signed updates |
-| Sync handler | gossip-driven reconciliation between known peers |
-| Offline queue | outbound envelopes survive a restart |
+- Ship the tag that closes the reshape window in
+  [`docs/contracts/abi-evolution.md`](contracts/abi-evolution.md) §3b
+  and binds the append-only rule of §3 without exception.
+- Per-language SDK guides — proposed.
+- Operator how-tos — proposed.
+- Observability — the counter surface ships through
+  `host_api->emit_counter` / `iterate_counters` per
+  [`metrics.md`](contracts/metrics.md); Prometheus and OTLP exporters
+  that consume it live as plugins, not kernel code.
 
 ---
 
-## v1.0.0 — Stable platform
+## Cross-cutting
 
-Goal: a frozen kernel ABI, a documented operator surface, observability
-hooks, and an audited security boundary.
+Tracked outside the four directions above; no version gates them.
 
-- Frozen `host_api_t` size for v1.x
-- MetricsExporter (Prometheus / OTLP) as a kernel-internal extension
-- Auditable `--allow-null-untrusted` flag with documented threat model
-- Operator manual in `docs/recipes/`
-- Per-language SDK guides in `docs/impl/`
-
----
-
-## Cross-cutting work
-
-These run in parallel with the milestones above; no version gates them.
-
-- **Documentation per language** — `docs/impl/cpp/`, `docs/impl/rust/`,
-  `docs/impl/python/`. The contracts in `docs/contracts/` are
-  language-neutral; per-language guides describe the idioms.
-- **Plugin templates** — scaffolds in `templates/handler`,
-  `templates/transport`, `templates/security`, `templates/protocol`.
-- **Fuzz harness** — libFuzzer targets for the protocol layer and the
-  Noise wire format.
-- **Coverage gating** — lcov in CI with a percentage floor on each
-  pull request.
+- **Fuzz harness** — libFuzzer targets for the GNET protocol layer,
+  the Noise wire format, and the capability TLV codec.
+- **Coverage gating** — line coverage floor enforced on every pull
+  request.
+- **Plugin templates and scaffolder** — one-line generator for
+  handler, link, security, and protocol plugin skeletons.
+- **Test vectors** — byte-precise fixtures for every wire format
+  shipped in the tree, so a non-C reimplementation can prove
+  compatibility without reading kernel code.
 
 ---
 
-## What is **not** on the roadmap
+## Non-goals
 
-The following are explicit non-goals; the platform is built so these
-remain plugin-side concerns and the kernel does not grow them:
+The following remain plugin-side concerns; the kernel does not grow
+them:
 
-- Kernel-level economics — token mechanics, relay payments, marketplace.
-- Application protocols — file sync, chat, voice. They are handlers,
-  not kernel code.
-- Hardcoded trust roots — there is no certificate authority. Identity
-  is Ed25519 to public keys.
-- Centralised discovery service — the DHT is the discovery surface.
+- **Kernel-level economics** — token mechanics, relay payments,
+  marketplace policy.
+- **Application protocols** — file sync, chat, voice. They are
+  handlers, not kernel code.
+- **Hardcoded trust roots** — there is no certificate authority.
+  Identity is the Ed25519 public key.
+- **Centralised discovery service** — a DHT plugin is the discovery
+  surface.
