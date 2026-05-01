@@ -123,12 +123,18 @@ the start of teardown and `dlclose`:
 3. Cancel still-pending timers and posted tasks for this anchor so the
    drain wait is not extended by entries the plugin did not cooperatively
    cancel itself (`timer.md` §4 #3).
-4. `gn_plugin_shutdown` — plugin's `self` is destroyed.
-5. Manager promotes its strong ref to a weak observer and drops the
+4. Manager promotes its strong ref to a weak observer and drops the
    ref, leaving only in-flight dispatch snapshots and not-yet-released
    gate guards holding anchors.
-6. Wait until the weak observer reports the sentinel has expired
+5. Wait until the weak observer reports the sentinel has expired
    (bounded; default 1s).
+6. `gn_plugin_shutdown` — plugin's `self` is destroyed. **The drain
+   wait in step 5 must complete before this call.** A callback that
+   captured `user_data` derived from the plugin's `self` (a typical
+   pattern for timer fires and posted tasks) dereferences live state
+   throughout step 5; running `gn_plugin_shutdown` while such a
+   callback is in flight would free `self` while `user_data` is still
+   read by a gate-protected dispatch.
 7. `dlclose` — safe; no snapshot is dereferencing plugin .text and no
    async callback is in plugin code.
 
