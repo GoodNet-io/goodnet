@@ -485,8 +485,19 @@ typedef struct host_api_s {
      */
     int32_t (*is_shutdown_requested)(void* host_ctx);
 
-    /* ── Reserved for future extension ─────────────────────────────────── */
-
+    /* ── Reserved for future extension ───────────────────────────────────
+     *
+     * The kernel zero-initialises `_reserved` before exposing
+     * `host_api_t` to a plugin. A plugin that copies `host_api_t` by
+     * value (typically not done; the slot is `@borrowed` for the plugin
+     * lifetime) MUST zero the field on copy.
+     *
+     * Per `abi-evolution.md` §4: the producer zero-initialises every
+     * `_reserved` array on every value-type struct in this SDK; the
+     * consumer treats unknown reserved contents as undefined and never
+     * reads them. New fields are added by promoting a slot to a named
+     * field, never by reusing existing reserved bytes.
+     */
     void* _reserved[8];
 } host_api_t;
 

@@ -186,9 +186,16 @@ typedef struct gn_message_s {
 
 Rules:
 
-- `_reserved` is the **last** field of the struct.
-- Producer **must** zero-initialise. Kernel asserts on every inbound
-  copy.
+- `_reserved` is the **last** field of the struct. Where a struct
+  carries an internal `_pad[N]` (e.g. `gn_register_meta_t::_pad[3]`
+  bridging the alignment gap before `_reserved`), the same
+  zero-initialisation rule applies to those bytes.
+- Producer **must** zero-initialise. C++ uses value-init
+  (`T x{}`); C uses `memset(&x, 0, sizeof(x))`. Per-field assignment
+  alone is forbidden — it leaves padding and reserved bytes
+  carrying stack garbage and breaks any kernel-side hashing /
+  memcmp / block-copy that treats the struct as a contiguous
+  range. Kernel asserts on every inbound copy.
 - Consumer of an unfamiliar version **must** ignore unknown reserved
   contents. Reading them invites undefined behaviour.
 - New fields are added by **promoting** a slot — `_reserved[0]` becomes
