@@ -159,7 +159,7 @@ TEST(TransportRegistry_Unregister, RemovesEntry) {
     EXPECT_FALSE(r.find_by_scheme("tcp").has_value());
 }
 
-TEST(TransportRegistry_Unregister, NonExistentReturnsUnknownReceiver) {
+TEST(TransportRegistry_Unregister, NonExistentReturnsNotFound) {
     TransportRegistry r;
     /// Some random plausible id with a non-zero pattern.
     EXPECT_EQ(r.unregister_transport(static_cast<gn_transport_id_t>(99)),

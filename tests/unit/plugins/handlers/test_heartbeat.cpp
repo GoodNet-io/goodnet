@@ -291,7 +291,7 @@ TEST(Heartbeat, MalformedPayloadLeavesNoState) {
 
 TEST(Heartbeat, UnknownSenderRejected) {
     StubHost host;
-    /// No peer entries — find_conn_by_pk returns UNKNOWN_RECEIVER.
+    /// No peer entries — find_conn_by_pk returns NOT_FOUND.
     auto api = make_stub_api(host);
     MockClock clock;
 

@@ -61,7 +61,7 @@ TEST(ConfigConcurrency, ReloadWhileReadersActive) {
 
     Config c;
     /// Seed with the first candidate so readers never see a missing
-    /// key on entry — `get_int64` would return UNKNOWN_RECEIVER on a
+    /// key on entry — `get_int64` would return NOT_FOUND on a
     /// fresh default-constructed Config because the limits block is
     /// only populated through `load_json`, not through defaults.
     ASSERT_EQ(c.load_json(make_int_json(kCandidates[0])), GN_OK);

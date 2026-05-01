@@ -210,7 +210,7 @@ TEST(ConnectionRegistry_Erase, RemovesFromAllIndexes) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
-TEST(ConnectionRegistry_Erase, NonExistentReturnsUnknownReceiver) {
+TEST(ConnectionRegistry_Erase, NonExistentReturnsNotFound) {
     ConnectionRegistry reg;
     const gn_conn_id_t id = reg.alloc_id();
     EXPECT_EQ(reg.erase_with_index(id), GN_ERR_NOT_FOUND);
