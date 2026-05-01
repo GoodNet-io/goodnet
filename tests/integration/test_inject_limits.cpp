@@ -1,7 +1,7 @@
 /// @file   tests/integration/test_inject_limits.cpp
 /// @brief  Per-source rate limiter on the host_api inject paths.
 ///
-/// Drives `inject_external_message` and `inject_frame` through the
+/// Drives `inject(LAYER_MESSAGE)` and `inject(LAYER_FRAME)` through the
 /// host_api thunks and verifies that the kernel's `inject_rate_limiter`
 /// (per `host-api.md` §8) refuses traffic past the bucket budget with
 /// `GN_ERR_LIMIT_REACHED`. The bucket is reconfigured to a tight,
@@ -103,7 +103,7 @@ make_broadcast_frame(GnetProtocol&     proto,
 
 }  // namespace
 
-// ── inject_external_message ────────────────────────────────────────
+// ── inject (LAYER_MESSAGE) ────────────────────────────────────────
 
 TEST(InjectLimits, MessageInjectionHitsRateLimiter) {
     InjectHarness h;
@@ -120,26 +120,26 @@ TEST(InjectLimits, MessageInjectionHitsRateLimiter) {
     const std::uint8_t payload[] = {0x01, 0x02, 0x03};
     constexpr std::uint32_t kMsgId = 0x77;
 
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
                                              kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
                                              kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
                                              kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
 
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
                                              kMsgId,
                                              payload, sizeof(payload)),
               GN_ERR_LIMIT_REACHED);
 }
 
-// ── inject_frame ───────────────────────────────────────────────────
+// ── inject (LAYER_FRAME) ───────────────────────────────────────────────────
 
 TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
     InjectHarness h;
@@ -154,22 +154,22 @@ TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
     /// A broadcast-flagged frame with the source connection's remote
     /// pk as sender — deframe succeeds without needing a local
     /// identity on the kernel. frame() runs once; the same byte
-    /// buffer feeds every inject_frame call.
+    /// buffer feeds every inject FRAME call.
     const auto frame_bytes =
         make_broadcast_frame(*h.proto, peer_pk, /*msg_id*/ 0x42);
     ASSERT_FALSE(frame_bytes.empty());
 
-    EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
-    EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
-    EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
 
-    EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_ERR_LIMIT_REACHED);
 }
@@ -192,13 +192,13 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
     const std::uint8_t payload[] = {0xAA};
     constexpr std::uint32_t kMsgId = 0x55;
 
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
                                              kMsgId, payload, sizeof(payload)),
               GN_OK);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
                                              kMsgId, payload, sizeof(payload)),
               GN_OK);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, first_source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
                                              kMsgId, payload, sizeof(payload)),
               GN_OK);
 
@@ -215,7 +215,7 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
     ASSERT_NE(second_source, first_source)
         << "alloc_id is monotonic; reopened conn must not reuse the id";
 
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, second_source,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, second_source,
                                              kMsgId, payload, sizeof(payload)),
               GN_ERR_LIMIT_REACHED)
         << "bucket keyed on remote_pk must persist across conn_id reuse";

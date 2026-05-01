@@ -37,7 +37,7 @@ typedef uint64_t gn_conn_id_t;
 /** Opaque per-handler-registration handle. Returned by register_handler. */
 typedef uint64_t gn_handler_id_t;
 
-/** Opaque per-transport-registration handle. Returned by register_link. */
+/** Opaque per-link-registration handle. Returned by register_link. */
 typedef uint64_t gn_link_id_t;
 
 /** Opaque service-executor timer handle. Returned by set_timer. */
@@ -125,6 +125,24 @@ typedef enum gn_on_result_policy_e {
     GN_ORP_CONTINUE_CHAIN = 0, /**< default: dispatch continues per `Propagation` */
     GN_ORP_STOP_CHAIN     = 1  /**< stop the chain regardless of `Propagation` */
 } gn_on_result_policy_t;
+
+/**
+ * @brief Layer selector for `host_api->inject`.
+ *
+ * @ref GN_INJECT_LAYER_MESSAGE accepts an envelope payload; the kernel
+ * builds the envelope around it under the source connection's
+ * `remote_pk` as sender. `msg_id` is the routing key.
+ *
+ * @ref GN_INJECT_LAYER_FRAME accepts a fully framed wire-side buffer;
+ * the kernel runs the active protocol layer's deframer over it and
+ * routes the resulting envelopes. `msg_id` is ignored.
+ *
+ * Per `host-api.md` §8.
+ */
+typedef enum gn_inject_layer_e {
+    GN_INJECT_LAYER_MESSAGE = 0,
+    GN_INJECT_LAYER_FRAME   = 1
+} gn_inject_layer_t;
 
 /* ── Result codes ───────────────────────────────────────────────────────── */
 

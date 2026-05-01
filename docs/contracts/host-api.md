@@ -143,14 +143,12 @@ typedef struct host_api_s {
                                        const char* provider_id);
 
     /* ── Foreign-payload injection (see §8) ──────────────────────────── */
-    gn_result_t (*inject_external_message)(void* host_ctx,
-                                           gn_conn_id_t source,
-                                           uint32_t msg_id,
-                                           const uint8_t* payload,
-                                           size_t payload_size);
-
-    gn_result_t (*inject_frame)(void* host_ctx, gn_conn_id_t source,
-                                const uint8_t* frame, size_t frame_size);
+    gn_result_t (*inject)(void* host_ctx,
+                          gn_inject_layer_t layer,
+                          gn_conn_id_t source,
+                          uint32_t msg_id,
+                          const uint8_t* bytes,
+                          size_t size);
 
     /* ── Handshake driver ────────────────────────────────────────────── */
     /* Initiator's first wire message is deferred from notify_connect    */
@@ -308,48 +306,53 @@ Plugins **must not**:
 Bridge handlers connect external systems (MQTT, HTTP, OPC-UA, …) to
 the mesh. The external system has no Ed25519 identity of its own; the
 bridge — which does — re-publishes incoming foreign payloads under
-its own identity through these two entries:
+its own identity through one entry tagged with the layer at which
+the bytes enter the kernel:
 
 ```c
-gn_result_t (*inject_external_message)(void* host_ctx,
-                                        gn_conn_id_t source,
-                                        uint32_t msg_id,
-                                        const uint8_t* payload,
-                                        size_t payload_size);
+typedef enum gn_inject_layer_e {
+    GN_INJECT_LAYER_MESSAGE = 0,
+    GN_INJECT_LAYER_FRAME   = 1
+} gn_inject_layer_t;
 
-gn_result_t (*inject_frame)(void* host_ctx,
-                             gn_conn_id_t source,
-                             const uint8_t* frame,
-                             size_t frame_size);
+gn_result_t (*inject)(void* host_ctx,
+                      gn_inject_layer_t layer,
+                      gn_conn_id_t source,
+                      uint32_t msg_id,
+                      const uint8_t* bytes,
+                      size_t size);
 ```
 
-`inject_external_message` builds an envelope `(sender_pk =
-source.remote_pk, receiver_pk = local_identity, msg_id, payload)` and
+`GN_INJECT_LAYER_MESSAGE` builds an envelope `(sender_pk =
+source.remote_pk, receiver_pk = local_identity, msg_id, bytes)` and
 dispatches it through the router as if the bytes had arrived from
-the source connection's transport. `inject_frame` accepts a fully
-formed wire-side frame, hands it to the active protocol layer's
-`deframe`, and dispatches the envelopes the deframe produces. The
-two entries differ in who built the envelope: `inject_external_message`
-when the bridge knows the application payload, `inject_frame` for
-relay-style tunnels that move opaque inner frames between mesh peers.
+the source connection's link. `msg_id` must be non-zero; `size` is
+bounded by `limits.max_payload_bytes`.
+
+`GN_INJECT_LAYER_FRAME` accepts a fully formed wire-side frame, hands
+it to the active protocol layer's `deframe`, and dispatches the
+envelopes the deframer produces. `msg_id` is ignored; `size` is
+bounded by `limits.max_frame_bytes`. Used by relay-style tunnels that
+move opaque inner frames between mesh peers.
 
 Failure modes:
 
 | Condition | Result |
 |---|---|
 | `source` does not refer to a known connection | `GN_ERR_NOT_FOUND` |
-| `payload == NULL && size > 0` | `GN_ERR_NULL_ARG` |
-| `payload_size > limits.max_payload_bytes` | `GN_ERR_PAYLOAD_TOO_LARGE` |
-| `msg_id == 0` (envelope invariant per `protocol-layer.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
+| `bytes == NULL && size > 0` (MESSAGE) or `bytes == NULL || size == 0` (FRAME) | `GN_ERR_NULL_ARG` |
+| `size > limits.max_payload_bytes` (MESSAGE) or `size > limits.max_frame_bytes` (FRAME) | `GN_ERR_PAYLOAD_TOO_LARGE` |
+| `msg_id == 0` (MESSAGE; envelope invariant per `protocol-layer.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
+| FRAME deframe yields no envelopes / partial input | `GN_ERR_DEFRAME_INCOMPLETE` |
 | Rate budget exceeded for `source` | `GN_ERR_LIMIT_REACHED` |
+| Unknown `layer` value | `GN_ERR_INVALID_ENVELOPE` |
 
 Per-source rate limiting uses a token bucket sized at one hundred
-messages per second with a burst of fifty by default. The bucket
-key is the `gn_conn_id_t` of the source. The kernel creates
-buckets lazily; LRU eviction caps the map at 4 096 entries so
-unbounded source-id growth cannot exhaust memory. The cap is a
-kernel-side constant in v1.0; a future minor release may surface
-it through `gn_limits_t` if real deployments need to tune it.
+messages per second with a burst of fifty by default; both layers
+share the same bucket. The bucket key is the source connection's
+`remote_pk`. The kernel creates buckets lazily; LRU eviction caps the
+map at 4 096 entries so unbounded source-id growth cannot exhaust
+memory.
 
 The contract is **not** a downgrade from peer-direct delivery: the
 envelope's `sender_pk` is whatever the source connection records as
@@ -357,15 +360,18 @@ the remote pk, signed metadata is unchanged, the trust class stays
 that of the source connection. Bridges cannot upgrade their own
 trust through the inject path.
 
-`inject_frame` does not skip the protocol layer's deframer; a
-malformed frame returns the deframer's error verbatim. This rules
-out a class of forged-frame attacks where a compromised plugin
-synthesises a system-message envelope: the deframer rejects unknown
-flags and the framing magic, and the kernel applies the same `msg_id
-== 0` and payload-size limits as the regular inbound path.
+FRAME inject does not skip the protocol layer's deframer; a malformed
+frame returns the deframer's error verbatim. This rules out a class
+of forged-frame attacks where a compromised plugin synthesises a
+system-message envelope: the deframer rejects unknown flags and the
+framing magic, and the kernel applies the same `msg_id == 0` and
+payload-size limits as the regular inbound path.
 
 Implementations live in `core/kernel/host_api_builder.cpp`; the rate
-limiter primitive is `core/util/token_bucket.hpp`.
+limiter primitive is `core/util/token_bucket.hpp`. The pure-C
+convenience wrappers `gn_inject_external_message` and
+`gn_inject_frame` in `sdk/convenience.h` expand to the corresponding
+`inject(LAYER, …)` call.
 
 ---
 
