@@ -14,6 +14,12 @@
 
 namespace {
 
+/// Every test below pre-checks `r.has_value()` via gtest's `ASSERT_TRUE`
+/// before dereferencing through `r->...`. clang-tidy's data-flow can't
+/// see the abort, so the whole anonymous namespace is silenced. Same
+/// pattern as `tests/unit/plugins/security/test_noise.cpp`.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 // ── §2 recognised forms ─────────────────────────────────────────────
 
 TEST(ParseUri, SchemeHostPort) {
@@ -125,6 +131,28 @@ TEST(ParseUri, UnclosedBracketRejected) {
 TEST(ParseUri, BracketWithoutPortRejected) {
     EXPECT_FALSE(::gn::parse_uri("tcp://[::1]").has_value());
     EXPECT_FALSE(::gn::parse_uri("tcp://[::1]9000").has_value());
+}
+
+TEST(ParseUri, ControlBytesRejected) {
+    /// uri.md §5 #10 — any byte ≤ 0x20 or == 0x7F anywhere in the
+    /// input is rejected before parsing. CRLF in particular would
+    /// otherwise let a URI carry a smuggled HTTP request line when
+    /// the transport concatenates the URI into a wire frame
+    /// (`ws://h:9/x HTTP/1.1\r\nEvil: 1\r\n\r\nGET /` smuggles a
+    /// second request through a naive serialiser).
+    using namespace std::string_view_literals;
+    EXPECT_FALSE(::gn::parse_uri("ws://h:9/x HTTP/1.1\r\nEvil: 1\r\n\r\nGET /"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000\r\n"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000\n"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000\t"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:\09000"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000 "sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri(" tcp://h:9000"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://host with space:9000"sv).has_value());
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000\x7F"sv).has_value());
+    /// query slice is not exempt — CRLF in `?peer=...` would still
+    /// reach `find_conn_by_uri` callers via the raw `query` view.
+    EXPECT_FALSE(::gn::parse_uri("tcp://h:9000?peer=abc\r\nEvil: 1"sv).has_value());
 }
 
 // ── §4 canonical form ───────────────────────────────────────────────
@@ -242,5 +270,7 @@ TEST(UriQuery, ParsePeerParamHexDecode) {
     /// Malformed URI.
     EXPECT_FALSE(::gn::util::parse_peer_param("garbage").has_value());
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)
 
 }  // namespace

@@ -111,6 +111,11 @@ inputs **must** fail:
 8. Unclosed bracket: `tcp://[::1:9000`.
 9. Bracket without `:port` suffix: `tcp://[::1]`,
    `tcp://[::1]9000`.
+10. Any byte ≤ `0x20` (control bytes, space, tab, CR, LF, NUL) or
+    `0x7F` (DEL) anywhere in the input. RFC 3986 already forbids
+    these without percent-encoding; the parser rejects up front so a
+    URI carrying `\r\nEvil: 1\r\n` cannot be smuggled past
+    transports that concatenate the URI into a wire frame.
 
 Returning `nullopt` is the only failure protocol; the parser does not
 throw or write through the optional argument.
