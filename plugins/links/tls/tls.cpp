@@ -331,10 +331,9 @@ void TlsLink::set_host_api(const host_api_t* api) noexcept {
     /// defaults to true (verify peer cert against the OpenSSL trust
     /// store); explicit `false` switches to verify_none for the
     /// TLS-as-link-encryption-beneath-Noise stack.
-    if (api_ != nullptr && api_->config_get_bool != nullptr) {
+    if (api_ != nullptr && api_->config_get != nullptr) {
         std::int32_t v = 1;
-        if (api_->config_get_bool(api_->host_ctx,
-                "links.tls.verify_peer", &v) == GN_OK) {
+        if (gn_config_get_bool(api_, "links.tls.verify_peer", &v) == GN_OK) {
             set_verify_peer(v != 0);
         }
     }
@@ -422,7 +421,7 @@ std::string TlsLink::endpoint_to_uri(
 bool TlsLink::load_server_credentials() {
     /// Test-fixture override wins so unit tests stay independent
     /// of the kernel config. Production paths flow through
-    /// `host_api->config_get_string`.
+    /// `host_api->config_get` with `GN_CONFIG_VALUE_STRING`.
     if (!override_cert_pem_.empty() && !override_key_pem_.empty()) {
         try {
             server_ctx_.use_certificate_chain(
@@ -446,19 +445,19 @@ bool TlsLink::load_server_credentials() {
             return false;
         }
     }
-    if (!api_ || !api_->config_get_string) return false;
+    if (!api_ || !api_->config_get) return false;
 
     char* cert_path = nullptr;
-    void (*cert_free)(char*) = nullptr;
-    if (api_->config_get_string(api_->host_ctx,
-            "links.tls.cert_path", &cert_path, &cert_free) != GN_OK ||
+    void (*cert_free)(void*) = nullptr;
+    if (gn_config_get_string(api_, "links.tls.cert_path",
+                              &cert_path, &cert_free) != GN_OK ||
         !cert_path) {
         return false;
     }
     char* key_path = nullptr;
-    void (*key_free)(char*) = nullptr;
-    if (api_->config_get_string(api_->host_ctx,
-            "links.tls.key_path", &key_path, &key_free) != GN_OK ||
+    void (*key_free)(void*) = nullptr;
+    if (gn_config_get_string(api_, "links.tls.key_path",
+                              &key_path, &key_free) != GN_OK ||
         !key_path) {
         if (cert_free) cert_free(cert_path);
         return false;

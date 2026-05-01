@@ -144,6 +144,43 @@ typedef enum gn_inject_layer_e {
     GN_INJECT_LAYER_FRAME   = 1
 } gn_inject_layer_t;
 
+/**
+ * @brief Type tag for `host_api->config_get`.
+ *
+ * The config tree carries values typed at parse time. The plugin
+ * declares the type it expects on every read; the kernel rejects
+ * a mismatch with `GN_ERR_INVALID_ENVELOPE` so a config drift
+ * (operator wrote a string where the plugin wanted an integer)
+ * surfaces at the call site instead of producing silent zero
+ * defaults further downstream.
+ *
+ * `out_value` shape per type:
+ *
+ * | Type            | Plugin passes                                        | Kernel writes              |
+ * |-----------------|------------------------------------------------------|----------------------------|
+ * | `INT64`         | `int64_t*`                                           | the parsed integer         |
+ * | `BOOL`          | `int32_t*`                                           | 0 or 1                     |
+ * | `DOUBLE`        | `double*`                                            | the parsed float           |
+ * | `STRING`        | `char**` + `void(**)(void*)` `out_free`              | malloc'd NUL-terminated; plugin frees through *out_free |
+ * | `ARRAY_SIZE`    | `size_t*`                                            | element count              |
+ *
+ * `index` carries the array-element ordinal for `INT64` / `STRING`
+ * reads inside an array; pass @ref GN_CONFIG_NO_INDEX for scalar
+ * lookups and for the `ARRAY_SIZE` query.
+ *
+ * Per `host-api.md` §2 and `config.md` §3.
+ */
+typedef enum gn_config_value_type_e {
+    GN_CONFIG_VALUE_INT64      = 0,
+    GN_CONFIG_VALUE_BOOL       = 1,
+    GN_CONFIG_VALUE_DOUBLE     = 2,
+    GN_CONFIG_VALUE_STRING     = 3,
+    GN_CONFIG_VALUE_ARRAY_SIZE = 4
+} gn_config_value_type_t;
+
+/** Sentinel `index` for scalar `config_get` calls. */
+#define GN_CONFIG_NO_INDEX ((size_t)-1)
+
 /* ── Result codes ───────────────────────────────────────────────────────── */
 
 /**

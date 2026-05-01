@@ -113,11 +113,43 @@ static inline const void* gn_query_ext_checked_value(
 
 /* ── Configuration ───────────────────────────────────────────────────────── */
 
-#define gn_config_get_string(api, key, out_str, out_free) \
-    (api)->config_get_string((api)->host_ctx, (key), (out_str), (out_free))
+/* String reads. The kernel writes a malloc'd NUL-terminated copy
+ * into `out_str` and the matching destructor into `out_free`; the
+ * plugin frees through (*out_free)(*out_str). */
+#define gn_config_get_string(api, key, out_str, out_free)                      \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,              \
+                      (void*)(out_str), (out_free))
 
-#define gn_config_get_int64(api, key, out_value) \
-    (api)->config_get_int64((api)->host_ctx, (key), (out_value))
+#define gn_config_get_int64(api, key, out_value)                               \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,               \
+                      (void*)(out_value), NULL)
+
+#define gn_config_get_bool(api, key, out_value)                                \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_BOOL, GN_CONFIG_NO_INDEX,                \
+                      (void*)(out_value), NULL)
+
+#define gn_config_get_double(api, key, out_value)                              \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_DOUBLE, GN_CONFIG_NO_INDEX,              \
+                      (void*)(out_value), NULL)
+
+#define gn_config_get_array_size(api, key, out_size)                           \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_ARRAY_SIZE, GN_CONFIG_NO_INDEX,          \
+                      (void*)(out_size), NULL)
+
+#define gn_config_get_array_int64(api, key, index, out_value)                  \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_INT64, (index),                          \
+                      (void*)(out_value), NULL)
+
+#define gn_config_get_array_string(api, key, index, out_str, out_free)         \
+    (api)->config_get((api)->host_ctx, (key),                                  \
+                      GN_CONFIG_VALUE_STRING, (index),                         \
+                      (void*)(out_str), (out_free))
 
 /* ── Limits ──────────────────────────────────────────────────────────────── */
 

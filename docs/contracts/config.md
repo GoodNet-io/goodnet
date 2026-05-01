@@ -12,7 +12,7 @@ boundaries with the corresponding limit / feature.
 ## 1. Purpose
 
 Kernel-side JSON document accessed by plugins through the typed
-`config_get_string` / `config_get_int64` slots in `host-api.md` §2.
+unified `config_get(KEY, TYPE, INDEX, …)` slot in `host-api.md` §2.
 One holder per running kernel. The kernel writes through
 `Config::load_json(text)`; plugins read through the host-API
 slots. The kernel does **not** itself touch the filesystem — the
@@ -27,7 +27,7 @@ for namespaces — `limits.max_connections` is the canonical
 example; transports and handlers register their own namespaces
 (`links.tls.cert_path`, `relay.dedup_capacity`) when they
 begin reading from config. Plugins receive paths verbatim through
-the `config_get_*` slots and resolve them inside the kernel;
+the `config_get` slot and resolve them inside the kernel;
 there is no plugin-side JSON parser.
 
 Runtime reload runs through `Kernel::reload_config(text)` and
@@ -51,7 +51,7 @@ their state-machine response.
 | Load | embedding application reads bytes off the operator's source; calls `Config::load_json(text)` |
 | Auto-validate | `load_json` parses, then runs `validate_limits` on the new `gn_limits_t` before installing it. Parse failure returns `GN_ERR_INVALID_ENVELOPE`; invariant failure returns `GN_ERR_LIMIT_REACHED` with the offending key in `out_reason` (when supplied through the public `validate`). On either failure the kernel state is **rolled back** to whatever the previous successful load left — the kernel never executes against an invariant-violating limits set |
 | Propagate | the embedding application (or `Kernel::set_limits`) hands the `gn_limits_t` snapshot to every kernel-owned registry that enforces a cap (timer, handler, connection, extension); `Kernel::set_limits` runs the propagation |
-| Runtime queries | plugins call `host_api->config_get_string(key, …)` / `config_get_int64(key, …)`; the kernel resolves the dotted path under a shared lock |
+| Runtime queries | plugins call `host_api->config_get(key, type, GN_CONFIG_NO_INDEX, …)`; the kernel resolves the dotted path under a shared lock |
 
 Mutation entries are `Config::load_json(text)` (wholesale replace)
 and `Config::merge_json(overlay)` (RFC 7396 deep-merge). The
@@ -170,7 +170,7 @@ parser.
 ```
 
 `limits` is the only block the kernel parses; everything outside
-it is opaque JSON the kernel hands back through `config_get_*`
+it is opaque JSON the kernel hands back through `config_get`
 without interpretation. Plugins that read from config publish
 their namespace conventions in their own contract: TLS reads
 `links.tls.cert_path` / `links.tls.key_path` per the
@@ -242,7 +242,7 @@ gn_limits_t Config::limits() const noexcept;
 | `GN_ERR_INVALID_ENVELOPE` | (load) JSON parse failed |
 | `GN_ERR_LIMIT_REACHED` | (validate) cross-field invariant failed; `out_reason` names the field |
 
-Plugin-facing `config_get_string` / `config_get_int64` return the
+Plugin-facing `config_get` returns the
 same codes through the C ABI. The string variant takes an `out_str`
 + `out_free` pair so the kernel hands ownership of allocated bytes
 to the plugin and the plugin returns them through the matching
@@ -302,16 +302,16 @@ kernel into a path-handling argument.
   the kernel logs unknown-key warnings at load time and gates
   per-section reads against the plugin's declared scope.
 - **Capability gate for sensitive values.** Any loaded plugin
-  can read every `config_get_*` slot; nothing in v1 prevents a
+  can read every config-tree node; nothing in v1 prevents a
   malicious plugin from reading `links.tls.key_path`. The
   same `reads_config` mechanism above is the v1.1 fix. v1
   assumes the plugins directory is operator-controlled and
   every loaded plugin is trusted (see `plugin-manifest.md` §3).
-- **Typed slots beyond `string` / `int64`.** Plugins that need
-  bool / double / array values parse them out of strings the
-  config holds. v1.1 adds `config_get_bool`, `config_get_double`,
-  `config_get_array_*` slots additively (size-prefix evolution
-  per `abi-evolution.md`).
+- **Adding new value types.** The current `config_get` covers
+  `INT64`, `BOOL`, `DOUBLE`, `STRING`, `ARRAY_SIZE` and indexed
+  `INT64` / `STRING` array elements. Future minor releases add
+  enumerators to `gn_config_value_type_t` (e.g. `BYTES`,
+  `ARRAY_DOUBLE`) under the same slot — no host_api shape change.
 - **Save / round-trip.** v1 is read-only. A configuration the
   embedding application built up in code is not serialisable
   back through this surface — that is the embedding's own
@@ -322,7 +322,7 @@ kernel into a path-handling argument.
 ## 8. Cross-references
 
 - Limit field semantics + cross-field invariants: `limits.md`.
-- Plugin-facing `config_get_*` slots: `host-api.md` §2.
+- Plugin-facing `config_get`: `host-api.md` §2.
 - Live propagation of limits through registries:
   `Kernel::set_limits` in `core/kernel/kernel.cpp`.
 - Plugin trust + integrity: `plugin-manifest.md`.

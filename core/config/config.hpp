@@ -3,8 +3,8 @@
 ///
 /// Per `limits.md` §2 / `host-api.md` §2 (config slots): the kernel
 /// owns one Config instance loaded from JSON at startup; plugins
-/// query it through `host_api->config_get_string` /
-/// `config_get_int64`. Top-level keys are flat strings; nested values
+/// query it through `host_api->config_get` (typed via
+/// `gn_config_value_type_t`). Top-level keys are flat strings; nested values
 /// addressable through dotted paths (e.g. `"limits.max_connections"`).
 
 #pragma once

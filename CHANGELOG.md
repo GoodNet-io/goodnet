@@ -71,14 +71,20 @@ typed extension API.
   reassembling the merged JSON itself. Atomicity carries through:
   a parse failure or invariant violation in any layer rolls back
   to the last good state.
-- **Typed config slots beyond string + int64** — five new
-  `host_api->config_get_*` entries: `bool`, `double`, `array_size`,
-  `array_string`, `array_int64`. Plugins reach the same configurable
-  knob whether the operator wrote `1` or `1.0`; arrays surface
-  through a size-then-index pair so DHT bootstrap lists and similar
-  legacy schemas land naturally. `config_get_string` /
-  `config_get_int64` continue to do exactly what they did. Per
-  `host-api.md` §2.
+- **Unified typed config read** — one `host_api->config_get(key,
+  type, index, *out_value, *out_free)` slot covers every type and
+  every shape the config tree carries: `INT64`, `BOOL`, `DOUBLE`,
+  `STRING`, `ARRAY_SIZE` and indexed `INT64` / `STRING` array
+  elements. The kernel rejects a type mismatch with
+  `GN_ERR_INVALID_ENVELOPE` so a config drift (operator wrote a
+  string where the plugin wanted an integer) surfaces at the call
+  site instead of producing silent zero defaults further
+  downstream. Pure-C convenience macros — `gn_config_get_string`,
+  `gn_config_get_int64`, `gn_config_get_bool`, `gn_config_get_double`,
+  `gn_config_get_array_size`, `gn_config_get_array_int64`,
+  `gn_config_get_array_string` — expand to the LAYER-tagged call,
+  so plugin code keeps the typed shape it had before. Per
+  `host-api.md` §2 and `config.md` §3.
 - **`Config::load_file(path)` + JSON5 comments** — the kernel itself
   remains library-linkable without a filesystem dependency, but the
   common single-binary deployment now has a one-call entry to read

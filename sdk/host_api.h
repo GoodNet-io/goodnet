@@ -154,64 +154,55 @@ typedef struct host_api_s {
     /* ── Configuration ─────────────────────────────────────────────────── */
 
     /**
-     * @param out_str  @owned; caller calls *out_free when done.
-     * @param out_free destructor matching @p out_str allocation.
+     * @brief Read a value out of the live config document.
+     *
+     * The kernel parses the operator's JSON into a typed tree at
+     * load and reload. This entry point reads one node out of that
+     * tree under a runtime contract — the plugin declares the type
+     * it expects through @p type, and the kernel returns
+     * `GN_ERR_INVALID_ENVELOPE` if the live value's parse type does
+     * not match. Type-validated reads keep config drift visible at
+     * the call site instead of silently writing zeros into the
+     * plugin's local state.
+     *
+     * The shape of @p out_value depends on @p type — see the table
+     * on @ref gn_config_value_type_t. @p index carries the
+     * array-element ordinal for `INT64` / `STRING` reads inside an
+     * array; pass @ref GN_CONFIG_NO_INDEX for scalar lookups and
+     * for the `ARRAY_SIZE` query.
+     *
+     * @p out_free is meaningful only for the `STRING` reads (scalar
+     * and array element); pass `NULL` for the other types. The
+     * kernel writes a destructor function pointer that the plugin
+     * calls on the returned string buffer.
+     *
+     * Failure modes:
+     *
+     * | Condition | Result |
+     * |---|---|
+     * | `key == NULL` or `out_value == NULL` | `GN_ERR_NULL_ARG` |
+     * | `STRING` read with `out_free == NULL`, or non-`STRING` read with `out_free != NULL` | `GN_ERR_NULL_ARG` |
+     * | scalar read with `index != GN_CONFIG_NO_INDEX`, or array-element read with `index == GN_CONFIG_NO_INDEX` | `GN_ERR_OUT_OF_RANGE` |
+     * | key not present in config | `GN_ERR_NOT_FOUND` |
+     * | live value's parse type does not match @p type | `GN_ERR_INVALID_ENVELOPE` |
+     * | `ARRAY_SIZE` query against a non-array key | `GN_ERR_INVALID_ENVELOPE` |
+     * | `index` past array length | `GN_ERR_OUT_OF_RANGE` |
+     * | unknown @p type enum value | `GN_ERR_INVALID_ENVELOPE` |
+     *
+     * Per `host-api.md` §2 and `config.md` §3.
+     *
+     * @param key       dotted JSON path (`"foo.bar.baz"`).
+     * @param type      expected node type; see @ref gn_config_value_type_t.
+     * @param index     array-element ordinal, or @ref GN_CONFIG_NO_INDEX for scalar.
+     * @param out_value typed pointer per @p type.
+     * @param out_free  destructor for `STRING` reads; `NULL` otherwise.
      */
-    gn_result_t (*config_get_string)(void* host_ctx,
-                                     const char* key,
-                                     char** out_str,
-                                     void (**out_free)(char*));
-
-    gn_result_t (*config_get_int64)(void* host_ctx,
-                                    const char* key,
-                                    int64_t* out_value);
-
-    /**
-     * @brief Lookup a boolean value. Returns 0/1 in @p out_value
-     *        on success.
-     */
-    gn_result_t (*config_get_bool)(void* host_ctx,
-                                    const char* key,
-                                    int32_t* out_value);
-
-    /**
-     * @brief Lookup a floating-point value. Accepts both integer
-     *        and float JSON literals — operators that write
-     *        `0.5` and operators that write `1` reach the same
-     *        configurable knob.
-     */
-    gn_result_t (*config_get_double)(void* host_ctx,
-                                      const char* key,
-                                      double* out_value);
-
-    /**
-     * @brief Number of elements in the array at @p key. Returns
-     *        `GN_ERR_NOT_FOUND` when the key is missing,
-     *        `GN_ERR_INVALID_ENVELOPE` when the value is not an
-     *        array, `GN_OK` and writes the count otherwise.
-     */
-    gn_result_t (*config_get_array_size)(void* host_ctx,
-                                          const char* key,
-                                          size_t* out_size);
-
-    /**
-     * @brief Read the string at @p index of the array at @p key.
-     *        Same ownership shape as `config_get_string` — the
-     *        plugin frees through the matching destructor.
-     */
-    gn_result_t (*config_get_array_string)(void* host_ctx,
-                                            const char* key,
-                                            size_t index,
-                                            char** out_str,
-                                            void (**out_free)(char*));
-
-    /**
-     * @brief Read the integer at @p index of the array at @p key.
-     */
-    gn_result_t (*config_get_array_int64)(void* host_ctx,
-                                           const char* key,
-                                           size_t index,
-                                           int64_t* out_value);
+    gn_result_t (*config_get)(void* host_ctx,
+                              const char* key,
+                              gn_config_value_type_t type,
+                              size_t index,
+                              void* out_value,
+                              void (**out_free)(void*));
 
     /* ── Limits read access ────────────────────────────────────────────── */
 

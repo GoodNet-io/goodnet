@@ -95,12 +95,12 @@ typedef struct host_api_s {
     gn_result_t (*unregister_extension)(void* host_ctx, const char* name);
 
     /* ── Configuration ───────────────────────────────────────────────── */
-    gn_result_t (*config_get_string)(void* host_ctx, const char* key,
-                                     char** out_str,
-                                     void (**out_free)(char*));
-
-    gn_result_t (*config_get_int64)(void* host_ctx, const char* key,
-                                    int64_t* out_value);
+    gn_result_t (*config_get)(void* host_ctx,
+                              const char* key,
+                              gn_config_value_type_t type,
+                              size_t index,
+                              void* out_value,
+                              void (**out_free)(void*));
 
     /* ── Limits ──────────────────────────────────────────────────────── */
     /* Read-only borrow valid for the plugin's lifetime; see limits.md. */

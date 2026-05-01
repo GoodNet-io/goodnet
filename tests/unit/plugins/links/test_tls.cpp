@@ -219,18 +219,25 @@ namespace {
 
 /// Test harness variant that exposes a `links.tls.verify_peer`
 /// config bool. The caller sets `verify_peer_value` before binding
-/// the api; an unbound variant leaves `config_get_bool` returning
-/// `GN_ERR_NOT_FOUND`.
+/// the api; an unbound variant leaves `config_get` returning
+/// `GN_ERR_NOT_FOUND` for the key.
 struct TlsConfigHarness : TlsHarness {
     std::optional<int32_t> verify_peer_value;
 
-    static gn_result_t s_config_get_bool(void* host_ctx,
-                                          const char* key,
-                                          int32_t* out_value) {
+    static gn_result_t s_config_get(void* host_ctx,
+                                     const char* key,
+                                     gn_config_value_type_t type,
+                                     std::size_t index,
+                                     void* out_value,
+                                     void (**out_free)(void*)) {
         auto* h = static_cast<TlsConfigHarness*>(host_ctx);
-        if (h && key && std::string_view{key} == "links.tls.verify_peer"
-            && h->verify_peer_value && out_value) {
-            *out_value = *h->verify_peer_value;
+        if (!h || !key || !out_value) return GN_ERR_NULL_ARG;
+        if (out_free) return GN_ERR_NULL_ARG;
+        if (type != GN_CONFIG_VALUE_BOOL) return GN_ERR_NOT_FOUND;
+        if (index != GN_CONFIG_NO_INDEX) return GN_ERR_OUT_OF_RANGE;
+        if (std::string_view{key} == "links.tls.verify_peer"
+            && h->verify_peer_value) {
+            *static_cast<int32_t*>(out_value) = *h->verify_peer_value;
             return GN_OK;
         }
         return GN_ERR_NOT_FOUND;
@@ -238,7 +245,7 @@ struct TlsConfigHarness : TlsHarness {
 
     host_api_t make_api() {
         host_api_t api = TlsHarness::make_api();
-        api.config_get_bool = &s_config_get_bool;
+        api.config_get = &s_config_get;
         return api;
     }
 };
@@ -277,14 +284,14 @@ TEST(TlsLink_VerifyDefault, ConfigOptOutLetsHandshakeSucceed) {
 }
 
 TEST(TlsLink_VerifyDefault, ConfigUnboundEnforcesDefault) {
-    /// Without the config key bound (`config_get_bool` returns
+    /// Without the config key bound (the verify_peer key is unbound (returns
     /// `GN_ERR_NOT_FOUND`), the client stays in verify_peer
     /// mode and refuses the self-signed loopback cert.
     std::string cert, key;
     ASSERT_TRUE(generate_self_signed(cert, key));
 
     TlsConfigHarness harness;
-    /// verify_peer_value left unset — config_get_bool returns miss.
+    /// verify_peer_value left unset — kernel returns NOT_FOUND.
     auto api = harness.make_api();
 
     auto server = std::make_shared<gn::link::tls::TlsLink>();
