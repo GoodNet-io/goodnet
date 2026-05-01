@@ -104,6 +104,42 @@ TEST(HostApiChain, NotifyConnectThenDisconnect) {
     EXPECT_EQ(h.kernel->connections().size(), 0u);
 }
 
+TEST(HostApiChain, NotifyConnectControlByteUriRejected) {
+    /// uri.md §5 #10 — a URI carrying CR / LF / space cannot reach
+    /// the kernel registry index even on the `notify_connect` path
+    /// that bypasses `parse_uri`. A downstream caller writing
+    /// `rec.uri` into a wire frame (Host header, log line, request
+    /// target) would otherwise smuggle a second HTTP request.
+    KernelHarness h;
+    PublicKey peer_pk{};
+    peer_pk[0] = 0xAA;
+
+    gn_conn_id_t conn = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "ws://h:9/x HTTP/1.1\r\nEvil: 1\r\n\r\nGET /",
+                                   "ws",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(conn, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+
+    /// Plain whitespace is also rejected — leading space, embedded
+    /// space, trailing tab. The registry index would otherwise hash
+    /// these as legitimate distinct URIs.
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   " tcp://h:9000",
+                                   "tcp",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+}
+
 TEST(HostApiChain, InboundBytesReachHandler) {
     KernelHarness alice("test-alice");
     KernelHarness bob("test-bob");

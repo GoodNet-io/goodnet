@@ -2,13 +2,12 @@
 /// @file   sdk/cpp/uri.hpp
 /// @brief  Header-only URI parser per `docs/contracts/uri.md`.
 ///
-/// One parser shared by every transport plugin, the kernel registry,
-/// and the `host_api->find_conn_by_uri` lookup. Without it,
-/// "tcp://1.2.3.4:80" can substring-match "1.2.3.4:8080" and routing
-/// hits the wrong peer. The parser is pure string work — no DNS, no
-/// URL decoding. Header-only, no libsodium so transports can include
-/// it directly. Hex decoding for `?peer=<hex>` lives in
-/// `core/util/uri_query.hpp`.
+/// One parser shared by every transport plugin and the kernel
+/// connection registry's URI index. Without it, "tcp://1.2.3.4:80"
+/// can substring-match "1.2.3.4:8080" and routing hits the wrong
+/// peer. The parser is pure string work — no DNS, no URL decoding.
+/// Header-only, no libsodium so transports can include it directly.
+/// Hex decoding for `?peer=<hex>` lives in `core/util/uri_query.hpp`.
 
 #pragma once
 
@@ -60,6 +59,26 @@ struct UriParts {
     }
 };
 
+/// True iff @p uri carries any byte ≤ `0x20` or == `0x7F`.
+///
+/// A URI carrying CR/LF/NUL/space splits cleanly into a smuggled HTTP
+/// request line / header pair when the transport later concatenates
+/// it into a wire frame, so every entry point that lets a URI cross
+/// into the kernel runs this check (`parse_uri` below; the kernel's
+/// `notify_connect` thunk for raw URIs that bypass the grammar).
+/// RFC 3986 already forbids these bytes inside a URI without
+/// percent-encoding, so rejection is strictly correct, not just
+/// defensive (uri.md §5 #10).
+[[nodiscard]] inline bool uri_has_control_bytes(std::string_view uri) noexcept {
+    for (const char ch : uri) {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (byte <= 0x20 || byte == 0x7F) {
+            return true;
+        }
+    }
+    return false;
+}
+
 /// Parse a connection URI. Returns `nullopt` on every failure mode in
 /// `docs/contracts/uri.md` §5; never throws, never writes through a
 /// partial result.
@@ -67,19 +86,7 @@ struct UriParts {
 parse_uri(std::string_view uri) {
     UriParts out;
 
-    /// Reject control bytes and whitespace anywhere in the input
-    /// before the parser interprets a single character. A URI carrying
-    /// CR/LF/NUL/space splits cleanly into a smuggled HTTP request
-    /// line / header pair when the transport later concatenates it
-    /// into a wire frame; the parser is the choke point. RFC 3986
-    /// forbids these bytes inside a URI without percent-encoding, so
-    /// rejection is also strictly correct, not just defensive.
-    for (const char ch : uri) {
-        const auto byte = static_cast<unsigned char>(ch);
-        if (byte <= 0x20 || byte == 0x7F) {
-            return std::nullopt;
-        }
-    }
+    if (uri_has_control_bytes(uri)) return std::nullopt;
 
     /// Split the query first so the scheme/host/port logic never sees
     /// query characters in its slice.

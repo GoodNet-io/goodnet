@@ -151,7 +151,8 @@ TEST(ParseUri, ControlBytesRejected) {
     EXPECT_FALSE(::gn::parse_uri("tcp://host with space:9000"sv).has_value());
     EXPECT_FALSE(::gn::parse_uri("tcp://h:9000\x7F"sv).has_value());
     /// query slice is not exempt — CRLF in `?peer=...` would still
-    /// reach `find_conn_by_uri` callers via the raw `query` view.
+    /// reach the kernel's URI index and any caller reading the raw
+    /// `query` view downstream.
     EXPECT_FALSE(::gn::parse_uri("tcp://h:9000?peer=abc\r\nEvil: 1"sv).has_value());
 }
 
