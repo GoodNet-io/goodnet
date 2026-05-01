@@ -296,11 +296,7 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
     if (auto conn_rec = kernel.connections().find_by_id(conn);
         conn_rec.has_value()) {
         const auto& peer_pk = conn_rec->remote_pk;
-        bool peer_pk_set = false;
-        for (auto byte : peer_pk) {
-            if (byte != 0) { peer_pk_set = true; break; }
-        }
-        if (peer_pk_set) {
+        if (gn_pk_is_zero(peer_pk.data()) == 0) {
             auto existing =
                 kernel.connections().get_pinned_device_pk(peer_pk);
             if (existing.has_value()) {
@@ -311,8 +307,18 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
                     return static_cast<int>(Outcome::IdentityChange);
                 }
             } else {
-                (void)kernel.connections().pin_device_pk(
-                    peer_pk, device_pk);
+                /// `pin_device_pk` returns non-GN_OK when a
+                /// concurrent caller already wrote a different
+                /// device_pk for this peer; treat the rejection
+                /// identically to the mismatch path so a write
+                /// race cannot smuggle past the cross-session
+                /// gate.
+                if (kernel.connections().pin_device_pk(
+                        peer_pk, device_pk) != GN_OK) {
+                    disconnect_on_consumer_failure(kernel, conn,
+                        GN_DROP_ATTESTATION_IDENTITY_CHANGE);
+                    return static_cast<int>(Outcome::IdentityChange);
+                }
             }
         }
     }

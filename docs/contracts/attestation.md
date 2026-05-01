@@ -120,23 +120,38 @@ and the connection is closed:
    (signature self-check against the embedded `user_pk` plus
    non-expired against the current clock) fails; metric
    `attestation.expired_or_invalid`.
-7. **Identity stability.** If a prior attestation has already
-   verified on this connection, compare the new `device_pk`
-   against the cached one:
-   - **Different** `device_pk` — drop and disconnect; metric
-     `attestation.identity_change`. This catches a peer that
-     swaps its device key mid-session.
+7. **Cross-session identity stability.** Consult
+   `ConnectionRegistry::get_pinned_device_pk(peer_pk)`. If the
+   registry already pinned a `device_pk` that differs from the
+   envelope's, drop and disconnect; metric
+   `attestation.identity_change`. If the registry has no pin,
+   write through `pin_device_pk(peer_pk, device_pk)`; a
+   non-`GN_OK` return — a concurrent caller wrote a different
+   `device_pk` for this peer — is treated identically to the
+   mismatch path. The pin survives `notify_disconnect` so a peer
+   reconnecting with a swapped `device_sk` under the same
+   `peer_pk` is rejected before per-conn state has a chance to
+   record the new value. The check is skipped while `peer_pk` is
+   all-zero (responder-side pre-Noise placeholder). See
+   `registry.md` §8a.
+8. **Per-session identity stability.** If a prior attestation has
+   already verified on this connection, compare the new
+   `device_pk` against the per-conn cached one:
+   - **Different** `device_pk` — drop and disconnect; same
+     metric `attestation.identity_change`. This catches a peer
+     that swaps its device key mid-session even if the registry-
+     side pin agreed (e.g. mismatch-after-clear).
    - **Same** `device_pk` — drop the envelope but leave the
      connection alive. Live re-attestation is out of scope per
      §9, and the binding match in step 3 already prevents replay
      across sessions; a same-key duplicate within one session is
      therefore noise, not an error.
-8. Mark per-connection dispatcher state `their_received_valid = true`
+9. Mark per-connection dispatcher state `their_received_valid = true`
    and cache the verified `(user_pk, device_pk)` for handler
    observation.
 
-Step 8 runs only on the first valid attestation; subsequent
-attestations with the same key skip step 8 and return.
+Step 9 runs only on the first valid attestation; subsequent
+attestations with the same key skip step 9 and return.
 
 Each consumer-step rejection maps to a `gn_drop_reason_t` enum
 value declared in `sdk/types.h`:
@@ -148,7 +163,8 @@ value declared in `sdk/types.h`:
 | 4 | cert parse failed | `GN_DROP_ATTESTATION_PARSE_FAILED` |
 | 5 | signature verify failed | `GN_DROP_ATTESTATION_BAD_SIGNATURE` |
 | 6 | cert expired or invalid | `GN_DROP_ATTESTATION_EXPIRED_OR_INVALID` |
-| 7 | device_pk swap | `GN_DROP_ATTESTATION_IDENTITY_CHANGE` |
+| 7 | cross-session pin mismatch | `GN_DROP_ATTESTATION_IDENTITY_CHANGE` |
+| 8 | per-session device_pk swap | `GN_DROP_ATTESTATION_IDENTITY_CHANGE` |
 
 The dispatcher emits these as structured log fields at warn level
 and passes the enum through `disconnect_on_consumer_failure`. v1
@@ -286,13 +302,18 @@ distributing the new `user_pk` to peers; until the rotation
 propagates the leaked `device_sk` is trusted up to the cert's
 expiry.
 
-A v1.0.x patch will add device-key pinning at the
-`ConnectionRegistry` level: the first valid attestation under a
-known `remote_pk` records `device_pk` on the persistent identity
-record, subsequent sessions to the same peer reject a different
-`device_pk` even after `notify_disconnect` cleared the
-per-connection slot. A v1.1 release adds an explicit revocation
-registry the operator publishes alongside their identity rotation.
+Cross-session device-key pinning at the `ConnectionRegistry` level
+limits the leaked-key window to a single `remote_pk` value. The
+dispatcher's step 7 (§5) writes the pin on the first valid
+attestation from a peer and rejects every subsequent attestation
+that carries a different `device_pk` for the same peer with
+`GN_DROP_ATTESTATION_IDENTITY_CHANGE` — the persistent map
+outlives `notify_disconnect`, so a reconnect cannot quietly
+introduce a different signing key under the same identity.
+`registry.md` §8a holds the registry-side specification.
+
+A v1.1 release adds an explicit revocation registry the operator
+publishes alongside their identity rotation.
 
 Operators who need stronger isolation today shorten the cert's
 `expiry` window — `Attestation::create` accepts any duration, and
