@@ -6,6 +6,7 @@
 
 #include <sdk/convenience.h>
 #include <sdk/cpp/dns.hpp>
+#include <sdk/cpp/uri.hpp>
 
 #include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
@@ -484,56 +485,16 @@ gn_result_t TlsTransport::listen(std::string_view uri) {
     /// noisier failure than refusing to bind.
     if (!load_server_credentials()) return GN_ERR_NOT_IMPLEMENTED;
 
-    constexpr std::string_view kScheme = "tls://";
-    if (!uri.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
-    std::string_view rest = uri.substr(kScheme.size());
-
-    /// Authority parser shared with `connect`: IPv6 brackets are
-    /// preserved literally.
-    std::string host;
-    std::uint16_t port = 0;
-    {
-        std::string_view authority = rest;
-        const auto slash = authority.find('/');
-        if (slash != std::string_view::npos) {
-            authority = authority.substr(0, slash);
-        }
-        std::string_view host_sv;
-        std::string_view port_sv;
-        if (!authority.empty() && authority.front() == '[') {
-            const auto rb = authority.find(']');
-            if (rb == std::string_view::npos) return GN_ERR_INVALID_ENVELOPE;
-            host_sv = authority.substr(1, rb - 1);
-            if (rb + 1 < authority.size() && authority[rb + 1] == ':') {
-                port_sv = authority.substr(rb + 2);
-            }
-        } else {
-            const auto colon = authority.rfind(':');
-            if (colon == std::string_view::npos) {
-                host_sv = authority;
-            } else {
-                host_sv = authority.substr(0, colon);
-                port_sv = authority.substr(colon + 1);
-            }
-        }
-        if (host_sv.empty()) return GN_ERR_INVALID_ENVELOPE;
-        host = std::string{host_sv};
-        if (port_sv.empty()) {
-            port = 443;
-        } else {
-            unsigned p = 0;
-            for (auto ch : port_sv) {
-                if (ch < '0' || ch > '9') return GN_ERR_INVALID_ENVELOPE;
-                p = p * 10U + static_cast<unsigned>(ch - '0');
-                if (p > 0xffffU) return GN_ERR_INVALID_ENVELOPE;
-            }
-            port = static_cast<std::uint16_t>(p);
-        }
+    const auto parts = ::gn::parse_uri(uri);
+    if (!parts || parts->scheme != "tls" || parts->is_path_style()) {
+        return GN_ERR_INVALID_ENVELOPE;
     }
+    if (parts->host.empty()) return GN_ERR_INVALID_ENVELOPE;
 
     asio::ip::tcp::endpoint ep;
     try {
-        ep = asio::ip::tcp::endpoint(asio::ip::make_address(host), port);
+        ep = asio::ip::tcp::endpoint(asio::ip::make_address(parts->host),
+                                      parts->port);
     } catch (const std::exception&) {
         return GN_ERR_INVALID_ENVELOPE;
     }
@@ -645,57 +606,18 @@ gn_result_t TlsTransport::connect(std::string_view uri) {
     /// the connection registry will key on.
     auto resolved = ::gn::sdk::resolve_uri_host(ioc_, uri);
     if (!resolved) return GN_ERR_INVALID_ENVELOPE;
-    std::string_view uri_view = *resolved;
 
-    constexpr std::string_view kScheme = "tls://";
-    if (!uri_view.starts_with(kScheme)) return GN_ERR_INVALID_ENVELOPE;
-    std::string_view rest = uri_view.substr(kScheme.size());
-
-    std::string host;
-    std::uint16_t port = 0;
-    {
-        std::string_view authority = rest;
-        const auto slash = authority.find('/');
-        if (slash != std::string_view::npos) {
-            authority = authority.substr(0, slash);
-        }
-        std::string_view host_sv;
-        std::string_view port_sv;
-        if (!authority.empty() && authority.front() == '[') {
-            const auto rb = authority.find(']');
-            if (rb == std::string_view::npos) return GN_ERR_INVALID_ENVELOPE;
-            host_sv = authority.substr(1, rb - 1);
-            if (rb + 1 < authority.size() && authority[rb + 1] == ':') {
-                port_sv = authority.substr(rb + 2);
-            }
-        } else {
-            const auto colon = authority.rfind(':');
-            if (colon == std::string_view::npos) {
-                host_sv = authority;
-            } else {
-                host_sv = authority.substr(0, colon);
-                port_sv = authority.substr(colon + 1);
-            }
-        }
-        if (host_sv.empty()) return GN_ERR_INVALID_ENVELOPE;
-        host = std::string{host_sv};
-        if (port_sv.empty()) {
-            port = 443;
-        } else {
-            unsigned p = 0;
-            for (auto ch : port_sv) {
-                if (ch < '0' || ch > '9') return GN_ERR_INVALID_ENVELOPE;
-                p = p * 10U + static_cast<unsigned>(ch - '0');
-                if (p > 0xffffU) return GN_ERR_INVALID_ENVELOPE;
-            }
-            port = static_cast<std::uint16_t>(p);
-        }
+    const auto parts = ::gn::parse_uri(*resolved);
+    if (!parts || parts->scheme != "tls" || parts->is_path_style()) {
+        return GN_ERR_INVALID_ENVELOPE;
     }
-    if (port == 0) return GN_ERR_INVALID_ENVELOPE;
+    if (parts->host.empty()) return GN_ERR_INVALID_ENVELOPE;
+    if (parts->port == 0) return GN_ERR_INVALID_ENVELOPE;
 
     asio::ip::tcp::endpoint ep;
     try {
-        ep = asio::ip::tcp::endpoint(asio::ip::make_address(host), port);
+        ep = asio::ip::tcp::endpoint(asio::ip::make_address(parts->host),
+                                      parts->port);
     } catch (const std::exception&) {
         return GN_ERR_INVALID_ENVELOPE;
     }

@@ -8,6 +8,7 @@
 
 #include <sdk/convenience.h>
 #include <sdk/cpp/dns.hpp>
+#include <sdk/cpp/uri.hpp>
 
 #include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
@@ -711,52 +712,34 @@ std::optional<WsTransport::ParsedUri> WsTransport::parse_uri(
     /// own; nothing changes about the framing on the wire.
     constexpr std::string_view kWs = "ws://";
     if (!uri.starts_with(kWs)) return std::nullopt;
-    std::string_view rest = uri.substr(kWs.size());
 
+    /// `gn::parse_uri` handles bracket-IPv6, port parsing, and
+    /// scheme stripping but does not split authority from a path
+    /// suffix. Strip the WebSocket resource path here so the
+    /// shared parser sees a clean `ws://authority` slice and the
+    /// path travels separately into the upgrade handshake.
+    auto rest = uri.substr(kWs.size());
+    std::string path;
+    if (const auto slash = rest.find('/'); slash != std::string_view::npos) {
+        path.assign(rest.substr(slash));
+        rest = rest.substr(0, slash);
+    }
+    std::string canonical;
+    canonical.reserve(kWs.size() + rest.size());
+    canonical.append(kWs);
+    canonical.append(rest);
+
+    const auto parts = ::gn::parse_uri(canonical);
+    if (!parts || parts->scheme != "ws" || parts->is_path_style()) {
+        return std::nullopt;
+    }
+    if (parts->host.empty()) return std::nullopt;
     ParsedUri pr;
-    /// Path begins at the first '/'; everything before it is
-    /// authority. IPv6 literals wrap in '[]' which we keep verbatim.
-    auto slash = rest.find('/');
-    std::string_view authority =
-        slash == std::string_view::npos ? rest : rest.substr(0, slash);
-    if (slash != std::string_view::npos) {
-        pr.path = std::string{rest.substr(slash)};
-    }
-    if (authority.empty()) return std::nullopt;
-
-    /// Split host and port. IPv6 brackets need care.
-    std::string_view host_sv;
-    std::string_view port_sv;
-    if (authority.front() == '[') {
-        const auto rb = authority.find(']');
-        if (rb == std::string_view::npos) return std::nullopt;
-        host_sv = authority.substr(1, rb - 1);
-        if (rb + 1 < authority.size() && authority[rb + 1] == ':') {
-            port_sv = authority.substr(rb + 2);
-        }
-    } else {
-        const auto colon = authority.rfind(':');
-        if (colon == std::string_view::npos) {
-            host_sv = authority;
-        } else {
-            host_sv = authority.substr(0, colon);
-            port_sv = authority.substr(colon + 1);
-        }
-    }
-    if (host_sv.empty()) return std::nullopt;
-    pr.host = std::string{host_sv};
-
-    if (port_sv.empty()) {
-        pr.port = 80U;
-    } else {
-        unsigned p = 0;
-        for (auto ch : port_sv) {
-            if (ch < '0' || ch > '9') return std::nullopt;
-            p = p * 10U + static_cast<unsigned>(ch - '0');
-            if (p > 0xffffU) return std::nullopt;
-        }
-        pr.port = static_cast<std::uint16_t>(p);
-    }
+    pr.host = parts->host;
+    /// A `ws://host:0` URI on listen means "ephemeral port"; the
+    /// connect-side caller asserts `port != 0` separately.
+    pr.port = parts->port;
+    pr.path = path.empty() ? std::string{"/"} : std::move(path);
     return pr;
 }
 

@@ -336,6 +336,16 @@ typed extension API.
 
 ### Changed
 
+- **TLS and WS plugins reuse the canonical URI parser.** The
+  authority parsing (host, port, IPv6 brackets, scheme stripping)
+  in TLS and WS now flows through `gn::parse_uri` from
+  `sdk/cpp/uri.hpp`, matching TCP/UDP/IPC. The TLS plugin no longer
+  defaults the port to 443 when the URI omits it; an explicit port
+  is required for connect, and listen accepts a literal `:0` for
+  ephemeral allocation, matching the rest of the transport set.
+  WS keeps its own path-suffix split (`/foo`) before handing the
+  authority slice to the shared parser, since the WebSocket
+  upgrade handshake needs the resource path.
 - **TLS and WS plugins enable IPv6 dual-stack on wildcard
   listens.** A `tls://[::]:port` or `ws://[::]:port` listener
   now disables `IPV6_V6ONLY` on the underlying acceptor, so a
