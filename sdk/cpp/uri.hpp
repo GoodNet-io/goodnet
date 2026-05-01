@@ -67,6 +67,20 @@ struct UriParts {
 parse_uri(std::string_view uri) {
     UriParts out;
 
+    /// Reject control bytes and whitespace anywhere in the input
+    /// before the parser interprets a single character. A URI carrying
+    /// CR/LF/NUL/space splits cleanly into a smuggled HTTP request
+    /// line / header pair when the transport later concatenates it
+    /// into a wire frame; the parser is the choke point. RFC 3986
+    /// forbids these bytes inside a URI without percent-encoding, so
+    /// rejection is also strictly correct, not just defensive.
+    for (const char ch : uri) {
+        const auto byte = static_cast<unsigned char>(ch);
+        if (byte <= 0x20 || byte == 0x7F) {
+            return std::nullopt;
+        }
+    }
+
     /// Split the query first so the scheme/host/port logic never sees
     /// query characters in its slice.
     if (auto q = uri.find('?'); q != std::string_view::npos) {
