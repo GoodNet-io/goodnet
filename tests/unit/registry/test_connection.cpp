@@ -659,5 +659,74 @@ TEST(ConnectionRegistry_UpgradeTrust, PeerToUntrustedRejected) {
     }
 }
 
+// ── Per-peer device-key pinning ─────────────────────────────────────
+
+TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {
+    ConnectionRegistry reg;
+    const auto peer = make_pk(1);
+    const auto device = make_pk(2);
+    EXPECT_EQ(reg.get_pinned_device_pk(peer), std::nullopt);
+    EXPECT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    auto fetched = reg.get_pinned_device_pk(peer);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) EXPECT_EQ(*fetched, device);
+    EXPECT_EQ(reg.pin_count(), 1u);
+}
+
+TEST(ConnectionRegistry_PinDevicePk, RepinSameDeviceIdempotent) {
+    ConnectionRegistry reg;
+    const auto peer = make_pk(1);
+    const auto device = make_pk(2);
+    ASSERT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    /// Same peer+device pair: idempotent success, no map growth.
+    EXPECT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    EXPECT_EQ(reg.pin_count(), 1u);
+}
+
+TEST(ConnectionRegistry_PinDevicePk, RepinDifferentDeviceRejected) {
+    ConnectionRegistry reg;
+    const auto peer = make_pk(1);
+    const auto device_a = make_pk(2);
+    const auto device_b = make_pk(3);
+    ASSERT_EQ(reg.pin_device_pk(peer, device_a), GN_OK);
+    /// Cross-session identity-change attempt: same peer, different
+    /// device_pk. The registry rejects with INVALID_ENVELOPE; the
+    /// caller maps the rejection to a peer disconnect.
+    EXPECT_EQ(reg.pin_device_pk(peer, device_b),
+              GN_ERR_INVALID_ENVELOPE);
+    /// The earlier pin survives.
+    auto fetched = reg.get_pinned_device_pk(peer);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) EXPECT_EQ(*fetched, device_a);
+}
+
+TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
+    ConnectionRegistry reg;
+    const auto peer = make_pk(1);
+    const auto device = make_pk(2);
+    const auto id = reg.alloc_id();
+    auto rec = make_record(id, "tcp://h:1", peer);
+    ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
+    ASSERT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+
+    /// Connection close removes the record; the per-peer pin is a
+    /// separate map and outlives the connection.
+    ASSERT_EQ(reg.erase_with_index(id), GN_OK);
+    EXPECT_EQ(reg.size(), 0u);
+    auto fetched = reg.get_pinned_device_pk(peer);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) EXPECT_EQ(*fetched, device);
+}
+
+TEST(ConnectionRegistry_PinDevicePk, ClearRemovesPin) {
+    ConnectionRegistry reg;
+    const auto peer = make_pk(1);
+    ASSERT_EQ(reg.pin_device_pk(peer, make_pk(2)), GN_OK);
+    EXPECT_EQ(reg.pin_count(), 1u);
+    reg.clear_pinned_device_pk(peer);
+    EXPECT_EQ(reg.get_pinned_device_pk(peer), std::nullopt);
+    EXPECT_EQ(reg.pin_count(), 0u);
+}
+
 }  // namespace
 }  // namespace gn::core

@@ -147,6 +147,21 @@ public:
     void set_pending_bytes(gn_conn_id_t id,
                            std::uint64_t bytes) noexcept;
 
+    /// Per-peer device-key pinning. A peer's `remote_pk` (mesh
+    /// address) maps to a `device_pk` (the attestation cert's
+    /// signing key) the first time the attestation dispatcher
+    /// accepts an envelope from that peer. Subsequent attestations
+    /// from the same peer must carry the same device_pk; a
+    /// mismatch is an identity-change attempt and the dispatcher
+    /// disconnects. The map outlives connection records so the
+    /// pinning persists across reconnects.
+    [[nodiscard]] gn_result_t pin_device_pk(const PublicKey& peer_pk,
+                                             const PublicKey& device_pk) noexcept;
+    [[nodiscard]] std::optional<PublicKey>
+        get_pinned_device_pk(const PublicKey& peer_pk) const;
+    void clear_pinned_device_pk(const PublicKey& peer_pk) noexcept;
+    [[nodiscard]] std::size_t pin_count() const noexcept;
+
 private:
     struct AtomicCounters {
         std::atomic<std::uint64_t> bytes_in{0};
@@ -175,6 +190,9 @@ private:
 
     mutable std::shared_mutex pk_mu_;
     std::unordered_map<PublicKey, gn_conn_id_t, PublicKeyHash> pk_index_;
+
+    mutable std::shared_mutex pin_mu_;
+    std::unordered_map<PublicKey, PublicKey, PublicKeyHash> peer_pin_map_;
 
     /// Monotonic id allocator. `GN_INVALID_ID == 0` is reserved, so
     /// the counter starts at 1.

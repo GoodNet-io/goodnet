@@ -244,6 +244,47 @@ them non-blockingly; no walk of any queue is required.
 
 ---
 
+## 8a. Per-peer device-key pinning
+
+The registry holds a separate `peer_pk → device_pk` map keyed on the
+peer's mesh public key. The map outlives connection records: a
+connection close removes the per-conn record from all three indexes
+but leaves the pin entry untouched, so a peer that reconnects sees
+the same pin.
+
+The attestation dispatcher writes the pin on the first successful
+attestation from a peer and consults it on every subsequent
+attestation, even across sessions. A second attestation from the
+same `peer_pk` carrying a different `device_pk` is an
+identity-change attempt across sessions; the registry rejects the
+new pin with `GN_ERR_INVALID_ENVELOPE` and the dispatcher
+disconnects the connection with
+`GN_DROP_ATTESTATION_IDENTITY_CHANGE`. A second attestation
+carrying the same `device_pk` is idempotent success.
+
+The map provides three operations:
+
+| Method | Effect |
+|---|---|
+| `pin_device_pk(peer_pk, device_pk)` | inserts the pin; returns `GN_OK` on first pin or matching repin, `GN_ERR_INVALID_ENVELOPE` on mismatch |
+| `get_pinned_device_pk(peer_pk)` | returns the pinned value or `nullopt` |
+| `clear_pinned_device_pk(peer_pk)` | removes the pin (admin path; not a normal lifecycle event) |
+
+The pin is **per-peer**, not per-connection — a connection record
+holds no pinning state. The map's mutex is independent of the
+shard / URI / pk index mutexes, so concurrent registry mutations
+do not block pinning operations.
+
+Closing the cross-session identity-change window complements the
+per-conn identity-stability check the dispatcher already runs: the
+per-conn check catches a re-attestation that disagrees with the
+already-accepted state on the same session, the cross-session
+check catches a peer that disconnects and reconnects with a
+different device_pk before the per-conn state has a chance to
+record anything.
+
+---
+
 ## 9. Cross-references
 
 - Limits driving counter bounds: `limits.md`.
