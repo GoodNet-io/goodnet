@@ -209,6 +209,30 @@ if (GN_API_HAS(api, kick_handshake)) {
 }
 ```
 
+### 2.1 `config_get` — typed read with out_free contract
+
+`config_get` reads one node out of the live config tree under a
+runtime contract that bindings must respect verbatim:
+
+- `out_value` shape is type-tagged. See `gn_config_value_type_t` in
+  `sdk/types.h` for the per-type table (`int64_t*` / `int32_t*` /
+  `double*` / `char**` / `size_t*`).
+- `out_free` is **mandatory** for `STRING` reads (scalar and
+  array-element) — the kernel writes a destructor pointer the
+  plugin must call on the returned buffer. Passing `NULL` for
+  `out_free` on a `STRING` read returns `GN_ERR_NULL_ARG`.
+- `out_free` is **forbidden** for non-`STRING` reads — passing a
+  non-`NULL` `out_free` on `INT64` / `BOOL` / `DOUBLE` /
+  `ARRAY_SIZE` returns `GN_ERR_NULL_ARG`. The asymmetry keeps the
+  destructor pointer's type unambiguous for FFI and prevents the
+  "I always wired it just in case" pattern from leaving free_fn
+  dangling.
+- `index` is `GN_CONFIG_NO_INDEX` for scalar reads; `INT64` and
+  `STRING` accept a real array-element ordinal as well. Other
+  types reject a real index with `GN_ERR_OUT_OF_RANGE`.
+- An unknown `gn_config_value_type_t` enumerator returns
+  `GN_ERR_INVALID_ENVELOPE` before any other validation runs.
+
 ---
 
 ## 3. Lifetime of `host_api_t`

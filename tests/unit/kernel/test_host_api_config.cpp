@@ -226,3 +226,72 @@ TEST(HostApiConfigGet, MissingKeyReturnsNotFound) {
                                 &v, nullptr),
               GN_ERR_NOT_FOUND);
 }
+
+TEST(HostApiConfigGet, MissingStringKeyReturnsNotFound) {
+    /// STRING reads have an extra out_free precondition; the
+    /// not-found path must return NOT_FOUND, not let NULL_ARG mask
+    /// the actual diagnostic.
+    ConfigHarness h{kSampleJson};
+    char* str = nullptr;
+    void (*free_fn)(void*) = nullptr;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "absent.string",
+                                GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,
+                                static_cast<void*>(&str), &free_fn),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(str, nullptr);
+}
+
+TEST(HostApiConfigGet, BoolAskedAsInt64Mismatch) {
+    /// `scalar_bool` is a JSON boolean; reading it as `INT64` must
+    /// surface `INVALID_ENVELOPE`, not coerce silently.
+    ConfigHarness h{kSampleJson};
+    int64_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_bool",
+                                GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
+                                &v, nullptr),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(HostApiConfigGet, DoubleAskedAsBoolMismatch) {
+    ConfigHarness h{kSampleJson};
+    int32_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_dbl",
+                                GN_CONFIG_VALUE_BOOL, GN_CONFIG_NO_INDEX,
+                                &v, nullptr),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(HostApiConfigGet, ArrayStringElementWithoutOutFreeRejected) {
+    /// Array-element STRING reads share the out_free contract with
+    /// scalar STRING reads.
+    ConfigHarness h{kSampleJson};
+    char* str = nullptr;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_str",
+                                GN_CONFIG_VALUE_STRING, /*index*/ 0,
+                                static_cast<void*>(&str), /*out_free*/ nullptr),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(str, nullptr);
+}
+
+TEST(HostApiConfigGet, UnknownEnumValueRejected) {
+    /// Any value outside the declared enumerators must surface as
+    /// INVALID_ENVELOPE before any per-type validation runs — even
+    /// when the call would otherwise have tripped the index or
+    /// out_free contract.
+    ConfigHarness h{kSampleJson};
+    int64_t v = 0;
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
+                                static_cast<gn_config_value_type_t>(99),
+                                GN_CONFIG_NO_INDEX, &v, nullptr),
+              GN_ERR_INVALID_ENVELOPE);
+
+    /// Same call shape with an out_free / non-NULL index that would
+    /// otherwise trip earlier validation — unknown enum still wins.
+    void (*free_fn)(void*) = nullptr;
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
+                                static_cast<gn_config_value_type_t>(99),
+                                /*index*/ 5, &v, &free_fn),
+              GN_ERR_INVALID_ENVELOPE);
+}
