@@ -33,6 +33,21 @@ struct UriParts {
         return port == 0 && !path.empty();
     }
 
+    /// `host:port` / `[v6]:port` form suitable for an HTTP `Host:`
+    /// header (RFC 7230 §5.4). Empty for path-style URIs (`ipc://`).
+    [[nodiscard]] std::string host_authority() const {
+        if (is_path_style()) return {};
+        std::string s;
+        s.reserve(host.size() + 8);
+        const bool is_v6 = host.find(':') != std::string::npos;
+        if (is_v6) s += '[';
+        s += host;
+        if (is_v6) s += ']';
+        s += ':';
+        s += std::to_string(port);
+        return s;
+    }
+
     /// Canonical "scheme://host:port" / "scheme://path" form for use
     /// as a registry key. Strips the query so lookups stay stable
     /// regardless of per-call metadata, and re-brackets IPv6 literals
@@ -48,12 +63,7 @@ struct UriParts {
         if (is_path_style()) {
             s += path;
         } else {
-            const bool is_v6 = host.find(':') != std::string::npos;
-            if (is_v6) s += '[';
-            s += host;
-            if (is_v6) s += ']';
-            s += ':';
-            s += std::to_string(port);
+            s += host_authority();
         }
         return s;
     }
