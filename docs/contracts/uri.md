@@ -111,11 +111,20 @@ inputs **must** fail:
 8. Unclosed bracket: `tcp://[::1:9000`.
 9. Bracket without `:port` suffix: `tcp://[::1]`,
    `tcp://[::1]9000`.
-10. Any byte ≤ `0x20` (control bytes, space, tab, CR, LF, NUL) or
-    `0x7F` (DEL) anywhere in the input. RFC 3986 already forbids
-    these without percent-encoding; the parser rejects up front so a
-    URI carrying `\r\nEvil: 1\r\n` cannot be smuggled past
-    transports that concatenate the URI into a wire frame.
+10. Any byte ≤ `0x20` (any C0 control or space) or `0x7F` (DEL)
+    anywhere in the input. RFC 3986 already forbids these without
+    percent-encoding; the parser rejects up front so a URI carrying
+    `\r\nEvil: 1\r\n` cannot be smuggled past transports that
+    concatenate the URI into a wire frame.
+
+    The `gn::uri_has_control_bytes` helper exposes the same gate to
+    every kernel entry that accepts a raw URI without going through
+    `parse_uri` — currently `notify_connect` writes URIs straight
+    into the registry index. Bytes 0x21–0x7E pass; 0x80–0xFF pass
+    too (the threat model is HTTP grammar, which is 7-bit ASCII).
+    Callers MUST NOT percent-decode a URI before re-feeding it into
+    these entries; the gate fires only on raw bytes, so a decoded
+    `\r\n` would slip through.
 
 Returning `nullopt` is the only failure protocol; the parser does not
 throw or write through the optional argument.

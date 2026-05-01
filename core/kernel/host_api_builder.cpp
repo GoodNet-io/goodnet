@@ -8,6 +8,7 @@
 #include <cstring>
 
 #include <core/util/log.hpp>
+#include <sdk/cpp/uri.hpp>
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
@@ -938,6 +939,17 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+
+    /// URI control-byte gate (uri.md §5 #10). The kernel writes `uri`
+    /// straight into `ConnectionRecord::uri` and the registry's URI
+    /// index without re-parsing through `parse_uri`, so a hostile
+    /// link plugin (or any out-of-tree bridge that produces URIs from
+    /// peer-controlled bytes) could slip CRLF / NUL / space through
+    /// here even after the `parse_uri` fix on every other entry. A
+    /// downstream caller concatenating `rec.uri` into a wire frame
+    /// (Host header, request-target, log line) would smuggle a second
+    /// HTTP request. Reject up front.
+    if (gn::uri_has_control_bytes(uri)) return GN_ERR_INVALID_ENVELOPE;
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
     /// active layer declares which trust classes it may deframe;
