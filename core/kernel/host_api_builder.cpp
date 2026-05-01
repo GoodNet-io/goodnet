@@ -1021,6 +1021,19 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
+    /// Cap the per-call byte count against `limits.max_frame_bytes`
+    /// before any state mutation. A misbehaving link plugin that
+    /// passes `size = SIZE_MAX` would otherwise drive the per-conn
+    /// `bytes_in` counter into wraparound and force downstream
+    /// vector reservations to overflow. The cap is configured by
+    /// the operator through `limits.md` §2; a zero value means
+    /// "no cap" and skips the check, matching the rest of the
+    /// `gn_limits_t` family.
+    const auto& limits = pc->kernel->limits();
+    if (limits.max_frame_bytes != 0 && size > limits.max_frame_bytes) {
+        return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
