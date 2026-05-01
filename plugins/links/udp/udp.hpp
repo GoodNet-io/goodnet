@@ -188,7 +188,7 @@ private:
     std::atomic<std::uint32_t>                                      mtu_{kDefaultMtu};
     ::gn::util::RateLimiterMap<>                                    new_conn_limiter_{
         kNewConnRate, kNewConnBurst};
-    /// Token issued by `subscribe_config_reload`; reset on
+    /// Token issued by `subscribe(GN_SUBSCRIBE_CONFIG_RELOAD)`; reset on
     /// `set_host_api(nullptr)` and on dtor so the kernel's
     /// signal channel doesn't fire into a freed `this`.
     std::uint64_t                                                   reload_sub_id_{0};

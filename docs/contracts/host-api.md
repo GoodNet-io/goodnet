@@ -162,13 +162,19 @@ typedef struct host_api_s {
                              gn_timer_id_t* out_id);
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
-    /* ── Connection-event observer (conn-events.md) ─────────────────── */
-    gn_result_t (*subscribe_conn_state)(void* host_ctx,
-                                        gn_conn_event_cb_t cb,
-                                        void* user_data,
-                                        gn_subscription_id_t* out_id);
-    gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
-                                          gn_subscription_id_t id);
+    /* ── Channel subscription (conn-events.md / config.md) ──────────── */
+    /* Universal pub/sub gateway. `channel` selects the source — see    */
+    /* `gn_subscribe_channel_t` in sdk/conn_events.h; the cb receives a */
+    /* type-erased payload + size pair. The id returned from `subscribe`*/
+    /* carries a 4-bit channel tag in its top bits so `unsubscribe(id)` */
+    /* routes back to the right channel without naming it twice.        */
+    gn_result_t (*subscribe)(void* host_ctx,
+                              gn_subscribe_channel_t channel,
+                              gn_subscribe_cb_t cb,
+                              void* user_data,
+                              gn_subscription_id_t* out_id);
+    gn_result_t (*unsubscribe)(void* host_ctx,
+                                gn_subscription_id_t id);
     gn_result_t (*for_each_connection)(void* host_ctx,
                                        gn_conn_visitor_t visitor,
                                        void* user_data);

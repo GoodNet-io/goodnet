@@ -44,19 +44,40 @@ typedef struct gn_conn_event_s {
     void*                 _reserved[4];
 } gn_conn_event_t;
 
-/** Subscription handle returned from `subscribe_conn_state`. */
+/** Subscription handle returned from `host_api->subscribe`. */
 typedef uint64_t gn_subscription_id_t;
 
 /** Sentinel value indicating an unset / invalid subscription id. */
 #define GN_INVALID_SUBSCRIPTION_ID ((gn_subscription_id_t)0)
 
 /**
- * @brief Subscriber callback. Runs on the publishing thread per
- *        `conn-events.md` §3; the event pointer is `@borrowed`
- *        for the duration of the call.
+ * @brief Channel selector for `host_api->subscribe`.
+ *
+ * `CONN_STATE` delivers `gn_conn_event_t` payloads;
+ * `CONFIG_RELOAD` fires after every successful `Kernel::reload_config`
+ * with a NULL payload.
  */
-typedef void (*gn_conn_event_cb_t)(void* user_data,
-                                    const gn_conn_event_t* event);
+typedef enum gn_subscribe_channel_e {
+    GN_SUBSCRIBE_CONN_STATE     = 0,
+    GN_SUBSCRIBE_CONFIG_RELOAD  = 1
+} gn_subscribe_channel_t;
+
+/**
+ * @brief Universal subscriber callback used by `host_api->subscribe`.
+ *
+ * Runs on the publishing thread per `conn-events.md` §3 / `config.md`
+ * §2; @p payload borrows for the duration of the call.
+ *
+ * Per-channel payload shape:
+ *
+ * | Channel              | @p payload                    | @p size                       |
+ * |----------------------|-------------------------------|-------------------------------|
+ * | `GN_SUBSCRIBE_CONN_STATE`    | `const gn_conn_event_t*`      | `sizeof(gn_conn_event_t)`     |
+ * | `GN_SUBSCRIBE_CONFIG_RELOAD` | `NULL`                        | `0`                           |
+ */
+typedef void (*gn_subscribe_cb_t)(void*       user_data,
+                                   const void* payload,
+                                   size_t      size);
 
 /**
  * @brief Iteration visitor for `for_each_connection`. Returns 0 to

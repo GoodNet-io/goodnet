@@ -326,80 +326,100 @@ gn_result_t thunk_cancel_timer(void* host_ctx, gn_timer_id_t id) {
     return pc->kernel->timers().cancel_timer(id);
 }
 
-gn_result_t thunk_subscribe_conn_state(void* host_ctx,
-                                        gn_conn_event_cb_t cb,
-                                        void* user_data,
-                                        gn_subscription_id_t* out_id) {
-    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
-    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
-    auto token = pc->kernel->on_conn_event().subscribe(
-        [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
-            /// Open a `GateGuard` for the dispatch so
-            /// `PluginManager::drain_anchor` cannot run `dlclose`
-            /// while the callback is still in the plugin's `.text`.
-            /// The guard refuses if rollback already published
-            /// `shutdown_requested = true`, dropping the dispatch.
-            std::optional<GateGuard> guard;
-            if (anchor_set) {
-                guard = GateGuard::acquire(anchor_weak);
-                if (!guard) return;
-            }
-            gn_conn_event_t e{};
-            e.api_size      = sizeof(gn_conn_event_t);
-            e.kind          = ev.kind;
-            e.conn          = ev.conn;
-            e.trust         = ev.trust;
-            e.pending_bytes = ev.pending_bytes;
-            std::memcpy(e.remote_pk, ev.remote_pk.data(),
-                        GN_PUBLIC_KEY_BYTES);
-            safe_call_void("conn_state.subscriber",
-                cb, user_data, &e);
-        });
-    *out_id = static_cast<gn_subscription_id_t>(token);
-    return GN_OK;
+/// Subscription ids carry a 4-bit channel tag in the top bits so
+/// `unsubscribe(id)` can route to the right SignalChannel without
+/// the caller naming the channel a second time. 60-bit token space
+/// (~1.15e18) is structurally non-exhaustible across realistic
+/// process lifetimes.
+constexpr std::uint64_t kSubChannelShift = 60;
+constexpr std::uint64_t kSubChannelMask  =
+    static_cast<std::uint64_t>(0xF) << kSubChannelShift;
+constexpr std::uint64_t kSubTokenMask    =
+    (std::uint64_t{1} << kSubChannelShift) - 1;
+
+[[nodiscard]] constexpr std::uint64_t pack_subscription_id(
+    gn_subscribe_channel_t channel, std::uint64_t token) noexcept {
+    return (static_cast<std::uint64_t>(channel) << kSubChannelShift) |
+           (token & kSubTokenMask);
 }
 
-gn_result_t thunk_subscribe_config_reload(void* host_ctx,
-                                           void (*cb)(void* user_data),
-                                           void* user_data,
-                                           uint64_t* out_id) {
-    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
-    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
-    auto token = pc->kernel->on_config_reload().subscribe(
-        [cb, user_data, anchor_weak, anchor_set](const signal::Empty&) {
-            /// Same lifetime gate as `subscribe_conn_state`: refuse
-            /// the dispatch if the plugin's anchor expired or
-            /// rollback published `shutdown_requested`. A plugin
-            /// being unloaded must not see one last reload event
-            /// after its `gn_plugin_shutdown` returned.
-            if (anchor_set) {
-                auto guard = GateGuard::acquire(anchor_weak);
-                if (!guard) return;
-                safe_call_void("config_reload.subscriber",
-                    cb, user_data);
-            } else {
-                safe_call_void("config_reload.subscriber",
-                    cb, user_data);
-            }
-        });
-    *out_id = static_cast<std::uint64_t>(token);
-    return GN_OK;
+[[nodiscard]] constexpr gn_subscribe_channel_t channel_of_id(
+    std::uint64_t id) noexcept {
+    return static_cast<gn_subscribe_channel_t>(
+        (id & kSubChannelMask) >> kSubChannelShift);
 }
 
-gn_result_t thunk_unsubscribe_config_reload(void* host_ctx,
-                                              uint64_t id) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
+[[nodiscard]] constexpr std::uint64_t token_of_id(std::uint64_t id) noexcept {
+    return id & kSubTokenMask;
+}
+
+gn_result_t thunk_subscribe(void* host_ctx,
+                             gn_subscribe_channel_t channel,
+                             gn_subscribe_cb_t cb,
+                             void* user_data,
+                             gn_subscription_id_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
+
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    pc->kernel->on_config_reload().unsubscribe(
-        static_cast<signal::SignalChannel<signal::Empty>::Token>(id));
-    return GN_OK;
+
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+
+    switch (channel) {
+    case GN_SUBSCRIBE_CONN_STATE: {
+        auto token = pc->kernel->on_conn_event().subscribe(
+            [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
+                /// Open a `GateGuard` for the dispatch so
+                /// `PluginManager::drain_anchor` cannot run `dlclose`
+                /// while the callback is still in the plugin's `.text`.
+                /// The guard refuses if rollback already published
+                /// `shutdown_requested = true`, dropping the dispatch.
+                std::optional<GateGuard> guard;
+                if (anchor_set) {
+                    guard = GateGuard::acquire(anchor_weak);
+                    if (!guard) return;
+                }
+                gn_conn_event_t e{};
+                e.api_size      = sizeof(gn_conn_event_t);
+                e.kind          = ev.kind;
+                e.conn          = ev.conn;
+                e.trust         = ev.trust;
+                e.pending_bytes = ev.pending_bytes;
+                std::memcpy(e.remote_pk, ev.remote_pk.data(),
+                            GN_PUBLIC_KEY_BYTES);
+                safe_call_void("subscriber.conn_state",
+                    cb, user_data,
+                    static_cast<const void*>(&e),
+                    sizeof(gn_conn_event_t));
+            });
+        *out_id = pack_subscription_id(GN_SUBSCRIBE_CONN_STATE,
+                                        static_cast<std::uint64_t>(token));
+        return GN_OK;
+    }
+
+    case GN_SUBSCRIBE_CONFIG_RELOAD: {
+        auto token = pc->kernel->on_config_reload().subscribe(
+            [cb, user_data, anchor_weak, anchor_set](const signal::Empty&) {
+                /// Same lifetime gate as the conn-state path: refuse
+                /// the dispatch if the plugin's anchor expired or
+                /// rollback published `shutdown_requested`.
+                if (anchor_set) {
+                    auto guard = GateGuard::acquire(anchor_weak);
+                    if (!guard) return;
+                }
+                safe_call_void("subscriber.config_reload",
+                    cb, user_data,
+                    static_cast<const void*>(nullptr),
+                    static_cast<std::size_t>(0));
+            });
+        *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
+                                        static_cast<std::uint64_t>(token));
+        return GN_OK;
+    }
+    }
+
+    return GN_ERR_INVALID_ENVELOPE;
 }
 
 int32_t thunk_is_shutdown_requested(void* host_ctx) {
@@ -432,15 +452,27 @@ std::uint64_t thunk_iterate_counters(void* host_ctx,
     return pc->kernel->metrics().iterate(visitor, user_data);
 }
 
-gn_result_t thunk_unsubscribe_conn_state(void* host_ctx,
-                                          gn_subscription_id_t id) {
+gn_result_t thunk_unsubscribe(void* host_ctx,
+                               gn_subscription_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     if (id == GN_INVALID_SUBSCRIPTION_ID) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    pc->kernel->on_conn_event().unsubscribe(
-        static_cast<signal::SignalChannel<ConnEvent>::Token>(id));
-    return GN_OK;
+
+    const auto channel = channel_of_id(id);
+    const auto token   = token_of_id(id);
+
+    switch (channel) {
+    case GN_SUBSCRIBE_CONN_STATE:
+        pc->kernel->on_conn_event().unsubscribe(
+            static_cast<signal::SignalChannel<ConnEvent>::Token>(token));
+        return GN_OK;
+    case GN_SUBSCRIBE_CONFIG_RELOAD:
+        pc->kernel->on_config_reload().unsubscribe(
+            static_cast<signal::SignalChannel<signal::Empty>::Token>(token));
+        return GN_OK;
+    }
+    return GN_ERR_NOT_FOUND;
 }
 
 gn_result_t thunk_for_each_connection(void* host_ctx,
@@ -1165,8 +1197,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.set_timer               = &thunk_set_timer;
     a.cancel_timer            = &thunk_cancel_timer;
 
-    a.subscribe_conn_state    = &thunk_subscribe_conn_state;
-    a.unsubscribe_conn_state  = &thunk_unsubscribe_conn_state;
+    a.subscribe               = &thunk_subscribe;
+    a.unsubscribe             = &thunk_unsubscribe;
     a.for_each_connection     = &thunk_for_each_connection;
     a.notify_backpressure     = &thunk_notify_backpressure;
 
@@ -1192,9 +1224,6 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.kick_handshake          = &thunk_kick_handshake;
 
     a.is_shutdown_requested   = &thunk_is_shutdown_requested;
-
-    a.subscribe_config_reload   = &thunk_subscribe_config_reload;
-    a.unsubscribe_config_reload = &thunk_unsubscribe_config_reload;
 
     a.emit_counter            = &thunk_emit_counter;
     a.iterate_counters        = &thunk_iterate_counters;

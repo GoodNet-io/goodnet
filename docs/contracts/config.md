@@ -35,9 +35,10 @@ Runtime reload runs through `Kernel::reload_config(text)` and
 outside: a parse failure or invariant violation rolls the kernel
 state back to the prior load, propagates the new `gn_limits_t`
 into kernel-owned registries through `set_limits`, and then fires
-the `on_config_reload` signal. Plugins subscribe through the
-`subscribe_config_reload` / `unsubscribe_config_reload` host-api
-slots and re-read their own knobs from inside their callback —
+the `on_config_reload` signal. Plugins subscribe through
+`host_api->subscribe(GN_SUBSCRIBE_CONFIG_RELOAD, …)` /
+`unsubscribe(id)` and re-read their own knobs from inside their
+callback —
 the kernel's responsibility ends at the signal fire; plugins own
 their state-machine response.
 

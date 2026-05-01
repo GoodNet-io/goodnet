@@ -146,7 +146,7 @@ A plugin pushing bytes through `host_api->send` **must**:
   retry — a busy queue means the peer or the network is slow.
   Looping on retry without backoff is a §8 violation in
   `plugin-lifetime.md`.
-- Subscribe to `subscribe_conn_state` and react to
+- Subscribe to `subscribe(GN_SUBSCRIBE_CONN_STATE)` and react to
   `GN_CONN_EVENT_BACKPRESSURE_SOFT` by pausing fresh enqueues
   for that connection until `BACKPRESSURE_CLEAR` arrives. The
   event is advisory; the kernel does not enforce.

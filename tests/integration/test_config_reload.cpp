@@ -1,7 +1,7 @@
 /// @file   tests/integration/test_config_reload.cpp
 /// @brief  Hot reload pipeline: Kernel::reload_config →
 ///         on_config_reload signal → plugin re-reads via
-///         host_api->subscribe_config_reload.
+///         host_api->subscribe(GN_SUBSCRIBE_CONFIG_RELOAD).
 ///
 /// Pins `config.md` §2 (reload lifecycle) end-to-end through the
 /// host_api thunks: a kernel-level reload triggers each subscribed
@@ -49,16 +49,17 @@ TEST(ConfigReload, ReloadFiresSubscriberCallback) {
     auto api = build_host_api(ctx);
 
     std::atomic<int> calls{0};
-    std::uint64_t token = 0;
-    ASSERT_EQ(api.subscribe_config_reload(
+    gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(
                 api.host_ctx,
-                +[](void* ud) {
+                GN_SUBSCRIBE_CONFIG_RELOAD,
+                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
                 &token),
               GN_OK);
-    EXPECT_NE(token, 0u);
+    EXPECT_NE(token, GN_INVALID_SUBSCRIPTION_ID);
 
     /// Reload must fire the subscribed callback exactly once.
     ASSERT_EQ(k.reload_config(R"({"marker":"first"})"), GN_OK);
@@ -78,10 +79,11 @@ TEST(ConfigReload, FailedReloadDoesNotFire) {
     auto api = build_host_api(ctx);
 
     std::atomic<int> calls{0};
-    std::uint64_t token = 0;
-    ASSERT_EQ(api.subscribe_config_reload(
+    gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(
                 api.host_ctx,
-                +[](void* ud) {
+                GN_SUBSCRIBE_CONFIG_RELOAD,
+                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -98,10 +100,11 @@ TEST(ConfigReload, FailedValidationDoesNotFire) {
     auto api = build_host_api(ctx);
 
     std::atomic<int> calls{0};
-    std::uint64_t token = 0;
-    ASSERT_EQ(api.subscribe_config_reload(
+    gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(
                 api.host_ctx,
-                +[](void* ud) {
+                GN_SUBSCRIBE_CONFIG_RELOAD,
+                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -123,10 +126,11 @@ TEST(ConfigReload, UnsubscribeStopsCallbacks) {
     auto api = build_host_api(ctx);
 
     std::atomic<int> calls{0};
-    std::uint64_t token = 0;
-    ASSERT_EQ(api.subscribe_config_reload(
+    gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(
                 api.host_ctx,
-                +[](void* ud) {
+                GN_SUBSCRIBE_CONFIG_RELOAD,
+                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -136,10 +140,10 @@ TEST(ConfigReload, UnsubscribeStopsCallbacks) {
     ASSERT_EQ(k.reload_config(R"({"a":1})"), GN_OK);
     EXPECT_EQ(calls.load(), 1);
 
-    EXPECT_EQ(api.unsubscribe_config_reload(api.host_ctx, token),
+    EXPECT_EQ(api.unsubscribe(api.host_ctx, token),
               GN_OK);
     /// Idempotent: unsubscribing a second time is success.
-    EXPECT_EQ(api.unsubscribe_config_reload(api.host_ctx, token),
+    EXPECT_EQ(api.unsubscribe(api.host_ctx, token),
               GN_OK);
 
     ASSERT_EQ(k.reload_config(R"({"a":2})"), GN_OK);
@@ -155,10 +159,11 @@ TEST(ConfigReload, MergeReloadAlsoFires) {
     auto api = build_host_api(ctx);
 
     std::atomic<int> calls{0};
-    std::uint64_t token = 0;
-    ASSERT_EQ(api.subscribe_config_reload(
+    gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(
                 api.host_ctx,
-                +[](void* ud) {
+                GN_SUBSCRIBE_CONFIG_RELOAD,
+                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,

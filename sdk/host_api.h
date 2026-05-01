@@ -367,27 +367,36 @@ typedef struct host_api_s {
      */
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
-    /* ── Connection events (conn-events.md is authoritative) ───────────── */
+    /* ── Channel subscription (conn-events.md / config.md authoritative) ── */
 
     /**
-     * @brief Subscribe to connection-lifecycle events.
+     * @brief Subscribe to a kernel pub/sub channel.
      *
      * The kernel pairs each subscription with a weak observer of
      * the calling plugin's lifetime anchor; a callback whose
      * plugin already unloaded is dropped silently
-     * (`conn-events.md` §3).
+     * (`conn-events.md` §3 / `config.md` §2).
+     *
+     * `cb` runs on the publishing thread and receives a typed
+     * payload — see @ref gn_subscribe_cb_t. Per-channel payload
+     * shape is documented on the same enum.
      */
-    gn_result_t (*subscribe_conn_state)(void* host_ctx,
-                                        gn_conn_event_cb_t cb,
-                                        void* user_data,
-                                        gn_subscription_id_t* out_id);
+    gn_result_t (*subscribe)(void* host_ctx,
+                              gn_subscribe_channel_t channel,
+                              gn_subscribe_cb_t cb,
+                              void* user_data,
+                              gn_subscription_id_t* out_id);
 
     /**
      * @brief Remove a subscription. Idempotent: removing an already-
-     *        gone id returns @ref GN_OK.
+     *        gone id returns @ref GN_OK. The id is unique across
+     *        every channel; the kernel routes the unsubscribe to
+     *        the right channel internally.
      */
-    gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
-                                          gn_subscription_id_t id);
+    gn_result_t (*unsubscribe)(void* host_ctx,
+                                gn_subscription_id_t id);
+
+    /* ── Connection iteration ──────────────────────────────────────────── */
 
     /**
      * @brief Visit every currently-registered connection under a
@@ -448,37 +457,6 @@ typedef struct host_api_s {
     uint64_t (*iterate_counters)(void* host_ctx,
                                   gn_counter_visitor_t visitor,
                                   void* user_data);
-
-    /* ── Config reload subscription (config.md §2) ─────────────────────── */
-
-    /**
-     * @brief Subscribe to `on_config_reload` events.
-     *
-     * `cb(user_data)` fires synchronously after every successful
-     * `Kernel::reload_config` / `Kernel::reload_config_merge`. The
-     * subscriber re-reads its own knobs through `config_get_*` in
-     * the callback and applies any changes; the kernel itself
-     * has already updated `limits()` and propagated to its own
-     * registries before the callback runs.
-     *
-     * The kernel pairs the subscription with the calling plugin's
-     * lifetime anchor: a callback whose plugin already unloaded
-     * is dropped silently (same shape as `subscribe_conn_state`).
-     *
-     * @param out_id  the subscription token; the plugin hands it
-     *                back on `unsubscribe_config_reload`.
-     */
-    gn_result_t (*subscribe_config_reload)(void* host_ctx,
-                                            void (*cb)(void* user_data),
-                                            void* user_data,
-                                            uint64_t* out_id);
-
-    /**
-     * @brief Drop a subscription. Idempotent: removing an
-     *        already-gone id returns `GN_OK`.
-     */
-    gn_result_t (*unsubscribe_config_reload)(void* host_ctx,
-                                              uint64_t id);
 
     /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
 
