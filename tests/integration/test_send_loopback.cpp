@@ -21,6 +21,7 @@
 #include <core/kernel/connection_context.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <core/kernel/plugin_anchor.hpp>
 #include <core/kernel/plugin_context.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
@@ -223,4 +224,67 @@ TEST(SendLoopback, DisconnectThroughTransport) {
     /// disconnect routes through the transport vtable; loopback's
     /// stub disconnect returns GN_OK without notifying back.
     EXPECT_EQ(alice.api.disconnect(alice.api.host_ctx, conn), GN_OK);
+}
+
+TEST(SendLoopback, CrossPluginConnIdRejected) {
+    /// security-trust.md §6a: only the link plugin that registered
+    /// the scheme backing a connection may drive its host_api conn_id
+    /// thunks. A second plugin attempting `notify_inbound_bytes` /
+    /// `notify_disconnect` / `notify_link_event` / `kick_handshake`
+    /// on a foreign connection sees `GN_ERR_NOT_FOUND` (the same
+    /// shape as a missing conn id, so the existence of the foreign
+    /// connection is not leaked through the error code).
+    Node alice("test-alice", 0xA1);
+
+    /// Alice the link plugin must carry a real anchor; the in-tree
+    /// fixture default is null which the ownership check treats as
+    /// permissive on purpose. Re-build the host_api after pinning
+    /// the anchor so the link entry's `lifetime_anchor` matches.
+    alice.plugin_ctx.plugin_anchor = std::make_shared<PluginAnchor>();
+    alice.api = build_host_api(alice.plugin_ctx);
+
+    static auto loopback_vt = Loopback::make_vtable();
+    gn_link_id_t alice_t = GN_INVALID_ID;
+    ASSERT_EQ(alice.api.register_vtable(alice.api.host_ctx, GN_REGISTER_LINK,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "loopback"; return &mt; }(),
+        &loopback_vt, &alice.loop, &alice_t), GN_OK);
+
+    PublicKey peer_pk{};
+    peer_pk[0] = 0xC3;
+    gn_conn_id_t conn = GN_INVALID_ID;
+    ASSERT_EQ(alice.api.notify_connect(alice.api.host_ctx,
+                                       peer_pk.data(),
+                                       "loopback://peer",
+                                       "loopback",
+                                       GN_TRUST_PEER,
+                                       GN_ROLE_INITIATOR,
+                                       &conn), GN_OK);
+
+    /// A second plugin (eve) shares the kernel but holds a fresh
+    /// anchor that does not match the loopback link's.
+    PluginContext eve_ctx;
+    eve_ctx.plugin_name = "test-eve";
+    eve_ctx.kernel = alice.kernel.get();
+    eve_ctx.plugin_anchor = std::make_shared<PluginAnchor>();
+    auto eve_api = build_host_api(eve_ctx);
+
+    const std::uint8_t bytes[] = {0xDE, 0xAD};
+    EXPECT_EQ(eve_api.notify_inbound_bytes(eve_api.host_ctx, conn,
+                                           bytes, sizeof(bytes)),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(eve_api.notify_disconnect(eve_api.host_ctx, conn, GN_OK),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(eve_api.notify_backpressure(eve_api.host_ctx, conn,
+                                          GN_CONN_EVENT_BACKPRESSURE_SOFT, 0),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(eve_api.kick_handshake(eve_api.host_ctx, conn),
+              GN_OK);  /// no session bound — early return precedes the gate
+
+    /// The connection record survives the foreign attempts.
+    EXPECT_EQ(alice.kernel->connections().size(), 1u);
+
+    /// Alice retains full access to her own connection.
+    EXPECT_EQ(alice.api.notify_disconnect(alice.api.host_ctx, conn, GN_OK),
+              GN_OK);
+    EXPECT_EQ(alice.kernel->connections().size(), 0u);
 }
