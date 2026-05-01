@@ -100,6 +100,15 @@ consumer-side `api_size >= offsetof(slot) + sizeof(slot)` guard
 before any newly-introduced slot fires. Per-language helper macros
 and wrappers belong to the binding's own contract, not to this one.
 
+A binding (Python via ctypes or cffi, Rust via bindgen, Go via cgo,
+JS via Node-API or Wasm) lives in its own repository and ships its
+own contract — language-idiomatic error mapping (`gn_result_t` →
+exceptions or `Result` types), RAII or context-manager wrappers for
+`out_free`-receiving slots, threading model translation, GC
+interaction with kernel-owned buffers. The contracts in
+`docs/contracts/` are the C-level boundary the bindings translate;
+they are not a normative cross-language spec.
+
 ---
 
 ## 3a. Kernel-side validation of plugin-provided vtables
