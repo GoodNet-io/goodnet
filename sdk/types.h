@@ -141,9 +141,15 @@ typedef enum gn_result_e {
     GN_ERR_NULL_ARG           = -1,  /**< caller passed NULL where required */
     GN_ERR_OUT_OF_MEMORY      = -2,
     GN_ERR_INVALID_ENVELOPE   = -3,  /**< sender_pk == ZERO, msg_id == 0, _reserved non-zero */
-    GN_ERR_UNKNOWN_RECEIVER   = -4,  /**< receiver_pk not in local_identities, no relay loaded.
-                                       *   Reserved for the message-routing
-                                       *   path; lookup misses elsewhere
+    GN_ERR_UNKNOWN_RECEIVER   = -4,  /**< receiver_pk not in local_identities,
+                                       *   no relay loaded. Reserved for the
+                                       *   message-routing path. The router
+                                       *   surfaces this case through the
+                                       *   `RouteOutcome::DroppedUnknownReceiver`
+                                       *   internal enum and the
+                                       *   `route.outcome.dropped_unknown_receiver`
+                                       *   counter, not as a return from any
+                                       *   C ABI thunk. Lookup misses elsewhere
                                        *   (registry id miss, config key
                                        *   absent, transport session miss)
                                        *   return `GN_ERR_NOT_FOUND` (-14).

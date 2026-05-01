@@ -242,7 +242,7 @@ TEST(WsTransport, LoopbackHandshakeAndPayloadRoundTrip) {
         std::span<const std::uint8_t>(payload));
     auto rc2 = server->send(initiator_id,
         std::span<const std::uint8_t>(payload));
-    /// One of the two will return UNKNOWN_RECEIVER (the other side
+    /// One of the two will return NOT_FOUND (the other side
     /// owns the conn id), the other will succeed. Either delivers
     /// bytes through the wire.
     EXPECT_TRUE(rc1 == GN_OK || rc2 == GN_OK)

@@ -206,7 +206,7 @@ TEST(HostApiNotifyDisconnect, SnapshotsTrustAndPkBeforeErase) {
     EXPECT_EQ(bag.events[1].remote_pk[3], 0xEF);
 }
 
-TEST(HostApiNotifyDisconnect, MissingConnReturnsUnknownReceiver) {
+TEST(HostApiNotifyDisconnect, MissingConnReturnsNotFound) {
     Kernel k;
     auto ctx = make_transport_ctx(k);
     auto api = build_host_api(ctx);
@@ -334,7 +334,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
 /// `conn-events.md` §2a Returns row: `conn == GN_INVALID_ID`
 /// collapses to `GN_ERR_NOT_FOUND` (no record matches the
 /// sentinel id).
-TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsUnknownReceiver) {
+TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsNotFound) {
     Kernel k;
     auto ctx = make_transport_ctx(k);
     auto api = build_host_api(ctx);

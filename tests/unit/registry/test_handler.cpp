@@ -235,7 +235,7 @@ TEST(HandlerRegistry_Unregister, RemovesEntry) {
     EXPECT_EQ(reg.size(), 1u);
 }
 
-TEST(HandlerRegistry_Unregister, NonExistentReturnsUnknownReceiver) {
+TEST(HandlerRegistry_Unregister, NonExistentReturnsNotFound) {
     HandlerRegistry reg;
     EXPECT_EQ(reg.unregister_handler(424242), GN_ERR_NOT_FOUND);
 

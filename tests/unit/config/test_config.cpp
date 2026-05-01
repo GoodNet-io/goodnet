@@ -252,14 +252,14 @@ TEST(Config_GetString, DottedPath) {
     EXPECT_EQ(out, "tcp");
 }
 
-TEST(Config_GetString, MissingKeyReturnsUnknownReceiver) {
+TEST(Config_GetString, MissingKeyReturnsNotFound) {
     Config c;
     ASSERT_EQ(c.load_json("{}"), GN_OK);
     std::string out;
     EXPECT_EQ(c.get_string("absent", out), GN_ERR_NOT_FOUND);
 }
 
-TEST(Config_GetString, MissingMidSegmentReturnsUnknownReceiver) {
+TEST(Config_GetString, MissingMidSegmentReturnsNotFound) {
     Config c;
     const char* doc = R"({"a": {"b": "ok"}})";
     ASSERT_EQ(c.load_json(doc), GN_OK);
@@ -375,7 +375,7 @@ TEST(Config_GetBool, IntegerNotABool) {
     EXPECT_EQ(c.get_bool("v", v), GN_ERR_INVALID_ENVELOPE);
 }
 
-TEST(Config_GetBool, MissingReturnsUnknownReceiver) {
+TEST(Config_GetBool, MissingReturnsNotFound) {
     Config c;
     bool v = false;
     EXPECT_EQ(c.get_bool("absent", v), GN_ERR_NOT_FOUND);
@@ -809,7 +809,7 @@ TEST(Config_LoadFile, ReadsExistingFile) {
     fs::remove(path);
 }
 
-TEST(Config_LoadFile, MissingFileReportsUnknownReceiver) {
+TEST(Config_LoadFile, MissingFileReportsNotFound) {
     Config c;
     EXPECT_EQ(c.load_file("/nonexistent/missing-config.json"),
               GN_ERR_NOT_FOUND);
