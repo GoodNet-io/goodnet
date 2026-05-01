@@ -48,8 +48,8 @@ public:
     void rekey() noexcept {
         send_.rekey();
         recv_.rekey();
-        send_.set_nonce(0);
-        recv_.set_nonce(0);
+        send_.reset_nonce_to_zero();
+        recv_.reset_nonce_to_zero();
     }
 
     [[nodiscard]] std::uint64_t send_nonce() const noexcept { return send_.nonce(); }
@@ -60,15 +60,18 @@ public:
         return send_.nonce() >= REKEY_INTERVAL || recv_.nonce() >= REKEY_INTERVAL;
     }
 
-    /// Test seam: push both counters to a chosen value so the rekey
-    /// threshold path runs without burning 2^60 encrypt operations
-    /// at suite time. Production callers derive nonces from the
-    /// handshake split and never set them directly.
+#ifdef GN_TEST_HOOKS
+    /// Test-only seam: push both counters to a chosen value so the
+    /// rekey threshold path runs without burning 2^60 encrypt
+    /// operations at suite time. Compiled out in production via the
+    /// `GN_TEST_HOOKS` macro so a shipped binary cannot be coaxed
+    /// into nonce reuse → keystream collision → plaintext recovery.
     void test_set_nonces(std::uint64_t send_n,
                           std::uint64_t recv_n) noexcept {
-        send_.set_nonce(send_n);
-        recv_.set_nonce(recv_n);
+        send_.test_set_nonce(send_n);
+        recv_.test_set_nonce(recv_n);
     }
+#endif
 
 private:
     CipherState send_;

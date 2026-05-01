@@ -56,6 +56,15 @@ target_link_libraries(goodnet_unit_tests
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
 
+# Test seams in plugin internals (e.g. `test_set_nonces` in
+# `plugins/security/noise/transport.hpp`) are gated behind the
+# `GN_TEST_HOOKS` define so they cannot ship in production binaries.
+# Surfacing nonce assignment in a shipped Noise CipherState would
+# let a misuse trip a (key, nonce) collision and hand the attacker
+# a keystream — the test build is the only context where the seams
+# are reachable.
+target_compile_definitions(goodnet_unit_tests PRIVATE GN_TEST_HOOKS)
+
 # The NullProvider plugin test resolves entry symbols via dlopen at
 # runtime — the .so must exist in the build tree before ctest runs.
 # Adding the plugin target as a build dependency forces ninja to

@@ -45,7 +45,23 @@ public:
     [[nodiscard]] bool          has_key() const noexcept { return has_key_; }
     [[nodiscard]] std::uint64_t nonce()   const noexcept { return n_; }
 
-    void set_nonce(std::uint64_t n) noexcept { n_ = n; }
+    /// Reset the nonce counter to zero. Called by `TransportState::rekey`
+    /// per `noise-handshake.md` §4 — both sides reset on the same
+    /// boundary so AES-GCM with a fresh key + zero nonce is independent
+    /// of any earlier (key, nonce) pair. Restricted to the rekey path
+    /// because arbitrary nonce assignment would let a caller force a
+    /// (key, nonce) collision and leak keystream.
+    void reset_nonce_to_zero() noexcept { n_ = 0; }
+
+#ifdef GN_TEST_HOOKS
+    /// Test-only seam: place the nonce counter at an arbitrary value
+    /// so the rekey threshold path runs without burning 2^60 encrypt
+    /// operations at suite time. Compiled out in production via the
+    /// `GN_TEST_HOOKS` macro — surfacing nonce assignment in the
+    /// shipped binary would let a misuse trip nonce reuse and hand
+    /// the attacker a keystream collision.
+    void test_set_nonce(std::uint64_t n) noexcept { n_ = n; }
+#endif
 
     /// Encrypts @p plaintext with associated data @p ad. When the cipher
     /// has no key (pre-Split, or null suite) returns the plaintext
