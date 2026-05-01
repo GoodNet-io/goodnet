@@ -336,6 +336,14 @@ typed extension API.
 
 ### Changed
 
+- **TLS and WS plugins enable IPv6 dual-stack on wildcard
+  listens.** A `tls://[::]:port` or `ws://[::]:port` listener
+  now disables `IPV6_V6ONLY` on the underlying acceptor, so a
+  v4-mapped client reaches the same socket. TCP and UDP already
+  did this; the gap meant TLS and WS bound only the v6 family
+  on a wildcard, dropping every v4 client. `set_option` is
+  best-effort: a kernel that lacks the option (pre-Linux-3.x)
+  leaves the listener v6-only and logs the refusal at debug.
 - **URI parse and DNS-resolve failures uniformly return
   `GN_ERR_INVALID_ENVELOPE`.** TCP, UDP, IPC, TLS plugins now
   agree on the diagnostic for malformed URIs, unresolvable

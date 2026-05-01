@@ -10,6 +10,7 @@
 #include <asio/bind_executor.hpp>
 #include <asio/buffer.hpp>
 #include <asio/dispatch.hpp>
+#include <asio/ip/v6_only.hpp>
 #include <asio/read.hpp>
 #include <asio/write.hpp>
 
@@ -540,6 +541,20 @@ gn_result_t TlsTransport::listen(std::string_view uri) {
     std::error_code ec;
     asio::ip::tcp::acceptor acc(ioc_);
     if (acc.open(ep.protocol(), ec)) return GN_ERR_NULL_ARG;
+    /// IPv6 wildcard `::` — disable `IPV6_V6ONLY` so dual-stack
+    /// listens accept v4-mapped clients on Linux. set_option is
+    /// best-effort: pre-Linux-3.x kernels lack the option and a
+    /// v4-only fallback is the documented behaviour. Specific v6
+    /// literals stay v6-only by default.
+    if (ep.address().is_v6() && ep.address().is_unspecified()) {
+        std::error_code v6_ec;
+        // NOLINTNEXTLINE(bugprone-unused-return-value,cert-err33-c)
+        acc.set_option(asio::ip::v6_only(false), v6_ec);
+        if (v6_ec && api_) {
+            gn_log_debug(api_, "tls: v6_only(false) failed: %s",
+                         v6_ec.message().c_str());
+        }
+    }
     if (acc.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec)) {
         return GN_ERR_LIMIT_REACHED;
     }
