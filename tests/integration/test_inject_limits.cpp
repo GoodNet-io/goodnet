@@ -62,7 +62,7 @@ struct InjectHarness {
         rec.uri              = std::string(uri);
         rec.trust            = GN_TRUST_PEER;
         rec.role             = GN_ROLE_RESPONDER;
-        rec.transport_scheme = "test";
+        rec.link_scheme = "test";
         EXPECT_EQ(kernel->connections().insert_with_index(std::move(rec)),
                   GN_OK);
         return id;

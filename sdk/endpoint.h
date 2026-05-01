@@ -34,7 +34,7 @@ typedef struct gn_endpoint_s {
     uint8_t           remote_pk[GN_PUBLIC_KEY_BYTES];
     gn_trust_class_t  trust;
     char              uri[GN_ENDPOINT_URI_MAX];
-    char              transport_scheme[16];     /**< "tcp", "udp", "ws", "ipc", … */
+    char              link_scheme[16];     /**< "tcp", "udp", "ws", "ipc", … */
 
     /* Counters (atomic snapshots). */
     uint64_t          bytes_in;

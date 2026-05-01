@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/links/ipc/ipc.hpp
-/// @brief  Asio AF_UNIX transport plugin per `transport.md` §3
+/// @brief  Asio AF_UNIX transport plugin per `link.md` §3
 ///         (AF_UNIX → `Loopback`).
 ///
 /// Single-writer / strand-per-session shape: each connection owns a

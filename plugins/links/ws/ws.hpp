@@ -11,7 +11,7 @@
 ///
 /// Architecture mirrors TcpLink: own `asio::io_context` on a
 /// dedicated worker thread, strand-per-session writes serialise the
-/// single-writer invariant from `transport.md` §4. The upgrade
+/// single-writer invariant from `link.md` §4. The upgrade
 /// handshake parses HTTP/1.1 by hand — RFC 6455 §4 specifies a
 /// minimal subset: case-insensitive header names, `\r\n` line
 /// terminators, and exactly one mandatory `Sec-WebSocket-Key` /

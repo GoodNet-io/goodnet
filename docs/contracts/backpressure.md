@@ -63,7 +63,7 @@ consumed by `async_write`. The accounting rules are:
 
 The counter is thread-local to the transport's strand and
 published through the per-transport extension's `get_stats`
-(`transport.md` §8) **and** through the connection-event payload
+(`link.md` §8) **and** through the connection-event payload
 (`conn-events.md` §2 `pending_bytes` field) when a watermark
 event fires.
 
@@ -196,7 +196,7 @@ process-level governor adds it in its own
 
 - Watermark trio + cross-field validation: `limits.md` §2-§3.
 - Event kinds + subscription: `conn-events.md` §2-§3.
-- Transport ownership of the write queue: `transport.md` §4.
+- Transport ownership of the write queue: `link.md` §4.
 - Quiescence anchor on event subscriptions: `plugin-lifetime.md`
   §4.
 
@@ -275,6 +275,6 @@ Routing handshake-phase plaintext through the transport's write
 queue would require encrypting before keys exist — impossible —
 or buffering raw application data on the transport, which is the
 wrong layer (the transport must remain crypto-agnostic per
-`transport.md` §1). The pending queue lives on the security
+`link.md` §1). The pending queue lives on the security
 session because it is the only kernel object that observes both
 phase transitions and the encryption primitives.

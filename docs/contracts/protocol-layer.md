@@ -307,7 +307,7 @@ the kernel may interpret them.
 - Wire details for the canonical mesh-framing implementation:
   `gnet-protocol.md`.
 - Noise security: `noise-handshake.md`.
-- Transport ABI: `transport.md`.
+- Transport ABI: `link.md`.
 - Handler registration: `handler-registration.md`.
 - Trust-class policy: `security-trust.md`.
 - Architectural roadmap: `docs/ROADMAP.md`.

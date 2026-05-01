@@ -130,6 +130,6 @@ to implement; the contract here scopes only the one-frame case.
 
 - Frame layer that wraps the blob: `gnet-protocol.md`.
 - Transport capability flags referenced by `transport-set`:
-  `sdk/extensions/transport.h` (`GN_LINK_CAP_*`).
+  `sdk/extensions/link.h` (`GN_LINK_CAP_*`).
 - Limits the value size honours: `limits.md` §2
   (`max_payload_bytes`).

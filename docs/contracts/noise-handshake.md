@@ -295,7 +295,7 @@ After a successful Noise handshake:
 
 1. The transport called `host_api->notify_connect` at the moment
    the socket established, with `trust` derived from the address
-   (per `transport.md` §3 — `Loopback` for `127.0.0.1`/`::1`/
+   (per `link.md` §3 — `Loopback` for `127.0.0.1`/`::1`/
    AF_UNIX, `Untrusted` for public). Trust class **stays
    `Untrusted`** when the handshake reaches the Transport phase —
    completing the cryptographic handshake proves the peer holds

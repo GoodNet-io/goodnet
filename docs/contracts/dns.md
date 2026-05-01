@@ -104,4 +104,4 @@ stateless so the contract is observable as a pure function.
 - Why hostnames cannot reach the registry literally: `uri.md` §4
   (canonical form) — `host` is normalised to a literal before the
   registry sees the URI.
-- Transport ownership of DNS: `transport.md` §2.
+- Transport ownership of DNS: `link.md` §2.
