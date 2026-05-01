@@ -106,24 +106,29 @@ Roadmap and version history: [`docs/ROADMAP.md`](docs/ROADMAP.md),
 
 ## Build
 
+The Nix flake pins the toolchain. The shortest path from clone to
+"two endpoints exchanged a frame over a Noise-secured TCP channel":
+
 ```bash
-nix develop      # gcc15, boost, libsodium, spdlog, nlohmann_json, gtest
-cfg && b         # cmake configure + build
-t                # ctest
+nix run .#demo        # two in-process kernels, real socket, real Noise
 ```
 
-Or one-shot:
+Configure and test:
 
 ```bash
 nix run .#build
 nix run .#test
 ```
 
-The shortest path from clone to "two endpoints exchanged a frame
-over a Noise-secured TCP channel":
+Inside the dev shell, the standard CMake / CTest invocations work
+unchanged:
 
 ```bash
-nix run .#demo        # two in-process kernels, real socket, real Noise
+nix develop      # gcc 15, asio, libsodium, openssl, spdlog,
+                 # nlohmann_json, gtest, rapidcheck, clang-tidy
+cmake -B build -G Ninja
+cmake --build build
+ctest --test-dir build
 ```
 
 Sanitiser CI gates:
