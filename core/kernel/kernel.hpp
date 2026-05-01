@@ -142,7 +142,7 @@ public:
     /// Pub/sub channel that fires after every successful config
     /// mutation through `reload_config` / `reload_config_merge`.
     /// Subscribers (typically plugins via `host_api->
-    /// subscribe_config_reload`) re-read their knobs in their own
+    /// subscribe(GN_SUBSCRIBE_CONFIG_RELOAD)`) re-read their knobs in their own
     /// callback. The channel is dormant for the initial `load`
     /// path — `Kernel::set_limits` propagates that one synchronously
     /// — and only fires on operator-initiated reloads.

@@ -30,13 +30,15 @@ namespace {
 struct EventBag {
     std::mutex                              mu;
     std::vector<gn_conn_event_t>            events;
+    std::size_t                             last_payload_size{0};
 };
 
-void record_event(void* ud, const void* payload, std::size_t /*size*/) {
+void record_event(void* ud, const void* payload, std::size_t size) {
     const auto* ev = static_cast<const gn_conn_event_t*>(payload);
     auto* bag = static_cast<EventBag*>(ud);
     std::lock_guard lk(bag->mu);
     bag->events.push_back(*ev);
+    bag->last_payload_size = size;
 }
 
 PluginContext make_transport_ctx(Kernel& k) {
@@ -76,6 +78,9 @@ TEST(ConnEvents, ConnectFiresEvent) {
         EXPECT_EQ(bag.events[0].remote_pk[0], 0xAA);
         EXPECT_EQ(bag.events[0].remote_pk[1], 0xBB);
         EXPECT_EQ(bag.events[0].remote_pk[2], 0xCC);
+        EXPECT_EQ(bag.last_payload_size, sizeof(gn_conn_event_t))
+            << "subscribe contract: kernel writes payload+size pair "
+               "matching the channel's typed shape";
     }
 }
 
@@ -241,4 +246,48 @@ TEST(ConnEvents, RejectsNullArgs) {
               GN_ERR_NULL_ARG);
     EXPECT_EQ(api.for_each_connection(&ctx, nullptr, nullptr),
               GN_ERR_NULL_ARG);
+}
+
+TEST(ConnEvents, RejectsUnknownChannel) {
+    /// Fall-through path in the kernel switch: a channel value
+    /// outside the declared enumerators must surface as
+    /// `GN_ERR_INVALID_ENVELOPE`. No subscription state is allocated.
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EventBag bag;
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
+    EXPECT_EQ(api.subscribe(&ctx,
+                             static_cast<gn_subscribe_channel_t>(99),
+                             &record_event, &bag, &sub),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(sub, GN_INVALID_SUBSCRIPTION_ID);
+}
+
+TEST(ConnEvents, UnsubscribeRejectsTamperedChannelTag) {
+    /// The subscription id encodes a channel tag in its top 4 bits.
+    /// Flipping the tag to an unused channel must not match any
+    /// real subscription on either kernel SignalChannel — kernel
+    /// returns `GN_ERR_NOT_FOUND` rather than silently unsubscribing
+    /// the wrong record.
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EventBag bag;
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE,
+                             &record_event, &bag, &sub),
+              GN_OK);
+    /// Flip channel-tag bits 60..63 to an unused channel value (3).
+    constexpr std::uint64_t kChannelMask = std::uint64_t{0xF} << 60;
+    const std::uint64_t tampered =
+        (sub & ~kChannelMask) | (std::uint64_t{3} << 60);
+    EXPECT_EQ(api.unsubscribe(&ctx, tampered), GN_ERR_NOT_FOUND);
+
+    /// The original subscription is still live: a real unsubscribe
+    /// succeeds without `GN_ERR_NOT_FOUND`.
+    EXPECT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
 }

@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-/** Event categories surfaced through `subscribe_conn_state`. */
+/** Event categories surfaced through `subscribe(GN_SUBSCRIBE_CONN_STATE)`. */
 typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_CONNECTED          = 1, /**< notify_connect just fired */
     GN_CONN_EVENT_DISCONNECTED       = 2, /**< notify_disconnect just fired */
