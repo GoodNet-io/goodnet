@@ -79,7 +79,7 @@ struct KernelHarness {
 
 }  // namespace
 
-// ── inject_external_message ────────────────────────────────────────
+// ── inject (LAYER_MESSAGE) ────────────────────────────────────────
 
 TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     KernelHarness h;
@@ -99,7 +99,7 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
 
     const gn_conn_id_t src = h.make_source(peer_pk);
     const std::uint8_t payload[] = {1, 2, 3, 4};
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, src,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
                                              /*msg_id*/ 0x77,
                                              payload, sizeof(payload)),
               GN_OK);
@@ -115,9 +115,9 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
 TEST(InjectExternal, UnknownSourceRejected) {
     KernelHarness h;
     const std::uint8_t payload[] = {0};
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx,
-                                             /*source*/ 9999, 0x42,
-                                             payload, sizeof(payload)),
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE,
+                            /*source*/ 9999, 0x42,
+                            payload, sizeof(payload)),
               GN_ERR_NOT_FOUND);
 }
 
@@ -126,7 +126,7 @@ TEST(InjectExternal, ZeroMsgIdRejected) {
     PublicKey peer_pk; peer_pk.fill(0xCC);
     const gn_conn_id_t src = h.make_source(peer_pk);
     const std::uint8_t payload[] = {0};
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, src,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
                                              /*msg_id*/ 0,
                                              payload, sizeof(payload)),
               GN_ERR_INVALID_ENVELOPE);
@@ -136,7 +136,7 @@ TEST(InjectExternal, NullPayloadWithSizeRejected) {
     KernelHarness h;
     PublicKey peer_pk; peer_pk.fill(0xDD);
     const gn_conn_id_t src = h.make_source(peer_pk);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, src,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
                                              /*msg_id*/ 0x10,
                                              /*payload*/ nullptr,
                                              /*size*/ 8),
@@ -160,7 +160,7 @@ TEST(InjectExternal, EmptyPayloadAccepted) {
               GN_OK);
 
     const gn_conn_id_t src = h.make_source(peer_pk);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, src,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
                                              /*msg_id*/ 0x55,
                                              /*payload*/ nullptr,
                                              /*size*/ 0),
@@ -181,18 +181,18 @@ TEST(InjectExternal, PayloadOverLimitRejected) {
     const gn_conn_id_t src = h.make_source(peer_pk);
 
     std::vector<std::uint8_t> big(32, 0xAB);
-    EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx, src,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
                                              /*msg_id*/ 0x10,
                                              big.data(), big.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
 }
 
-// ── inject_frame ───────────────────────────────────────────────────
+// ── inject (LAYER_FRAME) ───────────────────────────────────────────────────
 
 TEST(InjectFrame, RejectsUnknownSource) {
     KernelHarness h;
     const std::uint8_t buf[] = {0};
-    EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, /*source*/ 4242,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, /*source*/ 4242, 0,
                                   buf, sizeof(buf)),
               GN_ERR_NOT_FOUND);
 }
@@ -205,7 +205,7 @@ TEST(InjectFrame, MalformedFrameReturnsDeframerError) {
     /// A handful of arbitrary bytes that will not parse as a valid
     /// gnet header — the protocol layer rejects with its own code.
     const std::uint8_t junk[] = {0xDE, 0xAD, 0xBE, 0xEF};
-    EXPECT_NE(h.api.inject_frame(h.api.host_ctx, src,
+    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
                                   junk, sizeof(junk)),
               GN_OK);
 }
@@ -215,9 +215,9 @@ TEST(InjectFrame, EmptyBufferTreatedAsIncomplete) {
     PublicKey peer_pk; peer_pk.fill(0x44);
     const gn_conn_id_t src = h.make_source(peer_pk);
 
-    /// Zero-byte input through `inject_frame`: the deframer reports
+    /// Zero-byte input through `inject(LAYER_FRAME)`: the deframer reports
     /// incomplete; the thunk surfaces that verbatim.
-    EXPECT_NE(h.api.inject_frame(h.api.host_ctx, src,
+    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
                                   /*frame*/ nullptr, /*size*/ 0),
               GN_OK);
 }

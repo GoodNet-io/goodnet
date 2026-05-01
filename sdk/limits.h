@@ -59,10 +59,10 @@ typedef struct gn_limits_s {
     uint32_t inject_rate_per_source;     /**< token-bucket refill rate per
                                               source — tokens per second
                                               accrued for the bridge plugin's
-                                              `inject_external_message` /
-                                              `inject_frame` calls keyed on
-                                              the source connection's
-                                              remote_pk hash */
+                                              `inject(LAYER_MESSAGE)` /
+                                              `inject(LAYER_FRAME)` calls
+                                              keyed on the source
+                                              connection's remote_pk hash */
     uint32_t inject_rate_burst;          /**< token-bucket initial / max
                                               tokens; the rate-limiter accepts
                                               up to this many calls before the

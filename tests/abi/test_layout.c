@@ -132,8 +132,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 496,
-               "host_api_t size pinned at 496");
+_Static_assert(sizeof(host_api_t) == 488,
+               "host_api_t size pinned at 488");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -192,38 +192,36 @@ _Static_assert(offsetof(host_api_t, register_security) == 296,
                "host_api_t::register_security offset pinned at 296");
 _Static_assert(offsetof(host_api_t, unregister_security) == 304,
                "host_api_t::unregister_security offset pinned at 304");
-_Static_assert(offsetof(host_api_t, inject_external_message) == 312,
-               "host_api_t::inject_external_message offset pinned at 312");
-_Static_assert(offsetof(host_api_t, inject_frame) == 320,
-               "host_api_t::inject_frame offset pinned at 320");
-_Static_assert(offsetof(host_api_t, kick_handshake) == 328,
-               "host_api_t::kick_handshake offset pinned at 328");
-_Static_assert(offsetof(host_api_t, set_timer) == 336,
-               "host_api_t::set_timer offset pinned at 336");
-_Static_assert(offsetof(host_api_t, cancel_timer) == 344,
-               "host_api_t::cancel_timer offset pinned at 344");
-_Static_assert(offsetof(host_api_t, post_to_executor) == 352,
-               "host_api_t::post_to_executor offset pinned at 352");
-_Static_assert(offsetof(host_api_t, subscribe_conn_state) == 360,
-               "host_api_t::subscribe_conn_state offset pinned at 360");
-_Static_assert(offsetof(host_api_t, unsubscribe_conn_state) == 368,
-               "host_api_t::unsubscribe_conn_state offset pinned at 368");
-_Static_assert(offsetof(host_api_t, for_each_connection) == 376,
-               "host_api_t::for_each_connection offset pinned at 376");
-_Static_assert(offsetof(host_api_t, notify_backpressure) == 384,
-               "host_api_t::notify_backpressure offset pinned at 384");
-_Static_assert(offsetof(host_api_t, emit_counter) == 392,
-               "host_api_t::emit_counter offset pinned at 392");
-_Static_assert(offsetof(host_api_t, iterate_counters) == 400,
-               "host_api_t::iterate_counters offset pinned at 400");
-_Static_assert(offsetof(host_api_t, subscribe_config_reload) == 408,
-               "host_api_t::subscribe_config_reload offset pinned at 408");
-_Static_assert(offsetof(host_api_t, unsubscribe_config_reload) == 416,
-               "host_api_t::unsubscribe_config_reload offset pinned at 416");
-_Static_assert(offsetof(host_api_t, is_shutdown_requested) == 424,
-               "host_api_t::is_shutdown_requested offset pinned at 424");
-_Static_assert(offsetof(host_api_t, _reserved) == 432,
-               "host_api_t::_reserved offset pinned at 432");
+_Static_assert(offsetof(host_api_t, inject) == 312,
+               "host_api_t::inject offset pinned at 312");
+_Static_assert(offsetof(host_api_t, kick_handshake) == 320,
+               "host_api_t::kick_handshake offset pinned at 320");
+_Static_assert(offsetof(host_api_t, set_timer) == 328,
+               "host_api_t::set_timer offset pinned at 328");
+_Static_assert(offsetof(host_api_t, cancel_timer) == 336,
+               "host_api_t::cancel_timer offset pinned at 336");
+_Static_assert(offsetof(host_api_t, post_to_executor) == 344,
+               "host_api_t::post_to_executor offset pinned at 344");
+_Static_assert(offsetof(host_api_t, subscribe_conn_state) == 352,
+               "host_api_t::subscribe_conn_state offset pinned at 352");
+_Static_assert(offsetof(host_api_t, unsubscribe_conn_state) == 360,
+               "host_api_t::unsubscribe_conn_state offset pinned at 360");
+_Static_assert(offsetof(host_api_t, for_each_connection) == 368,
+               "host_api_t::for_each_connection offset pinned at 368");
+_Static_assert(offsetof(host_api_t, notify_backpressure) == 376,
+               "host_api_t::notify_backpressure offset pinned at 376");
+_Static_assert(offsetof(host_api_t, emit_counter) == 384,
+               "host_api_t::emit_counter offset pinned at 384");
+_Static_assert(offsetof(host_api_t, iterate_counters) == 392,
+               "host_api_t::iterate_counters offset pinned at 392");
+_Static_assert(offsetof(host_api_t, subscribe_config_reload) == 400,
+               "host_api_t::subscribe_config_reload offset pinned at 400");
+_Static_assert(offsetof(host_api_t, unsubscribe_config_reload) == 408,
+               "host_api_t::unsubscribe_config_reload offset pinned at 408");
+_Static_assert(offsetof(host_api_t, is_shutdown_requested) == 416,
+               "host_api_t::is_shutdown_requested offset pinned at 416");
+_Static_assert(offsetof(host_api_t, _reserved) == 424,
+               "host_api_t::_reserved offset pinned at 424");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 

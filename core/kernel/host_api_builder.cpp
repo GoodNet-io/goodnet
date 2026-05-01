@@ -34,7 +34,7 @@ namespace {
 /// Build a `gn_message_t` from the four pieces every assembly site
 /// always has: the two public keys, the msg id, and the borrowed
 /// payload span. Pre-helper this was a 7-line memcpy ritual at
-/// every site (thunk_send, thunk_inject_external_message); the
+/// every site (thunk_send, thunk_inject for LAYER_MESSAGE); the
 /// helper centralises the layout so a future field addition lands
 /// in one place. `payload` is `@borrowed` for the kernel call;
 /// the helper does not copy.
@@ -1036,26 +1036,19 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     return GN_OK;
 }
 
-gn_result_t thunk_inject_external_message(void* host_ctx,
-                                           gn_conn_id_t source,
-                                           std::uint32_t msg_id,
-                                           const std::uint8_t* payload,
-                                           std::size_t payload_size) {
+gn_result_t thunk_inject(void* host_ctx,
+                          gn_inject_layer_t layer_kind,
+                          gn_conn_id_t source,
+                          std::uint32_t msg_id,
+                          const std::uint8_t* bytes,
+                          std::size_t size) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
-    if (!payload && payload_size > 0) return GN_ERR_NULL_ARG;
-    if (msg_id == 0) return GN_ERR_INVALID_ENVELOPE;
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_NOT_FOUND;
-
-    const auto& limits = pc->kernel->limits();
-    if (limits.max_payload_bytes != 0 &&
-        payload_size > limits.max_payload_bytes) {
-        return GN_ERR_PAYLOAD_TOO_LARGE;
-    }
 
     if (!pc->kernel->inject_rate_limiter().allow(
             inject_rate_key(rec->remote_pk))) {
@@ -1065,67 +1058,63 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
     auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    /// Inbound bridge envelope: source connection's remote pk is
-    /// the sender (the bridge re-publishes a foreign-system payload
-    /// under that identity); this node's local pk is the receiver.
-    const PublicKey local_pk =
-        pc->kernel->identities().any().value_or(PublicKey{});
-    gn_message_t env = build_envelope(
-        rec->remote_pk, local_pk, msg_id, payload, payload_size);
-
-    route_one_envelope(*pc->kernel, layer->protocol_id(), env);
-    return GN_OK;
-}
-
-gn_result_t thunk_inject_frame(void* host_ctx,
-                                gn_conn_id_t source,
-                                const std::uint8_t* frame,
-                                std::size_t frame_size) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
-    if (!frame || frame_size == 0) return GN_ERR_NULL_ARG;
-
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-
-    auto rec = pc->kernel->connections().find_by_id(source);
-    if (!rec) return GN_ERR_NOT_FOUND;
-
     const auto& limits = pc->kernel->limits();
-    if (limits.max_frame_bytes != 0 &&
-        frame_size > limits.max_frame_bytes) {
-        return GN_ERR_PAYLOAD_TOO_LARGE;
-    }
 
-    if (!pc->kernel->inject_rate_limiter().allow(
-            inject_rate_key(rec->remote_pk))) {
-        return GN_ERR_LIMIT_REACHED;
-    }
+    switch (layer_kind) {
+    case GN_INJECT_LAYER_MESSAGE: {
+        if (!bytes && size > 0) return GN_ERR_NULL_ARG;
+        if (msg_id == 0) return GN_ERR_INVALID_ENVELOPE;
+        if (limits.max_payload_bytes != 0 &&
+            size > limits.max_payload_bytes) {
+            return GN_ERR_PAYLOAD_TOO_LARGE;
+        }
 
-    auto layer = pc->kernel->protocol_layer();
-    if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
+        /// Inbound bridge envelope: source connection's remote pk is
+        /// the sender (the bridge re-publishes a foreign-system
+        /// payload under that identity); this node's local pk is the
+        /// receiver.
+        const PublicKey local_pk =
+            pc->kernel->identities().any().value_or(PublicKey{});
+        gn_message_t env = build_envelope(
+            rec->remote_pk, local_pk, msg_id, bytes, size);
 
-    gn_connection_context_t ctx{};
-    ctx.conn_id   = source;
-    ctx.trust     = rec->trust;
-    ctx.remote_pk = rec->remote_pk;
-    if (auto local = pc->kernel->identities().any(); local) {
-        ctx.local_pk = *local;
-    }
-
-    auto deframed = layer->deframe(
-        ctx, std::span<const std::uint8_t>{frame, frame_size});
-    if (!deframed.has_value()) return deframed.error().code;
-
-    /// inject_frame expects a complete frame; partial input or empty
-    /// envelope set is a malformed call per host-api.md §8.
-    if (deframed->messages.empty() || deframed->bytes_consumed == 0) {
-        return GN_ERR_DEFRAME_INCOMPLETE;
-    }
-
-    for (const auto& env : deframed->messages) {
         route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        return GN_OK;
     }
-    return GN_OK;
+
+    case GN_INJECT_LAYER_FRAME: {
+        if (!bytes || size == 0) return GN_ERR_NULL_ARG;
+        if (limits.max_frame_bytes != 0 &&
+            size > limits.max_frame_bytes) {
+            return GN_ERR_PAYLOAD_TOO_LARGE;
+        }
+
+        gn_connection_context_t ctx{};
+        ctx.conn_id   = source;
+        ctx.trust     = rec->trust;
+        ctx.remote_pk = rec->remote_pk;
+        if (auto local = pc->kernel->identities().any(); local) {
+            ctx.local_pk = *local;
+        }
+
+        auto deframed = layer->deframe(
+            ctx, std::span<const std::uint8_t>{bytes, size});
+        if (!deframed.has_value()) return deframed.error().code;
+
+        /// FRAME inject expects a complete frame; partial input or
+        /// empty envelope set is a malformed call per host-api.md §8.
+        if (deframed->messages.empty() || deframed->bytes_consumed == 0) {
+            return GN_ERR_DEFRAME_INCOMPLETE;
+        }
+
+        for (const auto& env : deframed->messages) {
+            route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        }
+        return GN_OK;
+    }
+    }
+
+    return GN_ERR_INVALID_ENVELOPE;
 }
 
 gn_result_t thunk_notify_disconnect(void* host_ctx,
@@ -1215,8 +1204,7 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.find_conn_by_pk       = &thunk_find_conn_by_pk;
     a.get_endpoint          = &thunk_get_endpoint;
 
-    a.inject_external_message = &thunk_inject_external_message;
-    a.inject_frame            = &thunk_inject_frame;
+    a.inject                  = &thunk_inject;
     a.kick_handshake          = &thunk_kick_handshake;
 
     a.is_shutdown_requested   = &thunk_is_shutdown_requested;
