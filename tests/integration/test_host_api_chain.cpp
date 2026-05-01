@@ -182,6 +182,47 @@ TEST(HostApiChain, NotifyInboundUnknownConnRejected) {
               GN_ERR_NOT_FOUND);
 }
 
+TEST(HostApiChain, NotifyInboundOverFrameLimitRejected) {
+    /// `thunk_notify_inbound_bytes` caps `size` against
+    /// `limits.max_frame_bytes` before any state mutation. A
+    /// misbehaving link plugin that posts an oversized buffer must
+    /// surface `GN_ERR_PAYLOAD_TOO_LARGE` without driving the
+    /// per-conn `bytes_in` counter or reaching the security
+    /// session / protocol layer.
+    KernelHarness h;
+    /// Force a small frame cap to make the assertion deterministic.
+    gn_limits_t lim{};
+    lim.max_frame_bytes = 64;
+    lim.max_payload_bytes = 64;
+    h.kernel->set_limits(lim);
+
+    /// Register a connection so the lookup at the front of the
+    /// thunk does not return NOT_FOUND before reaching the size
+    /// check. The peer pk is irrelevant; the size cap fires first.
+    PublicKey peer_pk{}; peer_pk[0] = 0xFA;
+    gn_conn_id_t conn = GN_INVALID_ID;
+    ASSERT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                    peer_pk.data(),
+                                    "tcp://127.0.0.1:9100", "tcp",
+                                    GN_TRUST_LOOPBACK,
+                                    GN_ROLE_RESPONDER,
+                                    &conn),
+              GN_OK);
+
+    /// 128-byte buffer exceeds the 64-byte cap; thunk rejects.
+    std::vector<std::uint8_t> oversized(128, 0xAA);
+    EXPECT_EQ(h.api.notify_inbound_bytes(h.api.host_ctx, conn,
+                                          oversized.data(),
+                                          oversized.size()),
+              GN_ERR_PAYLOAD_TOO_LARGE);
+
+    /// `bytes_in` counter must not have been incremented.
+    auto endpoint = gn_endpoint_t{};
+    ASSERT_EQ(h.api.get_endpoint(h.api.host_ctx, conn, &endpoint), GN_OK);
+    EXPECT_EQ(endpoint.bytes_in, 0u)
+        << "rejected oversized frame must not bump bytes_in counter";
+}
+
 TEST(HostApiChain, LimitsSlotReturnsKernelLimits) {
     KernelHarness h;
     gn_limits_t lim{};
