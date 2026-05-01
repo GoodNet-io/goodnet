@@ -4,9 +4,9 @@
 **Owner:** `core/kernel/timer_registry`, every plugin that schedules
 async work
 **Last verified:** 2026-04-29
-**Stability:** v1.x; `set_timer`, `cancel_timer`, and
-`post_to_executor` are stable; periodic timer support ships as an
-opt-in extension once a producer needs it.
+**Stability:** v1.x; `set_timer` and `cancel_timer` are stable;
+periodic timer support ships as an opt-in extension once a
+producer needs it.
 
 ---
 
@@ -20,8 +20,9 @@ on the next firing.
 
 The kernel owns a dedicated **service executor** (one
 `asio::io_context` plus one worker thread) reserved for timers and
-ad-hoc tasks. Plugins reach it through three host-API slots:
-`set_timer`, `cancel_timer`, `post_to_executor`.
+ad-hoc tasks. Plugins reach it through two host-API slots:
+`set_timer` and `cancel_timer`. Fire-and-forget work uses
+`set_timer(delay_ms = 0, …)` with a `NULL` `out_id`.
 
 The service executor is **separate** from any executor a transport
 plugin runs internally for socket I/O. Transports keep their own
@@ -46,10 +47,6 @@ gn_result_t set_timer(void* host_ctx,
 
 gn_result_t cancel_timer(void* host_ctx,
                          gn_timer_id_t id);
-
-gn_result_t post_to_executor(void* host_ctx,
-                             gn_task_fn_t fn,
-                             void* user_data);
 ```
 
 `set_timer` schedules `fn(user_data)` to run after `delay_ms`
@@ -64,8 +61,8 @@ cancellation and quiescence rules.
 service-executor tick"; the callback runs serialised with every
 other queued task per §3, never synchronously on the calling
 thread. Producers that want a synchronous callback are misusing
-the slot — `post_to_executor` is the same machinery without the
-zero-delay misdirection.
+the slot — fire-and-forget work uses `delay_ms = 0` with `out_id`
+left `NULL`.
 
 Delays are measured against a monotonic clock (`steady_clock` on
 glibc-class platforms); system time changes do not advance or
@@ -78,19 +75,15 @@ success so plugins do not race against the self-cleanup that fires
 a natural completion. `GN_ERR_NULL_ARG` is returned only for
 `GN_INVALID_TIMER_ID`.
 
-`post_to_executor` runs `fn(user_data)` on the service executor at
-the next available point. Useful for handing back work from a
-transport's strand into the kernel's serialised loop.
-
 ---
 
 ## 3. Threading
 
 The service executor runs on **exactly one thread**. Callbacks
-posted through `set_timer` and `post_to_executor` are serialised:
-two callbacks never run concurrently. Plugins that need parallelism
-post each unit of work as a separate task and rely on the
-serialisation only for ordering, not for throughput.
+posted through `set_timer` are serialised: two callbacks never run
+concurrently. Plugins that need parallelism post each unit of work
+as a separate task and rely on the serialisation only for ordering,
+not for throughput.
 
 Single-thread is the v1 baseline. Future minor releases may scale
 the executor to a thread pool; the contract keeps the
@@ -172,9 +165,8 @@ publish a richer API once a producer drives the design.
 The kernel caps active timers at `gn_limits_t::max_timers`
 (default `4096`) and queued executor tasks at
 `gn_limits_t::max_pending_tasks` (default `4096`). `set_timer`
-and `post_to_executor` return `GN_ERR_LIMIT_REACHED` past the cap;
-the caller back-pressures by cancelling stale entries or dropping
-the task.
+returns `GN_ERR_LIMIT_REACHED` past the cap; the caller
+back-pressures by cancelling stale entries or dropping the task.
 
 Per-plugin sub-quotas are not enforced at the v1 baseline — the
 kernel trusts plugins to behave inside their declared role. A
@@ -187,9 +179,8 @@ deployments expose abuse.
 
 | Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` | `GN_ERR_INVALID_STATE` |
 |---|---|---|---|---|
-| `set_timer` | scheduled | host_ctx / fn / out_id null | quota hit | registry already shut down |
+| `set_timer` | scheduled | host_ctx / fn null | quota hit | registry already shut down |
 | `cancel_timer` | cancelled or already gone | host_ctx null, id == `GN_INVALID_TIMER_ID` | — | — |
-| `post_to_executor` | enqueued | host_ctx / fn null | quota hit | registry already shut down |
 
 `cancel_timer` collapses "not found" into `GN_OK` so plugins do not
 race against the self-cleanup path on natural firing.

@@ -190,12 +190,13 @@ same thread for every event kind**:
 
 A subscriber that maintains state across event kinds **must**
 guard it with a lock or post every event through
-`host_api->post_to_executor` (`timer.md` §2) to serialise
-processing on the kernel's service executor. The kernel does not
-synthesise a unified order across publishing threads.
+`host_api->set_timer(delay_ms = 0, …)` (`timer.md` §2) to
+serialise processing on the kernel's service executor. The
+kernel does not synthesise a unified order across publishing
+threads.
 
 Subscribers must be cheap; long work is posted back through
-`post_to_executor`. Re-entry is permitted under the
+`set_timer(0, …)`. Re-entry is permitted under the
 `signal-channel.md` snapshot rule: a callback that calls
 `subscribe_conn_state` or `unsubscribe_conn_state` while a fire
 is in progress runs to completion against the snapshot taken

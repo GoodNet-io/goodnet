@@ -326,15 +326,6 @@ gn_result_t thunk_cancel_timer(void* host_ctx, gn_timer_id_t id) {
     return pc->kernel->timers().cancel_timer(id);
 }
 
-gn_result_t thunk_post_to_executor(void* host_ctx,
-                                    gn_task_fn_t fn,
-                                    void* user_data) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->timers().post(fn, user_data, pc->plugin_anchor);
-}
-
 gn_result_t thunk_subscribe_conn_state(void* host_ctx,
                                         gn_conn_event_cb_t cb,
                                         void* user_data,
@@ -1173,7 +1164,6 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.set_timer               = &thunk_set_timer;
     a.cancel_timer            = &thunk_cancel_timer;
-    a.post_to_executor        = &thunk_post_to_executor;
 
     a.subscribe_conn_state    = &thunk_subscribe_conn_state;
     a.unsubscribe_conn_state  = &thunk_unsubscribe_conn_state;

@@ -49,9 +49,6 @@ typedef struct host_api_s {
                             uint32_t msg_id,
                             const uint8_t* payload, size_t payload_size);
 
-    gn_result_t (*broadcast)(void* host_ctx, uint32_t msg_id,
-                             const uint8_t* payload, size_t payload_size);
-
     gn_result_t (*disconnect)(void* host_ctx, gn_conn_id_t conn);
 
     /* ── Handler registration ────────────────────────────────────────── */
@@ -164,9 +161,6 @@ typedef struct host_api_s {
                              void* user_data,
                              gn_timer_id_t* out_id);
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
-    gn_result_t (*post_to_executor)(void* host_ctx,
-                                    gn_task_fn_t fn,
-                                    void* user_data);
 
     /* ── Connection-event observer (conn-events.md) ─────────────────── */
     gn_result_t (*subscribe_conn_state)(void* host_ctx,
@@ -303,8 +297,8 @@ alerting.
 
 Plugins **must not**:
 
-- Block on synchronous `send` / `broadcast` for tail responses. The
-  kernel enqueues; the call returns immediately. Wait on the response
+- Block on synchronous `send` for tail responses. The kernel
+  enqueues; the call returns immediately. Wait on the response
   handler.
 - Call `register_*` from inside a `handle_message` dispatch. The
   handler registry is locked at that point — registration deadlocks.
@@ -409,12 +403,13 @@ convenience wrappers `gn_inject_external_message` and
 
 ## 9. Service executor
 
-The `set_timer`, `cancel_timer`, and `post_to_executor` slots route
-to a kernel-owned single-thread executor reserved for plugin
-service tasks. They sit at the v1.x ABI tail; consumers built
-against earlier prereleases must guard with `GN_API_HAS` from
-`sdk/abi.h` before calling. `timer.md` is the authoritative
-specification:
+The `set_timer` and `cancel_timer` slots route to a kernel-owned
+single-thread executor reserved for plugin service tasks.
+`set_timer(delay_ms = 0, …)` covers the post-to-executor pattern —
+fire-and-forget work hands the kernel `delay_ms = 0` and an empty
+`out_id`. They sit at the v1.x ABI tail; consumers built against
+earlier prereleases must guard with `GN_API_HAS` from `sdk/abi.h`
+before calling. `timer.md` is the authoritative specification:
 
 - §2 — slot signatures and invariants
 - §3 — single-thread serialisation guarantee
