@@ -495,8 +495,11 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
     auto worker = [&](int tid) {
         for (int i = 0; i < kPerThread; ++i) {
             const gn_conn_id_t id  = reg.alloc_id();
-            const std::uint64_t seed = (static_cast<std::uint64_t>(tid) << 32) |
-                                       static_cast<std::uint64_t>(i);
+            /// `+ 1` keeps tid=0,i=0 from producing a zero pk —
+            /// `insert_with_index` skips zero pk on purpose
+            /// (registry.md §7a) and `find_by_pk(zero)` would miss.
+            const std::uint64_t seed = ((static_cast<std::uint64_t>(tid) << 32) |
+                                        static_cast<std::uint64_t>(i)) + 1;
             const PublicKey pk = make_pk(seed);
             const std::string uri =
                 "tcp://t" + std::to_string(tid) +
@@ -673,18 +676,42 @@ TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     ASSERT_EQ(reg.insert_with_index(
         make_record(id, "tcp://h:1", placeholder)), GN_OK);
 
-    /// Pre-update: pk index keys on placeholder.
-    EXPECT_TRUE(reg.find_by_pk(placeholder).has_value());
+    /// Pre-update: insert_with_index skips zero pk on purpose, so the
+    /// placeholder is *not* in the pk index — many concurrent
+    /// pre-handshake responders coexist without index collisions.
+    EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
 
     const auto real_pk = make_pk(0xCAFEBABE);
     ASSERT_EQ(reg.update_remote_pk(id, real_pk), GN_OK);
 
-    /// Post-update: real_pk indexed, placeholder gone, record carries new pk.
+    /// Post-update: real_pk indexed, placeholder still absent (no
+    /// index entry to displace), record carries new pk.
     EXPECT_TRUE(reg.find_by_pk(real_pk).has_value());
     EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
     auto fetched = reg.find_by_id(id);
     ASSERT_TRUE(fetched.has_value());
     if (fetched.has_value()) EXPECT_EQ(fetched->remote_pk, real_pk);
+}
+
+TEST(ConnectionRegistry_Insert, ZeroPkSkipsPkIndex) {
+    /// Many responder-side connections start life with the placeholder
+    /// zero pk (TCP / WS / TLS pass `remote_pk = {}` at notify_connect
+    /// because the peer is not authenticated yet). The pk index would
+    /// otherwise force them into a single-zero-key conflict and reject
+    /// every responder past the first; instead `insert_with_index`
+    /// skips zero pk so all coexist until `update_remote_pk` lands the
+    /// authenticated key.
+    ConnectionRegistry reg;
+    const gn_conn_id_t id_a = reg.alloc_id();
+    const gn_conn_id_t id_b = reg.alloc_id();
+    const PublicKey zero{};
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id_a, "tcp://h:1", zero)), GN_OK);
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id_b, "tcp://h:2", zero)), GN_OK);
+    EXPECT_EQ(reg.size(), 2u);
+    /// pk_index_ stays empty; lookup by zero pk reports nothing.
+    EXPECT_FALSE(reg.find_by_pk(zero).has_value());
 }
 
 TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {

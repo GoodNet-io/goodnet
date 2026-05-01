@@ -42,7 +42,20 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
 
     if (s.records.contains(rec.id))             return GN_ERR_LIMIT_REACHED;
     if (uri_index_.contains(rec.uri))           return GN_ERR_LIMIT_REACHED;
-    if (pk_index_.contains(rec.remote_pk))      return GN_ERR_LIMIT_REACHED;
+
+    /// `pk_index_` only carries authenticated peer keys. A pre-handshake
+    /// placeholder (the all-zero PublicKey link plugins pass at
+    /// `notify_connect` for the responder side and the pre-IK initiator
+    /// side) is treated as "no peer key yet" — many concurrent
+    /// responders coexist with the same placeholder without colliding.
+    /// The real peer key is published into the index once
+    /// `update_remote_pk` fires from the post-handshake propagate
+    /// path (registry.md §7a).
+    static const PublicKey kZeroPk{};
+    const bool has_peer_pk = (rec.remote_pk != kZeroPk);
+    if (has_peer_pk && pk_index_.contains(rec.remote_pk)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
 
     /// Re-check under the lock to close the race between the
     /// pre-lock load and a concurrent inserter that bumps the
@@ -59,7 +72,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     s.records.emplace(id, std::move(rec));
     s.counters.emplace(id, std::make_unique<AtomicCounters>());
     uri_index_.emplace(uri, id);
-    pk_index_.emplace(pk, id);
+    if (has_peer_pk) pk_index_.emplace(pk, id);
     live_count_.fetch_add(1, std::memory_order_relaxed);
 
     return GN_OK;
@@ -199,12 +212,16 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
         return GN_ERR_LIMIT_REACHED;
     }
 
-    /// Drop the placeholder pk entry (typically all-zeros for a
-    /// responder pre-handshake) before adding the real one. The pk
-    /// index keeps the new mapping; a duplicate-key insert is
-    /// harmless because the only way to land here is the previous
-    /// `find` above said "no match" or "matches this same id".
-    pk_index_.erase(old_pk);
+    /// Placeholder zero pk is not in `pk_index_` (insert_with_index
+    /// skips zero pk on purpose), so the erase below is conditioned
+    /// on a non-zero `old_pk` to avoid touching unrelated entries
+    /// during an initiator key-rotation flow that lands a different
+    /// key. The new pk is inserted unconditionally — the duplicate
+    /// guard above already proved no other conn id holds it.
+    static const PublicKey kZeroPk{};
+    if (old_pk != kZeroPk) {
+        pk_index_.erase(old_pk);
+    }
     pk_index_.insert_or_assign(new_pk, id);
     it->second.remote_pk = new_pk;
     return GN_OK;

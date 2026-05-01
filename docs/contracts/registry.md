@@ -256,8 +256,16 @@ and the pk index switch to the authenticated value.
 | Pre-handshake | Post-handshake |
 |---|---|
 | `rec.remote_pk` = link-supplied placeholder (zeros for responder, IK preset for initiator) | `rec.remote_pk` = security session's `peer_static_pk` |
-| `pk_index_` keys on the placeholder | `pk_index_` keys on the authenticated peer key |
+| `pk_index_` does not carry the placeholder (`insert_with_index` skips zero pk on purpose); many concurrent responders coexist | `pk_index_` keys on the authenticated peer key |
 | `pin_device_pk(remote_pk, …)` would key on the placeholder — the cross-session pin gate (§8a) is dead code | pin gate keys on the authenticated peer key |
+
+The zero-pk skip in `insert_with_index` is the structural enabler:
+without it, every responder past the first would hit
+`GN_ERR_LIMIT_REACHED` from the pk-index duplicate guard during the
+~7 s NAT cross-relay window before the handshake landed, turning
+honest concurrent connects into a self-DoS. `update_remote_pk`
+publishes the authenticated key into the index after the handshake,
+so the pin gate works on every connection that actually completes.
 
 `update_remote_pk` returns:
 
@@ -265,8 +273,11 @@ and the pk index switch to the authenticated value.
 - `GN_ERR_NOT_FOUND` if the record has been erased between handshake
   completion and the update call.
 - `GN_ERR_LIMIT_REACHED` if the new key already maps to a different
-  `conn_id` — an identity-collision attempt; the kernel disconnects
-  the calling session.
+  `conn_id` — an identity-collision attempt. The kernel converts
+  this to `GN_ERR_INTEGRITY_FAILED` and tears the connection down
+  (`Sessions::destroy`, `snapshot_and_erase`, `DISCONNECTED`
+  publish). Tearing down before `attestation_dispatcher.send_self`
+  fires keeps the local attestation off a stale-pk channel.
 
 The propagated value is the security provider's `peer_static_pk`
 (Noise X25519 in the reference plugin). It is not the peer's
