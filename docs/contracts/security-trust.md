@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel` (TrustClass propagation), `plugins/security/*`,
-            `plugins/transports/*` (TrustClass declaration on connect)
+            `plugins/links/*` (TrustClass declaration on connect)
 **Last verified:** 2026-04-27
 **Stability:** v1.x; the TrustClass enum may grow only by appending values.
 
@@ -99,7 +99,7 @@ transports do not duplicate it:
 - **TLS client.** Default verifies the peer certificate against the
   OpenSSL default trust store. Operators running TLS as link
   encryption beneath Noise opt out through
-  `transports.tls.verify_peer = false` on the kernel config; the
+  `links.tls.verify_peer = false` on the kernel config; the
   Noise handshake then carries identity authentication and the
   attestation gate above promotes trust.
 - **TLS server.** Anonymous-client by spec. The server presents its

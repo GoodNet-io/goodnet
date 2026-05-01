@@ -7,7 +7,7 @@
 /// receiver-side handler fires with the original payload.
 ///
 /// Exercises every host_api slot wired so far end-to-end:
-/// register_handler, register_transport, notify_connect, send,
+/// register_handler, register_link, notify_connect, send,
 /// notify_inbound_bytes (driven by the loopback peer), and the
 /// downstream Router → IHandler dispatch.
 
@@ -26,7 +26,7 @@
 #include <plugins/protocols/gnet/protocol.hpp>
 
 #include <sdk/handler.h>
-#include <sdk/transport.h>
+#include <sdk/link.h>
 #include <sdk/types.h>
 
 namespace {
@@ -69,9 +69,9 @@ struct Loopback {
     static const void* do_extension_vtable(void*) { return nullptr; }
     static void        do_destroy(void*) {}
 
-    static gn_transport_vtable_t make_vtable() {
-        gn_transport_vtable_t v{};
-        v.api_size           = sizeof(gn_transport_vtable_t);
+    static gn_link_vtable_t make_vtable() {
+        gn_link_vtable_t v{};
+        v.api_size           = sizeof(gn_link_vtable_t);
         v.scheme             = &do_scheme;
         v.listen             = &do_listen;
         v.connect            = &do_connect;
@@ -126,12 +126,12 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
 
     /// Each side registers its loopback transport with its own kernel.
     static auto loopback_vt = Loopback::make_vtable();
-    gn_transport_id_t alice_t = GN_INVALID_ID;
-    gn_transport_id_t bob_t   = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_transport(alice.api.host_ctx,
+    gn_link_id_t alice_t = GN_INVALID_ID;
+    gn_link_id_t bob_t   = GN_INVALID_ID;
+    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
                                            "loopback", &loopback_vt,
                                            &alice.loop, &alice_t), GN_OK);
-    ASSERT_EQ(bob.api.register_transport(bob.api.host_ctx,
+    ASSERT_EQ(bob.api.register_link(bob.api.host_ctx,
                                          "loopback", &loopback_vt,
                                          &bob.loop, &bob_t), GN_OK);
 
@@ -191,8 +191,8 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
 TEST(SendLoopback, SendUnknownConnectionRejected) {
     Node alice("test-alice", 0xA1);
     static auto loopback_vt = Loopback::make_vtable();
-    gn_transport_id_t alice_t = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_transport(alice.api.host_ctx,
+    gn_link_id_t alice_t = GN_INVALID_ID;
+    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
                                            "loopback", &loopback_vt,
                                            &alice.loop, &alice_t), GN_OK);
     EXPECT_EQ(alice.api.send(alice.api.host_ctx,
@@ -204,8 +204,8 @@ TEST(SendLoopback, SendUnknownConnectionRejected) {
 TEST(SendLoopback, DisconnectThroughTransport) {
     Node alice("test-alice", 0xA1);
     static auto loopback_vt = Loopback::make_vtable();
-    gn_transport_id_t alice_t = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_transport(alice.api.host_ctx,
+    gn_link_id_t alice_t = GN_INVALID_ID;
+    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
                                            "loopback", &loopback_vt,
                                            &alice.loop, &alice_t), GN_OK);
 

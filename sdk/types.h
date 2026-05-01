@@ -37,8 +37,8 @@ typedef uint64_t gn_conn_id_t;
 /** Opaque per-handler-registration handle. Returned by register_handler. */
 typedef uint64_t gn_handler_id_t;
 
-/** Opaque per-transport-registration handle. Returned by register_transport. */
-typedef uint64_t gn_transport_id_t;
+/** Opaque per-transport-registration handle. Returned by register_link. */
+typedef uint64_t gn_link_id_t;
 
 /** Opaque service-executor timer handle. Returned by set_timer. */
 typedef uint64_t gn_timer_id_t;

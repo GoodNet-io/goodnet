@@ -41,7 +41,7 @@ A schema-compatible reading:
       "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     },
     {
-      "path":   "build/plugins/libgoodnet_transport_tcp.so",
+      "path":   "build/plugins/libgoodnet_link_tcp.so",
       "sha256": "<64-hex>"
     }
   ]

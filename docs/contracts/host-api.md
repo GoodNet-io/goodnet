@@ -65,14 +65,14 @@ typedef struct host_api_s {
     gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
 
     /* ── Transport registration ──────────────────────────────────────── */
-    gn_result_t (*register_transport)(void* host_ctx,
+    gn_result_t (*register_link)(void* host_ctx,
                                       const char* scheme,
-                                      const gn_transport_vtable_t* vtable,
+                                      const gn_link_vtable_t* vtable,
                                       void* transport_self,
-                                      gn_transport_id_t* out_id);
+                                      gn_link_id_t* out_id);
 
-    gn_result_t (*unregister_transport)(void* host_ctx,
-                                        gn_transport_id_t id);
+    gn_result_t (*unregister_link)(void* host_ctx,
+                                        gn_link_id_t id);
 
     /* ── Registry queries ────────────────────────────────────────────── */
     gn_result_t (*find_conn_by_pk)(void* host_ctx,

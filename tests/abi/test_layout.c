@@ -37,12 +37,12 @@
 #include <sdk/plugin.h>
 #include <sdk/protocol.h>
 #include <sdk/security.h>
-#include <sdk/transport.h>
+#include <sdk/link.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
 
 #include <sdk/extensions/heartbeat.h>
-#include <sdk/extensions/transport.h>
+#include <sdk/extensions/link.h>
 
 /* ── sdk/types.h ───────────────────────────────────────────────────────────── */
 
@@ -150,10 +150,10 @@ _Static_assert(offsetof(host_api_t, register_handler) == 48,
                "host_api_t::register_handler offset pinned at 48");
 _Static_assert(offsetof(host_api_t, unregister_handler) == 56,
                "host_api_t::unregister_handler offset pinned at 56");
-_Static_assert(offsetof(host_api_t, register_transport) == 64,
-               "host_api_t::register_transport offset pinned at 64");
-_Static_assert(offsetof(host_api_t, unregister_transport) == 72,
-               "host_api_t::unregister_transport offset pinned at 72");
+_Static_assert(offsetof(host_api_t, register_link) == 64,
+               "host_api_t::register_link offset pinned at 64");
+_Static_assert(offsetof(host_api_t, unregister_link) == 72,
+               "host_api_t::unregister_link offset pinned at 72");
 _Static_assert(offsetof(host_api_t, find_conn_by_pk) == 80,
                "host_api_t::find_conn_by_pk offset pinned at 80");
 _Static_assert(offsetof(host_api_t, get_endpoint) == 88,
@@ -402,30 +402,30 @@ _Static_assert(offsetof(gn_byte_span_t, bytes) == 0,
 _Static_assert(offsetof(gn_byte_span_t, size) == 8,
                "gn_byte_span_t::size offset pinned at 8");
 
-_Static_assert(sizeof(gn_transport_vtable_t) == 112,
-               "gn_transport_vtable_t size pinned at 112");
-_Static_assert(offsetof(gn_transport_vtable_t, api_size) == 0,
-               "gn_transport_vtable_t::api_size offset pinned at 0");
-_Static_assert(offsetof(gn_transport_vtable_t, scheme) == 8,
-               "gn_transport_vtable_t::scheme offset pinned at 8");
-_Static_assert(offsetof(gn_transport_vtable_t, listen) == 16,
-               "gn_transport_vtable_t::listen offset pinned at 16");
-_Static_assert(offsetof(gn_transport_vtable_t, connect) == 24,
-               "gn_transport_vtable_t::connect offset pinned at 24");
-_Static_assert(offsetof(gn_transport_vtable_t, send) == 32,
-               "gn_transport_vtable_t::send offset pinned at 32");
-_Static_assert(offsetof(gn_transport_vtable_t, send_batch) == 40,
-               "gn_transport_vtable_t::send_batch offset pinned at 40");
-_Static_assert(offsetof(gn_transport_vtable_t, disconnect) == 48,
-               "gn_transport_vtable_t::disconnect offset pinned at 48");
-_Static_assert(offsetof(gn_transport_vtable_t, extension_name) == 56,
-               "gn_transport_vtable_t::extension_name offset pinned at 56");
-_Static_assert(offsetof(gn_transport_vtable_t, extension_vtable) == 64,
-               "gn_transport_vtable_t::extension_vtable offset pinned at 64");
-_Static_assert(offsetof(gn_transport_vtable_t, destroy) == 72,
-               "gn_transport_vtable_t::destroy offset pinned at 72");
-_Static_assert(offsetof(gn_transport_vtable_t, _reserved) == 80,
-               "gn_transport_vtable_t::_reserved offset pinned at 80");
+_Static_assert(sizeof(gn_link_vtable_t) == 112,
+               "gn_link_vtable_t size pinned at 112");
+_Static_assert(offsetof(gn_link_vtable_t, api_size) == 0,
+               "gn_link_vtable_t::api_size offset pinned at 0");
+_Static_assert(offsetof(gn_link_vtable_t, scheme) == 8,
+               "gn_link_vtable_t::scheme offset pinned at 8");
+_Static_assert(offsetof(gn_link_vtable_t, listen) == 16,
+               "gn_link_vtable_t::listen offset pinned at 16");
+_Static_assert(offsetof(gn_link_vtable_t, connect) == 24,
+               "gn_link_vtable_t::connect offset pinned at 24");
+_Static_assert(offsetof(gn_link_vtable_t, send) == 32,
+               "gn_link_vtable_t::send offset pinned at 32");
+_Static_assert(offsetof(gn_link_vtable_t, send_batch) == 40,
+               "gn_link_vtable_t::send_batch offset pinned at 40");
+_Static_assert(offsetof(gn_link_vtable_t, disconnect) == 48,
+               "gn_link_vtable_t::disconnect offset pinned at 48");
+_Static_assert(offsetof(gn_link_vtable_t, extension_name) == 56,
+               "gn_link_vtable_t::extension_name offset pinned at 56");
+_Static_assert(offsetof(gn_link_vtable_t, extension_vtable) == 64,
+               "gn_link_vtable_t::extension_vtable offset pinned at 64");
+_Static_assert(offsetof(gn_link_vtable_t, destroy) == 72,
+               "gn_link_vtable_t::destroy offset pinned at 72");
+_Static_assert(offsetof(gn_link_vtable_t, _reserved) == 80,
+               "gn_link_vtable_t::_reserved offset pinned at 80");
 
 /* ── sdk/extensions/heartbeat.h ────────────────────────────────────────────── */
 
@@ -457,53 +457,53 @@ _Static_assert(offsetof(gn_heartbeat_api_t, _reserved) == 40,
 
 /* ── sdk/extensions/transport.h ────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_transport_caps_t) == 56,
-               "gn_transport_caps_t size pinned at 56");
-_Static_assert(offsetof(gn_transport_caps_t, flags) == 0,
-               "gn_transport_caps_t::flags offset pinned at 0");
-_Static_assert(offsetof(gn_transport_caps_t, max_payload) == 4,
-               "gn_transport_caps_t::max_payload offset pinned at 4");
-_Static_assert(offsetof(gn_transport_caps_t, _reserved) == 8,
-               "gn_transport_caps_t::_reserved offset pinned at 8");
+_Static_assert(sizeof(gn_link_caps_t) == 56,
+               "gn_link_caps_t size pinned at 56");
+_Static_assert(offsetof(gn_link_caps_t, flags) == 0,
+               "gn_link_caps_t::flags offset pinned at 0");
+_Static_assert(offsetof(gn_link_caps_t, max_payload) == 4,
+               "gn_link_caps_t::max_payload offset pinned at 4");
+_Static_assert(offsetof(gn_link_caps_t, _reserved) == 8,
+               "gn_link_caps_t::_reserved offset pinned at 8");
 
-_Static_assert(sizeof(gn_transport_stats_t) == 104,
-               "gn_transport_stats_t size pinned at 104");
-_Static_assert(offsetof(gn_transport_stats_t, bytes_in) == 0,
-               "gn_transport_stats_t::bytes_in offset pinned at 0");
-_Static_assert(offsetof(gn_transport_stats_t, bytes_out) == 8,
-               "gn_transport_stats_t::bytes_out offset pinned at 8");
-_Static_assert(offsetof(gn_transport_stats_t, frames_in) == 16,
-               "gn_transport_stats_t::frames_in offset pinned at 16");
-_Static_assert(offsetof(gn_transport_stats_t, frames_out) == 24,
-               "gn_transport_stats_t::frames_out offset pinned at 24");
-_Static_assert(offsetof(gn_transport_stats_t, active_connections) == 32,
-               "gn_transport_stats_t::active_connections offset pinned at 32");
-_Static_assert(offsetof(gn_transport_stats_t, _reserved) == 40,
-               "gn_transport_stats_t::_reserved offset pinned at 40");
+_Static_assert(sizeof(gn_link_stats_t) == 104,
+               "gn_link_stats_t size pinned at 104");
+_Static_assert(offsetof(gn_link_stats_t, bytes_in) == 0,
+               "gn_link_stats_t::bytes_in offset pinned at 0");
+_Static_assert(offsetof(gn_link_stats_t, bytes_out) == 8,
+               "gn_link_stats_t::bytes_out offset pinned at 8");
+_Static_assert(offsetof(gn_link_stats_t, frames_in) == 16,
+               "gn_link_stats_t::frames_in offset pinned at 16");
+_Static_assert(offsetof(gn_link_stats_t, frames_out) == 24,
+               "gn_link_stats_t::frames_out offset pinned at 24");
+_Static_assert(offsetof(gn_link_stats_t, active_connections) == 32,
+               "gn_link_stats_t::active_connections offset pinned at 32");
+_Static_assert(offsetof(gn_link_stats_t, _reserved) == 40,
+               "gn_link_stats_t::_reserved offset pinned at 40");
 
-_Static_assert(sizeof(gn_transport_api_t) == 136,
-               "gn_transport_api_t size pinned at 136");
-_Static_assert(offsetof(gn_transport_api_t, api_size) == 0,
-               "gn_transport_api_t::api_size offset pinned at 0");
-_Static_assert(offsetof(gn_transport_api_t, get_stats) == 8,
-               "gn_transport_api_t::get_stats offset pinned at 8");
-_Static_assert(offsetof(gn_transport_api_t, get_capabilities) == 16,
-               "gn_transport_api_t::get_capabilities offset pinned at 16");
-_Static_assert(offsetof(gn_transport_api_t, send) == 24,
-               "gn_transport_api_t::send offset pinned at 24");
-_Static_assert(offsetof(gn_transport_api_t, send_batch) == 32,
-               "gn_transport_api_t::send_batch offset pinned at 32");
-_Static_assert(offsetof(gn_transport_api_t, close) == 40,
-               "gn_transport_api_t::close offset pinned at 40");
-_Static_assert(offsetof(gn_transport_api_t, listen) == 48,
-               "gn_transport_api_t::listen offset pinned at 48");
-_Static_assert(offsetof(gn_transport_api_t, connect) == 56,
-               "gn_transport_api_t::connect offset pinned at 56");
-_Static_assert(offsetof(gn_transport_api_t, subscribe_data) == 64,
-               "gn_transport_api_t::subscribe_data offset pinned at 64");
-_Static_assert(offsetof(gn_transport_api_t, unsubscribe_data) == 72,
-               "gn_transport_api_t::unsubscribe_data offset pinned at 72");
-_Static_assert(offsetof(gn_transport_api_t, ctx) == 80,
-               "gn_transport_api_t::ctx offset pinned at 80");
-_Static_assert(offsetof(gn_transport_api_t, _reserved) == 88,
-               "gn_transport_api_t::_reserved offset pinned at 88");
+_Static_assert(sizeof(gn_link_api_t) == 136,
+               "gn_link_api_t size pinned at 136");
+_Static_assert(offsetof(gn_link_api_t, api_size) == 0,
+               "gn_link_api_t::api_size offset pinned at 0");
+_Static_assert(offsetof(gn_link_api_t, get_stats) == 8,
+               "gn_link_api_t::get_stats offset pinned at 8");
+_Static_assert(offsetof(gn_link_api_t, get_capabilities) == 16,
+               "gn_link_api_t::get_capabilities offset pinned at 16");
+_Static_assert(offsetof(gn_link_api_t, send) == 24,
+               "gn_link_api_t::send offset pinned at 24");
+_Static_assert(offsetof(gn_link_api_t, send_batch) == 32,
+               "gn_link_api_t::send_batch offset pinned at 32");
+_Static_assert(offsetof(gn_link_api_t, close) == 40,
+               "gn_link_api_t::close offset pinned at 40");
+_Static_assert(offsetof(gn_link_api_t, listen) == 48,
+               "gn_link_api_t::listen offset pinned at 48");
+_Static_assert(offsetof(gn_link_api_t, connect) == 56,
+               "gn_link_api_t::connect offset pinned at 56");
+_Static_assert(offsetof(gn_link_api_t, subscribe_data) == 64,
+               "gn_link_api_t::subscribe_data offset pinned at 64");
+_Static_assert(offsetof(gn_link_api_t, unsubscribe_data) == 72,
+               "gn_link_api_t::unsubscribe_data offset pinned at 72");
+_Static_assert(offsetof(gn_link_api_t, ctx) == 80,
+               "gn_link_api_t::ctx offset pinned at 80");
+_Static_assert(offsetof(gn_link_api_t, _reserved) == 88,
+               "gn_link_api_t::_reserved offset pinned at 88");

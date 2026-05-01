@@ -57,11 +57,11 @@ extern "C" {
 
 /* ── Transport registration ──────────────────────────────────────────────── */
 
-#define gn_register_transport(api, scheme, vtable, self, out_id) \
-    (api)->register_transport((api)->host_ctx, (scheme), (vtable), (self), (out_id))
+#define gn_register_link(api, scheme, vtable, self, out_id) \
+    (api)->register_link((api)->host_ctx, (scheme), (vtable), (self), (out_id))
 
-#define gn_unregister_transport(api, id) \
-    (api)->unregister_transport((api)->host_ctx, (id))
+#define gn_unregister_link(api, id) \
+    (api)->unregister_link((api)->host_ctx, (id))
 
 /* ── Registry queries ────────────────────────────────────────────────────── */
 

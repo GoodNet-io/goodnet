@@ -40,7 +40,7 @@
 #include <core/registry/extension.hpp>
 #include <core/registry/handler.hpp>
 #include <core/registry/security.hpp>
-#include <core/registry/transport.hpp>
+#include <core/registry/link.hpp>
 #include <core/signal/signal_channel.hpp>
 
 namespace gn::core {
@@ -100,7 +100,7 @@ public:
     [[nodiscard]] LocalIdentitySet&    identities()  noexcept { return identities_; }
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
-    [[nodiscard]] TransportRegistry&   transports()  noexcept { return transports_; }
+    [[nodiscard]] LinkRegistry&   links()       noexcept { return links_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
     [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
@@ -210,7 +210,7 @@ private:
     LocalIdentitySet     identities_;
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
-    TransportRegistry    transports_;
+    LinkRegistry         links_;
     SecurityRegistry     security_;
     Sessions             sessions_;
     ExtensionRegistry    extensions_;

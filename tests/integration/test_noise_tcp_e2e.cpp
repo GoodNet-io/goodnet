@@ -13,12 +13,12 @@
 #include <core/kernel/plugin_context.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
-#include <plugins/transports/tcp/tcp.hpp>
+#include <plugins/links/tcp/tcp.hpp>
 
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
 #include <sdk/security.h>
-#include <sdk/transport.h>
+#include <sdk/link.h>
 #include <sdk/types.h>
 
 #include <dlfcn.h>
@@ -45,7 +45,7 @@ using namespace std::chrono_literals;
 using namespace gn;
 using namespace gn::core;
 using namespace gn::plugins::gnet;
-using TcpTransport = gn::transport::tcp::TcpTransport;
+using TcpLink = gn::link::tcp::TcpLink;
 
 // ── Noise plugin handle (dlopen) ────────────────────────────────────
 
@@ -77,14 +77,14 @@ struct NoisePlugin {
     ~NoisePlugin() { if (handle) ::dlclose(handle); }
 };
 
-// ── TCP plugin glue (in-tree, vtable wraps TcpTransport directly) ───
+// ── TCP plugin glue (in-tree, vtable wraps TcpLink directly) ───
 
 const char* tcp_scheme(void* /*self*/) { return "tcp"; }
 
 gn_result_t tcp_send(void* self, gn_conn_id_t conn,
                       const std::uint8_t* bytes, std::size_t size) {
     if (!self || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
-    return static_cast<TcpTransport*>(self)->send(
+    return static_cast<TcpLink*>(self)->send(
         conn, std::span<const std::uint8_t>(bytes, size));
 }
 
@@ -95,7 +95,7 @@ gn_result_t tcp_send_batch(void* /*self*/, gn_conn_id_t /*conn*/,
 
 gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
     if (!self) return GN_ERR_NULL_ARG;
-    return static_cast<TcpTransport*>(self)->disconnect(conn);
+    return static_cast<TcpLink*>(self)->disconnect(conn);
 }
 
 gn_result_t tcp_listen_unused(void* /*self*/, const char* /*uri*/) {
@@ -110,8 +110,8 @@ const char* tcp_ext_name(void* /*self*/) { return nullptr; }
 const void* tcp_ext_vtable(void* /*self*/) { return nullptr; }
 void        tcp_destroy(void* /*self*/) {}
 
-gn_transport_vtable_t make_tcp_vtable() {
-    gn_transport_vtable_t v{};
+gn_link_vtable_t make_tcp_vtable() {
+    gn_link_vtable_t v{};
     v.api_size         = sizeof(v);
     v.scheme           = &tcp_scheme;
     v.listen           = &tcp_listen_unused;
@@ -125,19 +125,19 @@ gn_transport_vtable_t make_tcp_vtable() {
     return v;
 }
 
-const gn_transport_vtable_t kTcpVtable = make_tcp_vtable();
+const gn_link_vtable_t kTcpVtable = make_tcp_vtable();
 
 // ── Per-kernel node ─────────────────────────────────────────────────
 
 struct Node {
     std::unique_ptr<Kernel>           kernel = std::make_unique<Kernel>();
     std::shared_ptr<GnetProtocol>     proto  = std::make_shared<GnetProtocol>();
-    std::shared_ptr<TcpTransport>     tcp    = std::make_shared<TcpTransport>();
+    std::shared_ptr<TcpLink>     tcp    = std::make_shared<TcpLink>();
     PluginContext                     plugin_ctx;
     host_api_t                        api{};
     void*                             noise_self = nullptr;
     NoisePlugin*                      plugin     = nullptr;
-    gn_transport_id_t                 tcp_id     = GN_INVALID_ID;
+    gn_link_id_t                 tcp_id     = GN_INVALID_ID;
     PublicKey                         local_pk{};
 
     Node(NoisePlugin& p, std::string name) : plugin(&p) {
@@ -161,10 +161,10 @@ struct Node {
         EXPECT_EQ(p.plugin_reg(noise_self), GN_OK);
 
         /// TCP transport: register the in-tree instance under the
-        /// kernel's TransportRegistry so the kernel-side notify thunks
+        /// kernel's LinkRegistry so the kernel-side notify thunks
         /// can route handshake bytes back through it.
         tcp->set_host_api(&api);
-        EXPECT_EQ(api.register_transport(api.host_ctx, "tcp",
+        EXPECT_EQ(api.register_link(api.host_ctx, "tcp",
                                           &kTcpVtable, tcp.get(), &tcp_id),
                   GN_OK);
     }
@@ -198,7 +198,7 @@ TEST(NoiseTcpE2E, HandshakeOverRealSocketReachesTransportPhase) {
     ASSERT_NE(plugin.handle, nullptr) << "noise.so failed to load";
 
     /// Two independent nodes in the same process. Each carries its
-    /// own kernel, NodeIdentity, TcpTransport, and noise provider.
+    /// own kernel, NodeIdentity, TcpLink, and noise provider.
     auto alice = std::make_unique<Node>(plugin, "alice");
     auto bob   = std::make_unique<Node>(plugin, "bob");
 

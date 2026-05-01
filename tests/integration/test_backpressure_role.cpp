@@ -93,7 +93,7 @@ TEST(BackpressureRole, RejectsHandlerKindPublisher) {
 
 TEST(BackpressureRole, AcceptsTransportKindPublisher) {
     Kernel k;
-    auto ctx = make_ctx(k, GN_PLUGIN_KIND_TRANSPORT, "test-transport");
+    auto ctx = make_ctx(k, GN_PLUGIN_KIND_LINK, "test-transport");
     auto api = build_host_api(ctx);
 
     EventBag bag;
@@ -139,7 +139,7 @@ TEST(BackpressureRole, AcceptsTransportKindPublisher) {
 
 TEST(BackpressureRole, RejectsInvalidEventKind) {
     Kernel k;
-    auto ctx = make_ctx(k, GN_PLUGIN_KIND_TRANSPORT, "test-transport");
+    auto ctx = make_ctx(k, GN_PLUGIN_KIND_LINK, "test-transport");
     auto api = build_host_api(ctx);
 
     const std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES> pk{0x42};

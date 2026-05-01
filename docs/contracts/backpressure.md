@@ -156,7 +156,7 @@ A plugin pushing bytes through `host_api->send` **must**:
 
 A plugin that explicitly opts out of backpressure (a real-time
 voice transport that prefers drop over delay) routes through a
-custom `gn.transport.<scheme>` extension's composer slots and
+custom `gn.link.<scheme>` extension's composer slots and
 manages its own queue with its own policy. The baseline send path
 is the cap-enforcing path.
 
@@ -167,7 +167,7 @@ is the cap-enforcing path.
 UDP and similar datagram transports observe backpressure
 **only** at the OS-level send buffer. There is no application
 write queue in the v1 baseline UDP transport
-(`plugins/transports/udp/`); the kernel-level `send` issues an
+(`plugins/links/udp/`); the kernel-level `send` issues an
 immediate `sendto` and the kernel reports `GN_ERR_LIMIT_REACHED`
 when the OS reports `EAGAIN` / `EWOULDBLOCK`.
 
@@ -188,7 +188,7 @@ Reload requires kernel restart; transports do not re-read mid-life.
 Per-process aggregate caps (e.g. summed `bytes_buffered` across
 every connection) are not part of v1.0. A transport that needs a
 process-level governor adds it in its own
-`gn.transport.<scheme>` extension surface.
+`gn.link.<scheme>` extension surface.
 
 ---
 

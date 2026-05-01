@@ -102,7 +102,7 @@ synthetic re-delivery.
 | `GN_OK` | record removed and event published | security session destroyed; record erased from all three keys (`registry.md` §1); every existing subscriber invoked once before return |
 | `GN_ERR_NOT_FOUND` | no record matched `conn` at the moment the registry critical section started; also returned when `conn == GN_INVALID_ID` | session-destroy attempt is idempotent; no event published; no registry state changed |
 | `GN_ERR_NULL_ARG` | `host_ctx == NULL` | none |
-| `GN_ERR_NOT_IMPLEMENTED` | calling plugin's kind is not `GN_PLUGIN_KIND_TRANSPORT` (`sdk/plugin.h` `gn_plugin_kind_t`); `GN_PLUGIN_KIND_UNKNOWN` is permitted as a legacy carve-out for descriptors that predate the `kind` field | none |
+| `GN_ERR_NOT_IMPLEMENTED` | calling plugin's kind is not `GN_PLUGIN_KIND_LINK` (`sdk/plugin.h` `gn_plugin_kind_t`); `GN_PLUGIN_KIND_UNKNOWN` is permitted as a legacy carve-out for descriptors that predate the `kind` field | none |
 
 No other return code is legal; an implementation that emits one
 is non-conformant.

@@ -25,7 +25,7 @@ owns its config-source story.
 The structure is flat at the top level with **dotted-path nesting**
 for namespaces — `limits.max_connections` is the canonical
 example; transports and handlers register their own namespaces
-(`transports.tls.cert_path`, `relay.dedup_capacity`) when they
+(`links.tls.cert_path`, `relay.dedup_capacity`) when they
 begin reading from config. Plugins receive paths verbatim through
 the `config_get_*` slots and resolve them inside the kernel;
 there is no plugin-side JSON parser.
@@ -173,8 +173,8 @@ parser.
 it is opaque JSON the kernel hands back through `config_get_*`
 without interpretation. Plugins that read from config publish
 their namespace conventions in their own contract: TLS reads
-`transports.tls.cert_path` / `transports.tls.key_path` per the
-`plugins/transports/tls/` README; future relay / DHT / sync
+`links.tls.cert_path` / `links.tls.key_path` per the
+`plugins/links/tls/` README; future relay / DHT / sync
 plugins will register `relay.*` / `dht.*` / `sync.*` similarly.
 
 The embedding application is free to seed any plugin namespace
@@ -303,7 +303,7 @@ kernel into a path-handling argument.
   per-section reads against the plugin's declared scope.
 - **Capability gate for sensitive values.** Any loaded plugin
   can read every `config_get_*` slot; nothing in v1 prevents a
-  malicious plugin from reading `transports.tls.key_path`. The
+  malicious plugin from reading `links.tls.key_path`. The
   same `reads_config` mechanism above is the v1.1 fix. v1
   assumes the plugins directory is operator-controlled and
   every loaded plugin is trusted (see `plugin-manifest.md` §3).

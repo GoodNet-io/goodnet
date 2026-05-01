@@ -98,7 +98,7 @@ GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self);
  */
 typedef enum gn_plugin_kind_e {
     GN_PLUGIN_KIND_UNKNOWN   = 0,
-    GN_PLUGIN_KIND_TRANSPORT = 1,
+    GN_PLUGIN_KIND_LINK = 1,
     GN_PLUGIN_KIND_HANDLER   = 2,
     GN_PLUGIN_KIND_SECURITY  = 3,
     GN_PLUGIN_KIND_PROTOCOL  = 4,

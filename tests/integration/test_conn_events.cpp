@@ -41,7 +41,7 @@ void record_event(void* ud, const gn_conn_event_t* ev) {
 PluginContext make_transport_ctx(Kernel& k) {
     PluginContext ctx;
     ctx.kernel        = &k;
-    ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
+    ctx.kind          = GN_PLUGIN_KIND_LINK;
     ctx.plugin_name   = "test-transport";
     ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
@@ -137,7 +137,7 @@ TEST(ConnEvents, AnchorExpiredDropsCallback) {
     Kernel k;
     PluginContext ctx;
     ctx.kernel        = &k;
-    ctx.kind          = GN_PLUGIN_KIND_TRANSPORT;
+    ctx.kind          = GN_PLUGIN_KIND_LINK;
     ctx.plugin_name   = "expiring";
     ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     auto api = build_host_api(ctx);

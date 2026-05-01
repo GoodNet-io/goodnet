@@ -17,12 +17,12 @@
 #include <core/kernel/plugin_context.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
-#include <plugins/transports/tcp/tcp.hpp>
+#include <plugins/links/tcp/tcp.hpp>
 
 #include <sdk/handler.h>
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
-#include <sdk/transport.h>
+#include <sdk/link.h>
 #include <sdk/types.h>
 
 #include <dlfcn.h>
@@ -53,7 +53,7 @@ using gn::core::PluginContext;
 using gn::core::SecurityPhase;
 using gn::core::build_host_api;
 using gn::plugins::gnet::GnetProtocol;
-using TcpTransport = gn::transport::tcp::TcpTransport;
+using TcpLink = gn::link::tcp::TcpLink;
 
 constexpr std::uint32_t kDemoMsgId = 0xC0FFEEu;
 
@@ -102,7 +102,7 @@ const char* tcp_scheme(void*) { return "tcp"; }
 gn_result_t tcp_send(void* self, gn_conn_id_t conn,
                       const std::uint8_t* bytes, std::size_t size) {
     if (!self || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
-    return static_cast<TcpTransport*>(self)->send(
+    return static_cast<TcpLink*>(self)->send(
         conn, std::span<const std::uint8_t>(bytes, size));
 }
 
@@ -113,7 +113,7 @@ gn_result_t tcp_send_batch(void*, gn_conn_id_t, const gn_byte_span_t*,
 
 gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
     if (!self) return GN_ERR_NULL_ARG;
-    return static_cast<TcpTransport*>(self)->disconnect(conn);
+    return static_cast<TcpLink*>(self)->disconnect(conn);
 }
 
 gn_result_t tcp_listen_unused(void*, const char*) { return GN_ERR_NOT_IMPLEMENTED; }
@@ -122,8 +122,8 @@ const char* tcp_ext_name(void*) { return nullptr; }
 const void* tcp_ext_vtable(void*) { return nullptr; }
 void        tcp_destroy(void*) {}
 
-gn_transport_vtable_t make_tcp_vtable() {
-    gn_transport_vtable_t v{};
+gn_link_vtable_t make_tcp_vtable() {
+    gn_link_vtable_t v{};
     v.api_size         = sizeof(v);
     v.scheme           = &tcp_scheme;
     v.listen           = &tcp_listen_unused;
@@ -137,7 +137,7 @@ gn_transport_vtable_t make_tcp_vtable() {
     return v;
 }
 
-const gn_transport_vtable_t kTcpVtable = make_tcp_vtable();
+const gn_link_vtable_t kTcpVtable = make_tcp_vtable();
 
 /// Receiver state for the demo handler. `wait_for_message` blocks
 /// until the kernel routes one envelope through `handle_message`.
@@ -165,7 +165,7 @@ gn_propagation_t handler_consume(void* self, const gn_message_t* env) {
 struct Node {
     std::unique_ptr<Kernel>       kernel = std::make_unique<Kernel>();
     std::shared_ptr<GnetProtocol> proto  = std::make_shared<GnetProtocol>();
-    std::shared_ptr<TcpTransport> tcp    = std::make_shared<TcpTransport>();
+    std::shared_ptr<TcpLink> tcp    = std::make_shared<TcpLink>();
     PluginContext                 plugin_ctx;
     host_api_t                    api{};
     void*                         noise_self = nullptr;
@@ -196,10 +196,10 @@ struct Node {
         }
 
         tcp->set_host_api(&api);
-        gn_transport_id_t tid = GN_INVALID_ID;
-        if (api.register_transport(api.host_ctx, "tcp", &kTcpVtable,
+        gn_link_id_t tid = GN_INVALID_ID;
+        if (api.register_link(api.host_ctx, "tcp", &kTcpVtable,
                                     tcp.get(), &tid) != GN_OK) {
-            std::cerr << "register_transport(tcp) failed\n";
+            std::cerr << "register_link(tcp) failed\n";
             std::exit(1);
         }
     }

@@ -82,7 +82,7 @@ TEST(HandlerRegistry_Args, RejectsEmptyProtocolId) {
 TEST(HandlerRegistry_Args, RejectsVtableWithSmallerApiSize) {
     /// `abi-evolution.md` §3a: a producer-declared `api_size` smaller
     /// than the kernel's struct minimum is rejected before any slot
-    /// lookup. Mirrors the `register_transport` and
+    /// lookup. Mirrors the `register_link` and
     /// `register_provider` defensive size-prefix check.
     HandlerRegistry reg;
     gn_handler_vtable_t shrunk{};

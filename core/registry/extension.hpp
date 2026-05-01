@@ -2,7 +2,7 @@
 /// @brief  Named extension vtable lookup with semver gating.
 ///
 /// Plugins publish typed vtables under stable names (`"gn.heartbeat"`
-/// for the single-entry case, `"gn.transport.<scheme>"` for a
+/// for the single-entry case, `"gn.link.<scheme>"` for a
 /// multi-entry family) so other plugins can call them without
 /// linking. Kernel-side registry holds the (name, version, vtable)
 /// triple; lookups verify a requested major/minor version is
