@@ -244,6 +244,37 @@ them non-blockingly; no walk of any queue is required.
 
 ---
 
+## 7a. Post-handshake peer-pk propagation
+
+A link plugin opens a responder-side connection before the security
+handshake has identified the peer; `notify_connect` therefore
+accepts a placeholder `remote_pk` (zeros, by convention). Once the
+security session reaches the transport phase, the kernel calls
+`connections.update_remote_pk(conn, peer_static_pk)` so the record
+and the pk index switch to the authenticated value.
+
+| Pre-handshake | Post-handshake |
+|---|---|
+| `rec.remote_pk` = link-supplied placeholder (zeros for responder, IK preset for initiator) | `rec.remote_pk` = security session's `peer_static_pk` |
+| `pk_index_` keys on the placeholder | `pk_index_` keys on the authenticated peer key |
+| `pin_device_pk(remote_pk, …)` would key on the placeholder — the cross-session pin gate (§8a) is dead code | pin gate keys on the authenticated peer key |
+
+`update_remote_pk` returns:
+
+- `GN_OK` on success (real update or `old == new` no-op).
+- `GN_ERR_NOT_FOUND` if the record has been erased between handshake
+  completion and the update call.
+- `GN_ERR_LIMIT_REACHED` if the new key already maps to a different
+  `conn_id` — an identity-collision attempt; the kernel disconnects
+  the calling session.
+
+The propagated value is the security provider's `peer_static_pk`
+(Noise X25519 in the reference plugin). It is not the peer's
+Ed25519 device key — that lands in the registry's per-peer pin map
+through `pin_device_pk` after the attestation step (§8a).
+
+---
+
 ## 8a. Per-peer device-key pinning
 
 The registry holds a separate `peer_pk → device_pk` map keyed on the

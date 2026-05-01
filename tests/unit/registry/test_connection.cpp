@@ -659,6 +659,82 @@ TEST(ConnectionRegistry_UpgradeTrust, PeerToUntrustedRejected) {
     }
 }
 
+// ── update_remote_pk ────────────────────────────────────────────────
+
+TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
+    /// Responder path: connection inserted with a placeholder
+    /// remote_pk (zeros) before the handshake completes; once the
+    /// security session exposes peer_static_pk, the kernel calls
+    /// `update_remote_pk` so the pk index keys on the real peer key
+    /// (registry.md §7a + §8a cross-session pin gate).
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const PublicKey placeholder{};
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", placeholder)), GN_OK);
+
+    /// Pre-update: pk index keys on placeholder.
+    EXPECT_TRUE(reg.find_by_pk(placeholder).has_value());
+
+    const auto real_pk = make_pk(0xCAFEBABE);
+    ASSERT_EQ(reg.update_remote_pk(id, real_pk), GN_OK);
+
+    /// Post-update: real_pk indexed, placeholder gone, record carries new pk.
+    EXPECT_TRUE(reg.find_by_pk(real_pk).has_value());
+    EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) EXPECT_EQ(fetched->remote_pk, real_pk);
+}
+
+TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {
+    /// Initiator path: rec.remote_pk already equals the peer key
+    /// before the handshake (IK preset / cached peer); the post-
+    /// handshake update is a no-op success.
+    ConnectionRegistry reg;
+    const gn_conn_id_t id = reg.alloc_id();
+    const auto pk = make_pk(0x1234);
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", pk)), GN_OK);
+
+    EXPECT_EQ(reg.update_remote_pk(id, pk), GN_OK);
+    auto fetched = reg.find_by_id(id);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) EXPECT_EQ(fetched->remote_pk, pk);
+}
+
+TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
+    /// Two connections, two distinct pks. Updating conn A's remote_pk
+    /// to match conn B's pk is rejected: the pk index would otherwise
+    /// silently overwrite the mapping for B and break find_by_pk.
+    ConnectionRegistry reg;
+    const auto pk_a = make_pk(0xAAAA);
+    const auto pk_b = make_pk(0xBBBB);
+    const gn_conn_id_t id_a = reg.alloc_id();
+    const gn_conn_id_t id_b = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id_a, "tcp://h:1", pk_a)), GN_OK);
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id_b, "tcp://h:2", pk_b)), GN_OK);
+
+    EXPECT_EQ(reg.update_remote_pk(id_a, pk_b), GN_ERR_LIMIT_REACHED);
+
+    /// Both records still resolve through their original keys.
+    auto by_a = reg.find_by_pk(pk_a);
+    auto by_b = reg.find_by_pk(pk_b);
+    ASSERT_TRUE(by_a.has_value());
+    ASSERT_TRUE(by_b.has_value());
+    if (by_a.has_value()) EXPECT_EQ(by_a->id, id_a);
+    if (by_b.has_value()) EXPECT_EQ(by_b->id, id_b);
+}
+
+TEST(ConnectionRegistry_UpdateRemotePk, UnknownIdRejected) {
+    ConnectionRegistry reg;
+    const auto pk = make_pk(0xDEAD);
+    EXPECT_EQ(reg.update_remote_pk(/*missing*/ 9999, pk), GN_ERR_NOT_FOUND);
+    EXPECT_EQ(reg.update_remote_pk(GN_INVALID_ID, pk), GN_ERR_NULL_ARG);
+}
+
 // ── Per-peer device-key pinning ─────────────────────────────────────
 
 TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {

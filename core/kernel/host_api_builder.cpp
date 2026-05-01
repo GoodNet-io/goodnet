@@ -86,6 +86,34 @@ namespace {
 /// without ever loading a plugin shared object; in that case both
 /// anchors are null and the check is permissive. The loader-driven
 /// path always produces non-null anchors.
+/// Propagate the security session's `peer_static_pk` into the
+/// connection record's `remote_pk` once the handshake has completed.
+///
+/// Without this update the responder side of `security-trust.md`
+/// §10.1 cross-session pin gate is dead code: the link plugin
+/// passes a placeholder `remote_pk` (typically zeros) at
+/// `notify_connect`, so the attestation dispatcher's
+/// `pin_device_pk` map keys on the placeholder rather than the
+/// authenticated peer key. After this propagation the pin map
+/// keys on the peer's real Noise static, and any reconnect under
+/// a different device key trips the gate as designed.
+///
+/// The propagation also fires harmlessly on the initiator path
+/// (where `remote_pk` already matches `peer_static_pk` from the
+/// IK / cached preset) — the registry update is a no-op in that
+/// case.
+void propagate_peer_pk_after_handshake(const PluginContext* pc,
+                                        gn_conn_id_t conn,
+                                        const SecuritySession& session) {
+    if (pc == nullptr || pc->kernel == nullptr) return;
+    const auto& keys = session.transport_keys();
+    PublicKey peer_pk{};
+    std::memcpy(peer_pk.data(), keys.peer_static_pk, GN_PUBLIC_KEY_BYTES);
+    static const PublicKey kZeroPk{};
+    if (peer_pk == kZeroPk) return;  /// pre-handshake / null provider
+    (void)pc->kernel->connections().update_remote_pk(conn, peer_pk);
+}
+
 [[nodiscard]] bool conn_owned_by_caller(const PluginContext* pc,
                                         const ConnectionRecord& rec) {
     if (pc == nullptr || pc->kernel == nullptr) return false;
@@ -1054,6 +1082,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     /// attestation has verified back. Loopback / IntraNode sessions
     /// take the dispatcher's no-op path (see `attestation.md` §4).
     if (session->phase() == SecurityPhase::Transport) {
+        propagate_peer_pk_after_handshake(pc, conn, *session);
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
         drain_handshake_pending(pc, conn, *session, rec->link_scheme);
@@ -1126,6 +1155,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             /// exchange completes. Loopback / IntraNode sessions
             /// take the dispatcher's no-op path.
             if (session->phase() == SecurityPhase::Transport) {
+                propagate_peer_pk_after_handshake(pc, conn, *session);
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
                 drain_handshake_pending(pc, conn, *session,
