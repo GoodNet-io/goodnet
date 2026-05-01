@@ -40,22 +40,44 @@ extern "C" {
 #define gn_disconnect(api, conn) \
     (api)->disconnect((api)->host_ctx, (conn))
 
-/* ── Handler registration ────────────────────────────────────────────────── */
+/* ── Handler / link registration ─────────────────────────────────────────── */
 
-#define gn_register_handler(api, protocol_id, msg_id, priority, vtable, self, out_id) \
-    (api)->register_handler((api)->host_ctx, (protocol_id), (msg_id), \
-                            (priority), (vtable), (self), (out_id))
+/* Universal slot under the hood; the typed convenience wrappers keep
+ * the caller's existing argument shape and pack the metadata struct
+ * into a temporary the kernel can read for the call.
+ *
+ * The temporary lives in the caller's stack frame for the duration of
+ * the `register_vtable` call; the kernel copies / borrows the `name`
+ * string per the contract documented on `gn_register_meta_t`. */
+#define gn_register_handler(api, protocol_id, msg_id_v, priority_v, vtable, self, out_id) \
+    (api)->register_vtable((api)->host_ctx, GN_REGISTER_HANDLER,                \
+        &(gn_register_meta_t){                                                  \
+            .api_size = sizeof(gn_register_meta_t),                             \
+            .name     = (protocol_id),                                          \
+            .msg_id   = (msg_id_v),                                             \
+            .priority = (priority_v),                                           \
+            ._pad     = {0, 0, 0},                                              \
+            ._reserved = {0}                                                    \
+        },                                                                      \
+        (vtable), (self), (uint64_t*)(out_id))
 
 #define gn_unregister_handler(api, id) \
-    (api)->unregister_handler((api)->host_ctx, (id))
-
-/* ── Link registration ──────────────────────────────────────────────── */
+    (api)->unregister_vtable((api)->host_ctx, (uint64_t)(id))
 
 #define gn_register_link(api, scheme, vtable, self, out_id) \
-    (api)->register_link((api)->host_ctx, (scheme), (vtable), (self), (out_id))
+    (api)->register_vtable((api)->host_ctx, GN_REGISTER_LINK,                   \
+        &(gn_register_meta_t){                                                  \
+            .api_size = sizeof(gn_register_meta_t),                             \
+            .name     = (scheme),                                               \
+            .msg_id   = 0,                                                      \
+            .priority = 0,                                                      \
+            ._pad     = {0, 0, 0},                                              \
+            ._reserved = {0}                                                    \
+        },                                                                      \
+        (vtable), (self), (uint64_t*)(out_id))
 
 #define gn_unregister_link(api, id) \
-    (api)->unregister_link((api)->host_ctx, (id))
+    (api)->unregister_vtable((api)->host_ctx, (uint64_t)(id))
 
 /* ── Registry queries ────────────────────────────────────────────────────── */
 

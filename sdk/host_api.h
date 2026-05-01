@@ -80,28 +80,42 @@ typedef struct host_api_s {
 
     /* ── Handler registration ──────────────────────────────────────────── */
 
+    /* ── Universal handler / link registration ────────────────────────── */
+
     /**
-     * @param vtable @borrowed; must remain valid until unregister.
+     * @brief Register a handler or link vtable with the kernel.
+     *
+     * `kind` selects the family; `meta` carries the per-family
+     * fields (see @ref gn_register_kind_t for the per-kind table).
+     * `vtable` is `@borrowed` until `unregister(id)` returns;
+     * `self` is the per-instance opaque pointer that flows back
+     * through every vtable call. The id returned in `*out_id`
+     * carries the kind tag in its top 4 bits so `unregister(id)`
+     * routes back to the right registry without naming the kind
+     * a second time.
+     *
+     * Failure modes:
+     *
+     * | Condition | Result |
+     * |---|---|
+     * | `meta == NULL` / `meta->name == NULL` / `vtable == NULL` / `out_id == NULL` | `GN_ERR_NULL_ARG` |
+     * | unknown `kind` enum value | `GN_ERR_INVALID_ENVELOPE` |
+     * | `meta->api_size < sizeof(gn_register_meta_t)` (older SDK) | `GN_ERR_VERSION_MISMATCH` |
+     * | duplicate name within the family | `GN_ERR_LIMIT_REACHED` |
      */
-    gn_result_t (*register_handler)(void* host_ctx,
-                                    const char* protocol_id,
-                                    uint32_t msg_id,
-                                    uint8_t priority,
-                                    const gn_handler_vtable_t* vtable,
-                                    void* handler_self,
-                                    gn_handler_id_t* out_id);
+    gn_result_t (*register_vtable)(void* host_ctx,
+                                    gn_register_kind_t kind,
+                                    const gn_register_meta_t* meta,
+                                    const void* vtable,
+                                    void* self,
+                                    uint64_t* out_id);
 
-    gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
-
-    /* ── Link registration ────────────────────────────────────────── */
-
-    gn_result_t (*register_link)(void* host_ctx,
-                                      const char* scheme,
-                                      const gn_link_vtable_t* vtable,
-                                      void* link_self,
-                                      gn_link_id_t* out_id);
-
-    gn_result_t (*unregister_link)(void* host_ctx, gn_link_id_t id);
+    /**
+     * @brief Drop a registration. Idempotent: removing an already-
+     *        gone id returns @ref GN_OK. The id encodes the kind
+     *        in its top 4 bits; the kernel decodes it internally.
+     */
+    gn_result_t (*unregister_vtable)(void* host_ctx, uint64_t id);
 
     /* ── Registry queries ──────────────────────────────────────────────── */
 

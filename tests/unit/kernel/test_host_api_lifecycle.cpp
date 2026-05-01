@@ -444,11 +444,17 @@ TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
 
     ctx.magic = PluginContext::kMagicDead;
 
-    /// register family — register_handler
+    /// register family — register_vtable(HANDLER)
     gn_handler_id_t hid = GN_INVALID_ID;
     gn_handler_vtable_t vt{};
     vt.api_size       = sizeof(gn_handler_vtable_t);
-    EXPECT_EQ(api.register_handler(&ctx, "gnet-v1", 1, 128, &vt, nullptr, &hid),
+    gn_register_meta_t reg_meta{};
+    reg_meta.api_size = sizeof(gn_register_meta_t);
+    reg_meta.name     = "gnet-v1";
+    reg_meta.msg_id   = 1;
+    reg_meta.priority = 128;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_HANDLER, &reg_meta,
+                                   &vt, nullptr, &hid),
               GN_ERR_INVALID_STATE);
     EXPECT_EQ(hid, GN_INVALID_ID);
 

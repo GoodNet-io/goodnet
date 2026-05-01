@@ -47,25 +47,20 @@ typedef struct host_api_s {
 
     gn_result_t (*disconnect)(void* host_ctx, gn_conn_id_t conn);
 
-    /* ── Handler registration ────────────────────────────────────────── */
-    gn_result_t (*register_handler)(void* host_ctx,
-                                    const char* protocol_id,
-                                    uint32_t msg_id, uint8_t priority,
-                                    const gn_handler_vtable_t* vtable,
-                                    void* handler_self,
-                                    gn_handler_id_t* out_id);
+    /* ── Universal handler / link registration ─────────────────────── */
+    /* `kind` selects the family; `meta` carries the per-family fields */
+    /* (handler: name=protocol_id + msg_id + priority; link: name=URI  */
+    /* scheme). The id encodes the kind in its top 4 bits so           */
+    /* `unregister_vtable(id)` routes back to the right registry       */
+    /* without naming the kind a second time.                          */
+    gn_result_t (*register_vtable)(void* host_ctx,
+                                    gn_register_kind_t kind,
+                                    const gn_register_meta_t* meta,
+                                    const void* vtable,
+                                    void* self,
+                                    uint64_t* out_id);
 
-    gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
-
-    /* ── Transport registration ──────────────────────────────────────── */
-    gn_result_t (*register_link)(void* host_ctx,
-                                      const char* scheme,
-                                      const gn_link_vtable_t* vtable,
-                                      void* link_self,
-                                      gn_link_id_t* out_id);
-
-    gn_result_t (*unregister_link)(void* host_ctx,
-                                        gn_link_id_t id);
+    gn_result_t (*unregister_vtable)(void* host_ctx, uint64_t id);
 
     /* ── Registry queries ────────────────────────────────────────────── */
     gn_result_t (*find_conn_by_pk)(void* host_ctx,
@@ -240,7 +235,7 @@ The kernel guarantees:
 - Each individual entry is reentrant: a plugin may invoke any slot
   from any thread that owns a reference to `api`. The kernel does
   **not** serialise *across* slots — concurrent `send` and
-  `register_handler` from two threads each hold their own
+  `register_vtable` from two threads each hold their own
   fine-grained lock and may interleave. Plugins that depend on a
   cross-slot ordering provide it themselves.
 - `api->host_ctx` is opaque to the plugin; passed back unchanged.

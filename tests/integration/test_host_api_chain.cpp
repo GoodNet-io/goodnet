@@ -68,14 +68,18 @@ TEST(HostApiChain, RegisterHandlerThroughApi) {
     vt.handle_message = &Capture::handle;
 
     gn_handler_id_t hid = GN_INVALID_ID;
-    ASSERT_EQ(h.api.register_handler(h.api.host_ctx,
-                                     "gnet-v1", 0x42, 128,
-                                     &vt, &cap, &hid),
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(gn_register_meta_t);
+    meta.name     = "gnet-v1";
+    meta.msg_id   = 0x42;
+    meta.priority = 128;
+    ASSERT_EQ(h.api.register_vtable(h.api.host_ctx, GN_REGISTER_HANDLER,
+                                     &meta, &vt, &cap, &hid),
               GN_OK);
     EXPECT_NE(hid, GN_INVALID_ID);
     EXPECT_EQ(h.kernel->handlers().size(), 1u);
 
-    ASSERT_EQ(h.api.unregister_handler(h.api.host_ctx, hid), GN_OK);
+    ASSERT_EQ(h.api.unregister_vtable(h.api.host_ctx, hid), GN_OK);
     EXPECT_EQ(h.kernel->handlers().size(), 0u);
 }
 
@@ -118,9 +122,13 @@ TEST(HostApiChain, InboundBytesReachHandler) {
     vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
-    ASSERT_EQ(bob.api.register_handler(bob.api.host_ctx,
-                                       "gnet-v1", 0x77, 128,
-                                       &vt, &cap, &hid),
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(gn_register_meta_t);
+    meta.name     = "gnet-v1";
+    meta.msg_id   = 0x77;
+    meta.priority = 128;
+    ASSERT_EQ(bob.api.register_vtable(bob.api.host_ctx, GN_REGISTER_HANDLER,
+                                       &meta, &vt, &cap, &hid),
               GN_OK);
 
     /// Bob registers Alice as a known connection so the inbound

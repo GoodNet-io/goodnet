@@ -529,45 +529,91 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
     return GN_OK;
 }
 
-gn_result_t thunk_register_link(void* host_ctx,
-                                     const char* scheme,
-                                     const gn_link_vtable_t* vtable,
-                                     void* link_self,
-                                     gn_link_id_t* out_id) {
+/// Register-id tagging mirrors `subscribe`/`unsubscribe` (`thunk_subscribe`):
+/// 4-bit kind tag in the top bits, 60-bit registry-internal token below.
+constexpr std::uint64_t kRegisterChannelShift = 60;
+constexpr std::uint64_t kRegisterChannelMask  =
+    static_cast<std::uint64_t>(0xF) << kRegisterChannelShift;
+constexpr std::uint64_t kRegisterTokenMask    =
+    (std::uint64_t{1} << kRegisterChannelShift) - 1;
+
+[[nodiscard]] constexpr std::uint64_t pack_register_id(
+    gn_register_kind_t kind, std::uint64_t token) noexcept {
+    return (static_cast<std::uint64_t>(kind) << kRegisterChannelShift) |
+           (token & kRegisterTokenMask);
+}
+
+[[nodiscard]] constexpr gn_register_kind_t kind_of_register_id(
+    std::uint64_t id) noexcept {
+    return static_cast<gn_register_kind_t>(
+        (id & kRegisterChannelMask) >> kRegisterChannelShift);
+}
+
+[[nodiscard]] constexpr std::uint64_t token_of_register_id(
+    std::uint64_t id) noexcept {
+    return id & kRegisterTokenMask;
+}
+
+gn_result_t thunk_register_vtable(void* host_ctx,
+                                   gn_register_kind_t kind,
+                                   const gn_register_meta_t* meta,
+                                   const void* vtable,
+                                   void* self,
+                                   std::uint64_t* out_id) {
+    if (!host_ctx || !meta || !meta->name || !vtable || !out_id) {
+        return GN_ERR_NULL_ARG;
+    }
+    if (meta->api_size < sizeof(gn_register_meta_t)) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    switch (kind) {
+    case GN_REGISTER_HANDLER: {
+        gn_handler_id_t inner = GN_INVALID_ID;
+        const auto rc = pc->kernel->handlers().register_handler(
+            meta->name, meta->msg_id, meta->priority,
+            static_cast<const gn_handler_vtable_t*>(vtable),
+            self, &inner, pc->plugin_anchor);
+        if (rc != GN_OK) return rc;
+        *out_id = pack_register_id(GN_REGISTER_HANDLER,
+                                    static_cast<std::uint64_t>(inner));
+        return GN_OK;
+    }
+    case GN_REGISTER_LINK: {
+        gn_link_id_t inner = GN_INVALID_ID;
+        const auto rc = pc->kernel->links().register_link(
+            meta->name,
+            static_cast<const gn_link_vtable_t*>(vtable),
+            self, &inner, pc->plugin_anchor);
+        if (rc != GN_OK) return rc;
+        *out_id = pack_register_id(GN_REGISTER_LINK,
+                                    static_cast<std::uint64_t>(inner));
+        return GN_OK;
+    }
+    }
+    return GN_ERR_INVALID_ENVELOPE;
+}
+
+gn_result_t thunk_unregister_vtable(void* host_ctx, std::uint64_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->links().register_link(
-        scheme, vtable, link_self, out_id, pc->plugin_anchor);
-}
 
-gn_result_t thunk_unregister_link(void* host_ctx, gn_link_id_t id) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->links().unregister_link(id);
-}
+    const auto kind  = kind_of_register_id(id);
+    const auto token = token_of_register_id(id);
 
-gn_result_t thunk_register_handler(void* host_ctx,
-                                   const char* protocol_id,
-                                   uint32_t msg_id,
-                                   uint8_t priority,
-                                   const gn_handler_vtable_t* vtable,
-                                   void* handler_self,
-                                   gn_handler_id_t* out_id) {
-    if (!host_ctx || !protocol_id || !vtable || !out_id) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->handlers().register_handler(
-        protocol_id, msg_id, priority, vtable, handler_self, out_id,
-        pc->plugin_anchor);
-}
-
-gn_result_t thunk_unregister_handler(void* host_ctx, gn_handler_id_t id) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->handlers().unregister_handler(id);
+    switch (kind) {
+    case GN_REGISTER_HANDLER:
+        return pc->kernel->handlers().unregister_handler(
+            static_cast<gn_handler_id_t>(token));
+    case GN_REGISTER_LINK:
+        return pc->kernel->links().unregister_link(
+            static_cast<gn_link_id_t>(token));
+    }
+    return GN_ERR_NOT_FOUND;
 }
 
 const gn_limits_t* thunk_limits(void* host_ctx) {
@@ -1184,11 +1230,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.send                  = &thunk_send;
     a.disconnect            = &thunk_disconnect;
 
-    a.register_handler      = &thunk_register_handler;
-    a.unregister_handler    = &thunk_unregister_handler;
-
-    a.register_link    = &thunk_register_link;
-    a.unregister_link  = &thunk_unregister_link;
+    a.register_vtable       = &thunk_register_vtable;
+    a.unregister_vtable     = &thunk_unregister_vtable;
 
     a.query_extension_checked = &thunk_query_extension_checked;
     a.register_extension      = &thunk_register_extension;
