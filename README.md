@@ -34,15 +34,20 @@ The operational tax that grows with a distributed system — service mesh,
 mTLS termination, GeoDNS, etcd, sidecar mesh, configmaps — collapses into
 the kernel. Adding a node costs one binary and a keypair.
 
-**Three engineering bets:**
+**Design goals (post-rc1):**
 
-- **Multi-path transport.** TCP + ICE + QUIC + WebSocket simultaneously per
-  connection. Automatic failover under 50 ms. Each path adds a digit of
-  availability — four paths reach 99.987%.
-- **Directed relay → direct.** Connections start through relay, upgrade to
-  a direct connection in roughly seven seconds once paths are discovered.
-- **Address-based routing.** Around 4.6 hops at one million nodes;
-  400 entries per routing table.
+- **Multi-path transport.** Run TCP, UDP, WebSocket and TLS in parallel per
+  connection so a path failure switches over without dropping the session.
+  The single-path baseline is in the tree today; the multi-path scheduler
+  is on the [roadmap](docs/ROADMAP.md).
+- **Directed relay → direct.** Open through a relay, upgrade to a direct
+  path once both ends have discovered each other. The relay plugin and
+  the discovery contract land in v0.3+.
+- **Address-based routing.** Public-key-as-address with logarithmic-hop
+  forwarding under a DHT. The DHT plugin lands in v0.5.
+
+These are the directions the architecture is shaped for; what is
+actually shipped today is in §"Status" below.
 
 ## Where it fits
 
