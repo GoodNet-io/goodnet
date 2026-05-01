@@ -134,26 +134,36 @@ intended lifetime.
 
 ## 6. Link registration
 
-Links register through `host_api->register_link`:
+Links register through the universal `register_vtable` slot in
+`host_api_t`; see `host-api.md` §2 for the canonical signature.
+The link-specific shape:
 
-```
-gn_result_t register_link(host_ctx,
-                               const char* scheme,
-                               const gn_link_vtable_t* vtable,
-                               void* link_self,
-                               gn_link_id_t* out_id);
-```
+- `kind = GN_REGISTER_LINK`
+- `meta->name`     — URI scheme (e.g. `"tcp"`, `"udp"`, `"ws"`)
+- `meta->msg_id`   — ignored
+- `meta->priority` — ignored
+- `vtable`         — `const gn_link_vtable_t*`
+- `self`           — per-link instance state, opaque to the kernel
+- `*out_id`        — populated on success; encodes the
+  `GN_REGISTER_LINK` tag in its top 4 bits so a later
+  `unregister_vtable(id)` routes back to `LinkRegistry`
+  without naming the kind a second time.
 
-Rules from `host-api.md` §6 apply:
+Rules from `host-api.md` §2 apply:
 
 - Only inside `gn_plugin_register` (phase 5 per `plugin-lifetime.md` §2).
 - `scheme` is unique across loaded links; duplicate scheme returns
   `GN_ERR_LIMIT_REACHED`.
-- `vtable` is `@borrowed` for the lifetime, valid until `unregister`.
+- `vtable` is `@borrowed` for the lifetime, valid until
+  `unregister_vtable(id)` returns.
 
 A plugin may register multiple schemes through multiple calls. Pre-RC
 convention is to fold IPv6 into a single `tcp` scheme — the URI carries
 the address (`tcp://[::1]:9000`).
+
+The pure-C convenience wrapper `gn_register_link` in
+`sdk/convenience.h` keeps the historical 5-argument shape and
+expands to `register_vtable(GN_REGISTER_LINK, &meta, …)`.
 
 ---
 

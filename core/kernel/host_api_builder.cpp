@@ -560,7 +560,20 @@ gn_result_t thunk_register_vtable(void* host_ctx,
                                    const void* vtable,
                                    void* self,
                                    std::uint64_t* out_id) {
-    if (!host_ctx || !meta || !meta->name || !vtable || !out_id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+
+    /// Reject unknown enum values before any per-arg validation —
+    /// matches the convention from `thunk_subscribe` and
+    /// `thunk_config_get`.
+    switch (kind) {
+    case GN_REGISTER_HANDLER:
+    case GN_REGISTER_LINK:
+        break;
+    default:
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    if (!meta || !meta->name || !vtable || !out_id) {
         return GN_ERR_NULL_ARG;
     }
     if (meta->api_size < sizeof(gn_register_meta_t)) {
