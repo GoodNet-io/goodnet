@@ -116,7 +116,7 @@ critical section.
 **Effect.** Acquires the same triple of mutexes in the same
 order as §3/§4. If the record is present, captures its
 `gn_endpoint_t` view (`id`, `trust`, `remote_pk`, `uri`,
-`transport_scheme`) and the per-connection counters from §8
+`link_scheme`) and the per-connection counters from §8
 into caller-owned storage, then removes the record from all
 three indexes and the counter slot. Releases.
 
@@ -208,7 +208,7 @@ typedef struct gn_endpoint_s {
     uint8_t           remote_pk[GN_PUBLIC_KEY_BYTES];
     gn_trust_class_t  trust;
     char              uri[GN_ENDPOINT_URI_MAX];
-    char              transport_scheme[16];
+    char              link_scheme[16];
 
     uint64_t          bytes_in;
     uint64_t          bytes_out;
@@ -227,7 +227,7 @@ typedef struct gn_endpoint_s {
 | `remote_pk` | 32 bytes — peer's Ed25519 public key | `notify_connect` argument |
 | `trust` | enum — current trust class | live; reflects upgrade state per `security-trust.md` §3 |
 | `uri` | NUL-terminated, ≤ 255 bytes | transport-supplied at `notify_connect`; longer URIs truncate at the boundary |
-| `transport_scheme` | NUL-terminated, ≤ 15 bytes | scheme provided by the transport plugin (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, …) |
+| `link_scheme` | NUL-terminated, ≤ 15 bytes | scheme provided by the transport plugin (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, …) |
 | `bytes_in`, `bytes_out` | u64 — atomic snapshot | producer-site atomic update |
 | `frames_in`, `frames_out` | u64 — atomic snapshot | producer-site atomic update |
 | `pending_queue_bytes` | u64 — atomic snapshot | maintained by the send queue (see `limits.md` §6) |

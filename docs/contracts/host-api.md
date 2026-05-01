@@ -68,7 +68,7 @@ typedef struct host_api_s {
     gn_result_t (*register_link)(void* host_ctx,
                                       const char* scheme,
                                       const gn_link_vtable_t* vtable,
-                                      void* transport_self,
+                                      void* link_self,
                                       gn_link_id_t* out_id);
 
     gn_result_t (*unregister_link)(void* host_ctx,
@@ -118,7 +118,7 @@ typedef struct host_api_s {
 
     /* ── Transport-side notifications ────────────────────────────────── */
     /* `trust` and `role` are computed by the transport per             */
-    /* `transport.md` §3 and §3a; the kernel forwards both into the     */
+    /* `link.md` §3 and §3a; the kernel forwards both into the     */
     /* security session.                                                 */
     gn_result_t (*notify_connect)(void* host_ctx,
                                   const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
@@ -296,7 +296,7 @@ Plugins **must not**:
   (`_reserved`).
 - Init / shutdown ordering: `plugin-lifetime.md`.
 - Handler registration semantics: `handler-registration.md`.
-- Transport registration semantics: `transport.md` §6.
+- Transport registration semantics: `link.md` §6.
 - Error propagation requirements: `fsm-events.md` §4.
 
 ---

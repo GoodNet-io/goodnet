@@ -62,7 +62,7 @@ namespace {
 /// records would corrupt the registry. The descriptor's `kind`
 /// field declares the plugin's role; `Unknown` is permissive for
 /// legacy descriptors that predate the field.
-[[nodiscard]] bool transport_role(const PluginContext* pc) noexcept {
+[[nodiscard]] bool link_role(const PluginContext* pc) noexcept {
     if (pc == nullptr) return false;
     return pc->kind == GN_PLUGIN_KIND_LINK ||
            pc->kind == GN_PLUGIN_KIND_UNKNOWN;
@@ -131,7 +131,7 @@ gn_result_t thunk_send(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    auto trans = pc->kernel->links().find_by_scheme(rec->transport_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->link_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -177,7 +177,7 @@ gn_result_t thunk_send(void* host_ctx,
             std::vector<std::uint8_t> cipher;
             const gn_result_t rc = session->encrypt_transport(*framed, cipher);
             if (rc != GN_OK) return rc;
-            const auto send_rc = safe_call_result("transport.send",
+            const auto send_rc = safe_call_result("link.send",
                 trans->vtable->send, trans->self, conn,
                 cipher.data(), cipher.size());
             if (send_rc == GN_OK) {
@@ -188,7 +188,7 @@ gn_result_t thunk_send(void* host_ctx,
         }
     }
 
-    const auto send_rc = safe_call_result("transport.send",
+    const auto send_rc = safe_call_result("link.send",
         trans->vtable->send, trans->self, conn,
         framed->data(), framed->size());
     if (send_rc == GN_OK) {
@@ -233,9 +233,9 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
     out->uri[uri_n] = '\0';
 
     const std::size_t scheme_n =
-        std::min(rec->transport_scheme.size(), sizeof(out->transport_scheme) - 1);
-    std::memcpy(out->transport_scheme, rec->transport_scheme.data(), scheme_n);
-    out->transport_scheme[scheme_n] = '\0';
+        std::min(rec->link_scheme.size(), sizeof(out->link_scheme) - 1);
+    std::memcpy(out->link_scheme, rec->link_scheme.data(), scheme_n);
+    out->link_scheme[scheme_n] = '\0';
 
     out->bytes_in            = rec->bytes_in;
     out->bytes_out           = rec->bytes_out;
@@ -270,11 +270,11 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
-    auto trans = pc->kernel->links().find_by_scheme(rec->transport_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->link_scheme);
     if (!trans || !trans->vtable || !trans->vtable->disconnect) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
-    return safe_call_result("transport.disconnect",
+    return safe_call_result("link.disconnect",
         trans->vtable->disconnect, trans->self, conn);
 }
 
@@ -483,7 +483,7 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
     /// Only transport-kind plugins own write queues, so only they
     /// can produce truthful backpressure signals. Other plugin
     /// kinds attempting to publish here are misconfigured.
-    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
     if (kind != GN_CONN_EVENT_BACKPRESSURE_SOFT &&
         kind != GN_CONN_EVENT_BACKPRESSURE_CLEAR) {
         return GN_ERR_INVALID_ENVELOPE;
@@ -509,13 +509,13 @@ gn_result_t thunk_notify_backpressure(void* host_ctx,
 gn_result_t thunk_register_link(void* host_ctx,
                                      const char* scheme,
                                      const gn_link_vtable_t* vtable,
-                                     void* transport_self,
+                                     void* link_self,
                                      gn_link_id_t* out_id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     return pc->kernel->links().register_link(
-        scheme, vtable, transport_self, out_id, pc->plugin_anchor);
+        scheme, vtable, link_self, out_id, pc->plugin_anchor);
 }
 
 gn_result_t thunk_unregister_link(void* host_ctx, gn_link_id_t id) {
@@ -708,7 +708,7 @@ void thunk_log_emit(void* host_ctx, gn_log_level_t level,
 /// Send handshake-phase bytes raw via the transport vtable, bypassing
 /// the security and protocol layers. The bytes are produced by the
 /// security provider and already carry their own AEAD framing.
-gn_result_t send_raw_via_transport(PluginContext* pc,
+gn_result_t send_raw_via_link(PluginContext* pc,
                                     gn_conn_id_t conn,
                                     std::string_view scheme,
                                     std::span<const std::uint8_t> bytes) {
@@ -717,7 +717,7 @@ gn_result_t send_raw_via_transport(PluginContext* pc,
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
-    return safe_call_result("transport.send",
+    return safe_call_result("link.send",
         trans->vtable->send, trans->self, conn,
         bytes.data(), bytes.size());
 }
@@ -762,8 +762,8 @@ void publish_kernel_disconnect(PluginContext* pc, gn_conn_id_t conn) {
 void drain_handshake_pending(PluginContext* pc,
                               gn_conn_id_t conn,
                               SecuritySession& session,
-                              std::string_view transport_scheme) {
-    auto trans = pc->kernel->links().find_by_scheme(transport_scheme);
+                              std::string_view link_scheme) {
+    auto trans = pc->kernel->links().find_by_scheme(link_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         publish_kernel_disconnect(pc, conn);
         return;
@@ -776,12 +776,12 @@ void drain_handshake_pending(PluginContext* pc,
         std::vector<std::uint8_t> cipher;
         if (session.encrypt_transport(plaintext, cipher) != GN_OK) {
             if (trans->vtable->disconnect) {
-                (void)safe_call_result("transport.disconnect",
+                (void)safe_call_result("link.disconnect",
                     trans->vtable->disconnect, trans->self, conn);
             }
             return;
         }
-        const auto rc = safe_call_result("transport.send",
+        const auto rc = safe_call_result("link.send",
             trans->vtable->send, trans->self, conn,
             cipher.data(), cipher.size());
         if (rc == GN_OK) {
@@ -789,7 +789,7 @@ void drain_handshake_pending(PluginContext* pc,
             continue;
         }
         if (trans->vtable->disconnect) {
-            (void)safe_call_result("transport.disconnect",
+            (void)safe_call_result("link.disconnect",
                 trans->vtable->disconnect, trans->self, conn);
         }
         return;
@@ -828,7 +828,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
     /// active layer declares which trust classes it may deframe;
@@ -845,7 +845,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     const gn_conn_id_t new_id = pc->kernel->connections().alloc_id();
     rec.id = new_id;
     rec.uri = uri;
-    rec.transport_scheme = scheme;
+    rec.link_scheme = scheme;
     rec.trust = trust;
     rec.role  = role;
     std::memcpy(rec.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
@@ -906,7 +906,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     auto session = pc->kernel->sessions().find(conn);
     if (!session) return GN_OK;  /// no security on this conn
@@ -920,7 +920,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (adv_rc != GN_OK) return adv_rc;
 
     if (!first.empty()) {
-        (void)send_raw_via_transport(pc, conn, rec->transport_scheme, first);
+        (void)send_raw_via_link(pc, conn, rec->link_scheme, first);
     }
 
     /// IK-style patterns can complete the handshake on the initiator's
@@ -934,7 +934,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (session->phase() == SecurityPhase::Transport) {
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
-        drain_handshake_pending(pc, conn, *session, rec->transport_scheme);
+        drain_handshake_pending(pc, conn, *session, rec->link_scheme);
     }
     return GN_OK;
 }
@@ -946,7 +946,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     if (!host_ctx || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
@@ -974,7 +974,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             const gn_result_t rc = session->advance_handshake(wire_bytes, reply);
             if (rc != GN_OK) return rc;
             if (!reply.empty()) {
-                (void)send_raw_via_transport(pc, conn, rec->transport_scheme, reply);
+                (void)send_raw_via_link(pc, conn, rec->link_scheme, reply);
             }
             /// `advance_handshake` may have moved the session to
             /// Transport on this byte run. Hand off to the kernel-
@@ -986,7 +986,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
                 drain_handshake_pending(pc, conn, *session,
-                                         rec->transport_scheme);
+                                         rec->link_scheme);
             }
             /// Handshake bytes never carry application payload — the
             /// protocol layer is not consulted until Transport phase.
@@ -1123,7 +1123,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    if (!transport_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Implements `conn-events.md` §2a: drop the security session,
     /// then atomic snapshot+erase from `registry.md` §4a, then publish

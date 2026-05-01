@@ -44,7 +44,7 @@ ConnectionRecord make_record(gn_conn_id_t id,
     r.uri              = std::move(uri);
     r.remote_pk        = pk;
     r.trust            = GN_TRUST_PEER;
-    r.transport_scheme = "tcp";
+    r.link_scheme = "tcp";
     return r;
 }
 
@@ -91,7 +91,7 @@ TEST(ConnectionRegistry_Insert, IdRoundTrip) {
         EXPECT_EQ(got.uri, "tcp://10.0.0.1:5000");
         EXPECT_EQ(got.remote_pk, pk);
         EXPECT_EQ(got.trust, GN_TRUST_PEER);
-        EXPECT_EQ(got.transport_scheme, "tcp");
+        EXPECT_EQ(got.link_scheme, "tcp");
     }
 }
 

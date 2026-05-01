@@ -196,7 +196,7 @@ gn_conn_id_t insert_test_record(gn::core::Kernel& kernel,
     rec.remote_pk        = remote_pk;
     rec.uri              = "test://attestation";
     rec.trust            = trust;
-    rec.transport_scheme = "test";
+    rec.link_scheme = "test";
     EXPECT_EQ(kernel.connections().insert_with_index(std::move(rec)), GN_OK);
     return id;
 }

@@ -107,12 +107,12 @@ typedef struct host_api_s {
 
     gn_result_t (*unregister_handler)(void* host_ctx, gn_handler_id_t id);
 
-    /* ── Transport registration ────────────────────────────────────────── */
+    /* ── Link registration ────────────────────────────────────────── */
 
     gn_result_t (*register_link)(void* host_ctx,
                                       const char* scheme,
                                       const gn_link_vtable_t* vtable,
-                                      void* transport_self,
+                                      void* link_self,
                                       gn_link_id_t* out_id);
 
     gn_result_t (*unregister_link)(void* host_ctx, gn_link_id_t id);
@@ -231,13 +231,13 @@ typedef struct host_api_s {
      */
     gn_log_api_t log;
 
-    /* ── Transport-side notifications ──────────────────────────────────── */
+    /* ── Link-side notifications ──────────────────────────────────── */
 
     /**
-     * @brief Transport announces a fully-established connection.
+     * @brief Link announces a fully-established connection.
      *
      * Allocates a fresh `gn_conn_id_t` inside the kernel and returns
-     * it through @p out_conn. The transport stores the id and uses
+     * it through @p out_conn. The link stores the id and uses
      * it on every subsequent send / receive / disconnect call.
      *
      * @param remote_pk Peer's Ed25519 public key. Set for outbound
@@ -245,11 +245,11 @@ typedef struct host_api_s {
      *                  pk; all-zero for inbound responder-side
      *                  connections, where the pk is learned from the
      *                  handshake.
-     * @param uri       Connection URI as parsed by the transport.
+     * @param uri       Connection URI as parsed by the link.
      *                  Borrowed for the call.
-     * @param scheme    Transport scheme (`"tcp"`, `"udp"`, …).
+     * @param scheme    Link scheme (`"tcp"`, `"udp"`, …).
      * @param trust     TrustClass computed from observable connection
-     *                  properties per `transport.md` §3.
+     *                  properties per `link.md` §3.
      * @param role      Handshake role: initiator for outbound, responder
      *                  for inbound.
      * @param out_conn  Kernel-allocated connection id on success.
@@ -263,7 +263,7 @@ typedef struct host_api_s {
                                   gn_conn_id_t* out_conn);
 
     /**
-     * @brief Transport pushes received bytes for kernel processing.
+     * @brief Link pushes received bytes for kernel processing.
      *
      * The kernel runs the bytes through security decrypt → protocol
      * deframe → router dispatch. `bytes` is `@borrowed` for the
@@ -276,7 +276,7 @@ typedef struct host_api_s {
                                         size_t size);
 
     /**
-     * @brief Transport announces a connection close.
+     * @brief Link announces a connection close.
      *
      * @param reason `GN_OK` for a clean close; otherwise the
      *               `gn_result_t` value that triggered teardown.
@@ -346,9 +346,9 @@ typedef struct host_api_s {
      * `notify_connect` allocates the connection record and creates the
      * security session in `Handshake` phase but does **not** generate
      * the initiator's first wire message: doing so synchronously would
-     * race the transport, which still needs to register its socket
+     * race the link, which still needs to register its socket
      * under the freshly-allocated `conn` before bytes can ride out.
-     * The transport calls `kick_handshake` once it has registered the
+     * The link calls `kick_handshake` once it has registered the
      * connection — the kernel then drives initiator's first message
      * (no-op for a responder, no-op for connections without a
      * security session).
@@ -384,7 +384,7 @@ typedef struct host_api_s {
     /**
      * @brief Run @p fn(user_data) on the service executor at the
      *        next available point. Used to hand work back from a
-     *        transport's strand into the kernel's serialised loop.
+     *        link's strand into the kernel's serialised loop.
      */
     gn_result_t (*post_to_executor)(void* host_ctx,
                                     gn_task_fn_t fn,
@@ -425,9 +425,9 @@ typedef struct host_api_s {
      * @brief Publish a backpressure transition for @p conn — soft
      *        (queue crossed `pending_queue_bytes_high`) or clear
      *        (queue dropped below `pending_queue_bytes_low`).
-     *        Transport plugins call this once per rising / falling
+     *        Link plugins call this once per rising / falling
      *        edge per `backpressure.md` §3. Restricted to
-     *        transport-role callers; other plugin kinds get
+     *        link-role callers; other plugin kinds get
      *        @ref GN_ERR_NOT_IMPLEMENTED.
      *
      * `kind` must be either

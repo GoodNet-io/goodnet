@@ -3,7 +3,7 @@
 ///
 /// Pins the contract from `docs/contracts/host-api.md` §6 (scheme is
 /// unique across loaded transports; lookups are O(1) under a shared
-/// mutex) and `transport.md` §4 (id is allocated by the kernel, never
+/// mutex) and `link.md` §4 (id is allocated by the kernel, never
 /// by transports themselves).
 
 #include <gtest/gtest.h>

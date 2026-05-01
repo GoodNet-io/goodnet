@@ -3,7 +3,7 @@
  * @brief  Fundamental C ABI types for GoodNet plugins.
  *
  * The kernel and plugins communicate through this header. Anything wider
- * (transport, security, extensions) builds on top of these types.
+ * (link, security, extensions) builds on top of these types.
  *
  * Stability: stable for v1.0.x. Field additions to gn_message_t require a
  * major ABI bump; @ref _reserved slots permit non-breaking minor evolution.
@@ -169,7 +169,7 @@ typedef enum gn_result_e {
                                        *   counter, not as a return from any
                                        *   C ABI thunk. Lookup misses elsewhere
                                        *   (registry id miss, config key
-                                       *   absent, transport session miss)
+                                       *   absent, link session miss)
                                        *   return `GN_ERR_NOT_FOUND` (-14).
                                        *   Out-of-bounds array indices
                                        *   return `GN_ERR_OUT_OF_RANGE` (-15). */
@@ -193,7 +193,7 @@ typedef enum gn_result_e {
                                        *   Plugin authors must not throw
                                        *   across `extern "C"`. */
     GN_ERR_NOT_FOUND          = -14, /**< lookup miss — config key absent,
-                                       *   handler/transport id unknown,
+                                       *   handler/link id unknown,
                                        *   inject-target id absent. Distinct
                                        *   from `GN_ERR_UNKNOWN_RECEIVER`
                                        *   which is reserved for the

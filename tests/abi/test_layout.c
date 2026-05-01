@@ -92,8 +92,8 @@ _Static_assert(offsetof(gn_endpoint_t, trust) == 40,
                "gn_endpoint_t::trust offset pinned at 40");
 _Static_assert(offsetof(gn_endpoint_t, uri) == 44,
                "gn_endpoint_t::uri offset pinned at 44");
-_Static_assert(offsetof(gn_endpoint_t, transport_scheme) == 300,
-               "gn_endpoint_t::transport_scheme offset pinned at 300");
+_Static_assert(offsetof(gn_endpoint_t, link_scheme) == 300,
+               "gn_endpoint_t::link_scheme offset pinned at 300");
 _Static_assert(offsetof(gn_endpoint_t, bytes_in) == 320,
                "gn_endpoint_t::bytes_in offset pinned at 320");
 _Static_assert(offsetof(gn_endpoint_t, bytes_out) == 328,
@@ -391,7 +391,7 @@ _Static_assert(offsetof(gn_security_provider_vtable_t, allowed_trust_mask) == 88
 _Static_assert(offsetof(gn_security_provider_vtable_t, _reserved) == 96,
                "gn_security_provider_vtable_t::_reserved offset pinned at 96");
 
-/* ── sdk/transport.h ───────────────────────────────────────────────────────── */
+/* ── sdk/link.h ───────────────────────────────────────────────────────── */
 
 _Static_assert(sizeof(gn_byte_span_t) == 16,
                "gn_byte_span_t size pinned at 16");
@@ -453,7 +453,7 @@ _Static_assert(offsetof(gn_heartbeat_api_t, ctx) == 32,
 _Static_assert(offsetof(gn_heartbeat_api_t, _reserved) == 40,
                "gn_heartbeat_api_t::_reserved offset pinned at 40");
 
-/* ── sdk/extensions/transport.h ────────────────────────────────────────────── */
+/* ── sdk/extensions/link.h ────────────────────────────────────────────── */
 
 _Static_assert(sizeof(gn_link_caps_t) == 56,
                "gn_link_caps_t size pinned at 56");

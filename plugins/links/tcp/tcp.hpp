@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/links/tcp/tcp.hpp
-/// @brief  Asio TCP transport plugin per `docs/contracts/transport.md`.
+/// @brief  Asio TCP transport plugin per `docs/contracts/link.md`.
 ///
 /// One io_context per plugin runs on a single worker thread; sessions
 /// are owned via `shared_ptr` and refer back to the transport with
 /// `weak_ptr` so async completions that fire after `shutdown()` are
 /// no-ops instead of UAF (per audit TR-C1 lesson). Per-session strand
-/// keeps the single-writer invariant from `transport.md` §4: every
+/// keeps the single-writer invariant from `link.md` §4: every
 /// `async_write` runs on the strand, every close dispatches through
 /// it (closes the socket while the read tail is in-flight is the
 /// classic epoll_reactor race — TR-S2/TR-S3 in the audit). The
@@ -113,7 +113,7 @@ private:
     class Session;
 
     /// Compute trust class from a remote endpoint per
-    /// `transport.md` §3: loopback addresses → `Loopback`, public →
+    /// `link.md` §3: loopback addresses → `Loopback`, public →
     /// `Untrusted`. Trust upgrades to `Peer` happen later in the
     /// kernel after Noise completes.
     [[nodiscard]] gn_trust_class_t resolve_trust(

@@ -163,7 +163,7 @@ typed extension API.
   XX + IK state machines, dlopen-tested through a two-session
   handshake.
 - **TCP transport** — Boost.Asio strand-per-session writes per
-  `transport.md` §4 single-writer, IPv6 dual-stack with
+  `link.md` §4 single-writer, IPv6 dual-stack with
   `IPV6_V6ONLY=false` on `::` wildcard.
 - **IPC transport** — Boost.Asio `local::stream_protocol` with
   the same strand shape as TCP; `chmod 0700` on the parent
@@ -196,7 +196,7 @@ typed extension API.
   to `log warn + leak handle` rather than blocking shutdown.
 - **`gn.link.<scheme>` extension API** — every baseline
   transport publishes `gn_link_api_t` from
-  `sdk/extensions/transport.h` with steady slots
+  `sdk/extensions/link.h` with steady slots
   (`get_stats`, `get_capabilities`, `send`, `send_batch`,
   `close`) functional and composer slots
   (`listen`, `connect`, `subscribe_data`, `unsubscribe_data`)
@@ -208,7 +208,7 @@ typed extension API.
   per-transport `plugin_entry.cpp` boilerplate (five
   `gn_plugin_*` exports, kernel-facing vtable, extension
   vtable, descriptor) into a single one-line invocation in
-  `sdk/cpp/transport_plugin.hpp`. Every C thunk is `noexcept`
+  `sdk/cpp/link_plugin.hpp`. Every C thunk is `noexcept`
   with a try/catch wrapper so a plugin exception never escapes
   the C ABI boundary.
 - **`host_api->unregister_extension`** — paired with the

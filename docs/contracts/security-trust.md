@@ -292,6 +292,6 @@ consistency, buffer sizing, rekey semantics — lives in
 
 - Wire details for the canonical security provider:
   `noise-handshake.md`.
-- Transport-side TrustClass declaration: `transport.md` §3.
+- Transport-side TrustClass declaration: `link.md` §3.
 - Stack registration: `host-api.md` §2 (`register_*`).
 - Kernel error returned for invalid stacks: `fsm-events.md` §4.

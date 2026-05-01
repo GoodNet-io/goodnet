@@ -55,7 +55,7 @@ extern "C" {
 #define gn_unregister_handler(api, id) \
     (api)->unregister_handler((api)->host_ctx, (id))
 
-/* ── Transport registration ──────────────────────────────────────────────── */
+/* ── Link registration ──────────────────────────────────────────────── */
 
 #define gn_register_link(api, scheme, vtable, self, out_id) \
     (api)->register_link((api)->host_ctx, (scheme), (vtable), (self), (out_id))

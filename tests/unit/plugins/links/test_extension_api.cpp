@@ -214,7 +214,7 @@ TEST(TransportExtensionApi, ZeroStatsForBrandNewTransport) {
 TEST(TransportExtensionApi, ComposerSlotsReturnNotImplemented) {
     /// Slots reserved for L2 composition (WSS/TLS/ICE) must return
     /// `GN_ERR_NOT_IMPLEMENTED` deterministically until a composer
-    /// plugin extends the contract — see `transport.md` §8.
+    /// plugin extends the contract — see `link.md` §8.
     ExtensionFixture f;
     TransportInstance<gn::link::tcp::TcpLink> tcp(f, "tcp");
 

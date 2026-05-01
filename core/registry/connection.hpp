@@ -47,7 +47,7 @@ struct ConnectionRecord {
     std::string        uri;
     gn_trust_class_t   trust        = GN_TRUST_UNTRUSTED;
     gn_handshake_role_t role        = GN_ROLE_INITIATOR;
-    std::string        transport_scheme;
+    std::string        link_scheme;
 
     /// Counters surfaced through `host_api->get_endpoint`.
     std::uint64_t bytes_in            = 0;

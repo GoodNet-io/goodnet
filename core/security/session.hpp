@@ -9,7 +9,7 @@
 ///
 /// The session is *not* thread-safe by itself — the kernel routes
 /// every call through the connection's strand (single-writer
-/// invariant per `transport.md` §4), so internal locking would only
+/// invariant per `link.md` §4), so internal locking would only
 /// add overhead. Concurrent sessions on different connections are
 /// independent and may run in parallel.
 

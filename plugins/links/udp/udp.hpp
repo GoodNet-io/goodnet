@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   plugins/links/udp/udp.hpp
-/// @brief  Asio UDP datagram transport per `transport.md` §3
+/// @brief  Asio UDP datagram transport per `link.md` §3
 ///         (datagram-mode, single-socket, per-peer synthetic conn_id).
 ///
 /// UDP is the first datagram transport in the tree, so the shape is
