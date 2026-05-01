@@ -8,10 +8,14 @@ The form is encrypted in transit, scoped to project maintainers, and
 keeps the report private until coordinated disclosure. Do **not** open
 a public GitHub issue or pull request for an unpatched vulnerability.
 
-A confirmation reply lands within 72 hours; an initial assessment within
-seven calendar days. We coordinate disclosure with the reporter — the
-default embargo is 90 days from the assessment reply, shortened by mutual
-agreement when a fix is staged sooner.
+The project is maintained by a small team and the security process
+is best-effort. We aim to confirm receipt within seven calendar
+days and post an initial severity assessment within fourteen, but
+a single-maintainer escalation can push either window out — we say
+so on the advisory thread when it happens. We coordinate disclosure
+with the reporter; the default embargo is 90 days from the
+assessment reply, shortened by mutual agreement when a fix is
+staged sooner.
 
 ## Scope
 
@@ -56,12 +60,14 @@ Out of scope:
 | Time | Event |
 |---|---|
 | T+0 | Report received via GitHub Security Advisory. |
-| T+72h | Confirmation reply, triage owner assigned. |
-| T+7d | Initial severity assessment, embargo proposed. |
+| T+7d | Confirmation reply, triage owner assigned. |
+| T+14d | Initial severity assessment, embargo proposed. |
 | T+90d | Public advisory + release note. |
 
 Embargo can be shortened with reporter consent if a fix lands sooner;
-extension only with reporter consent.
+extension only with reporter consent. The 7d / 14d shape is the
+small-team best-effort envelope; the maintainer thread surfaces
+slips on the advisory itself.
 
 ## Acknowledgements
 
@@ -79,6 +85,13 @@ through Noise's IK / XX patterns:
 - ChaCha20-Poly1305 IETF for cipherstate.
 - BLAKE2b-512 hash, BLAKE2b-MAC, Noise HKDF.
 - Ed25519 for static identity keys (kernel-side `NodeIdentity`).
+
+The TLS link plugin (`plugins/links/tls`) additionally uses the
+OpenSSL-provided TLS 1.3 stack for the underlying transport
+encryption when an operator runs over an untrusted network without
+the application-layer Noise handshake. OpenSSL CVEs are in scope
+for the TLS plugin; the rest of the kernel does not depend on
+OpenSSL.
 
 Cryptographic agility is intentionally limited: the wire protocol
 ships one Noise pattern selection per connection (the operator's
