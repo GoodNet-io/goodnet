@@ -1,5 +1,5 @@
 /// @file   tests/integration/test_conn_events.cpp
-/// @brief  subscribe_conn_state + for_each_connection through the
+/// @brief  subscribe(GN_SUBSCRIBE_CONN_STATE) + for_each_connection through the
 ///         real host_api thunks: the kernel fires CONNECTED on
 ///         notify_connect, DISCONNECTED on notify_disconnect, and
 ///         iteration walks every live record under the per-shard
@@ -32,7 +32,8 @@ struct EventBag {
     std::vector<gn_conn_event_t>            events;
 };
 
-void record_event(void* ud, const gn_conn_event_t* ev) {
+void record_event(void* ud, const void* payload, std::size_t /*size*/) {
+    const auto* ev = static_cast<const gn_conn_event_t*>(payload);
     auto* bag = static_cast<EventBag*>(ud);
     std::lock_guard lk(bag->mu);
     bag->events.push_back(*ev);
@@ -56,7 +57,7 @@ TEST(ConnEvents, ConnectFiresEvent) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
     EXPECT_NE(sub, GN_INVALID_SUBSCRIPTION_ID);
 
@@ -85,7 +86,7 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {1, 2, 3};
@@ -104,7 +105,7 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
     }
 
     /// After unsubscribe, no further events land in the bag.
-    ASSERT_EQ(api.unsubscribe_conn_state(&ctx, sub), GN_OK);
+    ASSERT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
     gn_conn_id_t conn2 = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9002",
                                   "tcp", GN_TRUST_LOOPBACK,
@@ -123,13 +124,13 @@ TEST(ConnEvents, UnsubscribeIdempotent) {
 
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     EventBag bag;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
-    EXPECT_EQ(api.unsubscribe_conn_state(&ctx, sub), GN_OK);
-    EXPECT_EQ(api.unsubscribe_conn_state(&ctx, sub), GN_OK)
+    EXPECT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
+    EXPECT_EQ(api.unsubscribe(&ctx, sub), GN_OK)
         << "second unsubscribe of same id must report success";
-    EXPECT_EQ(api.unsubscribe_conn_state(&ctx, GN_INVALID_SUBSCRIPTION_ID),
+    EXPECT_EQ(api.unsubscribe(&ctx, GN_INVALID_SUBSCRIPTION_ID),
               GN_ERR_NULL_ARG);
 }
 
@@ -144,7 +145,7 @@ TEST(ConnEvents, AnchorExpiredDropsCallback) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     /// Drop the anchor; subscription is still alive on the channel,
@@ -234,9 +235,9 @@ TEST(ConnEvents, RejectsNullArgs) {
 
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     EventBag bag;
-    EXPECT_EQ(api.subscribe_conn_state(&ctx, nullptr, &bag, &sub),
+    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, nullptr, &bag, &sub),
               GN_ERR_NULL_ARG);
-    EXPECT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, nullptr),
+    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, nullptr),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(api.for_each_connection(&ctx, nullptr, nullptr),
               GN_ERR_NULL_ARG);

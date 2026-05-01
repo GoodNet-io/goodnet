@@ -44,7 +44,7 @@ UdpLink::~UdpLink() {
 /// non-positive values fall back to the current defaults so a
 /// reload that drops the section silently never disables the
 /// limiter outright. Pulled out of `set_host_api` so the
-/// `subscribe_config_reload` callback can re-run it on every
+/// `subscribe(GN_SUBSCRIBE_CONFIG_RELOAD)` callback can re-run it on every
 /// kernel-fired reload.
 namespace {
 void apply_udp_config(::gn::link::udp::UdpLink* self,
@@ -75,10 +75,9 @@ void UdpLink::set_host_api(const host_api_t* api) noexcept {
     /// pointer — every install of a fresh api needs to subscribe
     /// against the new kernel, so the previous subscription
     /// against a (possibly different) kernel must go first.
-    if (api_ != nullptr && api_->unsubscribe_config_reload != nullptr
+    if (api_ != nullptr && api_->unsubscribe != nullptr
         && reload_sub_id_ != 0) {
-        (void)api_->unsubscribe_config_reload(api_->host_ctx,
-                                                reload_sub_id_);
+        (void)api_->unsubscribe(api_->host_ctx, reload_sub_id_);
         reload_sub_id_ = 0;
     }
 
@@ -88,11 +87,12 @@ void UdpLink::set_host_api(const host_api_t* api) noexcept {
     /// Subscribe to config-reload events so the limiter shape
     /// re-reads on every operator-initiated reload, not just at
     /// initial set_host_api time.
-    if (api_ != nullptr && api_->subscribe_config_reload != nullptr) {
-        std::uint64_t token = 0;
-        const auto rc = api_->subscribe_config_reload(
+    if (api_ != nullptr && api_->subscribe != nullptr) {
+        gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+        const auto rc = api_->subscribe(
             api_->host_ctx,
-            +[](void* user_data) {
+            GN_SUBSCRIBE_CONFIG_RELOAD,
+            +[](void* user_data, const void* /*payload*/, std::size_t /*size*/) {
                 auto* self =
                     static_cast<UdpLink*>(user_data);
                 apply_udp_config(self, self->api_);

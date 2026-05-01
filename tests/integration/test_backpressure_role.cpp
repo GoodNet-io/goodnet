@@ -40,7 +40,8 @@ struct EventBag {
     std::vector<gn_conn_event_t>            events;
 };
 
-void record_event(void* ud, const gn_conn_event_t* ev) {
+void record_event(void* ud, const void* payload, std::size_t /*size*/) {
+    const auto* ev = static_cast<const gn_conn_event_t*>(payload);
     auto* bag = static_cast<EventBag*>(ud);
     std::lock_guard lk(bag->mu);
     bag->events.push_back(*ev);
@@ -98,8 +99,8 @@ TEST(BackpressureRole, AcceptsTransportKindPublisher) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(api.host_ctx,
-                                        &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(api.host_ctx, GN_SUBSCRIBE_CONN_STATE,
+                             &record_event, &bag, &sub),
               GN_OK);
 
     const std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES> pk{0xAA, 0xBB, 0xCC};

@@ -163,14 +163,30 @@ typedef uint64_t gn_subscription_id_t;
    impossible across realistic kernel runtimes per
    signal-channel.md §3. */
 
-gn_result_t (*subscribe_conn_state)(void* host_ctx,
-                                     gn_conn_event_cb_t cb,
-                                     void* user_data,
-                                     gn_subscription_id_t* out_id);
+typedef enum gn_subscribe_channel_e {
+    GN_SUBSCRIBE_CONN_STATE     = 0,
+    GN_SUBSCRIBE_CONFIG_RELOAD  = 1
+} gn_subscribe_channel_t;
 
-gn_result_t (*unsubscribe_conn_state)(void* host_ctx,
-                                       gn_subscription_id_t id);
+typedef void (*gn_subscribe_cb_t)(void*       user_data,
+                                   const void* payload,
+                                   size_t      size);
+
+gn_result_t (*subscribe)(void* host_ctx,
+                          gn_subscribe_channel_t channel,
+                          gn_subscribe_cb_t cb,
+                          void* user_data,
+                          gn_subscription_id_t* out_id);
+
+gn_result_t (*unsubscribe)(void* host_ctx,
+                            gn_subscription_id_t id);
 ```
+
+For `GN_SUBSCRIBE_CONN_STATE` the kernel hands `payload =
+&gn_conn_event_t`, `size = sizeof(gn_conn_event_t)`. The
+subscription id carries a 4-bit channel tag in its top bits so
+`unsubscribe(id)` routes to the right channel without naming it
+twice.
 
 Every subscription carries a weak observer of the calling plugin's
 lifetime anchor (`plugin-lifetime.md` §4); a callback whose
@@ -198,7 +214,7 @@ threads.
 Subscribers must be cheap; long work is posted back through
 `set_timer(0, …)`. Re-entry is permitted under the
 `signal-channel.md` snapshot rule: a callback that calls
-`subscribe_conn_state` or `unsubscribe_conn_state` while a fire
+`subscribe(GN_SUBSCRIBE_CONN_STATE)` or `unsubscribe` while a fire
 is in progress runs to completion against the snapshot taken
 before the change — newly-added subscribers do not see the
 in-flight event, newly-removed subscribers still see it.
@@ -256,8 +272,8 @@ Plugins that need a complete picture of current state subscribe
 
 | Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` |
 |---|---|---|---|
-| `subscribe_conn_state` | subscribed | host_ctx / cb / out_id null | per-kernel cap exceeded |
-| `unsubscribe_conn_state` | removed or already gone | host_ctx null, id == `GN_INVALID_SUBSCRIPTION_ID` | — |
+| `subscribe(GN_SUBSCRIBE_CONN_STATE)` | subscribed | host_ctx / cb / out_id null | per-kernel cap exceeded |
+| `unsubscribe(id)` | removed or already gone | host_ctx null, id == `GN_INVALID_SUBSCRIPTION_ID` | — |
 | `for_each_connection` | iteration ran | host_ctx / visitor null | — |
 
 The subscription cap reuses the `gn_limits_t::max_extensions`

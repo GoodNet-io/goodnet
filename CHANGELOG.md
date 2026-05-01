@@ -52,9 +52,9 @@ typed extension API.
   `reload_config_merge(overlay)` swap the live state atomically,
   propagate the new `gn_limits_t` to every kernel-owned registry
   through `set_limits`, then fire `on_config_reload` so subscribed
-  plugins re-read their knobs. Plugins subscribe via two new
-  host_api slots: `subscribe_config_reload(cb, user_data, *out_id)`
-  and `unsubscribe_config_reload(id)`. The bundled UDP transport
+  plugins re-read their knobs. Plugins subscribe through
+  `host_api->subscribe(GN_SUBSCRIBE_CONFIG_RELOAD, cb, ud, &id)` and
+  `unsubscribe(id)`. The bundled UDP transport
   re-reads its `udp.new_conn_*` rate limiter on every reload as
   the canonical reference subscriber. A failed reload (parse or
   invariant violation) leaves the kernel state unchanged and does
@@ -308,8 +308,9 @@ typed extension API.
   multi-record order, big-endian field layout, oversized-value
   rejection, truncated-header / truncated-value surfaces, and
   unknown-type tolerance.
-- **Connection-event observer** — `host_api->subscribe_conn_state`,
-  `unsubscribe_conn_state`, `for_each_connection`. The kernel
+- **Connection-event observer** —
+  `host_api->subscribe(GN_SUBSCRIBE_CONN_STATE, …)` /
+  `unsubscribe(id)`, plus `for_each_connection`. The kernel
   publishes a typed event for every observable change in
   connection lifecycle: `CONNECTED`, `DISCONNECTED`,
   `TRUST_UPGRADED` (Untrusted → Peer), and the reserved

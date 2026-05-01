@@ -48,7 +48,8 @@ struct EventBag {
     std::vector<gn_conn_event_t> events;
 };
 
-void record_event(void* ud, const gn_conn_event_t* ev) {
+void record_event(void* ud, const void* payload, std::size_t /*size*/) {
+    const auto* ev = static_cast<const gn_conn_event_t*>(payload);
     auto* bag = static_cast<EventBag*>(ud);
     std::lock_guard lk(bag->mu);
     bag->events.push_back(*ev);
@@ -117,7 +118,7 @@ TEST(HostApiNotifyConnect, RejectsConnectionOutsideProtocolMask) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0x11, 0x22, 0x33};
@@ -143,7 +144,7 @@ TEST(HostApiNotifyConnect, AcceptsConnectionInsideProtocolMask) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB, 0xCC};
@@ -179,7 +180,7 @@ TEST(HostApiNotifyDisconnect, SnapshotsTrustAndPkBeforeErase) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xDE, 0xAD, 0xBE, 0xEF};
@@ -213,7 +214,7 @@ TEST(HostApiNotifyDisconnect, MissingConnReturnsNotFound) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     /// Disconnect of a never-inserted id reports
@@ -238,7 +239,7 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB};
@@ -274,7 +275,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     for (int round = 0; round < kRounds; ++round) {
@@ -374,7 +375,7 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xCC};
@@ -395,7 +396,8 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
     };
     Reenter re{&api, &ctx, conn, &bag};
 
-    auto reentrant_cb = +[](void* ud, const gn_conn_event_t* ev) {
+    auto reentrant_cb = +[](void* ud, const void* payload, std::size_t /*size*/) {
+        const auto* ev = static_cast<const gn_conn_event_t*>(payload);
         auto* r = static_cast<Reenter*>(ud);
         {
             std::lock_guard lk(r->bag->mu);
@@ -408,9 +410,10 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
         }
     };
 
-    ASSERT_EQ(api.unsubscribe_conn_state(&ctx, sub), GN_OK);
+    ASSERT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
     sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe_conn_state(&ctx, reentrant_cb, &re, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE,
+                             reentrant_cb, &re, &sub),
               GN_OK);
 
     EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
