@@ -336,6 +336,17 @@ typed extension API.
 
 ### Changed
 
+- **Per-peer device-key pinning across sessions
+  (`registry.md` §8a).** ConnectionRegistry exposes
+  `pin_device_pk` / `get_pinned_device_pk` /
+  `clear_pinned_device_pk`. The map keys on `peer_pk` and outlives
+  connection records, so a peer that disconnects and reconnects
+  meets the same pin. The attestation dispatcher writes the pin on
+  the first successful attestation and rejects a subsequent
+  attestation that carries a different `device_pk` for the same
+  peer with `GN_DROP_ATTESTATION_IDENTITY_CHANGE`. Five regression
+  tests pin the API edges; an integration regression on the
+  cross-session disconnect path is wired through the dispatcher.
 - **PluginManager `set_manifest_required(true)` knob
   (`plugin-manifest.md` §7).** The flag turns the empty-manifest
   case into a hard error: `load` returns

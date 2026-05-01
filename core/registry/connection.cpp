@@ -251,4 +251,38 @@ void ConnectionRegistry::set_pending_bytes(gn_conn_id_t id,
     it->second->pending_queue_bytes.store(bytes, std::memory_order_relaxed);
 }
 
+gn_result_t ConnectionRegistry::pin_device_pk(
+    const PublicKey& peer_pk, const PublicKey& device_pk) noexcept {
+    std::unique_lock lock(pin_mu_);
+    auto it = peer_pin_map_.find(peer_pk);
+    if (it == peer_pin_map_.end()) {
+        peer_pin_map_.emplace(peer_pk, device_pk);
+        return GN_OK;
+    }
+    /// Pin already present. Equality with the proposed device_pk is
+    /// idempotent success. Mismatch is rejected — the caller treats
+    /// the result as an identity-change attempt and disconnects.
+    if (it->second == device_pk) return GN_OK;
+    return GN_ERR_INVALID_ENVELOPE;
+}
+
+std::optional<PublicKey>
+ConnectionRegistry::get_pinned_device_pk(const PublicKey& peer_pk) const {
+    std::shared_lock lock(pin_mu_);
+    auto it = peer_pin_map_.find(peer_pk);
+    if (it == peer_pin_map_.end()) return std::nullopt;
+    return it->second;
+}
+
+void ConnectionRegistry::clear_pinned_device_pk(
+    const PublicKey& peer_pk) noexcept {
+    std::unique_lock lock(pin_mu_);
+    peer_pin_map_.erase(peer_pk);
+}
+
+std::size_t ConnectionRegistry::pin_count() const noexcept {
+    std::shared_lock lock(pin_mu_);
+    return peer_pin_map_.size();
+}
+
 } // namespace gn::core

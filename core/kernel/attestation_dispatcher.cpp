@@ -285,10 +285,42 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
         break;
     }
 
-    /// Step 7: identity stability. A re-used connection id
-    /// receives a fresh state on `on_disconnect`, so the pinned
-    /// key matches only when an attestation arrives twice on the
-    /// same session.
+    /// Step 7a: cross-session identity stability. The connection
+    /// registry stores a `peer_pk → device_pk` map that survives
+    /// disconnect; a peer that returns with a different device_pk
+    /// is an identity-change attempt across sessions and is
+    /// rejected before per-conn state has a chance to record the
+    /// new value. `peer_pk` zero (responder-side pre-Noise) skips
+    /// the check — the pinning is keyed on the post-handshake
+    /// mesh address, not the placeholder.
+    if (auto conn_rec = kernel.connections().find_by_id(conn);
+        conn_rec.has_value()) {
+        const auto& peer_pk = conn_rec->remote_pk;
+        bool peer_pk_set = false;
+        for (auto byte : peer_pk) {
+            if (byte != 0) { peer_pk_set = true; break; }
+        }
+        if (peer_pk_set) {
+            auto existing =
+                kernel.connections().get_pinned_device_pk(peer_pk);
+            if (existing.has_value()) {
+                if (sodium_memcmp(existing->data(), device_pk.data(),
+                                  GN_PUBLIC_KEY_BYTES) != 0) {
+                    disconnect_on_consumer_failure(kernel, conn,
+                        GN_DROP_ATTESTATION_IDENTITY_CHANGE);
+                    return static_cast<int>(Outcome::IdentityChange);
+                }
+            } else {
+                (void)kernel.connections().pin_device_pk(
+                    peer_pk, device_pk);
+            }
+        }
+    }
+
+    /// Step 7b: per-session identity stability. The dispatcher's
+    /// per-conn state records the device_pk on first acceptance so
+    /// a duplicate attestation on the same session is detected
+    /// even when the registry-side pin matches.
     bool identity_changed = false;
     {
         std::lock_guard lock(mu_);
