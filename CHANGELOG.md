@@ -336,6 +336,15 @@ typed extension API.
 
 ### Changed
 
+- **TCP_NODELAY across stream transports.** TCP, TLS, and WS
+  sessions disable Nagle on the underlying socket immediately
+  after the accept and connect callbacks fire. Small framed
+  messages — heartbeats, pongs, sub-MTU app envelopes — leave
+  the kernel without waiting on the 200 ms coalescing timer, so
+  the LAN baseline reaches the wire as the host wrote it. The
+  set_option call is best-effort: a kernel that refuses the
+  option leaves the connection on the default scheduler instead
+  of failing the accept.
 - **Per-peer device-key pinning across sessions
   (`registry.md` §8a).** ConnectionRegistry exposes
   `pin_device_pk` / `get_pinned_device_pk` /
