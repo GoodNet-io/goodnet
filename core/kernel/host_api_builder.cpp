@@ -89,8 +89,8 @@ namespace {
 /// Propagate the security session's `peer_static_pk` into the
 /// connection record's `remote_pk` once the handshake has completed.
 ///
-/// Without this update the responder side of `security-trust.md`
-/// §10.1 cross-session pin gate is dead code: the link plugin
+/// Without this update the responder side of the cross-session pin
+/// gate (`registry.md` §7a + §8a) is dead code: the link plugin
 /// passes a placeholder `remote_pk` (typically zeros) at
 /// `notify_connect`, so the attestation dispatcher's
 /// `pin_device_pk` map keys on the placeholder rather than the
@@ -102,16 +102,66 @@ namespace {
 /// (where `remote_pk` already matches `peer_static_pk` from the
 /// IK / cached preset) — the registry update is a no-op in that
 /// case.
-void propagate_peer_pk_after_handshake(const PluginContext* pc,
-                                        gn_conn_id_t conn,
-                                        const SecuritySession& session) {
-    if (pc == nullptr || pc->kernel == nullptr) return;
+///
+/// Returns:
+/// - `GN_OK` on success / no-op (initiator path) / pre-handshake
+///   placeholder still set (null security provider).
+/// - `GN_ERR_INTEGRITY_FAILED` when the registry rejects the new
+///   pk because it already maps to a different `conn_id`. The
+///   caller MUST tear the connection down — accepting the post-
+///   handshake state with an unauthenticated `remote_pk` would
+///   leave the cross-session pin gate keyed on the placeholder.
+[[nodiscard]] gn_result_t
+propagate_peer_pk_after_handshake(const PluginContext* pc,
+                                  gn_conn_id_t conn,
+                                  const SecuritySession& session) {
+    if (pc == nullptr || pc->kernel == nullptr) return GN_OK;
+    /// Re-verify Transport phase under the call: a concurrent
+    /// `Sessions::destroy` could have flipped the session into
+    /// Closed between the caller's `phase()` check and ours, in
+    /// which case `transport_keys()` may carry zeroed bytes from
+    /// the destructor's wipe.
+    if (session.phase() != SecurityPhase::Transport) return GN_OK;
     const auto& keys = session.transport_keys();
     PublicKey peer_pk{};
     std::memcpy(peer_pk.data(), keys.peer_static_pk, GN_PUBLIC_KEY_BYTES);
     static const PublicKey kZeroPk{};
-    if (peer_pk == kZeroPk) return;  /// pre-handshake / null provider
-    (void)pc->kernel->connections().update_remote_pk(conn, peer_pk);
+    if (peer_pk == kZeroPk) return GN_OK;  /// null provider / pre-handshake
+    const gn_result_t rc = pc->kernel->connections().update_remote_pk(conn, peer_pk);
+    if (rc == GN_ERR_LIMIT_REACHED) {
+        /// `peer_static_pk` collides with another live connection's
+        /// `remote_pk`. Either a duplicate-peer race (two responders
+        /// from the same identity at the same time) or an identity-
+        /// collision attempt — both leave the pin gate compromised
+        /// if the kernel keeps the connection alive.
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+    return rc;  /// GN_OK or, very rarely, NOT_FOUND — propagate.
+}
+
+/// Tear down a connection from inside a kernel thunk after a
+/// security-level failure (peer pk collision, integrity check). The
+/// session is destroyed so the link plugin's next read on the conn
+/// hits no decrypted payload, and the registry record + URI/pk
+/// indexes are erased so subsequent host_api thunks see
+/// `GN_ERR_NOT_FOUND`. A `GN_CONN_EVENT_DISCONNECTED` is published
+/// so subscribers see the teardown the same way as an explicit
+/// `notify_disconnect`. The reason code is conveyed back to the
+/// link plugin through the calling thunk's return value.
+void kernel_initiated_disconnect(const PluginContext* pc,
+                                 gn_conn_id_t conn) {
+    if (pc == nullptr || pc->kernel == nullptr) return;
+    pc->kernel->sessions().destroy(conn);
+    pc->kernel->attestation_dispatcher().on_disconnect(conn);
+    auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+    if (snapshot) {
+        ConnEvent ev{};
+        ev.kind      = GN_CONN_EVENT_DISCONNECTED;
+        ev.conn      = conn;
+        ev.trust     = snapshot->trust;
+        ev.remote_pk = snapshot->remote_pk;
+        pc->kernel->on_conn_event().fire(ev);
+    }
 }
 
 [[nodiscard]] bool conn_owned_by_caller(const PluginContext* pc,
@@ -1082,7 +1132,12 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     /// attestation has verified back. Loopback / IntraNode sessions
     /// take the dispatcher's no-op path (see `attestation.md` §4).
     if (session->phase() == SecurityPhase::Transport) {
-        propagate_peer_pk_after_handshake(pc, conn, *session);
+        if (const gn_result_t prc =
+                propagate_peer_pk_after_handshake(pc, conn, *session);
+            prc != GN_OK) {
+            kernel_initiated_disconnect(pc, conn);
+            return prc;
+        }
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
         drain_handshake_pending(pc, conn, *session, rec->link_scheme);
@@ -1155,7 +1210,12 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             /// exchange completes. Loopback / IntraNode sessions
             /// take the dispatcher's no-op path.
             if (session->phase() == SecurityPhase::Transport) {
-                propagate_peer_pk_after_handshake(pc, conn, *session);
+                if (const gn_result_t prc =
+                        propagate_peer_pk_after_handshake(pc, conn, *session);
+                    prc != GN_OK) {
+                    kernel_initiated_disconnect(pc, conn);
+                    return prc;
+                }
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
                 drain_handshake_pending(pc, conn, *session,
