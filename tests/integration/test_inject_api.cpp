@@ -92,9 +92,9 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
-    ASSERT_EQ(h.api.register_handler(h.api.host_ctx,
-                                      "gnet-v1", 0x77, 128,
-                                      &vt, &cap, &hid),
+    ASSERT_EQ(h.api.register_vtable(h.api.host_ctx, GN_REGISTER_HANDLER,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "gnet-v1"; mt.msg_id = 0x77; mt.priority = 128; return &mt; }(),
+        &vt, &cap, &hid),
               GN_OK);
 
     const gn_conn_id_t src = h.make_source(peer_pk);
@@ -154,9 +154,9 @@ TEST(InjectExternal, EmptyPayloadAccepted) {
     vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
-    ASSERT_EQ(h.api.register_handler(h.api.host_ctx,
-                                      "gnet-v1", 0x55, 128,
-                                      &vt, &cap, &hid),
+    ASSERT_EQ(h.api.register_vtable(h.api.host_ctx, GN_REGISTER_HANDLER,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "gnet-v1"; mt.msg_id = 0x55; mt.priority = 128; return &mt; }(),
+        &vt, &cap, &hid),
               GN_OK);
 
     const gn_conn_id_t src = h.make_source(peer_pk);

@@ -309,10 +309,13 @@ template <class T>
     GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {              \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_tp_instance_t*>(self);                       \
-        if (!p->api || !p->api->register_link) return GN_ERR_NOT_IMPLEMENTED; \
-        if (auto rc = p->api->register_link(                              \
-                p->host_ctx, _gn_tp_scheme, &_gn_tp_kVtable, p,                \
-                &p->link_id);                                             \
+        if (!p->api || !p->api->register_vtable) return GN_ERR_NOT_IMPLEMENTED; \
+        gn_register_meta_t _gn_tp_meta{};                                      \
+        _gn_tp_meta.api_size = sizeof(gn_register_meta_t);                     \
+        _gn_tp_meta.name     = _gn_tp_scheme;                                  \
+        if (auto rc = p->api->register_vtable(                                 \
+                p->host_ctx, GN_REGISTER_LINK, &_gn_tp_meta,                   \
+                &_gn_tp_kVtable, p, &p->link_id);                              \
             rc != GN_OK) {                                                     \
             return rc;                                                         \
         }                                                                      \
@@ -335,11 +338,10 @@ template <class T>
                 p->host_ctx, p->extension_name_buf);                           \
             p->extension_registered = false;                                   \
         }                                                                      \
-        if (p->api && p->api->unregister_link &&                          \
-            p->link_id != GN_INVALID_ID) {                                \
-            (void)p->api->unregister_link(                                \
-                p->host_ctx, p->link_id);                                 \
-            p->link_id = GN_INVALID_ID;                                   \
+        if (p->api && p->api->unregister_vtable &&                             \
+            p->link_id != GN_INVALID_ID) {                                     \
+            (void)p->api->unregister_vtable(p->host_ctx, p->link_id);          \
+            p->link_id = GN_INVALID_ID;                                        \
         }                                                                      \
         if (p->link) p->link->shutdown();                                  \
         return GN_OK;                                                          \

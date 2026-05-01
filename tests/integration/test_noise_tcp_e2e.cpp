@@ -164,8 +164,11 @@ struct Node {
         /// kernel's LinkRegistry so the kernel-side notify thunks
         /// can route handshake bytes back through it.
         tcp->set_host_api(&api);
-        EXPECT_EQ(api.register_link(api.host_ctx, "tcp",
-                                          &kTcpVtable, tcp.get(), &tcp_id),
+        gn_register_meta_t mt{};
+        mt.api_size = sizeof(gn_register_meta_t);
+        mt.name     = "tcp";
+        EXPECT_EQ(api.register_vtable(api.host_ctx, GN_REGISTER_LINK, &mt,
+                                       &kTcpVtable, tcp.get(), &tcp_id),
                   GN_OK);
     }
 

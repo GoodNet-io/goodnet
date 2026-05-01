@@ -145,6 +145,42 @@ typedef enum gn_inject_layer_e {
 } gn_inject_layer_t;
 
 /**
+ * @brief Kind selector for `host_api->register` / `unregister`.
+ *
+ * The plugin declares which family of vtable it is wiring; the
+ * kernel routes the call into the matching kernel registry
+ * (`HandlerRegistry`, `LinkRegistry`). The returned id carries
+ * the kind tag in its top bits so a later `unregister(id)` reaches
+ * the right registry without naming the kind a second time.
+ *
+ * Per-kind expectations on `gn_register_meta_t`:
+ *
+ * | Kind                     | `name`                    | `msg_id` / `priority`                  | `vtable`                       | `self`                  |
+ * |--------------------------|---------------------------|----------------------------------------|--------------------------------|-------------------------|
+ * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | `gn_handler_vtable_t*`         | per-handler instance    |
+ * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | `gn_link_vtable_t*`            | per-link instance       |
+ */
+typedef enum gn_register_kind_e {
+    GN_REGISTER_HANDLER = 0,
+    GN_REGISTER_LINK    = 1
+} gn_register_kind_t;
+
+/**
+ * @brief Metadata for `host_api->register`.
+ *
+ * Begins with @ref api_size for size-prefix evolution per
+ * `abi-evolution.md` §3. New fields land before `_reserved`.
+ */
+typedef struct gn_register_meta_s {
+    uint32_t      api_size;        /**< sizeof(gn_register_meta_t) */
+    const char*   name;            /**< @borrowed for the call */
+    uint32_t      msg_id;          /**< HANDLER only; zero otherwise */
+    uint8_t       priority;        /**< HANDLER only; zero otherwise */
+    uint8_t       _pad[3];
+    void*         _reserved[4];
+} gn_register_meta_t;
+
+/**
  * @brief Type tag for `host_api->config_get`.
  *
  * The config tree carries values typed at parse time. The plugin

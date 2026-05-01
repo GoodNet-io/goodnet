@@ -197,9 +197,12 @@ struct Node {
 
         tcp->set_host_api(&api);
         gn_link_id_t tid = GN_INVALID_ID;
-        if (api.register_link(api.host_ctx, "tcp", &kTcpVtable,
-                                    tcp.get(), &tid) != GN_OK) {
-            std::cerr << "register_link(tcp) failed\n";
+        gn_register_meta_t mt{};
+        mt.api_size = sizeof(gn_register_meta_t);
+        mt.name     = "tcp";
+        if (api.register_vtable(api.host_ctx, GN_REGISTER_LINK, &mt,
+                                 &kTcpVtable, tcp.get(), &tid) != GN_OK) {
+            std::cerr << "register_vtable(LINK, tcp) failed\n";
             std::exit(1);
         }
     }
@@ -257,10 +260,14 @@ int main() {
     vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &handler_consume;
     gn_handler_id_t hid = GN_INVALID_ID;
-    if (alice->api.register_handler(alice->api.host_ctx, "gnet-v1",
-                                     kDemoMsgId, /*priority=*/128,
-                                     &vt, &alice_inbox, &hid) != GN_OK) {
-        std::cerr << "[demo] alice.register_handler failed\n";
+    gn_register_meta_t hmt{};
+    hmt.api_size = sizeof(gn_register_meta_t);
+    hmt.name     = "gnet-v1";
+    hmt.msg_id   = kDemoMsgId;
+    hmt.priority = 128;
+    if (alice->api.register_vtable(alice->api.host_ctx, GN_REGISTER_HANDLER,
+                                    &hmt, &vt, &alice_inbox, &hid) != GN_OK) {
+        std::cerr << "[demo] alice.register_vtable(HANDLER) failed\n";
         return 1;
     }
 

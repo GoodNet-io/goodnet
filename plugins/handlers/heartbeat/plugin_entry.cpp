@@ -68,11 +68,16 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(const host_api_t* api,
 GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {
     if (!self) return GN_ERR_NULL_ARG;
     auto* p = static_cast<HeartbeatPlugin*>(self);
-    if (!p->api || !p->api->register_handler) return GN_ERR_NOT_IMPLEMENTED;
+    if (!p->api || !p->api->register_vtable) return GN_ERR_NOT_IMPLEMENTED;
 
     const std::uint8_t kPriority = 240;  /// system handler — high priority
-    const gn_result_t rc = p->api->register_handler(
-        p->host_ctx, kProtocolId, kHeartbeatMsgId, kPriority,
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(gn_register_meta_t);
+    meta.name     = kProtocolId;
+    meta.msg_id   = kHeartbeatMsgId;
+    meta.priority = kPriority;
+    const gn_result_t rc = p->api->register_vtable(
+        p->host_ctx, GN_REGISTER_HANDLER, &meta,
         &p->handler->vtable(), p->handler.get(), &p->handler_id);
     if (rc != GN_OK) return rc;
 
@@ -94,9 +99,9 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_unregister(void* self) {
         (void)p->api->unregister_extension(p->host_ctx, GN_EXT_HEARTBEAT);
         p->extension_registered = false;
     }
-    if (p->api && p->api->unregister_handler &&
+    if (p->api && p->api->unregister_vtable &&
         p->handler_id != GN_INVALID_ID) {
-        (void)p->api->unregister_handler(p->host_ctx, p->handler_id);
+        (void)p->api->unregister_vtable(p->host_ctx, p->handler_id);
         p->handler_id = GN_INVALID_ID;
     }
     return GN_OK;

@@ -7,7 +7,7 @@
 /// receiver-side handler fires with the original payload.
 ///
 /// Exercises every host_api slot wired so far end-to-end:
-/// register_handler, register_link, notify_connect, send,
+/// register_vtable(KIND), notify_connect, send,
 /// notify_inbound_bytes (driven by the loopback peer), and the
 /// downstream Router → IHandler dispatch.
 
@@ -128,12 +128,12 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
     static auto loopback_vt = Loopback::make_vtable();
     gn_link_id_t alice_t = GN_INVALID_ID;
     gn_link_id_t bob_t   = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
-                                           "loopback", &loopback_vt,
-                                           &alice.loop, &alice_t), GN_OK);
-    ASSERT_EQ(bob.api.register_link(bob.api.host_ctx,
-                                         "loopback", &loopback_vt,
-                                         &bob.loop, &bob_t), GN_OK);
+    ASSERT_EQ(alice.api.register_vtable(alice.api.host_ctx, GN_REGISTER_LINK,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "loopback"; return &mt; }(),
+        &loopback_vt, &alice.loop, &alice_t), GN_OK);
+    ASSERT_EQ(bob.api.register_vtable(bob.api.host_ctx, GN_REGISTER_LINK,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "loopback"; return &mt; }(),
+        &loopback_vt, &bob.loop, &bob_t), GN_OK);
 
     /// Connections from each side's view: Alice has a connection to
     /// Bob through "loopback", Bob mirrors. Each side allocates its
@@ -167,9 +167,9 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
     vt.api_size       = sizeof(gn_handler_vtable_t);
     vt.handle_message = &Capture::handle;
     gn_handler_id_t hid = GN_INVALID_ID;
-    ASSERT_EQ(bob.api.register_handler(bob.api.host_ctx,
-                                       "gnet-v1", 0xCAFE, 128,
-                                       &vt, &cap, &hid), GN_OK);
+    ASSERT_EQ(bob.api.register_vtable(bob.api.host_ctx, GN_REGISTER_HANDLER,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "gnet-v1"; mt.msg_id = 0xCAFE; mt.priority = 128; return &mt; }(),
+        &vt, &cap, &hid), GN_OK);
 
     /// Alice sends a message; the chain runs:
     ///   send → frame → loopback.send → bob.notify_inbound_bytes
@@ -192,9 +192,9 @@ TEST(SendLoopback, SendUnknownConnectionRejected) {
     Node alice("test-alice", 0xA1);
     static auto loopback_vt = Loopback::make_vtable();
     gn_link_id_t alice_t = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
-                                           "loopback", &loopback_vt,
-                                           &alice.loop, &alice_t), GN_OK);
+    ASSERT_EQ(alice.api.register_vtable(alice.api.host_ctx, GN_REGISTER_LINK,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "loopback"; return &mt; }(),
+        &loopback_vt, &alice.loop, &alice_t), GN_OK);
     EXPECT_EQ(alice.api.send(alice.api.host_ctx,
                              /* unknown */ 9999,
                              0x1, nullptr, 0),
@@ -205,9 +205,9 @@ TEST(SendLoopback, DisconnectThroughTransport) {
     Node alice("test-alice", 0xA1);
     static auto loopback_vt = Loopback::make_vtable();
     gn_link_id_t alice_t = GN_INVALID_ID;
-    ASSERT_EQ(alice.api.register_link(alice.api.host_ctx,
-                                           "loopback", &loopback_vt,
-                                           &alice.loop, &alice_t), GN_OK);
+    ASSERT_EQ(alice.api.register_vtable(alice.api.host_ctx, GN_REGISTER_LINK,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "loopback"; return &mt; }(),
+        &loopback_vt, &alice.loop, &alice_t), GN_OK);
 
     PublicKey peer_pk{};
     peer_pk[0] = 0xB2;
