@@ -179,7 +179,7 @@ deployments expose abuse.
 
 | Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` | `GN_ERR_INVALID_STATE` |
 |---|---|---|---|---|
-| `set_timer` | scheduled | host_ctx / fn null | quota hit | registry already shut down |
+| `set_timer` | scheduled (`*out_id` written when `out_id != NULL`; `out_id == NULL` is the fire-and-forget shape) | host_ctx / fn null | quota hit | registry already shut down |
 | `cancel_timer` | cancelled or already gone | host_ctx null, id == `GN_INVALID_TIMER_ID` | — | — |
 
 `cancel_timer` collapses "not found" into `GN_OK` so plugins do not

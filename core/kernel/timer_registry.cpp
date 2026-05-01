@@ -53,7 +53,11 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
                                        void*          user_data,
                                        const std::shared_ptr<PluginAnchor>& anchor,
                                        gn_timer_id_t* out_id) noexcept {
-    if (fn == nullptr || out_id == nullptr) return GN_ERR_NULL_ARG;
+    /// `out_id == nullptr` is the fire-and-forget shape: the
+    /// caller drops the cancel handle and trusts the kernel to
+    /// run the work without holding a reference. `fn == nullptr`
+    /// is the only hard NULL_ARG path.
+    if (fn == nullptr) return GN_ERR_NULL_ARG;
     if (shutdown_.load(std::memory_order_acquire)) {
         return GN_ERR_INVALID_STATE;
     }
@@ -173,7 +177,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
             }
         });
 
-        *out_id = id;
+        if (out_id != nullptr) *out_id = id;
         return GN_OK;
     } catch (const std::bad_alloc&) {
         if (anchor) {

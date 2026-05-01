@@ -66,7 +66,7 @@ typedef struct host_api_s {
     uint32_t   api_size;            /* sizeof(host_api_t) at producer build time */
     /* slots populated since v1.0 */
     int      (*send)(...);
-    int      (*broadcast)(...);
+    int      (*disconnect)(...);
     /* slot appended in a future MINOR: */
     int      (*future_slot)(...);
     /* ... */
@@ -132,6 +132,28 @@ register thunk and therefore validate consumer-side instead:
 |---|---|---|
 | `gn_protocol_layer_vtable_t` | The kernel holds an `std::shared_ptr<gn::IProtocolLayer>` C++ wrapper rather than the C vtable; a future C-only protocol adapter performs the `api_size` check before constructing the wrapper. | producer-side until the C adapter ships; the field is populated today so adapter introduction is non-breaking |
 | `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(out, slot)` before invoking any slot added after `MINOR` 0 |
+
+---
+
+## 3b. Pre-RC reshape window
+
+Until the `v1.0.0-rc1` tag the platform has no released binary
+consumers. Inside that window the `host_api_t` shape is **open**:
+existing entries may be removed, renamed, reordered, or replaced
+without a major-version bump. The size-prefix gating in §3 stays
+useful as a forward-compatibility helper while the shape settles,
+but it is not a binding promise on slots that have not yet shipped
+under `rc1`.
+
+The window closes on the day `v1.0.0-rc1` is tagged. From that tag
+onwards every rule in §3 (append-only, reserved-tail-only,
+size-prefix gating) applies without exception. Any post-rc1
+removal or rename of a host-API slot is a major-version bump.
+
+The pre-RC reshape window does not weaken any other invariant —
+TrustClass policy (`security-trust.md`), envelope shape
+(`protocol-layer.md`), wire framing (`gnet-protocol.md`) and the
+manifest pinning (`plugin-manifest.md`) hold throughout.
 
 ---
 

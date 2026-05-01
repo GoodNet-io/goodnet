@@ -1,6 +1,6 @@
 /// @file   tests/unit/kernel/test_timer_registry.cpp
 /// @brief  TimerRegistry: schedule, cancel, anchor-gated dispatch,
-///         post_to_executor, quota enforcement.
+///         fire-and-forget set_timer(0, ...), quota enforcement.
 
 #include <gtest/gtest.h>
 
@@ -75,12 +75,15 @@ TEST(TimerRegistry_Schedule, CancelTwiceIsOk) {
 }
 
 TEST(TimerRegistry_Schedule, RejectsNullCallback) {
+    /// `fn == nullptr` is the only NULL_ARG path on `set_timer`;
+    /// `out_id == nullptr` is the legal fire-and-forget shape per
+    /// `timer.md` §2 / `host-api.md` §9.
     TimerRegistry r;
     gn_timer_id_t id = GN_INVALID_TIMER_ID;
     EXPECT_EQ(r.set_timer(10, nullptr, nullptr, {}, &id),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(id, GN_INVALID_TIMER_ID);
-    EXPECT_EQ(r.set_timer(10, [](void*) {}, nullptr, {}, nullptr),
+    EXPECT_EQ(r.set_timer(10, nullptr, nullptr, {}, nullptr),
               GN_ERR_NULL_ARG);
 }
 
@@ -136,7 +139,25 @@ TEST(TimerRegistry_Anchor, CancelForAnchorRemovesMatchingTimers) {
     EXPECT_EQ(r.cancel_timer(id3), GN_OK);
 }
 
-// ─── post_to_executor ───────────────────────────────────────────
+// ─── fire-and-forget set_timer(0, ...) ─────────────────────────────────────────
+
+TEST(TimerRegistry_SetTimer, AcceptsNullOutIdForFireAndForget) {
+    /// `host-api.md` §9 / `timer.md` §2 / `conn-events.md` §3.5
+    /// promise that fire-and-forget callers pass `out_id = NULL`.
+    /// Pre-fix the kernel rejected with NULL_ARG and the second
+    /// call dereferenced *out_id, segfaulting under ASan.
+    TimerRegistry r;
+    std::atomic<int> hits{0};
+    EXPECT_EQ(r.set_timer(/*delay_ms*/ 0,
+                           [](void* p) {
+                               static_cast<std::atomic<int>*>(p)->fetch_add(1);
+                           },
+                           &hits,
+                           /*anchor=*/{},
+                           /*out_id=*/nullptr),
+              GN_OK);
+    EXPECT_TRUE(wait_for([&] { return hits.load() == 1; }));
+}
 
 TEST(TimerRegistry_Post, RunsOnServiceExecutor) {
     TimerRegistry r;
