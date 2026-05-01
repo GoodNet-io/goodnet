@@ -29,7 +29,7 @@ set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
 
 target_include_directories(goodnet_kernel PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
-    "$<INSTALL_INTERFACE:include>"
+    "$<INSTALL_INTERFACE:include/goodnet>"
 )
 
 target_link_libraries(goodnet_kernel
@@ -55,7 +55,7 @@ install(TARGETS goodnet_kernel EXPORT GoodNetTargets ARCHIVE)
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"
-    DESTINATION "include/core"
+    DESTINATION "include/goodnet/core"
     FILES_MATCHING
         PATTERN "*.h"
         PATTERN "*.hpp"
