@@ -153,9 +153,6 @@ subscribers that register after the publish.
 ## 3. Subscription model
 
 ```c
-typedef void (*gn_conn_event_cb_t)(void* user_data,
-                                    const gn_conn_event_t* event);
-
 typedef uint64_t gn_subscription_id_t;
 #define GN_INVALID_SUBSCRIPTION_ID ((gn_subscription_id_t)0)
 /* Allocated ids are monotonically increasing starting at 1; 0 is
@@ -192,6 +189,11 @@ Every subscription carries a weak observer of the calling plugin's
 lifetime anchor (`plugin-lifetime.md` §4); a callback whose
 plugin already unloaded is dropped silently. `unsubscribe` is
 idempotent — calling on an already-removed id returns `GN_OK`.
+
+The kernel hands `payload` to the callback as a borrowed view valid
+for `size` bytes. Subscribers **must not** read past `payload[size]`
+nor retain `payload` past the callback return; the bytes can be
+stack-resident on the publishing thread.
 
 Subscribers run on the **publishing thread**, which is **not the
 same thread for every event kind**:
