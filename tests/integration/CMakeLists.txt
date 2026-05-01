@@ -30,6 +30,7 @@ target_link_libraries(goodnet_integration_tests
 )
 
 target_compile_features(goodnet_integration_tests PRIVATE cxx_std_23)
+goodnet_apply_pch(goodnet_integration_tests)
 
 if(TARGET goodnet_security_noise)
     add_dependencies(goodnet_integration_tests goodnet_security_noise)

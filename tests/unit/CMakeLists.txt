@@ -55,6 +55,7 @@ target_link_libraries(goodnet_unit_tests
 )
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
+goodnet_apply_pch(goodnet_unit_tests)
 
 # Test seams in plugin internals (e.g. `test_set_nonces` in
 # `plugins/security/noise/transport.hpp`) are gated behind the
