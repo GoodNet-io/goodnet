@@ -178,6 +178,30 @@ TEST(WsLink_Uri, RejectsBareScheme) {
     t->shutdown();
 }
 
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+TEST(WsLink_Uri, HostAuthorityBracketsV6) {
+    /// RFC 7230 §5.4: an IPv6 literal in the HTTP `Host:` header
+    /// must be bracketed. The WS connect path used to emit
+    /// `Host: ::1:9000`, which strict servers (nginx, Caddy)
+    /// reject. `ParsedUri::host_authority()` is the choke point.
+    /// gtest `ASSERT_TRUE(...has_value())` short-circuits the
+    /// dereference but tidy can't model the abort, so the same
+    /// NOLINT pattern as `tests/unit/util/test_uri.cpp` and
+    /// `tests/unit/plugins/security/test_noise.cpp` applies.
+    auto v4 = gn::link::ws::WsLink::parse_uri("ws://1.2.3.4:9000/");
+    ASSERT_TRUE(v4.has_value());
+    EXPECT_EQ(v4->host_authority(), "1.2.3.4:9000");
+
+    auto v6 = gn::link::ws::WsLink::parse_uri("ws://[::1]:9000/");
+    ASSERT_TRUE(v6.has_value());
+    EXPECT_EQ(v6->host_authority(), "[::1]:9000");
+
+    auto host = gn::link::ws::WsLink::parse_uri("ws://example.com:80/x");
+    ASSERT_TRUE(host.has_value());
+    EXPECT_EQ(host->host_authority(), "example.com:80");
+}
+// NOLINTEND(bugprone-unchecked-optional-access)
+
 // ─── loopback round-trip ───────────────────────────────────────
 
 TEST(WsLink, LoopbackHandshakeAndPayloadRoundTrip) {

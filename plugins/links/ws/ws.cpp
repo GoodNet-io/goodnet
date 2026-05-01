@@ -860,6 +860,8 @@ gn_result_t WsLink::connect(std::string_view uri) {
         return GN_ERR_INVALID_ENVELOPE;
     }
 
+    /// `host_authority()` re-brackets IPv6 literals per RFC 7230
+    /// §5.4 — strict servers (nginx, Caddy) reject `Host: ::1:9000`.
     auto session = std::make_shared<Session>(
         asio::ip::tcp::socket(ioc_),
         weak_from_this(),
@@ -867,7 +869,7 @@ gn_result_t WsLink::connect(std::string_view uri) {
     auto& sock = session->socket();
     sock.async_connect(ep,
         [session,
-         host = parsed->host + ":" + std::to_string(parsed->port),
+         host = parsed->host_authority(),
          path = parsed->path](const std::error_code& cec) {
             if (cec) return;
             /// Disable Nagle on the outbound side, mirroring the

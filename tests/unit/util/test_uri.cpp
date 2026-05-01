@@ -215,6 +215,27 @@ TEST(ParseUri, BareBracketedIpv6) {
     EXPECT_EQ(r->canonical(), "[::1]:9000");
 }
 
+TEST(ParseUri, HostAuthorityBracketsV6) {
+    /// `host_authority()` is the IP-literal form RFC 7230 §5.4 wants
+    /// in an HTTP `Host:` header: brackets on IPv6, bare for IPv4 /
+    /// hostnames, empty on path-style URIs.
+    auto v4 = ::gn::parse_uri("tcp://1.2.3.4:80");
+    ASSERT_TRUE(v4.has_value());
+    EXPECT_EQ(v4->host_authority(), "1.2.3.4:80");
+
+    auto v6 = ::gn::parse_uri("ws://[::1]:9000");
+    ASSERT_TRUE(v6.has_value());
+    EXPECT_EQ(v6->host_authority(), "[::1]:9000");
+
+    auto host = ::gn::parse_uri("https://example.com:443");
+    ASSERT_TRUE(host.has_value());
+    EXPECT_EQ(host->host_authority(), "example.com:443");
+
+    auto ipc = ::gn::parse_uri("ipc:///run/sock");
+    ASSERT_TRUE(ipc.has_value());
+    EXPECT_TRUE(ipc->host_authority().empty());
+}
+
 TEST(ParseUri, BracketedIpv6WithQuery) {
     auto r = ::gn::parse_uri("tcp://[::1]:9000?peer=abc");
     ASSERT_TRUE(r.has_value());

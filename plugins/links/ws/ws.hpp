@@ -136,6 +136,33 @@ public:
     /// protocol layer.
     static constexpr std::size_t kMaxFramePayload = 65536;
 
+    /// Parsed `ws://host:port[/path]` shape with a derived
+    /// `host_authority()` for the HTTP upgrade `Host:` header.
+    /// Public so the test suite can pin the bracket discipline
+    /// (RFC 7230 §5.4) without spinning up a live socket.
+    struct ParsedUri {
+        std::string host;
+        std::uint16_t port = 0;
+        std::string  path = "/";
+
+        /// `host:port` / `[v6]:port` form for the HTTP `Host:`
+        /// header (RFC 7230 §5.4). Mirrors
+        /// `gn::UriParts::host_authority`.
+        [[nodiscard]] std::string host_authority() const {
+            std::string s;
+            const bool is_v6 = host.find(':') != std::string::npos;
+            s.reserve(host.size() + 8);
+            if (is_v6) s += '[';
+            s += host;
+            if (is_v6) s += ']';
+            s += ':';
+            s += std::to_string(port);
+            return s;
+        }
+    };
+    [[nodiscard]] static std::optional<ParsedUri> parse_uri(
+        std::string_view uri);
+
 private:
     class Session;
 
@@ -154,16 +181,6 @@ private:
     void erase_session(gn_conn_id_t id);
     [[nodiscard]] std::shared_ptr<Session> find_session(gn_conn_id_t id) const;
 
-    /// `ws://host:port[/path]` → `("host", port, "/path")`. `port`
-    /// defaults to 80; `path` defaults to "/". Empty result on a
-    /// malformed input.
-    struct ParsedUri {
-        std::string host;
-        std::uint16_t port = 0;
-        std::string  path = "/";
-    };
-    [[nodiscard]] static std::optional<ParsedUri> parse_uri(
-        std::string_view uri);
     [[nodiscard]] static std::string endpoint_to_uri(
         const asio::ip::tcp::endpoint& ep, std::string_view path);
 
