@@ -349,7 +349,8 @@ typed extension API.
   one envelope above. The rename touches the public C ABI
   (`gn_link_vtable_t`, `gn_link_id_t`, `gn_link_caps_t`,
   `gn_link_stats_t`, `GN_LINK_CAP_*`, `GN_PLUGIN_KIND_LINK`,
-  `register_link` / `unregister_link` in `host_api_t`), the SDK
+  `register_vtable(GN_REGISTER_LINK, …)` /
+  `unregister_vtable(id)` on `host_api_t`), the SDK
   headers (`sdk/link.h`, `sdk/extensions/link.h`,
   `sdk/cpp/link.hpp`, `sdk/cpp/link_plugin.hpp`), the kernel
   registry (`LinkRegistry`, `LinkEntry`, `Kernel::links()`), the
