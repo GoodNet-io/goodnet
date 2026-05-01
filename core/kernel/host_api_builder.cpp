@@ -1050,25 +1050,44 @@ gn_result_t thunk_inject(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    if (!pc->kernel->inject_rate_limiter().allow(
-            inject_rate_key(rec->remote_pk))) {
-        return GN_ERR_LIMIT_REACHED;
-    }
-
     auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     const auto& limits = pc->kernel->limits();
 
+    /// Validate args + size + layer-specific invariants BEFORE
+    /// consuming a token. A rejected call must not debit the
+    /// per-source bucket; otherwise a bystander plugin's misuse
+    /// becomes a DoS against legitimate inject traffic from the same
+    /// source.
     switch (layer_kind) {
-    case GN_INJECT_LAYER_MESSAGE: {
+    case GN_INJECT_LAYER_MESSAGE:
         if (!bytes && size > 0) return GN_ERR_NULL_ARG;
-        if (msg_id == 0) return GN_ERR_INVALID_ENVELOPE;
+        if (msg_id == 0)        return GN_ERR_INVALID_ENVELOPE;
         if (limits.max_payload_bytes != 0 &&
             size > limits.max_payload_bytes) {
             return GN_ERR_PAYLOAD_TOO_LARGE;
         }
+        break;
 
+    case GN_INJECT_LAYER_FRAME:
+        if (!bytes || size == 0) return GN_ERR_NULL_ARG;
+        if (limits.max_frame_bytes != 0 &&
+            size > limits.max_frame_bytes) {
+            return GN_ERR_PAYLOAD_TOO_LARGE;
+        }
+        break;
+
+    default:
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    if (!pc->kernel->inject_rate_limiter().allow(
+            inject_rate_key(rec->remote_pk))) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    if (layer_kind == GN_INJECT_LAYER_MESSAGE) {
         /// Inbound bridge envelope: source connection's remote pk is
         /// the sender (the bridge re-publishes a foreign-system
         /// payload under that identity); this node's local pk is the
@@ -1082,39 +1101,29 @@ gn_result_t thunk_inject(void* host_ctx,
         return GN_OK;
     }
 
-    case GN_INJECT_LAYER_FRAME: {
-        if (!bytes || size == 0) return GN_ERR_NULL_ARG;
-        if (limits.max_frame_bytes != 0 &&
-            size > limits.max_frame_bytes) {
-            return GN_ERR_PAYLOAD_TOO_LARGE;
-        }
-
-        gn_connection_context_t ctx{};
-        ctx.conn_id   = source;
-        ctx.trust     = rec->trust;
-        ctx.remote_pk = rec->remote_pk;
-        if (auto local = pc->kernel->identities().any(); local) {
-            ctx.local_pk = *local;
-        }
-
-        auto deframed = layer->deframe(
-            ctx, std::span<const std::uint8_t>{bytes, size});
-        if (!deframed.has_value()) return deframed.error().code;
-
-        /// FRAME inject expects a complete frame; partial input or
-        /// empty envelope set is a malformed call per host-api.md §8.
-        if (deframed->messages.empty() || deframed->bytes_consumed == 0) {
-            return GN_ERR_DEFRAME_INCOMPLETE;
-        }
-
-        for (const auto& env : deframed->messages) {
-            route_one_envelope(*pc->kernel, layer->protocol_id(), env);
-        }
-        return GN_OK;
-    }
+    /// LAYER_FRAME path.
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = source;
+    ctx.trust     = rec->trust;
+    ctx.remote_pk = rec->remote_pk;
+    if (auto local = pc->kernel->identities().any(); local) {
+        ctx.local_pk = *local;
     }
 
-    return GN_ERR_INVALID_ENVELOPE;
+    auto deframed = layer->deframe(
+        ctx, std::span<const std::uint8_t>{bytes, size});
+    if (!deframed.has_value()) return deframed.error().code;
+
+    /// FRAME inject expects a complete frame; partial input or
+    /// empty envelope set is a malformed call per host-api.md §8.
+    if (deframed->messages.empty() || deframed->bytes_consumed == 0) {
+        return GN_ERR_DEFRAME_INCOMPLETE;
+    }
+
+    for (const auto& env : deframed->messages) {
+        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+    }
+    return GN_OK;
 }
 
 gn_result_t thunk_notify_disconnect(void* host_ctx,
