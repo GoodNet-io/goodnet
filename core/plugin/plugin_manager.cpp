@@ -466,17 +466,38 @@ void PluginManager::rollback() {
             it->registered = false;
         }
 
-        /// Cancel still-pending timers / posted tasks for this anchor
-        /// **between** unregister and shutdown per `plugin-lifetime.md`
-        /// §4 step 3. The plugin's `self` is still alive here, so any
-        /// timer caught mid-flight finishes against a live plugin —
-        /// after `gn_plugin_shutdown` returns, `self` is gone and a
-        /// pending callback dereferencing `user_data = &self->state`
-        /// would point at freed memory even though the gate keeps the
-        /// `.text` mapped.
+        /// Cancel still-pending timers / posted tasks for this anchor.
+        /// Cancellation removes registry entries; in-flight callbacks
+        /// that were already past `GateGuard::acquire` continue to
+        /// run against the still-live plugin until they release the
+        /// guard.
         if (it->ctx && it->ctx->plugin_anchor) {
             kernel_.timers().cancel_for_anchor(it->ctx->plugin_anchor);
         }
+
+        /// Drain BEFORE `gn_plugin_shutdown`. Two-step: (1) demote the
+        /// kernel-side strong references to weak observers — once
+        /// every kernel-held strong drops, the only refs that keep
+        /// `watch.lock()` alive are in-flight `GateGuard`s; (2) wait
+        /// for those guards to release. After drain returns the
+        /// plugin has zero callbacks running through its `.text`,
+        /// every `user_data` derived from `self` is no longer being
+        /// dereferenced, and `gn_plugin_shutdown` can free `self`
+        /// without racing an active dispatch.
+        ///
+        /// Pre-fix order placed `drain_anchor` AFTER `gn_plugin_shutdown`,
+        /// which meant `delete self` ran while a guard-holding callback
+        /// was mid-call. The gate kept `.text` mapped — the call
+        /// resolved — but the lambda's `user_data = &p->link->state`
+        /// pointed at freed memory by the time the body ran. UAF
+        /// observable under ASan on any timer-firing plugin in
+        /// rollback.
+        std::weak_ptr<PluginAnchor> watch;
+        if (it->ctx) {
+            watch = it->ctx->plugin_anchor;
+            it->ctx->plugin_anchor.reset();
+        }
+        const bool drained = drain_anchor(*it, watch);
 
         if (it->self && it->so_handle) {
             if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
@@ -488,17 +509,6 @@ void PluginManager::rollback() {
         }
 
         if (it->so_handle) {
-            /// Promote the kernel-side strong reference to a weak
-            /// observer, then drop the ctx-held strong ref so only
-            /// in-flight snapshots and not-yet-released gate guards
-            /// remain.
-            std::weak_ptr<PluginAnchor> watch;
-            if (it->ctx) {
-                watch = it->ctx->plugin_anchor;
-                it->ctx->plugin_anchor.reset();
-            }
-
-            const bool drained = drain_anchor(*it, watch);
             if (drained) {
                 ::dlclose(it->so_handle);
             }
