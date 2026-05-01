@@ -54,6 +54,20 @@ gn_conn_id_t gn_ctx_conn_id(const gn_connection_context_t* ctx);
 gn_trust_class_t gn_ctx_trust(const gn_connection_context_t* ctx);
 
 /**
+ * @brief Whether the protocol layer may honour `EXPLICIT_SENDER` /
+ *        `EXPLICIT_RECEIVER` flags on inbound frames.
+ *
+ * Default `false`. The deframer reads this flag to gate against
+ * sender_pk spoofing: a regular peer that has not been granted relay
+ * capability cannot claim a sender_pk other than the connection's
+ * authenticated remote pk. Operators / a future relay handler set the
+ * flag on connections that legitimately carry forwarded traffic.
+ *
+ * Returns 1 when relay is allowed, 0 otherwise.
+ */
+int gn_ctx_allows_relay(const gn_connection_context_t* ctx);
+
+/**
  * @brief Plugin-private scratch slot.
  *
  * The kernel never inspects the value. Transports use this to attach a

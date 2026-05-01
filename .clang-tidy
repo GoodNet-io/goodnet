@@ -24,7 +24,8 @@ Checks: >
   -misc-include-cleaner,
   -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
-  -misc-use-anonymous-namespace
+  -misc-use-anonymous-namespace,
+  -clang-diagnostic-deprecated-declarations
 WarningsAsErrors: '*'
 HeaderFilterRegex: '(core|sdk|plugins)/.*\.(hpp|h)$'
 FormatStyle: none

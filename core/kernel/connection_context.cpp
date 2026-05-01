@@ -23,6 +23,10 @@ gn_trust_class_t gn_ctx_trust(const gn_connection_context_t* ctx) {
     return ctx ? ctx->trust : GN_TRUST_UNTRUSTED;
 }
 
+int gn_ctx_allows_relay(const gn_connection_context_t* ctx) {
+    return (ctx != nullptr && ctx->allows_relay) ? 1 : 0;
+}
+
 void* gn_ctx_plugin_state(const gn_connection_context_t* ctx) {
     return ctx ? ctx->plugin_state : nullptr;
 }

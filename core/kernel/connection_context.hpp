@@ -24,6 +24,17 @@ struct gn_connection_context_s {
     /// partners to pick up.
     void*              plugin_state{nullptr};
 
+    /// Relay capability. When true, the protocol layer (`gnet-protocol`
+    /// in particular) honours `EXPLICIT_SENDER` and `EXPLICIT_RECEIVER`
+    /// flags on inbound frames — the peer is acting as a relay and may
+    /// inject end-to-end identities other than its own. Default false
+    /// is the safe path: a regular peer claiming a foreign sender_pk
+    /// would otherwise spoof handlers that authenticate by sender_pk.
+    /// The kernel sets this from the connection record's `allows_relay`
+    /// flag, populated by the relay handler / operator configuration
+    /// (post-RC handler work pinned in `gnet-protocol.md`).
+    bool               allows_relay{false};
+
     /// ABI evolution; must be zero-initialised.
     void*              _reserved[4]{};
 };

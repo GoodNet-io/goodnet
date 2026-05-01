@@ -185,6 +185,18 @@ authors and future format successors:
 - **Conditional PK fields enable relay and broadcast as first-class
   modes.** A direct connection pays no overhead for identity it
   already learned from the Noise handshake.
+- **Relay capability is opt-in.** A peer that has not been granted
+  the relay capability cannot drive `EXPLICIT_SENDER` or
+  `EXPLICIT_RECEIVER` flags on the inbound side. The deframer reads
+  `gn_connection_context_t::allows_relay`; when false, an inbound
+  frame with `EXPLICIT_SENDER` or `BROADCAST` is rejected with
+  `GN_ERR_INTEGRITY_FAILED` because it represents a sender_pk
+  spoofing attempt by an authenticated-but-non-relay peer.
+  Operators flip the flag on connections that legitimately carry
+  forwarded traffic; a future relay handler will own that
+  configuration. Pre-RC the default-deny path applies everywhere,
+  so handlers that authenticate by `sender_pk` can trust the
+  inbound envelope.
 
 ---
 

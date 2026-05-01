@@ -49,6 +49,15 @@ struct ConnectionRecord {
     gn_handshake_role_t role        = GN_ROLE_INITIATOR;
     std::string        link_scheme;
 
+    /// Relay capability: when set, the protocol layer accepts inbound
+    /// frames carrying EXPLICIT_SENDER / EXPLICIT_RECEIVER (relay or
+    /// broadcast paths) per `gnet-protocol.md` §5. Default `false`
+    /// implies the connection is a regular peer; the deframe layer
+    /// rejects EXPLICIT_SENDER as a sender_pk-spoofing attempt.
+    /// Operator-supplied through configuration / a future relay
+    /// handler API; pre-RC the default-deny path applies everywhere.
+    bool               allows_relay = false;
+
     /// Counters surfaced through `host_api->get_endpoint`.
     std::uint64_t bytes_in            = 0;
     std::uint64_t bytes_out           = 0;

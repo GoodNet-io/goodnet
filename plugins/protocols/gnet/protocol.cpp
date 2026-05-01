@@ -75,7 +75,22 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
 
         /// sender_pk — wire-explicit when EXPLICIT_SENDER set,
         /// otherwise the peer pk from the connection context.
+        ///
+        /// Relay capability gate: a peer that lacks
+        /// `ctx.allows_relay` must not be allowed to claim a sender_pk
+        /// other than its own. Without the gate, every authenticated
+        /// peer could spoof `sender_pk` on any inbound frame and
+        /// compromise handlers that authenticate by sender_pk.
+        /// `gnet-protocol.md` §5 pins the contract — only relay-capable
+        /// connections are permitted to carry EXPLICIT_SENDER /
+        /// EXPLICIT_RECEIVER flags.
         if (hdr.has_explicit_sender()) {
+            if (gn_ctx_allows_relay(&ctx) == 0) {
+                return std::unexpected(::gn::Error{
+                    GN_ERR_INTEGRITY_FAILED,
+                    "GNET deframe rejected EXPLICIT_SENDER on a "
+                    "non-relay connection (sender_pk spoofing gate)"});
+            }
             std::memcpy(env.sender_pk, frame_start + pk_offset,
                         wire::kPublicKeySize);
             pk_offset += wire::kPublicKeySize;
