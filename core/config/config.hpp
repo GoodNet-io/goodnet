@@ -48,7 +48,7 @@ public:
     /// the deployment is a single binary that picks its config
     /// off disk at startup.
     ///
-    /// Returns `GN_ERR_UNKNOWN_RECEIVER` if the file cannot be
+    /// Returns `GN_ERR_NOT_FOUND` if the file cannot be
     /// opened (missing path, permission denied), the same parse /
     /// invariant codes `load_json` would return otherwise. Failure
     /// leaves the existing state unchanged in every case.
@@ -93,7 +93,7 @@ public:
         const gn_limits_t& limits,
         std::string*       out_reason);
 
-    /// Lookup a string value by dotted path. Returns `GN_ERR_UNKNOWN_RECEIVER`
+    /// Lookup a string value by dotted path. Returns `GN_ERR_NOT_FOUND`
     /// when the key is missing.
     [[nodiscard]] gn_result_t get_string(std::string_view key,
                                          std::string& out) const;
@@ -114,14 +114,14 @@ public:
                                           double& out) const;
 
     /// Lookup the size of an array at @p key. Returns
-    /// `GN_ERR_UNKNOWN_RECEIVER` when the key is missing,
+    /// `GN_ERR_NOT_FOUND` when the key is missing,
     /// `GN_ERR_INVALID_ENVELOPE` when the value is not an array,
     /// `GN_OK` and writes the element count to @p out otherwise.
     [[nodiscard]] gn_result_t get_array_size(std::string_view key,
                                               std::size_t& out) const;
 
     /// Read the string element at @p index of the array at @p key.
-    /// Out-of-bounds @p index returns `GN_ERR_UNKNOWN_RECEIVER`.
+    /// Out-of-bounds @p index returns `GN_ERR_NOT_FOUND`.
     /// Element-type mismatch returns `GN_ERR_INVALID_ENVELOPE`.
     [[nodiscard]] gn_result_t get_array_string(std::string_view key,
                                                 std::size_t      index,

@@ -120,7 +120,7 @@ typedef struct host_api_s {
     /* ── Registry queries ──────────────────────────────────────────────── */
 
     /**
-     * @return GN_OK and a connection id, or GN_ERR_UNKNOWN_RECEIVER.
+     * @return GN_OK and a connection id, or GN_ERR_NOT_FOUND.
      */
     gn_result_t (*find_conn_by_pk)(void* host_ctx,
                                    const uint8_t pk[GN_PUBLIC_KEY_BYTES],
@@ -186,7 +186,7 @@ typedef struct host_api_s {
 
     /**
      * @brief Number of elements in the array at @p key. Returns
-     *        `GN_ERR_UNKNOWN_RECEIVER` when the key is missing,
+     *        `GN_ERR_NOT_FOUND` when the key is missing,
      *        `GN_ERR_INVALID_ENVELOPE` when the value is not an
      *        array, `GN_OK` and writes the count otherwise.
      */

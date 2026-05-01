@@ -206,7 +206,7 @@ Hot-reload is supported but constrained:
   deployment lifetimes is not a concern.
 - During quiescence the plugin's registry entry is removed from
   the dispatch table; new lookups miss and return
-  `GN_ERR_UNKNOWN_RECEIVER`. In-flight dispatches that captured a
+  `GN_ERR_NOT_FOUND`. In-flight dispatches that captured a
   snapshot before removal complete against their captured vtable
   copy and the matching `lifetime_anchor` keeps the `.so` mapped
   past the last call.

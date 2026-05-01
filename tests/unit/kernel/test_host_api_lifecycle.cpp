@@ -217,13 +217,13 @@ TEST(HostApiNotifyDisconnect, MissingConnReturnsUnknownReceiver) {
               GN_OK);
 
     /// Disconnect of a never-inserted id reports
-    /// `GN_ERR_UNKNOWN_RECEIVER` and fires no event — per
+    /// `GN_ERR_NOT_FOUND` and fires no event — per
     /// `conn-events.md` §2 each event must correspond to a real
     /// lifecycle transition; an id that was never registered has
     /// none.
     constexpr gn_conn_id_t kUnknownConn = 99999;
     EXPECT_EQ(api.notify_disconnect(&ctx, kUnknownConn, GN_OK),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 
     std::lock_guard lk(bag.mu);
     EXPECT_TRUE(bag.events.empty())
@@ -251,9 +251,9 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
     EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
 
     /// Second disconnect on the same id: record is gone, registry
-    /// reports `GN_ERR_UNKNOWN_RECEIVER`, channel stays silent.
+    /// reports `GN_ERR_NOT_FOUND`, channel stays silent.
     EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 
     std::lock_guard lk(bag.mu);
     ASSERT_EQ(bag.events.size(), 2u)
@@ -265,7 +265,7 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
 /// Two threads race the same `notify_disconnect(conn)` through the C
 /// ABI. Per `conn-events.md` §2a the channel publishes exactly one
 /// DISCONNECTED for the single underlying lifecycle transition; the
-/// losing thread reports `GN_ERR_UNKNOWN_RECEIVER`.
+/// losing thread reports `GN_ERR_NOT_FOUND`.
 TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
     constexpr int kRounds = 64;
     Kernel k;
@@ -299,7 +299,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
             const auto rc = api.notify_disconnect(&ctx, conn, GN_OK);
             if (rc == GN_OK) {
                 ok_count.fetch_add(1, std::memory_order_relaxed);
-            } else if (rc == GN_ERR_UNKNOWN_RECEIVER) {
+            } else if (rc == GN_ERR_NOT_FOUND) {
                 unknown_count.fetch_add(1, std::memory_order_relaxed);
             } else {
                 ADD_FAILURE() << "unexpected rc " << rc;
@@ -332,14 +332,14 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
 }
 
 /// `conn-events.md` §2a Returns row: `conn == GN_INVALID_ID`
-/// collapses to `GN_ERR_UNKNOWN_RECEIVER` (no record matches the
+/// collapses to `GN_ERR_NOT_FOUND` (no record matches the
 /// sentinel id).
 TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsUnknownReceiver) {
     Kernel k;
     auto ctx = make_transport_ctx(k);
     auto api = build_host_api(ctx);
     EXPECT_EQ(api.notify_disconnect(&ctx, GN_INVALID_ID, GN_OK),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 /// `conn-events.md` §2a Returns row: NULL host_ctx returns
@@ -365,7 +365,7 @@ TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
 /// `conn-events.md` §2a Concurrency clause: a subscriber callback
 /// may invoke `notify_disconnect` against the same `conn`
 /// re-entrantly. The re-entrant call observes the record already
-/// removed and reports `GN_ERR_UNKNOWN_RECEIVER` without
+/// removed and reports `GN_ERR_NOT_FOUND` without
 /// publishing a second DISCONNECTED.
 TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
     Kernel k;
@@ -415,7 +415,7 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
 
     EXPECT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
 
-    EXPECT_EQ(re.reentrant_rc.load(), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(re.reentrant_rc.load(), GN_ERR_NOT_FOUND);
 
     std::lock_guard lk(bag.mu);
     int disconnected = 0;
@@ -451,7 +451,7 @@ TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
 
     /// send family — disconnect. Without the canary this would
     /// reach `connections().find_by_id(1)` and return
-    /// `GN_ERR_UNKNOWN_RECEIVER`; the canary fast-fails first.
+    /// `GN_ERR_NOT_FOUND`; the canary fast-fails first.
     EXPECT_EQ(api.disconnect(&ctx, 1), GN_ERR_INVALID_STATE);
 
     /// query family — get_endpoint

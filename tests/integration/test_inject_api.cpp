@@ -118,7 +118,7 @@ TEST(InjectExternal, UnknownSourceRejected) {
     EXPECT_EQ(h.api.inject_external_message(h.api.host_ctx,
                                              /*source*/ 9999, 0x42,
                                              payload, sizeof(payload)),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(InjectExternal, ZeroMsgIdRejected) {
@@ -194,7 +194,7 @@ TEST(InjectFrame, RejectsUnknownSource) {
     const std::uint8_t buf[] = {0};
     EXPECT_EQ(h.api.inject_frame(h.api.host_ctx, /*source*/ 4242,
                                   buf, sizeof(buf)),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(InjectFrame, MalformedFrameReturnsDeframerError) {

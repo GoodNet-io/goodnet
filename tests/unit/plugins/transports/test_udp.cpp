@@ -266,7 +266,7 @@ TEST(UdpTransport, SendToUnknownConnRejected) {
     const std::uint8_t payload[] = {0x42};
     EXPECT_EQ(t->send(/*never registered*/ 99,
                        std::span<const std::uint8_t>(payload)),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
     t->shutdown();
 }
 

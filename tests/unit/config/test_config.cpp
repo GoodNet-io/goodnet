@@ -256,7 +256,7 @@ TEST(Config_GetString, MissingKeyReturnsUnknownReceiver) {
     Config c;
     ASSERT_EQ(c.load_json("{}"), GN_OK);
     std::string out;
-    EXPECT_EQ(c.get_string("absent", out), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(c.get_string("absent", out), GN_ERR_NOT_FOUND);
 }
 
 TEST(Config_GetString, MissingMidSegmentReturnsUnknownReceiver) {
@@ -265,7 +265,7 @@ TEST(Config_GetString, MissingMidSegmentReturnsUnknownReceiver) {
     ASSERT_EQ(c.load_json(doc), GN_OK);
     std::string out;
     EXPECT_EQ(c.get_string("a.missing.b", out),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(Config_GetString, TypeMismatchReturnsInvalidEnvelope) {
@@ -290,7 +290,7 @@ TEST(Config_GetString, DescendingIntoNonObjectMisses) {
     ASSERT_EQ(c.load_json(doc), GN_OK);
     std::string out;
     /// Tries to descend into a string node — fails.
-    EXPECT_EQ(c.get_string("k.nested", out), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(c.get_string("k.nested", out), GN_ERR_NOT_FOUND);
 }
 
 // ─── get_int64 ──────────────────────────────────────────────────────
@@ -325,7 +325,7 @@ TEST(Config_GetInt64, DottedPath) {
 TEST(Config_GetInt64, MissingKey) {
     Config c;
     std::int64_t out = 123;
-    EXPECT_EQ(c.get_int64("absent", out), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(c.get_int64("absent", out), GN_ERR_NOT_FOUND);
 }
 
 TEST(Config_GetInt64, TypeMismatchString) {
@@ -348,9 +348,9 @@ TEST(Config_GetInt64, EmptySegmentRejected) {
     Config c;
     ASSERT_EQ(c.load_json(R"({"k": 1})"), GN_OK);
     std::int64_t out = 0;
-    EXPECT_EQ(c.get_int64("", out), GN_ERR_UNKNOWN_RECEIVER);
-    EXPECT_EQ(c.get_int64(".", out), GN_ERR_UNKNOWN_RECEIVER);
-    EXPECT_EQ(c.get_int64("k.", out), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(c.get_int64("", out), GN_ERR_NOT_FOUND);
+    EXPECT_EQ(c.get_int64(".", out), GN_ERR_NOT_FOUND);
+    EXPECT_EQ(c.get_int64("k.", out), GN_ERR_NOT_FOUND);
 }
 
 // ─── get_bool ────────────────────────────────────────────────────
@@ -378,7 +378,7 @@ TEST(Config_GetBool, IntegerNotABool) {
 TEST(Config_GetBool, MissingReturnsUnknownReceiver) {
     Config c;
     bool v = false;
-    EXPECT_EQ(c.get_bool("absent", v), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(c.get_bool("absent", v), GN_ERR_NOT_FOUND);
 }
 
 // ─── get_double ──────────────────────────────────────────────────
@@ -437,12 +437,12 @@ TEST(Config_GetArray, StringByIndex) {
     EXPECT_EQ(out, "gamma");
 }
 
-TEST(Config_GetArray, OutOfBoundsReturnsUnknownReceiver) {
+TEST(Config_GetArray, OutOfBoundsReturnsOutOfRange) {
     Config c;
     ASSERT_EQ(c.load_json(R"({"peers": ["a", "b"]})"), GN_OK);
     std::string out;
     EXPECT_EQ(c.get_array_string("peers", 5, out),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_OUT_OF_RANGE);
 }
 
 TEST(Config_GetArray, ElementTypeMismatch) {
@@ -812,7 +812,7 @@ TEST(Config_LoadFile, ReadsExistingFile) {
 TEST(Config_LoadFile, MissingFileReportsUnknownReceiver) {
     Config c;
     EXPECT_EQ(c.load_file("/nonexistent/missing-config.json"),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(Config_LoadFile, MalformedFilePreservesPriorState) {

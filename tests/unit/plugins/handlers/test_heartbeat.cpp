@@ -61,7 +61,7 @@ struct StubHost {
         auto* h = static_cast<StubHost*>(host_ctx);
         std::lock_guard lk(h->mu);
         auto it = h->peer_map.find(pk[0]);
-        if (it == h->peer_map.end()) return GN_ERR_UNKNOWN_RECEIVER;
+        if (it == h->peer_map.end()) return GN_ERR_NOT_FOUND;
         *out_conn = it->second.conn;
         return GN_OK;
     }
@@ -81,7 +81,7 @@ struct StubHost {
                 return GN_OK;
             }
         }
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 };
 

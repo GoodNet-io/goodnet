@@ -100,7 +100,7 @@ TEST(SecurityRegistry_Unregister, WrongIdRejected) {
               GN_OK);
 
     /// Unregister with the wrong id must fail.
-    EXPECT_EQ(r.unregister_provider("null"), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(r.unregister_provider("null"), GN_ERR_NOT_FOUND);
     /// Active entry untouched.
     EXPECT_TRUE(r.is_active());
     EXPECT_EQ(r.current().provider_id, "noise");
@@ -108,7 +108,7 @@ TEST(SecurityRegistry_Unregister, WrongIdRejected) {
 
 TEST(SecurityRegistry_Unregister, EmptyRegistryRejected) {
     SecurityRegistry r;
-    EXPECT_EQ(r.unregister_provider("noise"), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(r.unregister_provider("noise"), GN_ERR_NOT_FOUND);
 }
 
 TEST(SecurityRegistry_Unregister, AllowsReregisterAfterRemoval) {

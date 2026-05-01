@@ -163,7 +163,7 @@ TEST(TransportRegistry_Unregister, NonExistentReturnsUnknownReceiver) {
     TransportRegistry r;
     /// Some random plausible id with a non-zero pattern.
     EXPECT_EQ(r.unregister_transport(static_cast<gn_transport_id_t>(99)),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
 }
 
 TEST(TransportRegistry_Unregister, FreesSchemeForReuse) {

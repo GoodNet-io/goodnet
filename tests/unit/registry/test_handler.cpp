@@ -237,12 +237,12 @@ TEST(HandlerRegistry_Unregister, RemovesEntry) {
 
 TEST(HandlerRegistry_Unregister, NonExistentReturnsUnknownReceiver) {
     HandlerRegistry reg;
-    EXPECT_EQ(reg.unregister_handler(424242), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(reg.unregister_handler(424242), GN_ERR_NOT_FOUND);
 
     const gn_handler_id_t id = reg_or_die(reg, "gnet-v1", 1, 128);
     ASSERT_EQ(reg.unregister_handler(id), GN_OK);
     /// Second unregister on the now-stale id must also fail.
-    EXPECT_EQ(reg.unregister_handler(id), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(reg.unregister_handler(id), GN_ERR_NOT_FOUND);
 }
 
 TEST(HandlerRegistry_Unregister, RejectsInvalidId) {

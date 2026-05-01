@@ -59,7 +59,7 @@ gn_result_t ExtensionRegistry::unregister_extension(std::string_view name) noexc
     if (name.empty()) return GN_ERR_NULL_ARG;
     std::unique_lock lock(mu_);
     auto it = entries_.find(std::string{name});
-    if (it == entries_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (it == entries_.end()) return GN_ERR_NOT_FOUND;
     entries_.erase(it);
     return GN_OK;
 }
@@ -74,7 +74,7 @@ gn_result_t ExtensionRegistry::query_extension_checked(
 
     std::shared_lock lock(mu_);
     auto it = entries_.find(std::string{name});
-    if (it == entries_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (it == entries_.end()) return GN_ERR_NOT_FOUND;
 
     if (!versions_compatible(it->second.version, requested_version)) {
         return GN_ERR_VERSION_MISMATCH;

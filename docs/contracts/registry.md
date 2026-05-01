@@ -27,7 +27,7 @@ records through host-API entries (`host-api.md` §2):
 
 | Entry | Returns |
 |---|---|
-| `find_conn_by_pk(pk, out_conn)` | `GN_OK` and a connection id, or `GN_ERR_UNKNOWN_RECEIVER` |
+| `find_conn_by_pk(pk, out_conn)` | `GN_OK` and a connection id, or `GN_ERR_NOT_FOUND` |
 | `get_endpoint(conn, out_ep)` | endpoint snapshot — pk, uri, trust, transport scheme |
 
 These reads do not lock the kernel side. Stale reads are acceptable
@@ -82,7 +82,7 @@ Properties:
 
 1. Acquire the same triple of mutexes in the same order.
 2. Look up the record by id in the shard. If absent, release and
-   return `GN_ERR_UNKNOWN_RECEIVER`.
+   return `GN_ERR_NOT_FOUND`.
 3. Remove from URI index, pk index, then shard.
 4. Release.
 

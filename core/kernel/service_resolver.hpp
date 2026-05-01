@@ -48,7 +48,7 @@ public:
     /// Return codes:
     ///   - `GN_OK` — sorted set written to @p out_ordered.
     ///   - `GN_ERR_LIMIT_REACHED` — duplicate provider for a name.
-    ///   - `GN_ERR_UNKNOWN_RECEIVER` — required extension has no
+    ///   - `GN_ERR_NOT_FOUND` — required extension has no
     ///     provider.
     ///   - `GN_ERR_INVALID_ENVELOPE` — graph contains a cycle.
     [[nodiscard]] static gn_result_t resolve(

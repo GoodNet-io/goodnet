@@ -220,7 +220,7 @@ namespace {
 /// Test harness variant that exposes a `transports.tls.verify_peer`
 /// config bool. The caller sets `verify_peer_value` before binding
 /// the api; an unbound variant leaves `config_get_bool` returning
-/// `GN_ERR_UNKNOWN_RECEIVER`.
+/// `GN_ERR_NOT_FOUND`.
 struct TlsConfigHarness : TlsHarness {
     std::optional<int32_t> verify_peer_value;
 
@@ -233,7 +233,7 @@ struct TlsConfigHarness : TlsHarness {
             *out_value = *h->verify_peer_value;
             return GN_OK;
         }
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 
     host_api_t make_api() {
@@ -278,7 +278,7 @@ TEST(TlsTransport_VerifyDefault, ConfigOptOutLetsHandshakeSucceed) {
 
 TEST(TlsTransport_VerifyDefault, ConfigUnboundEnforcesDefault) {
     /// Without the config key bound (`config_get_bool` returns
-    /// `GN_ERR_UNKNOWN_RECEIVER`), the client stays in verify_peer
+    /// `GN_ERR_NOT_FOUND`), the client stays in verify_peer
     /// mode and refuses the self-signed loopback cert.
     std::string cert, key;
     ASSERT_TRUE(generate_self_signed(cert, key));

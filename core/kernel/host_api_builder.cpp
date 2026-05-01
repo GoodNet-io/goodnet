@@ -129,7 +129,7 @@ gn_result_t thunk_send(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(conn);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
@@ -208,7 +208,7 @@ gn_result_t thunk_find_conn_by_pk(void* host_ctx,
     PublicKey key{};
     std::memcpy(key.data(), pk, GN_PUBLIC_KEY_BYTES);
     auto rec = pc->kernel->connections().find_by_pk(key);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
     *out_conn = rec->id;
     return GN_OK;
 }
@@ -220,7 +220,7 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(conn);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     std::memset(out, 0, sizeof(*out));
     out->conn_id = rec->id;
@@ -269,7 +269,7 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto rec = pc->kernel->connections().find_by_id(conn);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
     auto trans = pc->kernel->transports().find_by_scheme(rec->transport_scheme);
     if (!trans || !trans->vtable || !trans->vtable->disconnect) {
         return GN_ERR_NOT_IMPLEMENTED;
@@ -913,7 +913,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (session->phase() != SecurityPhase::Handshake) return GN_OK;
 
     auto rec = pc->kernel->connections().find_by_id(conn);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     std::vector<std::uint8_t> first;
     const gn_result_t adv_rc = session->advance_handshake({}, first);
@@ -950,7 +950,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
 
     /// Look up the connection record to populate the per-call context.
     auto rec = pc->kernel->connections().find_by_id(conn);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     /// Account inbound traffic on the per-conn record; this counts
     /// every transport-delivered byte regardless of whether the
@@ -1049,7 +1049,7 @@ gn_result_t thunk_inject_external_message(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     const auto& limits = pc->kernel->limits();
     if (limits.max_payload_bytes != 0 &&
@@ -1088,7 +1088,7 @@ gn_result_t thunk_inject_frame(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
-    if (!rec) return GN_ERR_UNKNOWN_RECEIVER;
+    if (!rec) return GN_ERR_NOT_FOUND;
 
     const auto& limits = pc->kernel->limits();
     if (limits.max_frame_bytes != 0 &&
@@ -1139,7 +1139,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     /// Implements `conn-events.md` §2a: drop the security session,
     /// then atomic snapshot+erase from `registry.md` §4a, then publish
     /// DISCONNECTED only on a real removal; on no-op return
-    /// `GN_ERR_UNKNOWN_RECEIVER` without publishing.
+    /// `GN_ERR_NOT_FOUND` without publishing.
     pc->kernel->sessions().destroy(conn);
     auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
 
@@ -1150,7 +1150,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     pc->kernel->attestation_dispatcher().on_disconnect(conn);
 
     if (!snapshot) {
-        return GN_ERR_UNKNOWN_RECEIVER;
+        return GN_ERR_NOT_FOUND;
     }
 
     ConnEvent ev{};

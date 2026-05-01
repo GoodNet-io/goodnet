@@ -337,7 +337,7 @@ gn_result_t UdpTransport::send(gn_conn_id_t conn,
     {
         std::lock_guard lk(peers_mu_);
         auto it = peers_.find(conn);
-        if (it == peers_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+        if (it == peers_.end()) return GN_ERR_NOT_FOUND;
         target = it->second.endpoint;
         it->second.last_active = std::chrono::steady_clock::now();
     }

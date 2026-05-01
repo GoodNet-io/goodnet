@@ -213,7 +213,7 @@ TEST(ConnectionRegistry_Erase, RemovesFromAllIndexes) {
 TEST(ConnectionRegistry_Erase, NonExistentReturnsUnknownReceiver) {
     ConnectionRegistry reg;
     const gn_conn_id_t id = reg.alloc_id();
-    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_NOT_FOUND);
 }
 
 TEST(ConnectionRegistry_Erase, FreesKeysForReuse) {
@@ -260,7 +260,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, ReturnsRecordAndDropsAllIndexes) {
     EXPECT_FALSE(reg.find_by_uri("tcp://snap").has_value());
     EXPECT_FALSE(reg.find_by_pk(pk).has_value());
     EXPECT_EQ(reg.size(), 0u);
-    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_UNKNOWN_RECEIVER);
+    EXPECT_EQ(reg.erase_with_index(id), GN_ERR_NOT_FOUND);
 }
 
 TEST(ConnectionRegistry_SnapshotAndErase, FoldsPerConnectionCounters) {
@@ -589,7 +589,7 @@ TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
 TEST(ConnectionRegistry_UpgradeTrust, UnknownIdRejected) {
     ConnectionRegistry reg;
     EXPECT_EQ(reg.upgrade_trust(reg.alloc_id(), GN_TRUST_PEER),
-              GN_ERR_UNKNOWN_RECEIVER);
+              GN_ERR_NOT_FOUND);
     EXPECT_EQ(reg.upgrade_trust(GN_INVALID_ID, GN_TRUST_PEER),
               GN_ERR_NULL_ARG);
 }

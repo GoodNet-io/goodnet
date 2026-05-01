@@ -54,7 +54,7 @@ gn_result_t TransportRegistry::unregister_transport(gn_transport_id_t id) noexce
     std::unique_lock lock(mu_);
 
     auto it = by_id_.find(id);
-    if (it == by_id_.end()) return GN_ERR_UNKNOWN_RECEIVER;
+    if (it == by_id_.end()) return GN_ERR_NOT_FOUND;
 
     const std::string scheme = it->second;
     by_id_.erase(it);
