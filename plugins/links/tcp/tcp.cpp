@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+/// @file   plugins/links/tcp/tcp.cpp
+/// @brief  TCP link plugin — Boost.Asio strand-per-session transport.
+
 #include "tcp.hpp"
 
 #include <sdk/convenience.h>

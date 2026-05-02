@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+/// @file   plugins/links/udp/udp.cpp
+/// @brief  UDP link plugin — connectionless datagram transport.
+
 #include "udp.hpp"
 
 #include <sdk/convenience.h>

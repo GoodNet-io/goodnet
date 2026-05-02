@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: MIT
+/// @file   plugins/links/ipc/ipc.cpp
+/// @brief  IPC link plugin — AF_UNIX SOCK_STREAM transport.
+
 #include "ipc.hpp"
 
 #include <sdk/convenience.h>

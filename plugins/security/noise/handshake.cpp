@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
+/// @file   plugins/security/noise/handshake.cpp
+/// @brief  Noise XX state machine — initiator + responder pattern
+///         on libsodium primitives.
+
 #include "handshake.hpp"
 
 #include <sodium.h>
