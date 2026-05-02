@@ -92,8 +92,8 @@ _Static_assert(offsetof(gn_endpoint_t, trust) == 40,
                "gn_endpoint_t::trust offset pinned at 40");
 _Static_assert(offsetof(gn_endpoint_t, uri) == 44,
                "gn_endpoint_t::uri offset pinned at 44");
-_Static_assert(offsetof(gn_endpoint_t, link_scheme) == 300,
-               "gn_endpoint_t::link_scheme offset pinned at 300");
+_Static_assert(offsetof(gn_endpoint_t, scheme) == 300,
+               "gn_endpoint_t::scheme offset pinned at 300");
 _Static_assert(offsetof(gn_endpoint_t, bytes_in) == 320,
                "gn_endpoint_t::bytes_in offset pinned at 320");
 _Static_assert(offsetof(gn_endpoint_t, bytes_out) == 328,
@@ -429,8 +429,8 @@ _Static_assert(offsetof(gn_heartbeat_api_t, _reserved) == 40,
 
 /* ── sdk/extensions/link.h ────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_link_caps_t) == 56,
-               "gn_link_caps_t size pinned at 56");
+_Static_assert(sizeof(gn_link_caps_t) == 40,
+               "gn_link_caps_t size pinned at 40");
 _Static_assert(offsetof(gn_link_caps_t, flags) == 0,
                "gn_link_caps_t::flags offset pinned at 0");
 _Static_assert(offsetof(gn_link_caps_t, max_payload) == 4,
@@ -438,8 +438,8 @@ _Static_assert(offsetof(gn_link_caps_t, max_payload) == 4,
 _Static_assert(offsetof(gn_link_caps_t, _reserved) == 8,
                "gn_link_caps_t::_reserved offset pinned at 8");
 
-_Static_assert(sizeof(gn_link_stats_t) == 104,
-               "gn_link_stats_t size pinned at 104");
+_Static_assert(sizeof(gn_link_stats_t) == 72,
+               "gn_link_stats_t size pinned at 72");
 _Static_assert(offsetof(gn_link_stats_t, bytes_in) == 0,
                "gn_link_stats_t::bytes_in offset pinned at 0");
 _Static_assert(offsetof(gn_link_stats_t, bytes_out) == 8,
@@ -453,8 +453,8 @@ _Static_assert(offsetof(gn_link_stats_t, active_connections) == 32,
 _Static_assert(offsetof(gn_link_stats_t, _reserved) == 40,
                "gn_link_stats_t::_reserved offset pinned at 40");
 
-_Static_assert(sizeof(gn_link_api_t) == 136,
-               "gn_link_api_t size pinned at 136");
+_Static_assert(sizeof(gn_link_api_t) == 120,
+               "gn_link_api_t size pinned at 120");
 _Static_assert(offsetof(gn_link_api_t, api_size) == 0,
                "gn_link_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_link_api_t, get_stats) == 8,

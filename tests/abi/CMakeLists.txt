@@ -16,12 +16,15 @@
 #      here as failing tests rather than silent rejects in production.
 
 # ── 1. Layout invariants ─────────────────────────────────────────────
-add_library(goodnet_abi_layout OBJECT test_layout.c)
+add_library(goodnet_abi_layout OBJECT
+    test_layout.c
+    test_core_c_layout.c
+)
 target_include_directories(goodnet_abi_layout
     PRIVATE
         ${CMAKE_SOURCE_DIR}
 )
-# C99: this file is C, not C++. No need for kernel sources or libs —
+# C99: these files are C, not C++. No need for kernel sources or libs —
 # every assertion is purely a header-driven `sizeof`/`offsetof`.
 set_target_properties(goodnet_abi_layout PROPERTIES
     LINKER_LANGUAGE C

@@ -33,6 +33,24 @@ extern "C" {
   #define GN_PLUGIN_EXPORT
 #endif
 
+/* ── Host-embedding export macro ─────────────────────────────────────────── */
+
+/**
+ * @brief Marks a kernel symbol for export to host binaries.
+ *
+ * Applied to every `gn_core_*` entry in `sdk/core.h` so a host that links
+ * `libgoodnet_kernel` (or its `.so`) resolves the host-embedding ABI without
+ * relying on default-visibility builds. The symbol set is the host-side
+ * mirror of the plugin-side `GN_PLUGIN_EXPORT`.
+ */
+#if defined(_WIN32)
+  #define GN_EXPORT __declspec(dllexport)
+#elif defined(__GNUC__) || defined(__clang__)
+  #define GN_EXPORT __attribute__((visibility("default")))
+#else
+  #define GN_EXPORT
+#endif
+
 /* ── Size-prefix vtable introspection ────────────────────────────────────── */
 
 /**
