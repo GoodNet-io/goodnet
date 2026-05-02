@@ -1,4 +1,6 @@
 /// @file   core/security/session.cpp
+/// @brief  Per-connection security session — handshake/transport phase
+///         machine binding `IProtocolLayer` to the registered provider.
 
 #include "session.hpp"
 
