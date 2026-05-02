@@ -15,6 +15,7 @@ add_library(goodnet_kernel STATIC
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/connection_context.cpp
+    kernel/core_c.cpp
     kernel/host_api_builder.cpp
     kernel/service_resolver.cpp
     kernel/timer_registry.cpp
