@@ -1,10 +1,8 @@
-/**
- * @file   sdk/cpp/types.hpp
- * @brief  C++ wrappers for the fundamental SDK types.
- *
- * Mirrors of the @c gn_* C ABI structures using value-semantic helpers.
- * Plugins written in C++ pull this header instead of `sdk/types.h`.
- */
+/// @file   sdk/cpp/types.hpp
+/// @brief  C++ wrappers for the fundamental SDK types.
+///
+/// Mirrors of the @c gn_* C ABI structures using value-semantic helpers.
+/// Plugins written in C++ pull this header instead of `sdk/types.h`.
 #pragma once
 
 #include <array>
@@ -18,9 +16,7 @@
 
 namespace gn {
 
-/**
- * @brief Strongly-typed error wrapping a @ref gn_result_t code and message.
- */
+/// @brief Strongly-typed error wrapping a @ref gn_result_t code and message.
 struct Error {
     gn_result_t code{GN_ERR_NOT_IMPLEMENTED};
     std::string what;
@@ -43,13 +39,11 @@ inline constexpr PublicKey kBroadcastPk{};
     return acc == 0;
 }
 
-/**
- * @brief Read-only view over a @ref gn_message_t.
- *
- * Constructible from the C envelope without copying. Provides span-based
- * accessors for the public-key fields and payload, keeping the borrowed
- * lifetime explicit at the call site.
- */
+/// @brief Read-only view over a @ref gn_message_t.
+///
+/// Constructible from the C envelope without copying. Provides span-based
+/// accessors for the public-key fields and payload, keeping the borrowed
+/// lifetime explicit at the call site.
 class MessageView {
 public:
     constexpr explicit MessageView(const gn_message_t& m) noexcept : m_(m) {}
