@@ -50,8 +50,7 @@ gn_result_t SecuritySession::open(
     gn_handshake_role_t role,
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
     std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
-    std::span<const std::uint8_t> remote_static_pk_or_empty)
-{
+    std::span<const std::uint8_t> remote_static_pk_or_empty) {
     if (!entry.vtable || !entry.vtable->handshake_open) return GN_ERR_NULL_ARG;
 
     vtable_           = entry.vtable;
@@ -85,8 +84,7 @@ gn_result_t SecuritySession::open(
 
 gn_result_t SecuritySession::advance_handshake(
     std::span<const std::uint8_t> incoming,
-    std::vector<std::uint8_t>& out_msg)
-{
+    std::vector<std::uint8_t>& out_msg) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Handshake)
         return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->handshake_step) return GN_ERR_NOT_IMPLEMENTED;
@@ -134,8 +132,7 @@ gn_result_t SecuritySession::advance_handshake(
 
 gn_result_t SecuritySession::encrypt_transport(
     std::span<const std::uint8_t> plaintext,
-    std::vector<std::uint8_t>& out_cipher)
-{
+    std::vector<std::uint8_t>& out_cipher) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->encrypt) return GN_ERR_NOT_IMPLEMENTED;
@@ -163,8 +160,7 @@ gn_result_t SecuritySession::encrypt_transport(
 
 gn_result_t SecuritySession::enqueue_pending(
     std::vector<std::uint8_t>&& bytes,
-    std::uint64_t hard_cap_bytes)
-{
+    std::uint64_t hard_cap_bytes) {
     /// Phase check + cap check + push happen under the mutex so
     /// `take_pending` cannot observe a stale `Handshake` while a
     /// concurrent `advance_handshake` has already moved the session
@@ -201,8 +197,7 @@ std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
 
 gn_result_t SecuritySession::decrypt_transport(
     std::span<const std::uint8_t> ciphertext,
-    std::vector<std::uint8_t>& out_plaintext)
-{
+    std::vector<std::uint8_t>& out_plaintext) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
     if (!vtable_ || !vtable_->decrypt) return GN_ERR_NOT_IMPLEMENTED;
@@ -238,8 +233,7 @@ std::shared_ptr<SecuritySession> Sessions::create(
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
     std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
     std::span<const std::uint8_t> remote_static_pk_or_empty,
-    gn_result_t& out_result)
-{
+    gn_result_t& out_result) {
     /// Stack-policy gate per `security-trust.md` §4: the provider
     /// declares which trust classes it may serve through
     /// `allowed_trust_mask`; the kernel rejects any mismatch before
