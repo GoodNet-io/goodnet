@@ -156,7 +156,7 @@ gn_propagation_t handler_consume(void* self, const gn_message_t* env) {
         inbox->received = true;
     }
     inbox->cv.notify_all();
-    return GN_PROP_CONSUMED;
+    return GN_PROPAGATION_CONSUMED;
 }
 
 /// One side of the conversation. Owns its kernel, its NodeIdentity,
