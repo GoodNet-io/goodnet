@@ -178,23 +178,44 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     return L;
 }
 
-gn_result_t Config::load_json(std::string_view json) {
-    nlohmann::json parsed;
+namespace {
+
+/// Parse a JSON document and capture the parser's own diagnostic
+/// when it rejects the input. `nlohmann::json::parse_error::what()`
+/// already includes a byte offset and a short reason; surfacing it
+/// verbatim keeps operators on the same diagnostic an operator
+/// running `jq` or any other JSON tool would see.
+gn_result_t parse_json_with_diagnostic(std::string_view text,
+                                        nlohmann::json&  out,
+                                        std::string*      out_reason) {
     try {
-        /// nlohmann's `parse` accepts `(begin, end, callback,
-        /// allow_exceptions, ignore_comments)`. The trailing flag
-        /// strips `//` and `/* */` comments before structure
-        /// validation — operators annotate config files routinely
-        /// and a comment-strict parser is hostile to that.
-        parsed = nlohmann::json::parse(
-            json.begin(), json.end(),
+        out = nlohmann::json::parse(
+            text.begin(), text.end(),
             /*cb*/ nullptr,
             /*allow_exceptions*/ true,
             /*ignore_comments*/ true);
-    } catch (const nlohmann::json::parse_error&) {
+        return GN_OK;
+    } catch (const nlohmann::json::parse_error& e) {
+        if (out_reason != nullptr) *out_reason = e.what();
         return GN_ERR_INVALID_ENVELOPE;
     }
-    if (!parsed.is_object()) return GN_ERR_INVALID_ENVELOPE;
+}
+
+}  // namespace
+
+gn_result_t Config::load_json(std::string_view json,
+                                std::string* out_reason) {
+    nlohmann::json parsed;
+    if (auto rc = parse_json_with_diagnostic(json, parsed, out_reason);
+        rc != GN_OK) {
+        return rc;
+    }
+    if (!parsed.is_object()) {
+        if (out_reason != nullptr) {
+            *out_reason = "config root must be a JSON object";
+        }
+        return GN_ERR_INVALID_ENVELOPE;
+    }
 
     auto new_limits = parse_limits(parsed);
 
@@ -202,10 +223,8 @@ gn_result_t Config::load_json(std::string_view json) {
     /// load is about to install — failure rolls the kernel state
     /// back to whatever the previous `load_json` left, so an
     /// operator who pushed a malformed config never sees the kernel
-    /// running on it. The legacy split (`load_json` accepts → caller
-    /// invokes `validate` → caller decides whether to recover) was
-    /// brittle: nothing inside the kernel guaranteed the call.
-    if (auto rc = validate_limits(new_limits, nullptr); rc != GN_OK) {
+    /// running on it.
+    if (auto rc = validate_limits(new_limits, out_reason); rc != GN_OK) {
         return rc;
     }
 
@@ -387,18 +406,19 @@ std::string Config::dump(int indent) const {
     return json_.dump(indent);
 }
 
-gn_result_t Config::merge_json(std::string_view overlay) {
+gn_result_t Config::merge_json(std::string_view overlay,
+                                 std::string* out_reason) {
     nlohmann::json patch;
-    try {
-        patch = nlohmann::json::parse(
-            overlay.begin(), overlay.end(),
-            /*cb*/ nullptr,
-            /*allow_exceptions*/ true,
-            /*ignore_comments*/ true);
-    } catch (const nlohmann::json::parse_error&) {
+    if (auto rc = parse_json_with_diagnostic(overlay, patch, out_reason);
+        rc != GN_OK) {
+        return rc;
+    }
+    if (!patch.is_object()) {
+        if (out_reason != nullptr) {
+            *out_reason = "config overlay root must be a JSON object";
+        }
         return GN_ERR_INVALID_ENVELOPE;
     }
-    if (!patch.is_object()) return GN_ERR_INVALID_ENVELOPE;
 
     /// Build the merged document outside the lock so the parse +
     /// validate + limits-build cycle does not block readers. The
@@ -415,7 +435,7 @@ gn_result_t Config::merge_json(std::string_view overlay) {
     merged.merge_patch(patch);
 
     auto new_limits = parse_limits(merged);
-    if (auto rc = validate_limits(new_limits, nullptr); rc != GN_OK) {
+    if (auto rc = validate_limits(new_limits, out_reason); rc != GN_OK) {
         return rc;
     }
 
@@ -446,7 +466,8 @@ gn_result_t Config::merge_json(std::string_view overlay) {
     return GN_OK;
 }
 
-gn_result_t Config::load_file(const std::string& path) {
+gn_result_t Config::load_file(const std::string& path,
+                                std::string* out_reason) {
     /// Stream the file in once, hand the buffer to `load_json`.
     /// `std::ifstream` translation of file-open failure to a
     /// `fail()` flag avoids the throw-on-fail noise of the
@@ -454,14 +475,20 @@ gn_result_t Config::load_file(const std::string& path) {
     /// branch surfaces the missing-file case cleanly.
     std::ifstream in(path, std::ios::binary);
     if (!in.is_open()) {
+        if (out_reason != nullptr) {
+            *out_reason = "cannot open '" + path + "' (missing or unreadable)";
+        }
         return GN_ERR_NOT_FOUND;
     }
     std::ostringstream buf;
     buf << in.rdbuf();
     if (in.bad()) {
+        if (out_reason != nullptr) {
+            *out_reason = "I/O failure while reading '" + path + "'";
+        }
         return GN_ERR_NOT_FOUND;
     }
-    return load_json(buf.str());
+    return load_json(buf.str(), out_reason);
 }
 
 } // namespace gn::core

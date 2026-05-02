@@ -64,6 +64,55 @@ TEST(Config_LoadJson, NonObjectRootRejected) {
     EXPECT_EQ(c.load_json("42"), GN_ERR_INVALID_ENVELOPE);
 }
 
+TEST(Config_LoadJson, MalformedJsonProducesDiagnostic) {
+    /// Operators get the parser's own line/column message rather
+    /// than only the bare result code, so a JSON typo surfaces with
+    /// enough context to find and fix it.
+    Config c;
+    std::string reason;
+    EXPECT_EQ(c.load_json("{not json", &reason), GN_ERR_INVALID_ENVELOPE);
+    EXPECT_FALSE(reason.empty());
+    EXPECT_NE(reason.find("parse"), std::string::npos)
+        << "diagnostic should mention the parser stage; got: " << reason;
+}
+
+TEST(Config_LoadJson, NonObjectRootProducesFixedDiagnostic) {
+    /// The structure failure carries a stable short message rather
+    /// than the parser's own (which is silent because parsing
+    /// succeeded — the value is just not the right shape).
+    Config c;
+    std::string reason;
+    EXPECT_EQ(c.load_json("[1,2,3]", &reason), GN_ERR_INVALID_ENVELOPE);
+    EXPECT_NE(reason.find("JSON object"), std::string::npos)
+        << "got: " << reason;
+}
+
+TEST(Config_LoadJson, InvariantViolationProducesDiagnostic) {
+    /// `validate_limits` already feeds named fields into the reason
+    /// string. `load_json` must thread its own out_reason through so
+    /// the operator sees the offending invariant.
+    Config c;
+    std::string reason;
+    /// `pending_queue_bytes_low > pending_queue_bytes_high` is the
+    /// shortest invariant to trip with a one-line overlay.
+    const char* bad = R"({"limits": {
+        "pending_queue_bytes_low": 2000000,
+        "pending_queue_bytes_high": 1000000
+    }})";
+    EXPECT_EQ(c.load_json(bad, &reason), GN_ERR_LIMIT_REACHED);
+    EXPECT_NE(reason.find("pending_queue_bytes"), std::string::npos)
+        << "got: " << reason;
+}
+
+TEST(Config_LoadJson, SuccessLeavesReasonUntouched) {
+    /// On the happy path the diagnostic is irrelevant — the function
+    /// MUST NOT clobber whatever the caller put in there.
+    Config c;
+    std::string reason = "untouched-sentinel";
+    EXPECT_EQ(c.load_json("{}", &reason), GN_OK);
+    EXPECT_EQ(reason, "untouched-sentinel");
+}
+
 TEST(Config_LoadJson, ParseFailurePreservesPriorState) {
     Config c;
     /// First, install a known-good state. The new state lowers

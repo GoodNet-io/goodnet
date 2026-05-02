@@ -85,7 +85,10 @@ gn_result_t Kernel::reload_config(std::string_view text) {
     /// the live config and limits unchanged. Only on success do
     /// we propagate the new limits into kernel-owned registries
     /// and notify subscribers.
-    if (auto rc = config_.load_json(text); rc != GN_OK) {
+    std::string diagnostic;
+    if (auto rc = config_.load_json(text, &diagnostic); rc != GN_OK) {
+        SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
+            "kernel.reload_config: rejected config — {}", diagnostic);
         return rc;
     }
     set_limits(config_.limits());
@@ -95,7 +98,10 @@ gn_result_t Kernel::reload_config(std::string_view text) {
 }
 
 gn_result_t Kernel::reload_config_merge(std::string_view overlay) {
-    if (auto rc = config_.merge_json(overlay); rc != GN_OK) {
+    std::string diagnostic;
+    if (auto rc = config_.merge_json(overlay, &diagnostic); rc != GN_OK) {
+        SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
+            "kernel.reload_config_merge: rejected overlay — {}", diagnostic);
         return rc;
     }
     set_limits(config_.limits());
