@@ -151,26 +151,30 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     auto it = root.find("limits");
     if (it == root.end() || !it->is_object()) return L;
     const auto& obj = *it;
-    L.max_connections           = pick_u32(obj, "max_connections",          L.max_connections);
-    L.max_outbound_connections  = pick_u32(obj, "max_outbound_connections", L.max_outbound_connections);
-    L.pending_queue_bytes_high  = pick_u32(obj, "pending_queue_bytes_high", L.pending_queue_bytes_high);
-    L.pending_queue_bytes_low   = pick_u32(obj, "pending_queue_bytes_low",  L.pending_queue_bytes_low);
-    L.pending_queue_bytes_hard  = pick_u32(obj, "pending_queue_bytes_hard", L.pending_queue_bytes_hard);
-    L.max_frame_bytes           = pick_u32(obj, "max_frame_bytes",          L.max_frame_bytes);
-    L.max_payload_bytes         = pick_u32(obj, "max_payload_bytes",        L.max_payload_bytes);
-    L.max_handlers_per_msg_id   = pick_u32(obj, "max_handlers_per_msg_id",  L.max_handlers_per_msg_id);
-    L.max_relay_ttl             = pick_u32(obj, "max_relay_ttl",            L.max_relay_ttl);
-    L.max_plugins               = pick_u32(obj, "max_plugins",              L.max_plugins);
-    L.max_extensions            = pick_u32(obj, "max_extensions",           L.max_extensions);
-    L.pending_handshake_bytes   = pick_u32(obj, "pending_handshake_bytes",   L.pending_handshake_bytes);
-    L.max_storage_table_entries = pick_u64(obj, "max_storage_table_entries", L.max_storage_table_entries);
-    L.max_storage_value_bytes   = pick_u64(obj, "max_storage_value_bytes",   L.max_storage_value_bytes);
-    L.max_timers                = pick_u32(obj, "max_timers",                L.max_timers);
-    L.max_pending_tasks         = pick_u32(obj, "max_pending_tasks",         L.max_pending_tasks);
-    L.max_timers_per_plugin     = pick_u32(obj, "max_timers_per_plugin",     L.max_timers_per_plugin);
-    L.inject_rate_per_source    = pick_u32(obj, "inject_rate_per_source",    L.inject_rate_per_source);
-    L.inject_rate_burst         = pick_u32(obj, "inject_rate_burst",         L.inject_rate_burst);
-    L.inject_rate_lru_cap       = pick_u32(obj, "inject_rate_lru_cap",       L.inject_rate_lru_cap);
+#define GN_PICK_U32(field) L.field = pick_u32(obj, #field, L.field)
+#define GN_PICK_U64(field) L.field = pick_u64(obj, #field, L.field)
+    GN_PICK_U32(max_connections);
+    GN_PICK_U32(max_outbound_connections);
+    GN_PICK_U32(pending_queue_bytes_high);
+    GN_PICK_U32(pending_queue_bytes_low);
+    GN_PICK_U32(pending_queue_bytes_hard);
+    GN_PICK_U32(max_frame_bytes);
+    GN_PICK_U32(max_payload_bytes);
+    GN_PICK_U32(max_handlers_per_msg_id);
+    GN_PICK_U32(max_relay_ttl);
+    GN_PICK_U32(max_plugins);
+    GN_PICK_U32(max_extensions);
+    GN_PICK_U32(pending_handshake_bytes);
+    GN_PICK_U64(max_storage_table_entries);
+    GN_PICK_U64(max_storage_value_bytes);
+    GN_PICK_U32(max_timers);
+    GN_PICK_U32(max_pending_tasks);
+    GN_PICK_U32(max_timers_per_plugin);
+    GN_PICK_U32(inject_rate_per_source);
+    GN_PICK_U32(inject_rate_burst);
+    GN_PICK_U32(inject_rate_lru_cap);
+#undef GN_PICK_U32
+#undef GN_PICK_U64
     return L;
 }
 
