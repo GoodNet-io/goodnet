@@ -1313,6 +1313,14 @@ gn_result_t thunk_inject(void* host_ctx,
         if (msg_id == 0)        return GN_ERR_INVALID_ENVELOPE;
         if (limits.max_payload_bytes != 0 &&
             size > limits.max_payload_bytes) {
+            pc->kernel->metrics().increment_drop_reason(
+                GN_DROP_PAYLOAD_TOO_LARGE);
+            ::gn::log::warn(
+                "host_api.inject(MESSAGE): payload above cap — "
+                "source={} observed={} configured_max={}",
+                static_cast<std::uint64_t>(source),
+                size,
+                limits.max_payload_bytes);
             return GN_ERR_PAYLOAD_TOO_LARGE;
         }
         break;
@@ -1321,6 +1329,14 @@ gn_result_t thunk_inject(void* host_ctx,
         if (!bytes || size == 0) return GN_ERR_NULL_ARG;
         if (limits.max_frame_bytes != 0 &&
             size > limits.max_frame_bytes) {
+            pc->kernel->metrics().increment_drop_reason(
+                GN_DROP_FRAME_TOO_LARGE);
+            ::gn::log::warn(
+                "host_api.inject(FRAME): frame above cap — "
+                "source={} observed={} configured_max={}",
+                static_cast<std::uint64_t>(source),
+                size,
+                limits.max_frame_bytes);
             return GN_ERR_PAYLOAD_TOO_LARGE;
         }
         break;
@@ -1331,6 +1347,20 @@ gn_result_t thunk_inject(void* host_ctx,
 
     if (!pc->kernel->inject_rate_limiter().allow(
             inject_rate_key(rec->remote_pk))) {
+        /// Rate-limit drop carries the per-pk bucket key (first 8
+        /// bytes of remote_pk). The limiter is keyed on the full
+        /// pk; the truncated identifier here is just enough for an
+        /// operator to correlate against the conn's
+        /// remote_pk in connection logs.
+        pc->kernel->metrics().increment_drop_reason(GN_DROP_RATE_LIMITED);
+        ::gn::log::warn(
+            "host_api.inject: rate-limited — source={} "
+            "remote_pk_prefix={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            static_cast<std::uint64_t>(source),
+            rec->remote_pk[0], rec->remote_pk[1],
+            rec->remote_pk[2], rec->remote_pk[3],
+            rec->remote_pk[4], rec->remote_pk[5],
+            rec->remote_pk[6], rec->remote_pk[7]);
         return GN_ERR_LIMIT_REACHED;
     }
 
