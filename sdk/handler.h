@@ -35,6 +35,27 @@ typedef enum gn_propagation_e {
  *
  * Begins with @ref api_size for size-prefix evolution per
  * `abi-evolution.md` §3.
+ *
+ * @par Per-instance state via `self`
+ * Every callback in this vtable receives a `void* self` as its first
+ * argument. That pointer is the one the plugin passed to
+ * `host_api->register_vtable(kind, meta, vtable, self, &id)` at
+ * registration time and the kernel hands it back unchanged on every
+ * subsequent call. Plugin authors put their per-handler state behind
+ * `self` and dereference it inside every entry — this is the
+ * vtable's equivalent of the `user_data` argument that
+ * `set_timer` and `subscribe` carry. There is no separate
+ * `user_data` parameter because `self` already serves that role for
+ * the entire vtable lifetime.
+ *
+ * @par Per-envelope state continuity
+ * `handle_message` and `on_result` see the same `gn_message_t*`
+ * (same address) for one dispatch. Handlers that need to thread
+ * state from `handle_message` to `on_result` for the same envelope
+ * key on `(envelope->sender_pk, envelope->msg_id)` inside `self`'s
+ * own state map — the kernel does not allocate per-envelope storage
+ * on the plugin's behalf. The envelope reference itself is borrowed
+ * for the full handle + on_result span.
  */
 typedef struct gn_handler_vtable_s {
     uint32_t api_size;          /**< sizeof(gn_handler_vtable_t) at producer build time */
@@ -91,6 +112,12 @@ typedef struct gn_handler_vtable_s {
 
     /**
      * @brief Optional lifecycle hooks. May be NULL if not used.
+     *
+     * `on_init` runs once after the handler is admitted to the
+     * registry and before the first `handle_message` dispatch.
+     * `on_shutdown` runs once before the kernel drops the
+     * registration; after it returns the kernel may release every
+     * resource tied to `self`.
      */
     void (*on_init)(void* self);
     void (*on_shutdown)(void* self);
