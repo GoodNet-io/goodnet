@@ -4,34 +4,26 @@
 ///         to "two endpoints established a confidential channel and
 ///         exchanged a frame", suitable as the first thing a user runs
 ///         after `git clone`.
-///
-/// The binary owns both ends of the conversation so it does not need a
-/// peer to run. The wire path is real: separate `Kernel` instances,
-/// the noise security plugin loaded through `dlopen`, the in-tree TCP
-/// transport listening on a 127.0.0.1 ephemeral port, the on-disk
-/// `goodnet_security_noise.so` driving the AEAD.
 
 #include <core/identity/node_identity.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/plugin_context.hpp>
+#include <core/plugin/plugin_manager.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
 #include <plugins/links/tcp/tcp.hpp>
 
 #include <sdk/handler.h>
 #include <sdk/host_api.h>
-#include <sdk/plugin.h>
 #include <sdk/link.h>
 #include <sdk/types.h>
-
-#include <dlfcn.h>
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
-#include <cstring>
+#include <cstdlib>
 #include <iostream>
 #include <memory>
 #include <mutex>
@@ -47,9 +39,9 @@
 namespace {
 
 using namespace std::chrono_literals;
-using gn::PublicKey;
 using gn::core::Kernel;
 using gn::core::PluginContext;
+using gn::core::PluginManager;
 using gn::core::SecurityPhase;
 using gn::core::build_host_api;
 using gn::plugins::gnet::GnetProtocol;
@@ -57,99 +49,17 @@ using TcpLink = gn::link::tcp::TcpLink;
 
 constexpr std::uint32_t kDemoMsgId = 0xC0FFEEu;
 
-/// dlopen wrapper for the noise plugin shared object. Both kernels
-/// share one .so handle but each gets its own provider `self` from
-/// `gn_plugin_init` — Noise state is per-instance.
-struct NoisePlugin {
-    using SdkVersionFn = void        (*)(std::uint32_t*, std::uint32_t*, std::uint32_t*);
-    using InitFn       = gn_result_t (*)(const host_api_t*, void**);
-    using RegFn        = gn_result_t (*)(void*);
-    using UnregFn      = gn_result_t (*)(void*);
-    using ShutFn       = void        (*)(void*);
-
-    void*        handle      = nullptr;
-    SdkVersionFn sdk_version = nullptr;
-    InitFn       plugin_init = nullptr;
-    RegFn        plugin_reg  = nullptr;
-    UnregFn      plugin_unreg = nullptr;
-    ShutFn       plugin_shut = nullptr;
-
-    NoisePlugin() {
-        handle = ::dlopen(GOODNET_NOISE_PLUGIN_PATH, RTLD_NOW | RTLD_LOCAL);
-        if (!handle) return;
-        sdk_version = reinterpret_cast<SdkVersionFn>(
-            ::dlsym(handle, "gn_plugin_sdk_version"));
-        plugin_init = reinterpret_cast<InitFn>(
-            ::dlsym(handle, "gn_plugin_init"));
-        plugin_reg = reinterpret_cast<RegFn>(
-            ::dlsym(handle, "gn_plugin_register"));
-        plugin_unreg = reinterpret_cast<UnregFn>(
-            ::dlsym(handle, "gn_plugin_unregister"));
-        plugin_shut = reinterpret_cast<ShutFn>(
-            ::dlsym(handle, "gn_plugin_shutdown"));
-    }
-    NoisePlugin(const NoisePlugin&) = delete;
-    NoisePlugin& operator=(const NoisePlugin&) = delete;
-    ~NoisePlugin() { if (handle) ::dlclose(handle); }
-};
-
-/// Thin C-ABI shim that hands kernel-side calls to the C++ TCP
-/// transport. Only `send` and `disconnect` are reached on this path —
-/// listen / connect run through the C++ API directly because the
-/// demo wants the resolved port number from `listen_port()`.
-const char* tcp_scheme(void*) { return "tcp"; }
-
-gn_result_t tcp_send(void* self, gn_conn_id_t conn,
-                      const std::uint8_t* bytes, std::size_t size) {
-    if (!self || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
-    return static_cast<TcpLink*>(self)->send(
-        conn, std::span<const std::uint8_t>(bytes, size));
-}
-
-gn_result_t tcp_send_batch(void*, gn_conn_id_t, const gn_byte_span_t*,
-                            std::size_t) {
-    return GN_ERR_NOT_IMPLEMENTED;
-}
-
-gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
-    if (!self) return GN_ERR_NULL_ARG;
-    return static_cast<TcpLink*>(self)->disconnect(conn);
-}
-
-gn_result_t tcp_listen_unused(void*, const char*) { return GN_ERR_NOT_IMPLEMENTED; }
-gn_result_t tcp_connect_unused(void*, const char*) { return GN_ERR_NOT_IMPLEMENTED; }
-const char* tcp_ext_name(void*) { return nullptr; }
-const void* tcp_ext_vtable(void*) { return nullptr; }
-void        tcp_destroy(void*) {}
-
-gn_link_vtable_t make_tcp_vtable() {
-    gn_link_vtable_t v{};
-    v.api_size         = sizeof(v);
-    v.scheme           = &tcp_scheme;
-    v.listen           = &tcp_listen_unused;
-    v.connect          = &tcp_connect_unused;
-    v.send             = &tcp_send;
-    v.send_batch       = &tcp_send_batch;
-    v.disconnect       = &tcp_disconnect;
-    v.extension_name   = &tcp_ext_name;
-    v.extension_vtable = &tcp_ext_vtable;
-    v.destroy          = &tcp_destroy;
-    return v;
-}
-
-const gn_link_vtable_t kTcpVtable = make_tcp_vtable();
-
 /// Receiver state for the demo handler. `wait_for_message` blocks
 /// until the kernel routes one envelope through `handle_message`.
-struct InboxState {
-    std::mutex              mu;
-    std::condition_variable cv;
-    bool                    received = false;
+struct Inbox {
+    std::mutex                mu;
+    std::condition_variable   cv;
     std::vector<std::uint8_t> payload;
+    bool                      received = false;
 };
 
 gn_propagation_t handler_consume(void* self, const gn_message_t* env) {
-    auto* inbox = static_cast<InboxState*>(self);
+    auto* inbox = static_cast<Inbox*>(self);
     {
         std::lock_guard lk(inbox->mu);
         inbox->payload.assign(env->payload, env->payload + env->payload_size);
@@ -159,59 +69,90 @@ gn_propagation_t handler_consume(void* self, const gn_message_t* env) {
     return GN_PROPAGATION_CONSUMED;
 }
 
-/// One side of the conversation. Owns its kernel, its NodeIdentity,
-/// its TCP transport instance, and one provider `self` allocated by
-/// the noise plugin.
+/// Thin C-ABI link vtable that hands kernel-side calls down to the
+/// in-tree `TcpLink`. Listen / connect run through `TcpLink` directly
+/// because the demo wants the resolved port back from `listen_port()`.
+gn_result_t tcp_send(void* self, gn_conn_id_t conn,
+                      const std::uint8_t* bytes, std::size_t size) {
+    if (!self || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
+    return static_cast<TcpLink*>(self)->send(
+        conn, std::span<const std::uint8_t>(bytes, size));
+}
+
+gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
+    if (!self) return GN_ERR_NULL_ARG;
+    return static_cast<TcpLink*>(self)->disconnect(conn);
+}
+
+const char* tcp_scheme(void*)                                                 { return "tcp"; }
+gn_result_t tcp_listen_unused(void*, const char*)                              { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t tcp_connect_unused(void*, const char*)                             { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t tcp_batch_unused(void*, gn_conn_id_t, const gn_byte_span_t*, std::size_t) { return GN_ERR_NOT_IMPLEMENTED; }
+const char* tcp_ext_name(void*)                                                { return nullptr; }
+const void* tcp_ext_vtable(void*)                                              { return nullptr; }
+void        tcp_destroy(void*)                                                 {}
+
+const gn_link_vtable_t kTcpVtable = []() {
+    gn_link_vtable_t v{};
+    v.api_size         = sizeof(v);
+    v.scheme           = &tcp_scheme;
+    v.listen           = &tcp_listen_unused;
+    v.connect          = &tcp_connect_unused;
+    v.send             = &tcp_send;
+    v.send_batch       = &tcp_batch_unused;
+    v.disconnect       = &tcp_disconnect;
+    v.extension_name   = &tcp_ext_name;
+    v.extension_vtable = &tcp_ext_vtable;
+    v.destroy          = &tcp_destroy;
+    return v;
+}();
+
+/// One side of the conversation. Owns its kernel, its node identity,
+/// its TCP transport instance, and the noise security plugin (loaded
+/// through `PluginManager`, which handles dlopen + symbol resolution
+/// + lifecycle drain on shutdown).
 struct Node {
-    std::unique_ptr<Kernel>       kernel = std::make_unique<Kernel>();
-    std::shared_ptr<GnetProtocol> proto  = std::make_shared<GnetProtocol>();
-    std::shared_ptr<TcpLink> tcp    = std::make_shared<TcpLink>();
-    PluginContext                 plugin_ctx;
-    host_api_t                    api{};
-    void*                         noise_self = nullptr;
-    NoisePlugin*                  plugin     = nullptr;
-    PublicKey                     local_pk{};
+    Kernel                          kernel;
+    std::shared_ptr<GnetProtocol>   proto = std::make_shared<GnetProtocol>();
+    std::shared_ptr<TcpLink>        tcp   = std::make_shared<TcpLink>();
+    PluginContext                   host_ctx;
+    host_api_t                      api{};
+    PluginManager                   plugins{kernel};
 
-    Node(NoisePlugin& p, std::string name) : plugin(&p) {
-        plugin_ctx.plugin_name = std::move(name);
-        plugin_ctx.kernel      = kernel.get();
-
-        kernel->set_protocol_layer(proto);
+    explicit Node(std::string name) {
+        kernel.set_protocol_layer(proto);
 
         if (auto ident = gn::core::identity::NodeIdentity::generate(0)) {
-            local_pk = ident->device().public_key();
-            kernel->identities().add(local_pk);
-            kernel->set_node_identity(std::move(*ident));
-        }
-
-        api = build_host_api(plugin_ctx);
-
-        if (plugin->plugin_init(&api, &noise_self) != GN_OK) {
-            std::cerr << "noise plugin_init failed\n";
-            std::exit(1);
-        }
-        if (plugin->plugin_reg(noise_self) != GN_OK) {
-            std::cerr << "noise plugin_register failed\n";
+            kernel.identities().add(ident->device().public_key());
+            kernel.set_node_identity(std::move(*ident));
+        } else {
+            std::cerr << "[demo] node identity generation failed\n";
             std::exit(1);
         }
 
+        host_ctx.plugin_name = std::move(name);
+        host_ctx.kernel      = &kernel;
+        api                  = build_host_api(host_ctx);
         tcp->set_host_api(&api);
+
         gn_link_id_t tid = GN_INVALID_ID;
-        gn_register_meta_t mt{};
-        mt.api_size = sizeof(gn_register_meta_t);
-        mt.name     = "tcp";
-        if (api.register_vtable(api.host_ctx, GN_REGISTER_LINK, &mt,
-                                 &kTcpVtable, tcp.get(), &tid) != GN_OK) {
-            std::cerr << "register_vtable(LINK, tcp) failed\n";
+        if (kernel.links().register_link(
+                "tcp", &kTcpVtable, tcp.get(), &tid) != GN_OK) {
+            std::cerr << "[demo] register_link(tcp) failed\n";
+            std::exit(1);
+        }
+
+        const std::vector<std::string> noise_paths{GOODNET_NOISE_PLUGIN_PATH};
+        std::string diag;
+        if (plugins.load(std::span<const std::string>(noise_paths), &diag)
+                != GN_OK) {
+            std::cerr << "[demo] noise plugin load failed: " << diag << "\n";
             std::exit(1);
         }
     }
 
     ~Node() {
-        if (noise_self && plugin) {
-            plugin->plugin_unreg(noise_self);
-            plugin->plugin_shut(noise_self);
-        }
+        plugins.shutdown();
         if (tcp) tcp->shutdown();
     }
 };
@@ -241,65 +182,46 @@ bool find_transport_session(Kernel& k, gn_conn_id_t* out_id) {
 
 int main() {
     std::cout << "[demo] GoodNet two-node quickstart\n"
-              << "[demo] booting noise plugin from\n"
-              << "       " << GOODNET_NOISE_PLUGIN_PATH << "\n";
+              << "[demo] noise plugin: " << GOODNET_NOISE_PLUGIN_PATH << "\n";
 
-    NoisePlugin plugin;
-    if (!plugin.handle || !plugin.plugin_init || !plugin.plugin_reg ||
-        !plugin.plugin_unreg || !plugin.plugin_shut)
-    {
-        std::cerr << "[demo] noise.so not loadable; check build tree\n";
-        return 1;
-    }
+    Node alice("alice");
+    Node bob  ("bob");
 
-    auto alice = std::make_unique<Node>(plugin, "alice");
-    auto bob   = std::make_unique<Node>(plugin, "bob");
-
-    InboxState alice_inbox;
+    Inbox alice_inbox;
     gn_handler_vtable_t vt{};
-    vt.api_size       = sizeof(gn_handler_vtable_t);
+    vt.api_size       = sizeof(vt);
     vt.handle_message = &handler_consume;
+
     gn_handler_id_t hid = GN_INVALID_ID;
-    gn_register_meta_t hmt{};
-    hmt.api_size = sizeof(gn_register_meta_t);
-    hmt.name     = "gnet-v1";
-    hmt.msg_id   = kDemoMsgId;
-    hmt.priority = 128;
-    if (alice->api.register_vtable(alice->api.host_ctx, GN_REGISTER_HANDLER,
-                                    &hmt, &vt, &alice_inbox, &hid) != GN_OK) {
-        std::cerr << "[demo] alice.register_vtable(HANDLER) failed\n";
+    if (alice.kernel.handlers().register_handler(
+            "gnet-v1", kDemoMsgId, /*priority*/128,
+            &vt, &alice_inbox, &hid) != GN_OK) {
+        std::cerr << "[demo] alice.register_handler failed\n";
         return 1;
     }
 
-    if (alice->tcp->listen("tcp://127.0.0.1:0") != GN_OK) {
+    if (alice.tcp->listen("tcp://127.0.0.1:0") != GN_OK) {
         std::cerr << "[demo] alice.listen failed\n";
         return 1;
     }
-    const auto port = alice->tcp->listen_port();
+    const auto port = alice.tcp->listen_port();
     std::cout << "[demo] alice listening on tcp://127.0.0.1:" << port << "\n";
 
     const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
     std::cout << "[demo] bob   dialling   " << uri << "\n";
-    if (bob->tcp->connect(uri) != GN_OK) {
+    if (bob.tcp->connect(uri) != GN_OK) {
         std::cerr << "[demo] bob.connect failed\n";
         return 1;
     }
 
-    /// The handshake completes asynchronously on each side's TCP
-    /// strand; the demo just polls until both sessions reach
-    /// Transport phase or the budget is exhausted.
-    if (!wait_until([&] {
-            return alice->kernel->sessions().size() == 1 &&
-                   bob->kernel->sessions().size()   == 1;
-        }, 3s)) {
-        std::cerr << "[demo] timeout: sessions never allocated\n";
-        return 1;
-    }
-
+    /// Wait for both sides to reach the Transport phase. The Noise XX
+    /// handshake completes asynchronously on each side's TCP strand;
+    /// until both `Transport` flags raise the encrypted send path is
+    /// not yet open.
     if (!wait_until([&] {
             for (gn_conn_id_t id = 1; id <= 8; ++id) {
-                auto a = alice->kernel->sessions().find(id);
-                auto b = bob->kernel->sessions().find(id);
+                auto a = alice.kernel.sessions().find(id);
+                auto b = bob.kernel.sessions().find(id);
                 if (a && a->phase() == SecurityPhase::Transport &&
                     b && b->phase() == SecurityPhase::Transport) {
                     return true;
@@ -313,7 +235,7 @@ int main() {
     std::cout << "[demo] noise XX completed; transport phase active\n";
 
     gn_conn_id_t bob_conn = GN_INVALID_ID;
-    if (!find_transport_session(*bob->kernel, &bob_conn)) {
+    if (!find_transport_session(bob.kernel, &bob_conn)) {
         std::cerr << "[demo] no transport-phase session on bob's side\n";
         return 1;
     }
@@ -322,12 +244,10 @@ int main() {
     std::cout << "[demo] bob   send  msg_id=0x" << std::hex << kDemoMsgId
               << std::dec << " payload=\"" << greeting << "\"\n";
 
-    const auto rc = bob->api.send(
-        bob->api.host_ctx, bob_conn, kDemoMsgId,
-        reinterpret_cast<const std::uint8_t*>(greeting.data()),
-        greeting.size());
-    if (rc != GN_OK) {
-        std::cerr << "[demo] bob.send failed rc=" << rc << "\n";
+    if (bob.api.send(bob.api.host_ctx, bob_conn, kDemoMsgId,
+                      reinterpret_cast<const std::uint8_t*>(greeting.data()),
+                      greeting.size()) != GN_OK) {
+        std::cerr << "[demo] bob.send failed\n";
         return 1;
     }
 
@@ -344,10 +264,6 @@ int main() {
         alice_inbox.payload.size());
     std::cout << "[demo] alice recv payload=\"" << echoed << "\"\n";
 
-    /// Tear down: the kernels' TCP workers join in `Node::~Node`, the
-    /// noise providers run `handshake_close` on every active session.
-    bob.reset();
-    alice.reset();
     std::cout << "[demo] ok\n";
     return 0;
 }
