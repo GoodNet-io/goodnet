@@ -356,3 +356,72 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
                           kMsgId, payload, sizeof(payload)),
               GN_OK);
 }
+
+// ── drop counters fire alongside per-cap rejections ───────────────────────
+//
+// Per `metrics.md` §3 every drop site bumps a `drop.<reason>` counter
+// next to its structured warn line. The cap rejections in `inject`
+// pair with `GN_DROP_PAYLOAD_TOO_LARGE` (MESSAGE), `GN_DROP_FRAME_TOO_LARGE`
+// (FRAME), and the rate-limit branch with `GN_DROP_RATE_LIMITED`.
+
+TEST(InjectLimits, MessagePayloadAboveCapBumpsDropCounter) {
+    InjectHarness h;
+    PublicKey peer_pk;
+    peer_pk.fill(0x55);
+    const gn_conn_id_t source =
+        h.install_source(peer_pk, "test://inject-msg-cap");
+
+    /// Tight cap so a small over-cap payload trips the check.
+    gn_limits_t L = h.kernel->limits();
+    L.max_payload_bytes = 16;
+    h.kernel->set_limits(L);
+
+    const std::vector<std::uint8_t> over_cap(64, 0xAA);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            /*msg_id*/ 0x11,
+                            over_cap.data(), over_cap.size()),
+              GN_ERR_PAYLOAD_TOO_LARGE);
+    EXPECT_EQ(h.kernel->metrics().value("drop.payload_too_large"), 1u);
+}
+
+TEST(InjectLimits, FrameAboveCapBumpsFrameTooLargeCounter) {
+    InjectHarness h;
+    PublicKey peer_pk;
+    peer_pk.fill(0x66);
+    const gn_conn_id_t source =
+        h.install_source(peer_pk, "test://inject-frame-cap");
+
+    gn_limits_t L = h.kernel->limits();
+    L.max_frame_bytes = 16;
+    h.kernel->set_limits(L);
+
+    const std::vector<std::uint8_t> over_cap(64, 0xBB);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                            /*msg_id*/ 0,
+                            over_cap.data(), over_cap.size()),
+              GN_ERR_PAYLOAD_TOO_LARGE);
+    EXPECT_EQ(h.kernel->metrics().value("drop.frame_too_large"), 1u);
+}
+
+TEST(InjectLimits, RateLimitDropBumpsRateLimitedCounter) {
+    InjectHarness h;
+    PublicKey peer_pk;
+    peer_pk.fill(0x77);
+    const gn_conn_id_t source =
+        h.install_source(peer_pk, "test://inject-rate-limit");
+
+    /// Drain the bucket immediately — zero-rate refill, single burst
+    /// token. The first inject succeeds; the second is the metric site.
+    h.kernel->inject_rate_limiter().reset(/*rate*/ 0.0, /*burst*/ 1.0);
+
+    const std::uint8_t payload[] = {0x42};
+    constexpr std::uint32_t kMsgId = 0x99;
+
+    ASSERT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, payload, sizeof(payload)),
+              GN_OK);
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
+                            kMsgId, payload, sizeof(payload)),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(h.kernel->metrics().value("drop.rate_limited"), 1u);
+}
