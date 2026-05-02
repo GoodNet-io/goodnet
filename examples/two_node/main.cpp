@@ -152,8 +152,12 @@ struct Node {
     }
 
     ~Node() {
-        plugins.shutdown();
+        /// Shut TCP first so every live connection closes and the
+        /// kernel-side `SecuritySession` records get destroyed
+        /// synchronously through `notify_disconnect`. Then
+        /// `plugins.shutdown()` drains its now-free anchor instantly.
         if (tcp) tcp->shutdown();
+        plugins.shutdown();
     }
 };
 

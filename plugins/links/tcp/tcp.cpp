@@ -649,10 +649,32 @@ void TcpLink::shutdown() {
         acceptor_.reset();
     }
 
+    /// Snapshot conn ids under the lock, close sockets, then notify
+    /// the kernel side SYNCHRONOUSLY for each session before stopping
+    /// the io_context. `ioc_.stop()` would otherwise drop pending
+    /// strand-bound continuations — including the read-completion
+    /// path that normally fires `notify_disconnect`. Without sync
+    /// notification, kernel-side `SessionRegistry` keeps live
+    /// `SecuritySession` records past tcp shutdown, which in turn
+    /// keeps the security plugin's lifetime anchor alive past the
+    /// PluginManager drain budget. Per `link.md` §7 the shutdown
+    /// must release every kernel-observable session before the
+    /// io_context tear-down.
+    std::vector<gn_conn_id_t> live_ids;
     {
         std::lock_guard lk(sessions_mu_);
-        for (auto& [_, s] : sessions_) s->do_close();
+        live_ids.reserve(sessions_.size());
+        for (auto& [id, s] : sessions_) {
+            live_ids.push_back(id);
+            s->do_close();
+        }
         sessions_.clear();
+    }
+
+    if (api_ && api_->notify_disconnect) {
+        for (const auto id : live_ids) {
+            (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+        }
     }
 
     work_.reset();
