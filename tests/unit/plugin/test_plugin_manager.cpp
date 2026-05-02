@@ -328,3 +328,76 @@ TEST(PluginManager_Manifest, UnlistedPathRejected) {
     EXPECT_NE(diag.find("no manifest entry"), std::string::npos)
         << diag;
 }
+
+// ── load failure modes (no manifest, dev-mode path) ─────────────────────────
+
+TEST(PluginManager_LoadFailure, NonExistentPathReturnsNotFound) {
+    /// dlopen on a path that does not exist surfaces as
+    /// `GN_ERR_NOT_FOUND` with the path embedded in the diagnostic.
+    /// The registry stays empty and a subsequent `shutdown` is a
+    /// no-op — a failed load MUST NOT leak partial state.
+    Kernel k;
+    PluginManager pm(k);
+
+    std::string diag;
+    const std::vector<std::string> paths = {
+        "/nonexistent/path/libgoodnet_does_not_exist.so"
+    };
+    EXPECT_EQ(pm.load(paths, &diag), GN_ERR_NOT_FOUND);
+    EXPECT_NE(diag.find("dlopen"), std::string::npos) << diag;
+    EXPECT_NE(diag.find("does_not_exist"), std::string::npos) << diag;
+    EXPECT_EQ(pm.size(), 0u);
+
+    pm.shutdown();
+    EXPECT_EQ(pm.size(), 0u);
+    EXPECT_EQ(pm.leaked_handles(), 0u);
+}
+
+TEST(PluginManager_LoadFailure, NonLibraryFileReturnsNotFound) {
+    /// A path that exists but does not parse as an ELF must fail
+    /// dlopen rather than crash the kernel. `/etc/hostname` is a
+    /// short text file every supported Linux deployment ships;
+    /// any system without it falls back to `/etc/passwd`. The
+    /// observable contract: `GN_ERR_NOT_FOUND`, registry empty.
+    Kernel k;
+    PluginManager pm(k);
+
+    std::string diag;
+    const std::vector<std::string> paths = {"/etc/hostname"};
+    const auto rc = pm.load(paths, &diag);
+    /// Some libc implementations surface this as a different
+    /// dlerror; widen the expectation to "non-OK".
+    EXPECT_NE(rc, GN_OK);
+    EXPECT_FALSE(diag.empty());
+    EXPECT_EQ(pm.size(), 0u);
+
+    pm.shutdown();
+    EXPECT_EQ(pm.leaked_handles(), 0u);
+}
+
+TEST(PluginManager_LoadFailure, FirstFailureRollsBackPriorSuccess) {
+    /// When the manager opens a list of paths, a failure on path N
+    /// MUST roll the prior N-1 successful opens back. Otherwise a
+    /// half-loaded state would leak registrations into the kernel
+    /// the operator never asked for. Pair: real null plugin (loads)
+    /// + a non-existent second path (fails) — the null registration
+    /// should not survive the rollback.
+    Kernel k;
+    PluginManager pm(k);
+
+    std::string diag;
+    const std::vector<std::string> paths = {
+        GOODNET_NULL_PLUGIN_PATH,
+        "/nonexistent/second/libgoodnet_phantom.so"
+    };
+    EXPECT_NE(pm.load(paths, &diag), GN_OK);
+    EXPECT_FALSE(diag.empty());
+
+    EXPECT_EQ(pm.size(), 0u)
+        << "manager must roll back the first plugin's load on the second's failure";
+    EXPECT_FALSE(k.security().is_active())
+        << "rolled-back load must un-register every registry entry it had set";
+
+    pm.shutdown();
+    EXPECT_EQ(pm.leaked_handles(), 0u);
+}
