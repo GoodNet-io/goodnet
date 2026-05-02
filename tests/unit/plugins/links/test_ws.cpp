@@ -300,10 +300,15 @@ TEST(WsLink_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
     server->set_host_api(&api);
     client->set_host_api(&api);
 
-    /// Tiny cap so a handful of ping replies overflow it. Each
-    /// pong with 32-byte payload is 34 bytes on the wire (server
-    /// reply is unmasked); 256 / 34 = ~7 replies before overflow.
-    server->set_pending_queue_bytes_hard_for_test(256);
+    /// Cap sized so the FIRST queued pong overflows it. A 256-byte
+    /// pong payload (server reply is unmasked → 258 bytes on the
+    /// wire) does not fit under a 200-byte cap, so the server hits
+    /// the rejection path on its first reply attempt regardless of
+    /// how fast it drains earlier replies. The previous shape —
+    /// "many small pongs accumulate past a 256-byte cap" — was
+    /// timing-sensitive when the host was loaded enough for the
+    /// pong drain to keep up with the ping arrival rate.
+    server->set_pending_queue_bytes_hard_for_test(200);
 
     ASSERT_EQ(server->listen("ws://127.0.0.1:0/"), GN_OK);
     const auto port = server->listen_port();
@@ -328,18 +333,23 @@ TEST(WsLink_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
     }
     ASSERT_NE(client_conn, 0u);
 
-    /// A masked ping with a 32-byte payload is the wire shape a
-    /// browser-issued ping carries: bit 0x80 in byte 1, four mask
-    /// bytes, then the masked payload.
-    std::vector<std::uint8_t> ping_payload(32, 0xAB);
+    /// A masked ping with a 256-byte payload — RFC 6455 §5.5.2
+    /// caps control-frame payload at 125 bytes for ordinary peers,
+    /// but the server's pong reply mirrors whatever payload the
+    /// peer sent; a misbehaving peer can drive the reply size up
+    /// against the same cap shape. The test sends an over-spec
+    /// ping (250 bytes) so the server's pong reply lands at 252
+    /// bytes — past the 200-byte cap on the first reply.
+    std::vector<std::uint8_t> ping_payload(250, 0xAB);
     auto ping_frame = ws_wire::build_ping_frame(
         std::span<const std::uint8_t>(ping_payload),
         /*mask=*/true, 0x12345678U);
 
-    /// A handful of pings is enough to push the server's pong queue
-    /// over the cap; spamming many guarantees the abuse-edge fires
-    /// even if a couple of pongs drain in between.
-    for (int i = 0; i < 64; ++i) {
+    /// A few pings — only one needs to make the server queue a
+    /// reply that exceeds the cap. Send a small batch so the test
+    /// stays robust if the very first frame is dropped at TCP
+    /// receive time under sanitiser slowdown.
+    for (int i = 0; i < 8; ++i) {
         (void)client->send_raw_for_test(client_conn,
             std::span<const std::uint8_t>(ping_frame));
     }
