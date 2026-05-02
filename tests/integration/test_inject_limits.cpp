@@ -62,7 +62,7 @@ struct InjectHarness {
         rec.uri              = std::string(uri);
         rec.trust            = GN_TRUST_PEER;
         rec.role             = GN_ROLE_RESPONDER;
-        rec.link_scheme      = "test";
+        rec.scheme      = "test";
         /// Broadcast injection paths carry EXPLICIT_SENDER, which the
         /// `gnet-protocol.md` §5 relay-capability gate rejects on a
         /// regular peer connection. The test fixture grants relay
@@ -331,7 +331,7 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
         rec.uri             = "test://inject-noproto";
         rec.trust           = GN_TRUST_PEER;
         rec.role            = GN_ROLE_RESPONDER;
-        rec.link_scheme     = "test";
+        rec.scheme     = "test";
         ASSERT_EQ(kernel.connections().insert_with_index(std::move(rec)),
                   GN_OK);
     }

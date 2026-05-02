@@ -8,7 +8,7 @@
 /// pins the router's behaviour on the wrapped path: a misbehaving
 /// handler whose `handle_message` throws `std::runtime_error` does not
 /// crash the kernel — the router catches the exception, treats the
-/// slot as having returned `GN_PROP_REJECT`, and surfaces the verdict
+/// slot as having returned `GN_PROPAGATION_REJECT`, and surfaces the verdict
 /// as `RouteOutcome::Rejected`.
 
 #include <gtest/gtest.h>
@@ -41,7 +41,7 @@ gn_propagation_t throwing_handle(void* /*self*/, const gn_message_t* /*env*/) {
 /// substituted when the wrapper caught the throw.
 struct OnResultLog {
     bool             called = false;
-    gn_propagation_t value  = GN_PROP_CONTINUE;
+    gn_propagation_t value  = GN_PROPAGATION_CONTINUE;
 };
 
 void recording_on_result(void* self, const gn_message_t* /*env*/,
@@ -105,17 +105,17 @@ TEST(SafeInvoke_Router, ThrowingHandlerSurfacesAsRejected) {
 
     /// The router would crash here without `safe_call_value`.
     /// With the wrapper, the throw is caught, the slot is treated as
-    /// having returned `GN_PROP_REJECT`, and the chain breaks with
+    /// having returned `GN_PROPAGATION_REJECT`, and the chain breaks with
     /// `RouteOutcome::Rejected`.
     EXPECT_EQ(router.route_inbound(kProtocol, env),
               RouteOutcome::Rejected);
 
     /// `on_result` still fires — the wrapper does not skip the result
     /// callback when `handle_message` throws. The substituted value
-    /// is `GN_PROP_REJECT`, matching the chain-break semantics.
+    /// is `GN_PROPAGATION_REJECT`, matching the chain-break semantics.
     EXPECT_TRUE(on_result_log.called)
         << "on_result must run even after handle_message throws";
-    EXPECT_EQ(on_result_log.value, GN_PROP_REJECT);
+    EXPECT_EQ(on_result_log.value, GN_PROPAGATION_REJECT);
 }
 
 /// Faux handler whose `on_result` (a void-returning slot) throws.
@@ -127,7 +127,7 @@ void throwing_on_result(void* /*self*/, const gn_message_t* /*env*/,
 
 gn_propagation_t consuming_handle(void* /*self*/,
                                     const gn_message_t* /*env*/) {
-    return GN_PROP_CONSUMED;
+    return GN_PROPAGATION_CONSUMED;
 }
 
 const gn_handler_vtable_t* throwing_on_result_vtable() {

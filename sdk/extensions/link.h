@@ -97,7 +97,7 @@ typedef struct gn_link_stats_s {
  * `bytes` is `@borrowed` for the duration of the call; the composer
  * must copy if it needs to retain past return.
  */
-typedef void (*gn_link_data_callback_t)(
+typedef void (*gn_link_data_cb_t)(
     void*          user_data,
     gn_conn_id_t   conn,
     const uint8_t* bytes,
@@ -197,7 +197,7 @@ typedef struct gn_link_api_s {
      *        unchanged on every callback invocation.
      */
     gn_result_t (*subscribe_data)(void* ctx, gn_conn_id_t conn,
-                                  gn_link_data_callback_t cb,
+                                  gn_link_data_cb_t cb,
                                   void* user_data);
 
     /**

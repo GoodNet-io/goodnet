@@ -70,16 +70,16 @@ typedef struct gn_heartbeat_api_s {
      * @brief Latest external address the peer reported back in its
      *        PONG payload.
      *
-     * @p buf is filled with a NUL-terminated address string (IP literal
-     * or hostname) up to @p buf_len bytes; @p port_out receives the
-     * matching port. Returns 0 on success, -1 if the connection is
-     * unknown, no PONG has yet been observed, or @p buf_len is too
-     * small to hold the address (in that case @p buf is left
-     * NUL-terminated at the truncation boundary).
+     * @p out_buf is filled with a NUL-terminated address string (IP
+     * literal or hostname) up to @p buf_size bytes; @p out_port
+     * receives the matching port. Returns 0 on success, -1 if the
+     * connection is unknown, no PONG has yet been observed, or
+     * @p buf_size is too small to hold the address (in that case
+     * @p out_buf is left NUL-terminated at the truncation boundary).
      */
     int (*get_observed_address)(void* ctx, gn_conn_id_t conn,
-                                 char* buf, size_t buf_len,
-                                 uint16_t* port_out);
+                                 char* out_buf, size_t buf_size,
+                                 uint16_t* out_port);
 
     void* ctx;
     void* _reserved[4];

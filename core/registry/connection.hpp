@@ -47,7 +47,7 @@ struct ConnectionRecord {
     std::string        uri;
     gn_trust_class_t   trust        = GN_TRUST_UNTRUSTED;
     gn_handshake_role_t role        = GN_ROLE_INITIATOR;
-    std::string        link_scheme;
+    std::string        scheme;
 
     /// Relay capability: when set, the protocol layer accepts inbound
     /// frames carrying EXPLICIT_SENDER / EXPLICIT_RECEIVER (relay or

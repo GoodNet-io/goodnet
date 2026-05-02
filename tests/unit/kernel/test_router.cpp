@@ -33,10 +33,10 @@ constexpr std::string_view kProtocol = "gnet-v1";
 /// State recorded for a single handler instance across dispatches.
 struct HandlerRecord {
     std::string                   tag;
-    gn_propagation_t              return_value = GN_PROP_CONTINUE;
+    gn_propagation_t              return_value = GN_PROPAGATION_CONTINUE;
     std::atomic<int>              handle_calls{0};
     std::atomic<int>              on_result_calls{0};
-    std::atomic<gn_propagation_t> last_on_result{GN_PROP_CONTINUE};
+    std::atomic<gn_propagation_t> last_on_result{GN_PROPAGATION_CONTINUE};
 };
 
 /// Per-test ordering log; records `(tag, kind)` for every callback so
@@ -47,7 +47,7 @@ struct CallLog {
     std::vector<Entry>  entries;
 
     void push(std::string tag, const char* kind,
-              gn_propagation_t result = GN_PROP_CONTINUE) {
+              gn_propagation_t result = GN_PROPAGATION_CONTINUE) {
         std::lock_guard lock{mu};
         entries.push_back({std::move(tag), kind, result});
     }
@@ -131,7 +131,7 @@ struct RouterFixture {
     HandlerRecord* register_handler(std::uint32_t    msg_id,
                                     std::uint8_t     priority,
                                     std::string      tag,
-                                    gn_propagation_t return_value = GN_PROP_CONTINUE) {
+                                    gn_propagation_t return_value = GN_PROPAGATION_CONTINUE) {
         auto record = std::make_unique<HandlerRecord>();
         record->tag = std::move(tag);
         record->return_value = return_value;
@@ -279,7 +279,7 @@ TEST(Router_Decision, RejectPropagatesAsRejectedOutcome) {
     const auto local  = pk_from_byte(0x11);
     const auto sender = pk_from_byte(0x22);
     f.identities.add(local);
-    auto* rec = f.register_handler(0x42, 128, "h", GN_PROP_REJECT);
+    auto* rec = f.register_handler(0x42, 128, "h", GN_PROPAGATION_REJECT);
 
     gn_message_t env{};
     fill_envelope(env, sender, local, 0x42);
@@ -287,7 +287,7 @@ TEST(Router_Decision, RejectPropagatesAsRejectedOutcome) {
               RouteOutcome::Rejected);
     EXPECT_EQ(rec->handle_calls.load(),    1);
     EXPECT_EQ(rec->on_result_calls.load(), 1);
-    EXPECT_EQ(rec->last_on_result.load(),  GN_PROP_REJECT);
+    EXPECT_EQ(rec->last_on_result.load(),  GN_PROPAGATION_REJECT);
 }
 
 // ─── Chain priority + propagation ──────────────────────────────────
@@ -339,7 +339,7 @@ TEST(Router_Chain, ConsumedStopsLowerPriority) {
     const auto sender = pk_from_byte(0x22);
     f.identities.add(local);
 
-    auto* high_rec = f.register_handler(0x42, 200, "high", GN_PROP_CONSUMED);
+    auto* high_rec = f.register_handler(0x42, 200, "high", GN_PROPAGATION_CONSUMED);
     auto* mid_rec  = f.register_handler(0x42, 128, "mid");
     auto* low_rec  = f.register_handler(0x42, 100, "low");
 
@@ -351,7 +351,7 @@ TEST(Router_Chain, ConsumedStopsLowerPriority) {
     /// Top handler ate the envelope; nobody below saw it.
     EXPECT_EQ(high_rec->handle_calls.load(),    1);
     EXPECT_EQ(high_rec->on_result_calls.load(), 1);
-    EXPECT_EQ(high_rec->last_on_result.load(),  GN_PROP_CONSUMED);
+    EXPECT_EQ(high_rec->last_on_result.load(),  GN_PROPAGATION_CONSUMED);
     EXPECT_EQ(mid_rec->handle_calls.load(),     0);
     EXPECT_EQ(mid_rec->on_result_calls.load(),  0);
     EXPECT_EQ(low_rec->handle_calls.load(),     0);
@@ -364,9 +364,9 @@ TEST(Router_Chain, ContinueLetsAllHandlersSeeEnvelope) {
     const auto sender = pk_from_byte(0x22);
     f.identities.add(local);
 
-    auto* a = f.register_handler(0x42, 200, "a", GN_PROP_CONTINUE);
-    auto* b = f.register_handler(0x42, 128, "b", GN_PROP_CONTINUE);
-    auto* c = f.register_handler(0x42, 64,  "c", GN_PROP_CONTINUE);
+    auto* a = f.register_handler(0x42, 200, "a", GN_PROPAGATION_CONTINUE);
+    auto* b = f.register_handler(0x42, 128, "b", GN_PROPAGATION_CONTINUE);
+    auto* c = f.register_handler(0x42, 64,  "c", GN_PROPAGATION_CONTINUE);
 
     gn_message_t env{};
     fill_envelope(env, sender, local, 0x42);

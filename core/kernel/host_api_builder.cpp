@@ -168,7 +168,7 @@ void kernel_initiated_disconnect(const PluginContext* pc,
                                         const ConnectionRecord& rec) {
     if (pc == nullptr || pc->kernel == nullptr) return false;
     if (!pc->plugin_anchor) return true;  // in-tree fixture
-    auto link = pc->kernel->links().find_by_scheme(rec.link_scheme);
+    auto link = pc->kernel->links().find_by_scheme(rec.scheme);
     if (!link) return true;  // scheme already torn down — let downstream NOT_FOUND fire
     if (!link->lifetime_anchor) return true;  // anchorless link entry — fixture
     return link->lifetime_anchor == pc->plugin_anchor;
@@ -237,7 +237,7 @@ gn_result_t thunk_send(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    auto trans = pc->kernel->links().find_by_scheme(rec->link_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->scheme);
     if (!trans || !trans->vtable || !trans->vtable->send) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -340,9 +340,9 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
     out->uri[uri_n] = '\0';
 
     const std::size_t scheme_n =
-        std::min(rec->link_scheme.size(), sizeof(out->link_scheme) - 1);
-    std::memcpy(out->link_scheme, rec->link_scheme.data(), scheme_n);
-    out->link_scheme[scheme_n] = '\0';
+        std::min(rec->scheme.size(), sizeof(out->scheme) - 1);
+    std::memcpy(out->scheme, rec->scheme.data(), scheme_n);
+    out->scheme[scheme_n] = '\0';
 
     out->bytes_in            = rec->bytes_in;
     out->bytes_out           = rec->bytes_out;
@@ -377,7 +377,7 @@ gn_result_t thunk_disconnect(void* host_ctx, gn_conn_id_t conn) {
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
-    auto trans = pc->kernel->links().find_by_scheme(rec->link_scheme);
+    auto trans = pc->kernel->links().find_by_scheme(rec->scheme);
     if (!trans || !trans->vtable || !trans->vtable->disconnect) {
         return GN_ERR_NOT_IMPLEMENTED;
     }
@@ -1045,7 +1045,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     const gn_conn_id_t new_id = pc->kernel->connections().alloc_id();
     rec.id = new_id;
     rec.uri = uri;
-    rec.link_scheme = scheme;
+    rec.scheme = scheme;
     rec.trust = trust;
     rec.role  = role;
     std::memcpy(rec.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
@@ -1121,7 +1121,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     if (adv_rc != GN_OK) return adv_rc;
 
     if (!first.empty()) {
-        (void)send_raw_via_link(pc, conn, rec->link_scheme, first);
+        (void)send_raw_via_link(pc, conn, rec->scheme, first);
     }
 
     /// IK-style patterns can complete the handshake on the initiator's
@@ -1141,7 +1141,7 @@ gn_result_t thunk_kick_handshake(void* host_ctx, gn_conn_id_t conn) {
         }
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
-        drain_handshake_pending(pc, conn, *session, rec->link_scheme);
+        drain_handshake_pending(pc, conn, *session, rec->scheme);
     }
     return GN_OK;
 }
@@ -1202,7 +1202,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             const gn_result_t rc = session->advance_handshake(wire_bytes, reply);
             if (rc != GN_OK) return rc;
             if (!reply.empty()) {
-                (void)send_raw_via_link(pc, conn, rec->link_scheme, reply);
+                (void)send_raw_via_link(pc, conn, rec->scheme, reply);
             }
             /// `advance_handshake` may have moved the session to
             /// Transport on this byte run. Hand off to the kernel-
@@ -1220,7 +1220,7 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
                 drain_handshake_pending(pc, conn, *session,
-                                         rec->link_scheme);
+                                         rec->scheme);
             }
             /// Handshake bytes never carry application payload — the
             /// protocol layer is not consulted until Transport phase.

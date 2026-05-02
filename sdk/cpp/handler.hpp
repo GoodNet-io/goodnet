@@ -22,9 +22,9 @@ namespace gn {
  * Mirrors @ref gn_propagation_t with C++ enum-class scoping.
  */
 enum class Propagation : int {
-    Continue = GN_PROP_CONTINUE, /**< pass envelope to the next handler */
-    Consumed = GN_PROP_CONSUMED, /**< stop dispatch chain — handled */
-    Reject   = GN_PROP_REJECT    /**< drop envelope and close the connection */
+    Continue = GN_PROPAGATION_CONTINUE, /**< pass envelope to the next handler */
+    Consumed = GN_PROPAGATION_CONSUMED, /**< stop dispatch chain — handled */
+    Reject   = GN_PROPAGATION_REJECT    /**< drop envelope and close the connection */
 };
 
 /**

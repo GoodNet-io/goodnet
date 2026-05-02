@@ -154,7 +154,7 @@ TEST(Heartbeat, PingProducesPongWithObservedAddress) {
     ping.flags        = kFlagPing;
 
     auto env = make_envelope(0xAA, ping);
-    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     ASSERT_EQ(host.send_calls.load(), 1);
     ASSERT_EQ(host.sent_conns.front(), 7u);
@@ -190,7 +190,7 @@ TEST(Heartbeat, PongRecordsRttAndObservation) {
     pong.observed_port = 9000;
 
     auto env = make_envelope(0xBB, pong);
-    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     /// PONG path does not call send.
     EXPECT_EQ(host.send_calls.load(), 0);
@@ -226,7 +226,7 @@ TEST(Heartbeat, RttIsDeterministicUnderInjectedClock) {
         pong.timestamp_us = 0;
         clock.set(interval);
         auto env = make_envelope(0xCC, pong);
-        EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+        EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
         std::uint64_t rtt = 0;
         ASSERT_EQ(hh.get_rtt(3, &rtt), 0);
@@ -249,7 +249,7 @@ TEST(Heartbeat, MultiplePeersTrackedIndependently) {
         p.flags = kFlagPong;
         p.timestamp_us = 50;
         auto env = make_envelope(0xAA, p);
-        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
     }
     {
         clock.set(1000);
@@ -257,7 +257,7 @@ TEST(Heartbeat, MultiplePeersTrackedIndependently) {
         p.flags = kFlagPong;
         p.timestamp_us = 100;
         auto env = make_envelope(0xBB, p);
-        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+        ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
     }
 
     std::uint64_t r1 = 0, r2 = 0;
@@ -284,7 +284,7 @@ TEST(Heartbeat, MalformedPayloadLeavesNoState) {
     env.payload = junk;
     env.payload_size = sizeof(junk);
 
-    EXPECT_EQ(hh.handle_message(&env), GN_PROP_CONTINUE);
+    EXPECT_EQ(hh.handle_message(&env), GN_PROPAGATION_CONTINUE);
     EXPECT_EQ(host.send_calls.load(), 0);
     EXPECT_EQ(hh.peer_count(), 0u);
 }
@@ -300,7 +300,7 @@ TEST(Heartbeat, UnknownSenderRejected) {
     HeartbeatPayload ping{};
     ping.flags = kFlagPing;
     auto env = make_envelope(0xFF, ping);
-    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROP_CONTINUE);
+    EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONTINUE);
     EXPECT_EQ(host.send_calls.load(), 0);
 }
 
@@ -370,7 +370,7 @@ TEST(Heartbeat, ExtensionVtablePopulatedAndFunctional) {
     pong.flags = kFlagPong;
     pong.timestamp_us = 1'500;
     auto env = make_envelope(0xAA, pong);
-    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     const auto& ext = hh.extension_vtable();
     ASSERT_NE(ext.get_rtt, nullptr);
@@ -413,7 +413,7 @@ TEST(Heartbeat, ExtensionGetObservedAddressTruncationReturnsError) {
                  sizeof(pong.observed_addr) - 1);
     pong.observed_port = 4242;
     auto env = make_envelope(0xAA, pong);
-    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROP_CONSUMED);
+    ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     char buf[3] = {};                 /// too small for "192.0.2.42"
     std::uint16_t port = 0;
