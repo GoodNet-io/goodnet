@@ -136,6 +136,27 @@ typedef struct host_api_s {
     /* ── Extension API ─────────────────────────────────────────────────── */
 
     /**
+     * @brief Look up an extension vtable by name with a major-version
+     *        compatibility check.
+     *
+     * The compatibility predicate is the SDK's own
+     * `gn_version_compatible` (see `sdk/abi.h`): the registered major
+     * must equal @p version's major and the registered minor must
+     * be at least @p version's minor. Patch is ignored. A consumer
+     * built against an older minor of the extension always loads;
+     * a consumer that asks for a newer minor than the registered
+     * provider is rejected with `GN_ERR_VERSION_MISMATCH`.
+     *
+     * Failure modes — distinct enough that callers can handle the
+     * "extension absent" and "extension too old" cases differently:
+     *
+     * | Condition | Result |
+     * |---|---|
+     * | `out_vtable == NULL` | `GN_ERR_NULL_ARG` |
+     * | no extension registered under @p name | `GN_ERR_NOT_FOUND` |
+     * | registered version is incompatible with @p version | `GN_ERR_VERSION_MISMATCH` |
+     * | otherwise | `GN_OK` and `*out_vtable` set |
+     *
      * @param out_vtable @borrowed; lifetime tied to the extension provider.
      */
     gn_result_t (*query_extension_checked)(void* host_ctx,
@@ -143,11 +164,26 @@ typedef struct host_api_s {
                                            uint32_t version,
                                            const void** out_vtable);
 
+    /**
+     * @brief Publish a vtable under @p name with a major.minor
+     *        version tag. Other plugins look it up through
+     *        `query_extension_checked`.
+     *
+     * | Condition | Result |
+     * |---|---|
+     * | `name == NULL` / `vtable == NULL` | `GN_ERR_NULL_ARG` |
+     * | another extension already registered under @p name | `GN_ERR_LIMIT_REACHED` |
+     * | otherwise | `GN_OK` |
+     */
     gn_result_t (*register_extension)(void* host_ctx,
                                       const char* name,
                                       uint32_t version,
                                       const void* vtable);
 
+    /**
+     * @brief Drop the registration. Idempotent — removing an
+     *        already-absent name returns `GN_ERR_NOT_FOUND`.
+     */
     gn_result_t (*unregister_extension)(void* host_ctx,
                                         const char* name);
 
