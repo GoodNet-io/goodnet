@@ -122,7 +122,7 @@ struct TransportInstance {
         return GN_ERR_NOT_IMPLEMENTED;
     }
     static gn_result_t ext_unimpl_subscribe(void*, gn_conn_id_t,
-                                             gn_link_data_callback_t,
+                                             gn_link_data_cb_t,
                                              void*) {
         return GN_ERR_NOT_IMPLEMENTED;
     }

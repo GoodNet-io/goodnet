@@ -36,7 +36,7 @@ struct Harness {
     }
 
     static gn_propagation_t do_nothing(void*, const gn_message_t*) {
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 
     [[nodiscard]] gn_handler_vtable_t make_handler_vtable() const {

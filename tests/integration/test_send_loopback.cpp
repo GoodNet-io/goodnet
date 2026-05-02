@@ -96,7 +96,7 @@ struct Capture {
         c->last_msg_id = env->msg_id;
         c->last_payload.assign(env->payload, env->payload + env->payload_size);
         c->calls.fetch_add(1);
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 };
 

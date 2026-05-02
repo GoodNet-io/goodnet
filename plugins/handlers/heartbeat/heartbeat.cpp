@@ -138,14 +138,14 @@ gn_result_t HeartbeatHandler::send_ping(gn_conn_id_t conn) {
 }
 
 gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
-    if (!env) return GN_PROP_CONTINUE;
+    if (!env) return GN_PROPAGATION_CONTINUE;
 
     auto parsed = parse_payload(
         std::span<const std::uint8_t>(env->payload, env->payload_size));
     if (!parsed) {
         /// Wrong size or other malformed input — never fall through
         /// to peer-state mutation.
-        return GN_PROP_CONTINUE;
+        return GN_PROPAGATION_CONTINUE;
     }
     const HeartbeatPayload& hb = *parsed;
 
@@ -155,10 +155,10 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
     gn_conn_id_t conn = GN_INVALID_ID;
     if (api_ && api_->find_conn_by_pk) {
         if (api_->find_conn_by_pk(api_->host_ctx, env->sender_pk, &conn) != GN_OK) {
-            return GN_PROP_CONTINUE;
+            return GN_PROPAGATION_CONTINUE;
         }
     }
-    if (conn == GN_INVALID_ID) return GN_PROP_CONTINUE;
+    if (conn == GN_INVALID_ID) return GN_PROPAGATION_CONTINUE;
 
     auto peer = ensure_peer(conn);
 
@@ -189,7 +189,7 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
             (void)api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
                               wire.data(), wire.size());
         }
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 
     if (hb.flags == kFlagPong) {
@@ -206,11 +206,11 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
             peer->observed_addr.assign(hb.observed_addr);
             peer->observed_port = hb.observed_port;
         }
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 
     /// Unknown flag — leave for the next handler to decide.
-    return GN_PROP_CONTINUE;
+    return GN_PROPAGATION_CONTINUE;
 }
 
 void HeartbeatHandler::snapshot_stats(gn_heartbeat_stats_t* out) const {
@@ -254,9 +254,10 @@ int HeartbeatHandler::get_rtt(gn_conn_id_t conn,
 }
 
 int HeartbeatHandler::get_observed_address(gn_conn_id_t conn,
-                                             char* buf, std::size_t buf_len,
-                                             std::uint16_t* port_out) const {
-    if (!buf || buf_len == 0) return -1;
+                                             char* out_buf,
+                                             std::size_t buf_size,
+                                             std::uint16_t* out_port) const {
+    if (!out_buf || buf_size == 0) return -1;
     auto peer = find_peer(conn);
     if (!peer) return -1;
 
@@ -264,15 +265,15 @@ int HeartbeatHandler::get_observed_address(gn_conn_id_t conn,
     if (peer->observed_addr.empty()) return -1;
 
     const std::size_t n = peer->observed_addr.size();
-    if (n + 1 > buf_len) {
-        std::memcpy(buf, peer->observed_addr.data(), buf_len - 1);
-        buf[buf_len - 1] = '\0';
-        if (port_out) *port_out = peer->observed_port;
+    if (n + 1 > buf_size) {
+        std::memcpy(out_buf, peer->observed_addr.data(), buf_size - 1);
+        out_buf[buf_size - 1] = '\0';
+        if (out_port) *out_port = peer->observed_port;
         return -1;
     }
-    std::memcpy(buf, peer->observed_addr.data(), n);
-    buf[n] = '\0';
-    if (port_out) *port_out = peer->observed_port;
+    std::memcpy(out_buf, peer->observed_addr.data(), n);
+    out_buf[n] = '\0';
+    if (out_port) *out_port = peer->observed_port;
     return 0;
 }
 
@@ -307,11 +308,12 @@ int HeartbeatHandler::ext_get_rtt(void* ctx, gn_conn_id_t conn,
 }
 
 int HeartbeatHandler::ext_get_observed_address(void* ctx, gn_conn_id_t conn,
-                                                 char* buf, std::size_t buf_len,
-                                                 std::uint16_t* port_out) {
+                                                 char* out_buf,
+                                                 std::size_t buf_size,
+                                                 std::uint16_t* out_port) {
     if (!ctx) return -1;
     return static_cast<HeartbeatHandler*>(ctx)->get_observed_address(
-        conn, buf, buf_len, port_out);
+        conn, out_buf, buf_size, out_port);
 }
 
 }  // namespace gn::handler::heartbeat

@@ -46,7 +46,7 @@ enum class RouteOutcome {
     DroppedInvalidMsgId,    ///< envelope.msg_id == 0
     DroppedUnknownReceiver, ///< no local-identity match and no relay loaded
     DroppedNoHandler,       ///< chain for (protocol_id, msg_id) is empty
-    Rejected                ///< a handler returned `GN_PROP_REJECT`
+    Rejected                ///< a handler returned `GN_PROPAGATION_REJECT`
 };
 
 /// Stateless dispatch helper bound to the kernel's identity set and

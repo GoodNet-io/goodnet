@@ -68,7 +68,7 @@ gn_conn_id_t insert_record(Kernel& k,
     ConnectionRecord rec;
     rec.id               = id;
     rec.uri              = uri;
-    rec.link_scheme = "tcp";
+    rec.scheme = "tcp";
     rec.trust            = GN_TRUST_LOOPBACK;
     rec.role             = GN_ROLE_RESPONDER;
     rec.remote_pk        = pk;

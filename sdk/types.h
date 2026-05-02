@@ -46,10 +46,14 @@ typedef uint64_t gn_timer_id_t;
 /** Sentinel value indicating an unset / invalid id. */
 #define GN_INVALID_ID ((uint64_t)0)
 
-/** Sentinel value indicating an unset / invalid timer id. Aliases
- *  `GN_INVALID_ID` for source-level convenience.
+/** Sentinels indicating an unset / invalid id. All four alias
+ *  `GN_INVALID_ID` and exist purely for source-level type-tagged
+ *  convenience — call sites read `auto t = GN_INVALID_TIMER_ID;`
+ *  rather than `auto t = (gn_timer_id_t)GN_INVALID_ID;`.
  */
-#define GN_INVALID_TIMER_ID ((gn_timer_id_t)0)
+#define GN_INVALID_HANDLER_ID ((gn_handler_id_t)0)
+#define GN_INVALID_LINK_ID    ((gn_link_id_t)0)
+#define GN_INVALID_TIMER_ID   ((gn_timer_id_t)0)
 
 /** Service-executor task callback. Runs on the kernel's
  *  single-thread service executor (timer.md §3); `user_data` is
@@ -122,8 +126,8 @@ typedef enum gn_backpressure_e {
  * @brief Policy returned from `IHandler::on_result` to influence dispatch.
  */
 typedef enum gn_on_result_policy_e {
-    GN_ORP_CONTINUE_CHAIN = 0, /**< default: dispatch continues per `Propagation` */
-    GN_ORP_STOP_CHAIN     = 1  /**< stop the chain regardless of `Propagation` */
+    GN_ON_RESULT_CONTINUE_CHAIN = 0, /**< default: dispatch continues per `Propagation` */
+    GN_ON_RESULT_STOP_CHAIN     = 1  /**< stop the chain regardless of `Propagation` */
 } gn_on_result_policy_t;
 
 /**

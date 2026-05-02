@@ -48,7 +48,7 @@ struct CaptureHandler {
         std::memcpy(h->last_sender.data(),   env->sender_pk,   GN_PUBLIC_KEY_BYTES);
         std::memcpy(h->last_receiver.data(), env->receiver_pk, GN_PUBLIC_KEY_BYTES);
         h->calls.fetch_add(1);
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 };
 

@@ -22,7 +22,7 @@ ConnectionRecord make_rec(gn_conn_id_t id, std::string_view uri,
     r.uri   = uri;
     r.trust = GN_TRUST_LOOPBACK;
     r.role  = GN_ROLE_RESPONDER;
-    r.link_scheme = "tcp";
+    r.scheme = "tcp";
     r.remote_pk[0] = pk_byte;
     return r;
 }

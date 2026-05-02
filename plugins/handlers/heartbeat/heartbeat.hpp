@@ -151,11 +151,12 @@ public:
                               std::uint64_t* out_rtt_us) const;
 
     /// Latest peer-reported observation of the local node's external
-    /// endpoint on @p conn. NUL-terminates @p buf; returns -1 on
+    /// endpoint on @p conn. NUL-terminates @p out_buf; returns -1 on
     /// unknown / unobserved / truncation.
     [[nodiscard]] int get_observed_address(gn_conn_id_t conn,
-                                            char* buf, std::size_t buf_len,
-                                            std::uint16_t* port_out) const;
+                                            char* out_buf,
+                                            std::size_t buf_size,
+                                            std::uint16_t* out_port) const;
 
     /// Number of peers tracked. Useful for tests.
     [[nodiscard]] std::size_t peer_count() const noexcept;
@@ -202,8 +203,9 @@ private:
     static int ext_get_rtt(void* ctx, gn_conn_id_t conn,
                             std::uint64_t* out_rtt_us);
     static int ext_get_observed_address(void* ctx, gn_conn_id_t conn,
-                                         char* buf, std::size_t buf_len,
-                                         std::uint16_t* port_out);
+                                         char* out_buf,
+                                         std::size_t buf_size,
+                                         std::uint16_t* out_port);
 
     const host_api_t*                                     api_;
     ClockNowUs                                            now_us_;

@@ -94,27 +94,27 @@ RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
         /// `handle_message` would corrupt the kernel's stack.
         /// `safe_call_value` catches every exception type, logs
         /// the misbehaving plugin's tag, and treats the slot as
-        /// having returned `GN_PROP_REJECT` so the chain breaks
+        /// having returned `GN_PROPAGATION_REJECT` so the chain breaks
         /// instead of silently re-running on a partial state.
         const auto r_opt = safe_call_value<gn_propagation_t>(
             "handler.handle_message",
             entry.vtable->handle_message, entry.self, &env);
         const gn_propagation_t r =
-            r_opt.value_or(GN_PROP_REJECT);
+            r_opt.value_or(GN_PROPAGATION_REJECT);
 
         if (entry.vtable->on_result != nullptr) {
             safe_call_void("handler.on_result",
                 entry.vtable->on_result, entry.self, &env, r);
         }
 
-        if (r == GN_PROP_REJECT) {
+        if (r == GN_PROPAGATION_REJECT) {
             outcome = RouteOutcome::Rejected;
             break;
         }
-        if (r == GN_PROP_CONSUMED) {
+        if (r == GN_PROPAGATION_CONSUMED) {
             break;
         }
-        /// GN_PROP_CONTINUE: fall through to the next entry.
+        /// GN_PROPAGATION_CONTINUE: fall through to the next entry.
     }
 
     return outcome;

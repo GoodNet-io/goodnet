@@ -39,7 +39,7 @@ struct Capture {
         std::memcpy(c->last_sender.data(),   env->sender_pk,   GN_PUBLIC_KEY_BYTES);
         std::memcpy(c->last_receiver.data(), env->receiver_pk, GN_PUBLIC_KEY_BYTES);
         c->calls.fetch_add(1);
-        return GN_PROP_CONSUMED;
+        return GN_PROPAGATION_CONSUMED;
     }
 };
 

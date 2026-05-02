@@ -4,7 +4,7 @@
  *
  * Handlers consume envelopes whose `(protocol_id, msg_id)` pair matches
  * their registration. Multiple handlers may share the same pair; the
- * kernel dispatches in priority order until one returns @ref GN_PROP_CONSUMED.
+ * kernel dispatches in priority order until one returns @ref GN_PROPAGATION_CONSUMED.
  */
 #ifndef GOODNET_SDK_HANDLER_H
 #define GOODNET_SDK_HANDLER_H
@@ -25,9 +25,9 @@ extern "C" {
  * same envelope.
  */
 typedef enum gn_propagation_e {
-    GN_PROP_CONTINUE = 0,  /**< pass envelope to the next handler */
-    GN_PROP_CONSUMED = 1,  /**< stop dispatch chain — handled */
-    GN_PROP_REJECT   = 2   /**< drop envelope and close the connection */
+    GN_PROPAGATION_CONTINUE = 0,  /**< pass envelope to the next handler */
+    GN_PROPAGATION_CONSUMED = 1,  /**< stop dispatch chain — handled */
+    GN_PROPAGATION_REJECT   = 2   /**< drop envelope and close the connection */
 } gn_propagation_t;
 
 /**

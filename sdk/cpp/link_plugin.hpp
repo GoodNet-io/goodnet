@@ -1,5 +1,5 @@
 /// @file   sdk/cpp/link_plugin.hpp
-/// @brief  `LINK_PLUGIN(Class, scheme)` — collapses every
+/// @brief  `GN_LINK_PLUGIN(Class, scheme)` — collapses every
 ///         link plugin's `plugin_entry.cpp` boilerplate into one
 ///         macro instantiation.
 ///
@@ -104,11 +104,11 @@ template <class T>
 
 } // namespace gn::sdk::detail
 
-/// `LINK_PLUGIN(Class, "scheme")`. See file header for the class
+/// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
 /// concept. Defines the full plugin entry surface in an anonymous
 /// namespace and the matching `extern "C"` symbols. Place at file
 /// scope in exactly one translation unit per shared object.
-#define LINK_PLUGIN(Class, SchemeStrLiteral)                              \
+#define GN_LINK_PLUGIN(Class, SchemeStrLiteral)                              \
     namespace {                                                                \
     using _gn_link_instance_t = ::gn::sdk::detail::LinkPluginInstance<Class>;\
     constexpr const char  _gn_link_scheme[]   = SchemeStrLiteral;                \
@@ -220,7 +220,7 @@ template <class T>
         return GN_ERR_NOT_IMPLEMENTED; }                                       \
     gn_result_t _gn_link_ext_subscribe_unimpl(                                   \
         void*, gn_conn_id_t,                                                   \
-        gn_link_data_callback_t, void*) noexcept {                        \
+        gn_link_data_cb_t, void*) noexcept {                        \
         return GN_ERR_NOT_IMPLEMENTED; }                                       \
     gn_result_t _gn_link_ext_unsubscribe_unimpl(                                 \
         void*, gn_conn_id_t) noexcept { return GN_ERR_NOT_IMPLEMENTED; }       \
