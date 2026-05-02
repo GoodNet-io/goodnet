@@ -24,11 +24,11 @@ namespace gn::core {
 /// Adds and removes are exclusive; contains is shared. The single-
 /// identity case (vector of size 1) is the steady state for typical
 /// deployments; multi-tenant kernels grow the set at boot.
-class LocalIdentitySet {
+class LocalIdentityRegistry {
 public:
-    LocalIdentitySet()                                   = default;
-    LocalIdentitySet(const LocalIdentitySet&)            = delete;
-    LocalIdentitySet& operator=(const LocalIdentitySet&) = delete;
+    LocalIdentityRegistry()                                   = default;
+    LocalIdentityRegistry(const LocalIdentityRegistry&)            = delete;
+    LocalIdentityRegistry& operator=(const LocalIdentityRegistry&) = delete;
 
     /// Insert @p pk. Idempotent: re-inserting a present pk is a no-op.
     void add(const PublicKey& pk) {

@@ -118,7 +118,7 @@ void fill_envelope(gn_message_t&    env,
 /// log. Each test owns its instance.
 struct RouterFixture {
     HandlerRegistry  registry;
-    LocalIdentitySet identities;
+    LocalIdentityRegistry identities;
     Router           router{identities, registry};
     CallLog          log;
     /// Stable storage for handler payloads and records. Pointers handed

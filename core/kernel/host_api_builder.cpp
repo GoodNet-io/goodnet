@@ -117,7 +117,7 @@ propagate_peer_pk_after_handshake(const PluginContext* pc,
                                   const SecuritySession& session) {
     if (pc == nullptr || pc->kernel == nullptr) return GN_OK;
     /// Re-verify Transport phase under the call: a concurrent
-    /// `Sessions::destroy` could have flipped the session into
+    /// `SessionRegistry::destroy` could have flipped the session into
     /// Closed between the caller's `phase()` check and ours, in
     /// which case `transport_keys()` may carry zeroed bytes from
     /// the destructor's wipe.
@@ -1034,7 +1034,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     /// active layer declares which trust classes it may deframe;
     /// reject the connection up front if the declared `trust` is
     /// not in the layer's mask. The security-provider gate fires
-    /// later inside `Sessions::create` against the security mask.
+    /// later inside `SessionRegistry::create` against the security mask.
     if (auto layer = pc->kernel->protocol_layer(); layer != nullptr) {
         const std::uint32_t mask = layer->allowed_trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);

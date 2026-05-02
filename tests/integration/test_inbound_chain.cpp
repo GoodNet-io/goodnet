@@ -102,7 +102,7 @@ RouteOutcome run_inbound(GnetProtocol&            proto,
 TEST(InboundChain, DirectFrameReachesHandler) {
     auto ctxs = PairedContexts::make(0xA1, 0xB1);
 
-    LocalIdentitySet ids;
+    LocalIdentityRegistry ids;
     ids.add(ctxs.bob.local_pk);
 
     HandlerRegistry handlers;
@@ -149,7 +149,7 @@ TEST(InboundChain, BroadcastFrameDispatches) {
     /// declare relay capability (`gnet-protocol.md` §5).
     ctxs.bob.allows_relay = true;
 
-    LocalIdentitySet ids;
+    LocalIdentityRegistry ids;
     ids.add(ctxs.bob.local_pk);
 
     HandlerRegistry handlers;
@@ -189,7 +189,7 @@ TEST(InboundChain, BroadcastFrameDispatches) {
 TEST(InboundChain, MultiFrameBufferRoutesEach) {
     auto ctxs = PairedContexts::make(0xA3, 0xB3);
 
-    LocalIdentitySet ids;
+    LocalIdentityRegistry ids;
     ids.add(ctxs.bob.local_pk);
 
     HandlerRegistry handlers;
@@ -234,7 +234,7 @@ TEST(InboundChain, UnknownReceiverDroppedWithoutRelay) {
 
     /// IdentitySet does NOT include Bob's local pk, so the inbound
     /// envelope's receiver_pk does not match any local identity.
-    LocalIdentitySet ids;
+    LocalIdentityRegistry ids;
     HandlerRegistry  handlers;
     Router           router(ids, handlers);
 
