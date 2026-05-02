@@ -43,7 +43,7 @@ bool wait_for(auto&& predicate,
 
 }  // namespace
 
-// ─── GateGuard semantics ────────────────────────────────────────────
+// ── GateGuard semantics ──────────────────────────────────────────────────
 
 TEST(PluginAnchor, GateRefusesExpiredAnchor) {
     auto anchor = std::make_shared<PluginAnchor>();
@@ -105,7 +105,7 @@ TEST(PluginAnchor, GuardMoveDoesNotDoubleRelease) {
         << "exactly one release happens at the moved-to scope exit";
 }
 
-// ─── host_api `is_shutdown_requested` thunk ─────────────────────────
+// ── host_api `is_shutdown_requested` thunk ───────────────────────────────
 
 TEST(PluginAnchor, IsShutdownRequestedReflectsFlag) {
     Kernel k;
@@ -141,7 +141,7 @@ TEST(PluginAnchor, IsShutdownRequestedSafeWithoutAnchor) {
         << "missing anchor reports no shutdown — slot must not crash";
 }
 
-// ─── Timer dispatch refused after shutdown_requested ────────────────
+// ── Timer dispatch refused after shutdown_requested ──────────────────────
 
 TEST(PluginAnchor, TimerCallbackDroppedAfterShutdownPublished) {
     TimerRegistry r;
@@ -189,7 +189,7 @@ TEST(PluginAnchor, TimerHoldsInFlightForDurationOfDispatch) {
     EXPECT_EQ(anchor->in_flight.load(), 0u);
 }
 
-// ─── §10 latch persistence ──────────────────────────────────────────
+// ── §10 latch persistence ────────────────────────────────────────────────
 
 TEST(PluginAnchor, IsShutdownRequestedLatchesAcrossRepeatedCalls) {
     Kernel k;
@@ -213,7 +213,7 @@ TEST(PluginAnchor, IsShutdownRequestedLatchesAcrossRepeatedCalls) {
     }
 }
 
-// ─── Happy path: gate released before deadline, no timeout ──────────
+// ── Happy path: gate released before deadline, no timeout ────────────────
 
 TEST(PluginAnchor, GateReleaseBeforeDeadlineLetsObserverExpire) {
     auto anchor = std::make_shared<PluginAnchor>();
@@ -235,7 +235,7 @@ TEST(PluginAnchor, GateReleaseBeforeDeadlineLetsObserverExpire) {
         << "all strong refs released; drain would exit cleanly";
 }
 
-// ─── Multi-thread refuse after publish ─────────────────────────────
+// ── Multi-thread refuse after publish ────────────────────────────────────
 
 TEST(PluginAnchor, ConcurrentAcquireAfterPublishAllRefused) {
     auto anchor = std::make_shared<PluginAnchor>();

@@ -50,7 +50,7 @@ gn_handler_id_t reg_or_die(HandlerRegistry& r,
     return id;
 }
 
-// ─── argument validation ────────────────────────────────────────────
+// ── argument validation ──────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Args, RejectsNullVtable) {
     HandlerRegistry reg;
@@ -122,7 +122,7 @@ TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
-// ─── register / lookup ──────────────────────────────────────────────
+// ── register / lookup ────────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Lookup, RegistersAndLooksUp) {
     HandlerRegistry reg;
@@ -146,7 +146,7 @@ TEST(HandlerRegistry_Lookup, MissReturnsEmpty) {
     EXPECT_TRUE(reg.lookup("mesh-v2", 1).empty());
 }
 
-// ─── priority + insertion-order ─────────────────────────────────────
+// ── priority + insertion-order ───────────────────────────────────────────
 
 TEST(HandlerRegistry_Priority, HigherPriorityFirst) {
     HandlerRegistry reg;
@@ -191,7 +191,7 @@ TEST(HandlerRegistry_Priority, HighPriorityLateOvertakesEqualEarlier) {
     EXPECT_EQ(chain[2].id, b);
 }
 
-// ─── per-protocol namespace isolation ───────────────────────────────
+// ── per-protocol namespace isolation ─────────────────────────────────────
 
 TEST(HandlerRegistry_Namespace, ProtocolsAreIsolated) {
     HandlerRegistry reg;
@@ -219,7 +219,7 @@ TEST(HandlerRegistry_Namespace, MsgIdsAreIsolated) {
     EXPECT_EQ(reg.lookup("gnet-v1", 3).size(), 0u);
 }
 
-// ─── unregister ─────────────────────────────────────────────────────
+// ── unregister ───────────────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Unregister, RemovesEntry) {
     HandlerRegistry reg;
@@ -265,7 +265,7 @@ TEST(HandlerRegistry_Unregister, EmptiesChainAndAllowsReuse) {
     EXPECT_EQ(chain[0].id, b);
 }
 
-// ─── generation counter ─────────────────────────────────────────────
+// ── generation counter ───────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Generation, IncrementsOnRegisterAndUnregister) {
     HandlerRegistry reg;
@@ -343,7 +343,7 @@ TEST(HandlerRegistry_Generation, EmptyChainStillCarriesGeneration) {
     EXPECT_EQ(snap.generation, reg.generation());
 }
 
-// ─── max_chain_length cap ───────────────────────────────────────────
+// ── max_chain_length cap ─────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Cap, ThirdRegistrationRejectedAtCap2) {
     HandlerRegistry reg;
@@ -403,7 +403,7 @@ TEST(HandlerRegistry_Cap, IsPerKeyNotGlobal) {
               GN_ERR_LIMIT_REACHED);
 }
 
-// ─── concurrent register / unregister ───────────────────────────────
+// ── concurrent register / unregister ─────────────────────────────────────
 
 TEST(HandlerRegistry_Concurrency, FourThreadsRegisterUnregister) {
     constexpr int kThreads   = 4;

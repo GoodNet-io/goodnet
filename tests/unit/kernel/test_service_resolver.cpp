@@ -32,7 +32,7 @@ std::size_t pos_of(const std::vector<ServiceDescriptor>& ordered,
     return SIZE_MAX;
 }
 
-// ─── empty / trivial inputs ─────────────────────────────────────────
+// ── empty / trivial inputs ───────────────────────────────────────────────
 
 TEST(ServiceResolver_Empty, EmptyInputProducesEmptyOutput) {
     std::vector<ServiceDescriptor> input;
@@ -53,7 +53,7 @@ TEST(ServiceResolver_Trivial, SinglePluginNoDeps) {
     EXPECT_EQ(ordered[0].plugin_name, "alpha");
 }
 
-// ─── linear chain ───────────────────────────────────────────────────
+// ── linear chain ─────────────────────────────────────────────────────────
 
 TEST(ServiceResolver_Chain, LinearABCOrder) {
     /// A provides x, B requires x and provides y, C requires y. Result
@@ -74,7 +74,7 @@ TEST(ServiceResolver_Chain, LinearABCOrder) {
     EXPECT_LT(pb, pc);
 }
 
-// ─── diamond ────────────────────────────────────────────────────────
+// ── diamond ──────────────────────────────────────────────────────────────
 
 TEST(ServiceResolver_Diamond, ABCDOrder) {
     /// A provides x; B and C require x and provide bx and cx; D
@@ -100,7 +100,7 @@ TEST(ServiceResolver_Diamond, ABCDOrder) {
     EXPECT_LT(pc, pd);
 }
 
-// ─── self-provide ───────────────────────────────────────────────────
+// ── self-provide ─────────────────────────────────────────────────────────
 
 TEST(ServiceResolver_SelfProvide, AcceptedAndOrdered) {
     /// A plugin that both provides and requires the same extension is a
@@ -121,7 +121,7 @@ TEST(ServiceResolver_SelfProvide, AcceptedAndOrdered) {
     EXPECT_LT(ps, po);
 }
 
-// ─── duplicate provider ─────────────────────────────────────────────
+// ── duplicate provider ───────────────────────────────────────────────────
 
 TEST(ServiceResolver_Duplicate, RejectedWithDiagnostic) {
     std::vector<ServiceDescriptor> input = {
@@ -147,7 +147,7 @@ TEST(ServiceResolver_Duplicate, NullDiagnosticAccepted) {
               GN_ERR_LIMIT_REACHED);
 }
 
-// ─── unresolved requirement ─────────────────────────────────────────
+// ── unresolved requirement ───────────────────────────────────────────────
 
 TEST(ServiceResolver_Unresolved, RejectedWithDiagnostic) {
     std::vector<ServiceDescriptor> input = {
@@ -163,7 +163,7 @@ TEST(ServiceResolver_Unresolved, RejectedWithDiagnostic) {
     EXPECT_TRUE(ordered.empty());
 }
 
-// ─── cycle ──────────────────────────────────────────────────────────
+// ── cycle ────────────────────────────────────────────────────────────────
 
 TEST(ServiceResolver_Cycle, TwoNodeCycleRejected) {
     /// A requires y from B, B requires x from A. The kahn drain stops

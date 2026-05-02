@@ -47,7 +47,7 @@ using namespace gn::core;
 using namespace gn::plugins::gnet;
 using TcpLink = gn::link::tcp::TcpLink;
 
-// ── Noise plugin handle (dlopen) ────────────────────────────────────
+// ── Noise plugin handle (dlopen) ─────────────────────────────────────────
 
 struct NoisePlugin {
     using SdkVersionFn = void        (*)(std::uint32_t*, std::uint32_t*, std::uint32_t*);
@@ -77,7 +77,7 @@ struct NoisePlugin {
     ~NoisePlugin() { if (handle) ::dlclose(handle); }
 };
 
-// ── TCP plugin glue (in-tree, vtable wraps TcpLink directly) ───
+// ── TCP plugin glue (in-tree, vtable wraps TcpLink directly) ─────────────
 
 const char* tcp_scheme(void* /*self*/) { return "tcp"; }
 
@@ -127,7 +127,7 @@ gn_link_vtable_t make_tcp_vtable() {
 
 const gn_link_vtable_t kTcpVtable = make_tcp_vtable();
 
-// ── Per-kernel node ─────────────────────────────────────────────────
+// ── Per-kernel node ──────────────────────────────────────────────────────
 
 struct Node {
     std::unique_ptr<Kernel>           kernel = std::make_unique<Kernel>();
@@ -181,7 +181,7 @@ struct Node {
     }
 };
 
-// ── Async wait helper ───────────────────────────────────────────────
+// ── Async wait helper ────────────────────────────────────────────────────
 
 void wait_for(const std::function<bool()>& pred,
               std::chrono::milliseconds timeout,

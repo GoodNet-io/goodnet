@@ -33,7 +33,7 @@ namespace local_proto = asio::local;
 
 }  // namespace
 
-// ── Session ─────────────────────────────────────────────────────────
+// ── Session ──────────────────────────────────────────────────────────────
 
 class IpcLink::Session : public std::enable_shared_from_this<Session> {
 public:
@@ -210,7 +210,7 @@ private:
     std::atomic<bool>                                         soft_signaled_{false};
 };
 
-// ── IpcLink ────────────────────────────────────────────────────
+// ── IpcLink ──────────────────────────────────────────────────────────────
 
 IpcLink::IpcLink()
     : ioc_(),

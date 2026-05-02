@@ -109,7 +109,7 @@ make_broadcast_frame(GnetProtocol&     proto,
 
 }  // namespace
 
-// ── inject (LAYER_MESSAGE) ────────────────────────────────────────
+// ── inject (LAYER_MESSAGE) ───────────────────────────────────────────────
 
 TEST(InjectLimits, MessageInjectionHitsRateLimiter) {
     InjectHarness h;
@@ -145,7 +145,7 @@ TEST(InjectLimits, MessageInjectionHitsRateLimiter) {
               GN_ERR_LIMIT_REACHED);
 }
 
-// ── inject (LAYER_FRAME) ───────────────────────────────────────────────────
+// ── inject (LAYER_FRAME) ─────────────────────────────────────────────────
 
 TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
     InjectHarness h;
@@ -181,8 +181,8 @@ TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
 }
 
 // ── per-pk keyed bucket (host-api.md §8): a bridge that disconnects ──
-// ── and re-opens the connection cannot skip the rate limit by ──────
-// ── acquiring a fresh `gn_conn_id_t`. ──────────────────────────────
+// ── and re-opens the connection cannot skip the rate limit by ────────────
+// ── acquiring a fresh `gn_conn_id_t` ─────────────────────────────────────
 
 TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
     InjectHarness h;
@@ -227,7 +227,7 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
         << "bucket keyed on remote_pk must persist across conn_id reuse";
 }
 
-// ── argument validation does not consume a token ──────────────────
+// ── argument validation does not consume a token ─────────────────────────
 //
 // A rejected call (NULL_ARG, INVALID_ENVELOPE, PAYLOAD_TOO_LARGE,
 // unknown layer enum) must surface its diagnostic without debiting
@@ -306,7 +306,7 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
               GN_ERR_LIMIT_REACHED);
 }
 
-// ── kernel without a protocol layer does not consume tokens ───────
+// ── kernel without a protocol layer does not consume tokens ──────────────
 //
 // `inject` returns `GN_ERR_NOT_IMPLEMENTED` when no protocol layer is
 // attached. The bucket must stay full so the kernel does not leak

@@ -21,7 +21,7 @@
 namespace gn::core {
 namespace {
 
-// ─── Basic increment / read ────────────────────────────────────────
+// ── Basic increment / read ───────────────────────────────────────────────
 
 TEST(MetricsRegistry, IncrementCreatesAndIncrements) {
     MetricsRegistry m;
@@ -52,7 +52,7 @@ TEST(MetricsRegistry, EachCounterHoldsIndependentValue) {
     EXPECT_EQ(m.value("c"), 3u);
 }
 
-// ─── Iteration ─────────────────────────────────────────────────────
+// ── Iteration ────────────────────────────────────────────────────────────
 
 TEST(MetricsRegistry, ForEachVisitsEveryCounterOnce) {
     MetricsRegistry m;
@@ -97,7 +97,7 @@ TEST(MetricsRegistry, IterateNullVisitorIsNoOp) {
     EXPECT_EQ(m.value("ignored"), 1u);
 }
 
-// ─── Built-in enums ────────────────────────────────────────────────
+// ── Built-in enums ───────────────────────────────────────────────────────
 
 TEST(MetricsRegistry, RouteOutcomeNameIsStable) {
     MetricsRegistry m;
@@ -120,7 +120,7 @@ TEST(MetricsRegistry, DropReasonNameIsStable) {
     EXPECT_EQ(m.value("drop.rate_limited"), 2u);
 }
 
-// ─── Concurrency ───────────────────────────────────────────────────
+// ── Concurrency ──────────────────────────────────────────────────────────
 
 TEST(MetricsRegistry, ConcurrentIncrementsTallyExactly) {
     MetricsRegistry m;

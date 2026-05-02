@@ -32,7 +32,7 @@ const gn_link_vtable_t* make_dummy_vtable() {
     return &vt;
 }
 
-// ─── argument validation ────────────────────────────────────────────
+// ── argument validation ──────────────────────────────────────────────────
 
 TEST(LinkRegistry_Args, RejectsEmptyScheme) {
     LinkRegistry r;
@@ -66,7 +66,7 @@ TEST(LinkRegistry_Args, UnregisterInvalidIdRejected) {
               GN_ERR_INVALID_ENVELOPE);
 }
 
-// ─── register / find round-trip ─────────────────────────────────────
+// ── register / find round-trip ───────────────────────────────────────────
 
 TEST(LinkRegistry_Register, RoundTripById) {
     LinkRegistry r;
@@ -138,7 +138,7 @@ TEST(LinkRegistry_Register, DistinctSchemesGetDistinctIds) {
     EXPECT_EQ(r.size(), 2u);
 }
 
-// ─── miss paths ─────────────────────────────────────────────────────
+// ── miss paths ───────────────────────────────────────────────────────────
 
 TEST(LinkRegistry_Find, MissReturnsNullopt) {
     LinkRegistry r;
@@ -146,7 +146,7 @@ TEST(LinkRegistry_Find, MissReturnsNullopt) {
     EXPECT_FALSE(r.find_by_id(static_cast<gn_link_id_t>(42)).has_value());
 }
 
-// ─── unregister ─────────────────────────────────────────────────────
+// ── unregister ───────────────────────────────────────────────────────────
 
 TEST(LinkRegistry_Unregister, RemovesEntry) {
     LinkRegistry r;
@@ -177,7 +177,7 @@ TEST(LinkRegistry_Unregister, FreesSchemeForReuse) {
                                     nullptr, &id2), GN_OK);
 }
 
-// ─── concurrent register stress ─────────────────────────────────────
+// ── concurrent register stress ───────────────────────────────────────────
 
 /// Hammer the registry from multiple threads doing distinct-scheme
 /// register + unregister + find. Verifies deadlock-free claim and the
@@ -243,7 +243,7 @@ TEST(LinkRegistry_Concurrency, FourThreadsRegisterUnregister) {
               static_cast<std::size_t>(reg_ok.load() - unreg_ok.load()));
 }
 
-// ─── §3a vtable api_size validation ─────────────────────────────────
+// ── §3a vtable api_size validation ───────────────────────────────────────
 
 TEST(LinkRegistry_VtableApiSize, RejectsZeroApiSize) {
     /// `abi-evolution.md` §3a: a vtable that declares an api_size

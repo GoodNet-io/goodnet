@@ -116,7 +116,7 @@ std::string make_socket_path() {
 
 }  // namespace
 
-// ── listen ──────────────────────────────────────────────────────────
+// ── listen ───────────────────────────────────────────────────────────────
 
 TEST(IpcLink, ListenCreatesSocketFile) {
     const auto path = make_socket_path();
@@ -152,7 +152,7 @@ TEST(IpcLink, ShutdownIsIdempotent) {
     t->shutdown();
 }
 
-// ── full loopback round-trip ────────────────────────────────────────
+// ── full loopback round-trip ─────────────────────────────────────────────
 
 TEST(IpcLink, LoopbackHandshakeAndPayloadRoundTrip) {
     const auto path = make_socket_path();

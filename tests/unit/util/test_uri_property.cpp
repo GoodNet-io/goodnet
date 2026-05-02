@@ -11,6 +11,13 @@
 #include <cstdint>
 #include <string>
 
+/// Property tests pre-check `r.has_value()` via rapidcheck `RC_ASSERT`
+/// before dereferencing through `r->...`. clang-tidy's data-flow can't
+/// see the abort, so the whole anonymous namespace is silenced. Same
+/// pattern as `tests/unit/util/test_uri.cpp` and
+/// `tests/unit/plugins/security/test_noise.cpp`.
+// NOLINTBEGIN(bugprone-unchecked-optional-access)
+
 namespace {
 
 /// Generator: well-formed scheme strings ("tcp" / "udp" / "ws" / "mqtt").
@@ -50,7 +57,7 @@ rc::Gen<std::string> gen_v4_uri() {
 
 }  // namespace
 
-// ── round-trip identity ─────────────────────────────────────────────
+// ── round-trip identity ──────────────────────────────────────────────────
 
 RC_GTEST_PROP(UriProperty, V4UriCanonicalRoundTrip, ()) {
     const auto uri = *gen_v4_uri();
@@ -104,3 +111,5 @@ RC_GTEST_PROP(UriProperty, MalformedPortRejected, ()) {
     const auto uri = "tcp://" + host + ":" + std::to_string(port) + trailing;
     RC_ASSERT(!::gn::parse_uri(uri).has_value());
 }
+
+// NOLINTEND(bugprone-unchecked-optional-access)

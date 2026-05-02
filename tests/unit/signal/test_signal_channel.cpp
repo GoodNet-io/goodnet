@@ -27,7 +27,7 @@ struct ConfigReload {
     int generation{0};
 };
 
-// ─── basic subscribe / fire ─────────────────────────────────────────
+// ── basic subscribe / fire ───────────────────────────────────────────────
 
 TEST(SignalChannel_Basic, SubscribeReceivesFire) {
     SignalChannel<ConfigReload> ch;
@@ -69,7 +69,7 @@ TEST(SignalChannel_Basic, MonotonicTokens) {
     EXPECT_LT(t2, t3);
 }
 
-// ─── unsubscribe ────────────────────────────────────────────────────
+// ── unsubscribe ──────────────────────────────────────────────────────────
 
 TEST(SignalChannel_Unsubscribe, RemovesHandler) {
     SignalChannel<ConfigReload> ch;
@@ -110,7 +110,7 @@ TEST(SignalChannel_Unsubscribe, RepeatedUnsubscribeIsNoOp) {
     EXPECT_EQ(ch.subscriber_count(), 0u);
 }
 
-// ─── empty channel ─────────────────────────────────────────────────
+// ── empty channel ────────────────────────────────────────────────────────
 
 TEST(SignalChannel_Empty, FireIsNoOp) {
     SignalChannel<ConfigReload> ch;
@@ -121,7 +121,7 @@ TEST(SignalChannel_Empty, FireIsNoOp) {
     EXPECT_EQ(ch.subscriber_count(), 0u);
 }
 
-// ─── multiple subscribers ──────────────────────────────────────────
+// ── multiple subscribers ─────────────────────────────────────────────────
 
 TEST(SignalChannel_Multi, AllSubscribersFire) {
     SignalChannel<ConfigReload> ch;
@@ -146,7 +146,7 @@ TEST(SignalChannel_Multi, AllSubscribersFire) {
     ch.unsubscribe(tc);
 }
 
-// ─── re-entrant subscribe / unsubscribe inside a callback ──────────
+// ── re-entrant subscribe / unsubscribe inside a callback ─────────────────
 
 TEST(SignalChannel_Reentrant, HandlerSubscribesInsideCallback) {
     SignalChannel<ConfigReload> ch;
@@ -200,7 +200,7 @@ TEST(SignalChannel_Reentrant, HandlerUnsubscribesItselfInsideCallback) {
     EXPECT_EQ(ch.subscriber_count(), 0u);
 }
 
-// ─── concurrent fires (smoke / deadlock) ───────────────────────────
+// ── concurrent fires (smoke / deadlock) ──────────────────────────────────
 
 TEST(SignalChannel_Concurrency, MultipleProducersOneConsumer) {
     SignalChannel<ConfigReload> ch;
@@ -232,7 +232,7 @@ TEST(SignalChannel_Concurrency, MultipleProducersOneConsumer) {
     ch.unsubscribe(t);
 }
 
-// ─── §6 subscriber failure modes ───────────────────────────────────
+// ── §6 subscriber failure modes ──────────────────────────────────────────
 
 TEST(SignalChannel_NullHandler, ReturnsInvalidToken) {
     SignalChannel<ConfigReload> ch;

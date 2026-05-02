@@ -41,7 +41,7 @@ PluginContext make_ctx(Kernel& k) {
 
 }  // namespace
 
-// ─── reload_config end-to-end ───────────────────────────────────────
+// ── reload_config end-to-end ─────────────────────────────────────────────
 
 TEST(ConfigReload, ReloadFiresSubscriberCallback) {
     Kernel k;

@@ -208,7 +208,7 @@ protected:
     const gn_security_provider_vtable_t* vtable_      = nullptr;
 };
 
-// ── descriptor / sdk version ────────────────────────────────────────
+// ── descriptor / sdk version ─────────────────────────────────────────────
 
 TEST_F(NoisePluginTest, SdkVersionMatchesHeader) {
     std::uint32_t maj = 0, min = 0, pat = 0;
@@ -237,7 +237,7 @@ TEST_F(NoisePluginTest, ProviderIdEqualsNoise) {
     EXPECT_STREQ(vtable_->provider_id(plugin_self_), "noise");
 }
 
-// ── XX handshake round-trip ────────────────────────────────────────
+// ── XX handshake round-trip ──────────────────────────────────────────────
 
 TEST_F(NoisePluginTest, XxHandshakeReachesTransportPhase) {
     const auto alice_kp = make_keypair();

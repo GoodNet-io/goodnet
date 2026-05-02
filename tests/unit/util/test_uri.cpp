@@ -20,7 +20,7 @@ namespace {
 /// pattern as `tests/unit/plugins/security/test_noise.cpp`.
 // NOLINTBEGIN(bugprone-unchecked-optional-access)
 
-// ── §2 recognised forms ─────────────────────────────────────────────
+// ── §2 recognised forms ──────────────────────────────────────────────────
 
 TEST(ParseUri, SchemeHostPort) {
     auto r = ::gn::parse_uri("tcp://127.0.0.1:9000");
@@ -79,7 +79,7 @@ TEST(ParseUri, IpcWithQuery) {
     EXPECT_EQ(r->canonical(), "ipc:///tmp/sock");
 }
 
-// ── §5 failure modes ────────────────────────────────────────────────
+// ── §5 failure modes ─────────────────────────────────────────────────────
 
 TEST(ParseUri, EmptyInput) {
     EXPECT_FALSE(::gn::parse_uri("").has_value());
@@ -156,7 +156,7 @@ TEST(ParseUri, ControlBytesRejected) {
     EXPECT_FALSE(::gn::parse_uri("tcp://h:9000?peer=abc\r\nEvil: 1"sv).has_value());
 }
 
-// ── §4 canonical form ───────────────────────────────────────────────
+// ── §4 canonical form ────────────────────────────────────────────────────
 
 TEST(ParseUri, CanonicalIgnoresQuery) {
     auto a = ::gn::parse_uri("tcp://1.2.3.4:80");
@@ -174,7 +174,7 @@ TEST(ParseUri, CanonicalDistinguishesPort) {
     EXPECT_NE(a->canonical(), b->canonical());
 }
 
-// ── IPv6 ────────────────────────────────────────────────────────────
+// ── IPv6 ─────────────────────────────────────────────────────────────────
 
 TEST(ParseUri, BracketedIpv6Loopback) {
     auto r = ::gn::parse_uri("tcp://[::1]:9000");
@@ -254,7 +254,7 @@ TEST(ParseUri, UnbracketedIpv6FallbackCanonicalisesToBrackets) {
     EXPECT_EQ(r->canonical(), "tcp://[::1]:9000");
 }
 
-// ── query helpers ───────────────────────────────────────────────────
+// ── query helpers ────────────────────────────────────────────────────────
 
 TEST(UriQuery, ValueLookup) {
     auto r = ::gn::parse_uri("tcp://h:9?peer=abc&foo=42");

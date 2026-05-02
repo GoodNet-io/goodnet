@@ -50,7 +50,7 @@ namespace fs = std::filesystem;
 
 }  // namespace
 
-// ─── Hex codec ──────────────────────────────────────────────────────
+// ── Hex codec ────────────────────────────────────────────────────────────
 
 TEST(PluginManifest_Hex, RoundTripPreservesBytes) {
     PluginHash original{};
@@ -81,7 +81,7 @@ TEST(PluginManifest_Hex, DecodeRejectsNonHexCharacters) {
     EXPECT_FALSE(PluginManifest::decode_hex(bad).has_value());
 }
 
-// ─── SHA-256 streaming ──────────────────────────────────────────────
+// ── SHA-256 streaming ────────────────────────────────────────────────────
 
 TEST(PluginManifest_Sha, KnownAnswerForEmptyFile) {
     const auto path = write_temp("gn_manifest_empty", {});
@@ -225,7 +225,7 @@ TEST(PluginManifest_Verify, ContainsRunsBeforeIO) {
     EXPECT_FALSE(m.contains("/no/such/file.so"));
 }
 
-// ─── Manifest parser ────────────────────────────────────────────────
+// ── Manifest parser ──────────────────────────────────────────────────────
 
 TEST(PluginManifest_Parse, AcceptsWellFormedDocument) {
     const std::string json = R"({
@@ -287,7 +287,7 @@ TEST(PluginManifest_Parse, EmptyPluginsArrayProducesEmptyManifest) {
     EXPECT_TRUE(m.empty());
 }
 
-// ─── Verifier ──────────────────────────────────────────────────────
+// ── Verifier ─────────────────────────────────────────────────────────────
 
 TEST(PluginManifest_Verify, AcceptsMatchingHash) {
     const std::array<std::uint8_t, 3> abc{0x61, 0x62, 0x63};

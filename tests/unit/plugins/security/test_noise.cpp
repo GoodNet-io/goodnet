@@ -55,7 +55,7 @@ std::vector<std::uint8_t> from_hex(const char (&hex)[N]) {
 
 } // namespace
 
-// ── BLAKE2b: RFC 7693 Appendix A test vector ─────────────────────────────────
+// ── BLAKE2b: RFC 7693 Appendix A test vector ─────────────────────────────
 
 TEST(NoiseHash, Blake2bRfc7693AbcVector) {
     // BLAKE2b-512("abc") per RFC 7693 Appendix A.
@@ -91,7 +91,7 @@ TEST(NoiseHash, Blake2bConcatenationMatchesSequential) {
               std::vector<std::uint8_t>(d_concat.begin(), d_concat.end()));
 }
 
-// ── HMAC-BLAKE2b ─────────────────────────────────────────────────────────────
+// ── HMAC-BLAKE2b ─────────────────────────────────────────────────────────
 
 TEST(NoiseHmac, EmptyKeyDeterministic) {
     const auto key = bytes_of("");
@@ -140,7 +140,7 @@ TEST(NoiseHmac, LongKeyHashedFirst) {
               std::vector<std::uint8_t>(h_hashed.begin(), h_hashed.end()));
 }
 
-// ── HKDF ─────────────────────────────────────────────────────────────────────
+// ── HKDF ─────────────────────────────────────────────────────────────────
 
 TEST(NoiseHkdf, OutputsAreDistinct) {
     const auto ck  = bytes_of("chaining-key-content");
@@ -175,7 +175,7 @@ TEST(NoiseHkdf, ThreeOutputExtendsPair) {
               std::vector<std::uint8_t>(triple.output3.begin(), triple.output3.end()));
 }
 
-// ── CipherState ──────────────────────────────────────────────────────────────
+// ── CipherState ──────────────────────────────────────────────────────────
 
 TEST(NoiseCipher, NoKeyPassesThrough) {
     CipherState cs;
@@ -258,7 +258,7 @@ TEST(NoiseCipher, RekeyChangesKey) {
     EXPECT_EQ(*dec_post, bytes_of("post"));
 }
 
-// ── SymmetricState ───────────────────────────────────────────────────────────
+// ── SymmetricState ───────────────────────────────────────────────────────
 
 TEST(NoiseSymmetric, InitProducesShortNamePadded) {
     SymmetricState s;
@@ -314,7 +314,7 @@ TEST(NoiseSymmetric, SplitProducesTwoIndependentCiphers) {
     EXPECT_NE(enc1, enc2);
 }
 
-// ── HandshakeState — XX round-trip ──────────────────────────────────────────
+// ── HandshakeState — XX round-trip ───────────────────────────────────────
 
 namespace {
 
@@ -595,7 +595,7 @@ TEST(NoiseHandshakeXX, PayloadCarriedThroughEveryMessage) {
     EXPECT_EQ(*r3, p3);
 }
 
-// ── HandshakeState — IK round-trip ──────────────────────────────────────────
+// ── HandshakeState — IK round-trip ───────────────────────────────────────
 
 TEST(NoiseHandshakeIK, FullRoundTripReachesMatchingHash) {
     Keypair init_static = generate_keypair();
@@ -659,7 +659,7 @@ TEST(NoiseHandshakeIK, MismatchedRemoteStaticFails) {
     EXPECT_FALSE(p1.has_value());
 }
 
-// ── TransportState rekey ─────────────────────────────────────────────────────
+// ── TransportState rekey ─────────────────────────────────────────────────
 
 TEST(NoiseTransport, RekeyContinuesInteropAfterReset) {
     Keypair init_static = generate_keypair();

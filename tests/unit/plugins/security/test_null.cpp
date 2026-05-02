@@ -209,7 +209,7 @@ protected:
     host_api_t       api_{};
 };
 
-// ─── descriptor / sdk version ───────────────────────────────────────
+// ── descriptor / sdk version ─────────────────────────────────────────────
 
 TEST_F(NullPluginTest, SdkVersionMatchesHeader) {
     std::uint32_t maj = 0, min = 0, pat = 0;
@@ -237,7 +237,7 @@ TEST_F(NullPluginTest, DescriptorAdvertisesNullExtension) {
     EXPECT_EQ(desc->ext_requires, nullptr);
 }
 
-// ─── register / unregister ──────────────────────────────────────────
+// ── register / unregister ────────────────────────────────────────────────
 
 TEST_F(NullPluginTest, RegisterCallsHostAndCapturesVtable) {
     LiveProvider lp = activate();
@@ -267,7 +267,7 @@ TEST_F(NullPluginTest, InitRejectsNullArgs) {
     EXPECT_EQ(plugin_.plugin_unreg(nullptr), GN_ERR_NULL_ARG);
 }
 
-// ─── handshake trivial paths ────────────────────────────────────────
+// ── handshake trivial paths ──────────────────────────────────────────────
 
 TEST_F(NullPluginTest, HandshakeOpenSucceedsWithNullState) {
     LiveProvider lp = activate();
@@ -354,7 +354,7 @@ TEST_F(NullPluginTest, HandshakeCloseDoesNotCrash) {
     teardown(lp);
 }
 
-// ─── encrypt / decrypt ─────────────────────────────────────────────
+// ── encrypt / decrypt ────────────────────────────────────────────────────
 
 TEST_F(NullPluginTest, EncryptCopiesPayloadBytes) {
     LiveProvider lp = activate();

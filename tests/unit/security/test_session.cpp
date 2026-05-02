@@ -144,7 +144,7 @@ SecurityEntry make_entry(FakeProvider& prov,
 
 } // namespace
 
-// ── SecuritySession ─────────────────────────────────────────────────
+// ── SecuritySession ──────────────────────────────────────────────────────
 
 TEST(SecuritySession, OpenInitialPhaseIsHandshake) {
     FakeProvider prov;
@@ -235,7 +235,7 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
     EXPECT_NE(session.decrypt_transport({}, out), GN_OK);
 }
 
-// ── Pending handshake queue (backpressure.md §8) ───────────────────
+// ── Pending handshake queue (backpressure.md §8) ─────────────────────────
 
 namespace {
 
@@ -351,7 +351,7 @@ TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
     EXPECT_EQ(prov.handshake_close_calls, 1);
 }
 
-// ── SessionRegistry ────────────────────────────────────────────────────────
+// ── SessionRegistry ──────────────────────────────────────────────────────
 
 TEST(SessionRegistry, CreateAndFindReturnsSameHandle) {
     FakeProvider prov;

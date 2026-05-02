@@ -61,7 +61,7 @@ struct RecordingObserver final : public IPhaseObserver {
     }
 };
 
-// ─── Initial state ──────────────────────────────────────────────────
+// ── Initial state ────────────────────────────────────────────────────────
 
 TEST(Kernel_Init, StartsInLoad) {
     Kernel k;
@@ -69,7 +69,7 @@ TEST(Kernel_Init, StartsInLoad) {
     EXPECT_EQ(k.observer_count(), 0u);
 }
 
-// ─── Forward transitions ────────────────────────────────────────────
+// ── Forward transitions ──────────────────────────────────────────────────
 
 TEST(Kernel_Advance, ForwardSucceedsAndFiresObserver) {
     Kernel k;
@@ -154,7 +154,7 @@ TEST(Kernel_Advance, FullForwardWalkFiresObserverPerStep) {
     }
 }
 
-// ─── Subscribe / observers ─────────────────────────────────────────
+// ── Subscribe / observers ────────────────────────────────────────────────
 
 TEST(Kernel_Subscribe, MultipleObserversAllFire) {
     Kernel k;
@@ -214,7 +214,7 @@ TEST(Kernel_Subscribe, AlreadyExpiredAtSubscribeIsRejected) {
     EXPECT_EQ(k.observer_count(), 0u);
 }
 
-// ─── stop() ─────────────────────────────────────────────────────────
+// ── stop() ───────────────────────────────────────────────────────────────
 
 TEST(Kernel_Stop, WalksPreShutdownThenShutdown) {
     Kernel k;
@@ -292,7 +292,7 @@ TEST(Kernel_Stop, ConcurrentStopFiresExactlyTwice) {
     EXPECT_EQ(k.current_phase(), Phase::Shutdown);
 }
 
-// ─── Concurrent atomic-shared field stress (HIGH-B + HIGH-C) ────────
+// ── Concurrent atomic-shared field stress (HIGH-B + HIGH-C) ──────────────
 
 /// Empty IProtocolLayer that satisfies the interface enough to be
 /// stored in `protocol_layer_`. The body never runs in this test —
