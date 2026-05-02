@@ -1,6 +1,12 @@
 # Kernel — minimal, plugin-driven, public-key addressed.
+#
+# Compiled once as a position-independent OBJECT library; emitted as
+# both a STATIC archive (for hosts that link the kernel into their
+# own binary) and a SHARED `.so` (for hosts that link the C ABI in
+# `sdk/core.h` at runtime — Rust / Python / Go bindings, scripting
+# embeds, hot-reload tools).
 
-add_library(goodnet_kernel STATIC
+set(_goodnet_kernel_sources
     config/config.cpp
     identity/keypair.cpp
     identity/derive.cpp
@@ -25,15 +31,18 @@ add_library(goodnet_kernel STATIC
     plugin/plugin_manifest.cpp
     util/log.cpp
 )
-add_library(GoodNet::kernel ALIAS goodnet_kernel)
-set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
 
-target_include_directories(goodnet_kernel PUBLIC
+add_library(goodnet_kernel_objects OBJECT ${_goodnet_kernel_sources})
+set_target_properties(goodnet_kernel_objects PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+)
+
+target_include_directories(goodnet_kernel_objects PUBLIC
     "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
     "$<INSTALL_INTERFACE:include/goodnet>"
 )
 
-target_link_libraries(goodnet_kernel
+target_link_libraries(goodnet_kernel_objects
     PUBLIC
         GoodNet::sdk
         Threads::Threads
@@ -45,19 +54,40 @@ target_link_libraries(goodnet_kernel
         ${CMAKE_DL_LIBS}
 )
 
-target_compile_features(goodnet_kernel PUBLIC cxx_std_23)
+target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_23)
 
 # Precompiled-header umbrella for the asio / spdlog / fmt block plus
 # the C++23 stdlib slices the kernel reaches everywhere. Single
 # biggest clean-build win per `cmake/Pch.cmake`.
-goodnet_apply_pch(goodnet_kernel)
+goodnet_apply_pch(goodnet_kernel_objects)
 
-# ── Install ──────────────────────────────────────────────────────────────────
-# Hosts that embed GoodNet through `find_package(GoodNet REQUIRED)` link
-# against `GoodNet::kernel`. Plugins outside this tree usually need only
-# `GoodNet::sdk`; the kernel target is for the host binary that owns the
-# kernel instance.
-install(TARGETS goodnet_kernel EXPORT GoodNetTargets ARCHIVE)
+# ── STATIC variant ───────────────────────────────────────────────────────────
+# Default for hosts that embed GoodNet through `find_package(GoodNet REQUIRED)`
+# and link the kernel into their own binary at compile time.
+
+add_library(goodnet_kernel STATIC $<TARGET_OBJECTS:goodnet_kernel_objects>)
+target_link_libraries(goodnet_kernel PUBLIC goodnet_kernel_objects)
+add_library(GoodNet::kernel ALIAS goodnet_kernel)
+set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
+
+# ── SHARED variant ───────────────────────────────────────────────────────────
+# For hosts that load the C ABI in `sdk/core.h` at runtime — non-C++
+# bindings, scripting embeds, hot-reload tools. Same OBJECT library
+# under the hood; one compile, two link variants.
+
+add_library(goodnet_kernel_shared SHARED $<TARGET_OBJECTS:goodnet_kernel_objects>)
+target_link_libraries(goodnet_kernel_shared PUBLIC goodnet_kernel_objects)
+set_target_properties(goodnet_kernel_shared PROPERTIES
+    EXPORT_NAME  kernel_shared
+    OUTPUT_NAME  goodnet_kernel
+)
+add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
+
+install(TARGETS goodnet_kernel goodnet_kernel_shared goodnet_kernel_objects
+    EXPORT GoodNetTargets
+    ARCHIVE
+    LIBRARY
+)
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"
