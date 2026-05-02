@@ -294,6 +294,41 @@ typedef enum gn_result_e {
                                        *   end, etc. */
 } gn_result_t;
 
+/**
+ * @brief Translate a `gn_result_t` value into a stable human-readable
+ *        string suitable for log lines and error reporting.
+ *
+ * The returned pointer references a string literal owned by the SDK
+ * binary; callers MUST NOT free it. The mapping is one-to-one with
+ * the enumerators above; unknown values (`r` outside the enum) return
+ * `"unknown gn_result_t"` rather than NULL so log call sites need no
+ * NULL-guard.
+ *
+ * The function is `static inline` so a plugin built only against the
+ * SDK headers gets the table without linking against `goodnet_kernel`.
+ */
+static inline const char* gn_strerror(gn_result_t r) {
+    switch (r) {
+        case GN_OK:                       return "ok";
+        case GN_ERR_NULL_ARG:              return "null argument where required";
+        case GN_ERR_OUT_OF_MEMORY:         return "out of memory";
+        case GN_ERR_INVALID_ENVELOPE:      return "invalid envelope (zero sender_pk, zero msg_id, or non-zero _reserved)";
+        case GN_ERR_UNKNOWN_RECEIVER:      return "unknown receiver public key (no local identity, no relay)";
+        case GN_ERR_PAYLOAD_TOO_LARGE:     return "payload exceeds the configured max_payload_size";
+        case GN_ERR_DEFRAME_INCOMPLETE:    return "partial frame buffered for retry";
+        case GN_ERR_DEFRAME_CORRUPT:       return "frame deframe failed (magic mismatch, bad version, or length overflow)";
+        case GN_ERR_NOT_IMPLEMENTED:       return "not implemented";
+        case GN_ERR_VERSION_MISMATCH:      return "version mismatch (plugin SDK major != kernel SDK major)";
+        case GN_ERR_LIMIT_REACHED:         return "limit reached";
+        case GN_ERR_INVALID_STATE:         return "invalid state (operation illegal in current phase)";
+        case GN_ERR_INTEGRITY_FAILED:      return "integrity check failed (manifest mismatch, tampered binary, or strict-mode manifest absent)";
+        case GN_ERR_INTERNAL:              return "internal kernel error (exception crossed a C ABI boundary)";
+        case GN_ERR_NOT_FOUND:             return "not found";
+        case GN_ERR_OUT_OF_RANGE:          return "value outside the contract's permitted range";
+    }
+    return "unknown gn_result_t";
+}
+
 /* ── Kernel↔plugin envelope ─────────────────────────────────────────────── */
 
 /**
