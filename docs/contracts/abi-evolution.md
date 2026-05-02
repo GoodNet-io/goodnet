@@ -205,6 +205,21 @@ Rules:
 - Slot count is documented per struct; see the contract owning the
   struct (e.g. `protocol-layer.md` for `gn_message_t`).
 
+**Slot-count convention** — pinned project-wide so a future
+contributor adding a struct copies the right number:
+
+| Family | Slots | Element type | Examples |
+|---|---|---|---|
+| Vtable & value structs (default) | `4` | `void*` | `gn_message_t`, `gn_endpoint_t`, every `gn_*_vtable_t`, `gn_handshake_keys_t`, `gn_link_caps_t`, `gn_link_stats_t`, `gn_link_api_t`, `gn_heartbeat_api_t` |
+| Host-API family | `8` | `void*` | `host_api_t` itself + sub-vtables embedded in `host_api_t` (currently `gn_log_api_t`). The longer evolution life follows from the host-API being touched by every plugin on every minor release. |
+| Operator-tunable settings | `8` | `uint32_t` | `gn_limits_t`. Tunable knobs accumulate faster than vtable slots over the platform's lifetime; the wider tail keeps `MAJOR` bumps off the limits surface. |
+
+A struct that needs more than 4 slots picks one of the wider
+families with an in-comment explanation, never «just because».
+The numeric `_reserved[N]` element type matches the surrounding
+fields (`uint64_t` for counter structs, `uint32_t` for tunables,
+`void*` for everything else).
+
 Vtables grow by accumulating function pointers and need byte-level
 addressability of the new entries; data structures grow by filling
 pre-allocated word-sized holes that would otherwise be padding.

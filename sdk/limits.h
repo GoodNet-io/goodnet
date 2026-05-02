@@ -83,7 +83,11 @@ typedef struct gn_limits_s {
     uint64_t max_storage_table_entries;
     uint64_t max_storage_value_bytes;
 
-    /* ABI evolution; must be zero-initialised. */
+    /* MUST be zero. Slot count `8` (uint32_t) follows the
+     * operator-tunable family per `abi-evolution.md` §4 — limits
+     * accumulate faster than vtable slots over the platform's
+     * lifetime, and the wider tail keeps a MAJOR bump off this
+     * surface. */
     uint32_t _reserved[8];
 } gn_limits_t;
 
