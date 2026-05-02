@@ -68,7 +68,9 @@ typedef struct gn_log_api_s {
                  int32_t line,
                  const char* msg);
 
-    /** Reserved slots for additive evolution per `abi-evolution.md`. */
+    /** MUST be zero. Slot count `8` follows the host-API family
+     *  per `abi-evolution.md` §4 — `gn_log_api_t` is embedded
+     *  inside `host_api_t` and shares its evolution life. */
     void* _reserved[8];
 } gn_log_api_t;
 

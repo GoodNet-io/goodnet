@@ -73,7 +73,7 @@ extern "C" {
 typedef struct gn_link_caps_s {
     uint32_t flags;          /**< OR of `GN_LINK_CAP_*` */
     uint32_t max_payload;    /**< soft MTU in bytes; 0 = unlimited */
-    uint64_t _reserved[6];
+    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.md` §4 */
 } gn_link_caps_t;
 
 /**
@@ -86,7 +86,7 @@ typedef struct gn_link_stats_s {
     uint64_t frames_in;
     uint64_t frames_out;
     uint64_t active_connections;
-    uint64_t _reserved[8];
+    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.md` §4 */
 } gn_link_stats_t;
 
 /**
@@ -213,7 +213,7 @@ typedef struct gn_link_api_s {
      */
     void* ctx;
 
-    void* _reserved[6];
+    void* _reserved[4];      /**< MUST be zero; see `abi-evolution.md` §4 */
 } gn_link_api_t;
 
 #ifdef __cplusplus
