@@ -134,6 +134,8 @@ typedef struct gn_link_api_s {
     /**
      * @brief Snapshot per-link counters into @p out.
      *
+     * @param out @borrowed caller-allocated; the plugin writes the
+     *            counter snapshot.
      * @return @ref GN_OK on success, @ref GN_ERR_NULL_ARG when
      *         @p ctx or @p out is NULL.
      */
@@ -142,6 +144,8 @@ typedef struct gn_link_api_s {
     /**
      * @brief Read static capability flags into @p out. Values stable
      *        for the plugin's lifetime; safe to cache.
+     *
+     * @param out @borrowed caller-allocated.
      */
     gn_result_t (*get_capabilities)(void* ctx, gn_link_caps_t* out);
 
@@ -151,6 +155,8 @@ typedef struct gn_link_api_s {
      *        plugins that have a kernel `gn_conn_id_t` in hand.
      *
      * Single-writer invariant per `link.md` §4 applies.
+     *
+     * @param bytes @borrowed for the duration of the call.
      */
     gn_result_t (*send)(void* ctx, gn_conn_id_t conn,
                         const uint8_t* bytes, size_t size);
@@ -158,6 +164,9 @@ typedef struct gn_link_api_s {
     /**
      * @brief Scatter-gather send. Single-writer invariant covers the
      *        whole batch; `link.md` §4.
+     *
+     * @param batch @borrowed array of byte spans for the duration
+     *              of the call; each span's bytes are also @borrowed.
      */
     gn_result_t (*send_batch)(void* ctx, gn_conn_id_t conn,
                               const gn_byte_span_t* batch, size_t count);
@@ -179,6 +188,8 @@ typedef struct gn_link_api_s {
      *
      * Returns @ref GN_ERR_NOT_IMPLEMENTED on baseline links in
      * v1.0.x — see contract `link.md` §8.
+     *
+     * @param uri @borrowed for the duration of the call.
      */
     gn_result_t (*listen)(void* ctx, const char* uri);
 
@@ -187,6 +198,10 @@ typedef struct gn_link_api_s {
      *        `notify_connect` pipeline. Out-parameter receives the
      *        L1 handle the composer hands to subsequent
      *        `send`/`subscribe_data`/`close` calls.
+     *
+     * @param uri      @borrowed for the duration of the call.
+     * @param out_conn @borrowed caller-allocated; the plugin writes
+     *                 the L1 handle on success.
      */
     gn_result_t (*connect)(void* ctx, const char* uri,
                            gn_conn_id_t* out_conn);
@@ -195,6 +210,12 @@ typedef struct gn_link_api_s {
      * @brief Install a receive callback for @p conn. Re-subscribing
      *        replaces the prior callback. @p user_data is passed
      *        unchanged on every callback invocation.
+     *
+     * @param cb        @borrowed function pointer; the plugin keeps
+     *                  it alive until `unsubscribe_data` returns.
+     * @param user_data @borrowed by the plugin under the same
+     *                  lifetime as @p cb; pass-through to every
+     *                  callback invocation.
      */
     gn_result_t (*subscribe_data)(void* ctx, gn_conn_id_t conn,
                                   gn_link_data_cb_t cb,

@@ -52,17 +52,22 @@ typedef struct gn_heartbeat_api_s {
     uint32_t api_size;          /**< sizeof(gn_heartbeat_api_t) at producer build time */
 
     /**
-     * @brief Snapshot the aggregate stats. Returns 0 on success, -1
-     *        when @p out is NULL.
+     * @brief Snapshot the aggregate stats.
+     *
+     * @param out @borrowed caller-allocated; the plugin writes the
+     *            counter snapshot into the struct.
+     * @return 0 on success, -1 when @p out is NULL.
      */
     int (*get_stats)(void* ctx, gn_heartbeat_stats_t* out);
 
     /**
      * @brief Latest single-PONG RTT recorded for @p conn, in microseconds.
      *
-     * Returns 0 on success, -1 if the connection is unknown or no PONG
-     * has yet been observed. The output is the value carried by the
-     * most recent PONG arrival.
+     * @param out_rtt_us @borrowed caller-allocated u64; written on success.
+     *
+     * @return 0 on success, -1 if the connection is unknown or no PONG
+     *         has yet been observed. The output is the value carried by
+     *         the most recent PONG arrival.
      */
     int (*get_rtt)(void* ctx, gn_conn_id_t conn, uint64_t* out_rtt_us);
 
@@ -70,12 +75,18 @@ typedef struct gn_heartbeat_api_s {
      * @brief Latest external address the peer reported back in its
      *        PONG payload.
      *
-     * @p out_buf is filled with a NUL-terminated address string (IP
-     * literal or hostname) up to @p buf_size bytes; @p out_port
-     * receives the matching port. Returns 0 on success, -1 if the
-     * connection is unknown, no PONG has yet been observed, or
-     * @p buf_size is too small to hold the address (in that case
-     * @p out_buf is left NUL-terminated at the truncation boundary).
+     * @param out_buf  @borrowed caller-allocated buffer; on return,
+     *                 NUL-terminated address string (IP literal or
+     *                 hostname) up to @p buf_size bytes.
+     * @param buf_size capacity of @p out_buf in bytes (including the
+     *                 trailing NUL).
+     * @param out_port @borrowed caller-allocated u16; receives the
+     *                 matching port on success.
+     *
+     * @return 0 on success, -1 if the connection is unknown, no PONG
+     *         has yet been observed, or @p buf_size is too small to
+     *         hold the address (in that case @p out_buf is left
+     *         NUL-terminated at the truncation boundary).
      */
     int (*get_observed_address)(void* ctx, gn_conn_id_t conn,
                                  char* out_buf, size_t buf_size,

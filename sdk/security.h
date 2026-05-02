@@ -71,7 +71,9 @@ typedef struct gn_security_provider_vtable_s {
 
     /**
      * @brief Stable identifier. Examples: `"noise-xx"`, `"noise-ik"`,
-     *        `"null"`. Returned pointer outlives the plugin.
+     *        `"null"`.
+     *
+     * @return @borrowed pointer; valid for the lifetime of the plugin.
      */
     const char* (*provider_id)(void* self);
 
@@ -80,15 +82,18 @@ typedef struct gn_security_provider_vtable_s {
      *
      * @param trust            declared trust class of the connection
      * @param role             initiator or responder per `notify_connect`
-     * @param local_static_sk  local Ed25519 secret key (libsodium layout,
-     *                         64 bytes). Borrowed for the call; the plugin
+     * @param local_static_sk  @borrowed local Ed25519 secret key
+     *                         (libsodium layout, 64 bytes). The plugin
      *                         derives X25519 / sign material as needed.
-     * @param local_static_pk  matching Ed25519 public key (32 bytes).
-     * @param remote_static_pk peer's Ed25519 public key when the pattern
-     *                         knows it up-front (IK initiator side); NULL
-     *                         when the pattern learns it during the
-     *                         handshake (XX, NK).
-     * @param out_state        handshake-state handle returned to the caller
+     * @param local_static_pk  @borrowed matching Ed25519 public key
+     *                         (32 bytes).
+     * @param remote_static_pk @borrowed peer Ed25519 public key when
+     *                         the pattern knows it up-front (IK
+     *                         initiator side); NULL when the pattern
+     *                         learns it during the handshake (XX, NK).
+     * @param out_state        @owned handshake-state handle; the kernel
+     *                         pairs it with `handshake_close` for
+     *                         disposal.
      */
     gn_result_t (*handshake_open)(void* self,
                                   gn_conn_id_t conn,
@@ -102,12 +107,14 @@ typedef struct gn_security_provider_vtable_s {
     /**
      * @brief Drive one step of the handshake.
      *
-     * @param incoming   bytes received from peer; @borrowed for the call
-     * @param incoming_size length of @p incoming, may be 0 on initial step
-     * @param out_message plugin-allocated outgoing handshake bytes; the
-     *                    caller calls `out_message->free_fn` when done.
-     *                    @ref gn_secure_buffer_s::bytes is NULL when no
-     *                    output is produced this step.
+     * @param incoming      @borrowed bytes received from peer.
+     * @param incoming_size length of @p incoming; may be 0 on the
+     *                      initial step.
+     * @param out_message   caller-allocated; on return the plugin
+     *                      fills `bytes` with `@owned` outgoing
+     *                      handshake bytes paired with `free_fn`.
+     *                      `bytes == NULL` when no output is produced
+     *                      this step.
      */
     gn_result_t (*handshake_step)(void* self,
                                   void* state,
@@ -125,6 +132,11 @@ typedef struct gn_security_provider_vtable_s {
      * The plugin zeroises its own copy of the keys after this call. Any
      * subsequent encrypt/decrypt on @p state returns
      * @ref GN_ERR_INVALID_STATE.
+     *
+     * @param out_keys @borrowed caller-allocated; the plugin writes
+     *                 the symmetric keys + channel-binding hash into
+     *                 the struct. The caller copies the bytes it
+     *                 needs and zeroises the struct after use.
      */
     gn_result_t (*export_transport_keys)(void* self,
                                          void* state,
@@ -134,7 +146,9 @@ typedef struct gn_security_provider_vtable_s {
      * @brief Encrypt a plaintext payload.
      *
      * @param plaintext @borrowed; copied internally if needed.
-     * @param out       plugin-allocated ciphertext buffer.
+     * @param out       caller-allocated; on return the plugin fills
+     *                  `bytes` with `@owned` ciphertext paired with
+     *                  `free_fn`.
      */
     gn_result_t (*encrypt)(void* self,
                            void* state,
@@ -143,6 +157,11 @@ typedef struct gn_security_provider_vtable_s {
 
     /**
      * @brief Decrypt a ciphertext payload.
+     *
+     * @param ciphertext @borrowed; copied internally if needed.
+     * @param out        caller-allocated; on return the plugin fills
+     *                   `bytes` with `@owned` plaintext paired with
+     *                   `free_fn`.
      */
     gn_result_t (*decrypt)(void* self,
                            void* state,
