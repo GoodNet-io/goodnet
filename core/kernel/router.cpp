@@ -21,7 +21,7 @@ namespace {
 
 } // namespace
 
-Router::Router(LocalIdentitySet& identities, HandlerRegistry& handlers) noexcept
+Router::Router(LocalIdentityRegistry& identities, HandlerRegistry& handlers) noexcept
     : identities_(identities), handlers_(handlers) {}
 
 bool Router::relay_available() const noexcept {

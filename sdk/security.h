@@ -170,7 +170,7 @@ typedef struct gn_security_provider_vtable_s {
      * Bit `1u << GN_TRUST_<X>` set means the provider permits its own
      * involvement on a connection of class `<X>`. The kernel reads
      * this once at `register_security` time and enforces the gate on
-     * every `Sessions::create`; a connection whose trust class is not
+     * every `SessionRegistry::create`; a connection whose trust class is not
      * in the mask is rejected before any handshake byte rides — per
      * `security-trust.md` §4.
      *

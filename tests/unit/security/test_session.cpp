@@ -1,5 +1,5 @@
 /// @file   tests/unit/security/test_session.cpp
-/// @brief  SecuritySession state machine + Sessions map.
+/// @brief  SecuritySession state machine + SessionRegistry map.
 
 #include <gtest/gtest.h>
 
@@ -19,7 +19,7 @@ namespace {
 using gn::core::SecurityEntry;
 using gn::core::SecuritySession;
 using gn::core::SecurityPhase;
-using gn::core::Sessions;
+using gn::core::SessionRegistry;
 
 /// Inline pass-through provider — handshake is a single no-op step,
 /// encrypt/decrypt copy plaintext to a fresh allocation paired with
@@ -351,12 +351,12 @@ TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
     EXPECT_EQ(prov.handshake_close_calls, 1);
 }
 
-// ── Sessions ────────────────────────────────────────────────────────
+// ── SessionRegistry ────────────────────────────────────────────────────────
 
-TEST(Sessions, CreateAndFindReturnsSameHandle) {
+TEST(SessionRegistry, CreateAndFindReturnsSameHandle) {
     FakeProvider prov;
     auto vt = make_vtable();
-    Sessions sessions;
+    SessionRegistry sessions;
 
     gn_result_t rc = GN_OK;
     auto a = sessions.create(
@@ -371,15 +371,15 @@ TEST(Sessions, CreateAndFindReturnsSameHandle) {
     EXPECT_EQ(sessions.size(), 1u);
 }
 
-TEST(Sessions, FindUnknownConnReturnsEmptyHandle) {
-    Sessions sessions;
+TEST(SessionRegistry, FindUnknownConnReturnsEmptyHandle) {
+    SessionRegistry sessions;
     EXPECT_EQ(sessions.find(99), nullptr);
 }
 
-TEST(Sessions, CreateRejectsDuplicateConn) {
+TEST(SessionRegistry, CreateRejectsDuplicateConn) {
     FakeProvider prov;
     auto vt = make_vtable();
-    Sessions sessions;
+    SessionRegistry sessions;
 
     gn_result_t rc = GN_OK;
     auto first = sessions.create(
@@ -408,10 +408,10 @@ TEST(Sessions, CreateRejectsDuplicateConn) {
     EXPECT_EQ(sessions.size(), 1u);
 }
 
-TEST(Sessions, DestroyClearsAndCallsHandshakeClose) {
+TEST(SessionRegistry, DestroyClearsAndCallsHandshakeClose) {
     FakeProvider prov;
     auto vt = make_vtable();
-    Sessions sessions;
+    SessionRegistry sessions;
 
     gn_result_t rc = GN_OK;
     (void)sessions.create(7, make_entry(prov, vt),
@@ -426,20 +426,20 @@ TEST(Sessions, DestroyClearsAndCallsHandshakeClose) {
     EXPECT_EQ(prov.handshake_close_calls, 1);
 }
 
-TEST(Sessions, DestroyUnknownIsNoop) {
-    Sessions sessions;
+TEST(SessionRegistry, DestroyUnknownIsNoop) {
+    SessionRegistry sessions;
     sessions.destroy(42);  /// must not crash; nothing to remove
     EXPECT_EQ(sessions.size(), 0u);
 }
 
-TEST(Sessions, CreateRefusedWhenTrustNotInProviderMask) {
+TEST(SessionRegistry, CreateRefusedWhenTrustNotInProviderMask) {
     /// Null-style provider: only LOOPBACK / INTRA_NODE permitted. A
     /// caller that hands an UNTRUSTED conn to such a provider hits
     /// the stack-policy gate before any handshake state is allocated.
     FakeProvider prov;
     prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
     auto vt = make_vtable();
-    Sessions sessions;
+    SessionRegistry sessions;
 
     gn_result_t rc = GN_OK;
     auto sess = sessions.create(
@@ -457,13 +457,13 @@ TEST(Sessions, CreateRefusedWhenTrustNotInProviderMask) {
     EXPECT_EQ(prov.handshake_open_calls, 0);
 }
 
-TEST(Sessions, CreateAcceptsTrustClassInProviderMask) {
+TEST(SessionRegistry, CreateAcceptsTrustClassInProviderMask) {
     /// Same restrictive mask, but the conn is LOOPBACK — gate
     /// permits.
     FakeProvider prov;
     prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
     auto vt = make_vtable();
-    Sessions sessions;
+    SessionRegistry sessions;
 
     gn_result_t rc = GN_OK;
     auto sess = sessions.create(

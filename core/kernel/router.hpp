@@ -53,7 +53,7 @@ enum class RouteOutcome {
 /// handler registry.
 class Router {
 public:
-    Router(LocalIdentitySet& identities,
+    Router(LocalIdentityRegistry& identities,
            HandlerRegistry&  handlers) noexcept;
 
     Router(const Router&)            = delete;
@@ -77,7 +77,7 @@ private:
     [[nodiscard]] RouteOutcome dispatch_chain(std::string_view    protocol_id,
                                               const gn_message_t& env) const;
 
-    LocalIdentitySet&     identities_;
+    LocalIdentityRegistry&     identities_;
     HandlerRegistry&      handlers_;
     mutable std::atomic<bool> relay_available_{false};
 };

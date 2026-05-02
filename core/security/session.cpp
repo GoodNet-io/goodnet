@@ -223,9 +223,9 @@ gn_result_t SecuritySession::decrypt_transport(
     return GN_OK;
 }
 
-// ── Sessions ────────────────────────────────────────────────────────
+// ── SessionRegistry ────────────────────────────────────────────────────────
 
-std::shared_ptr<SecuritySession> Sessions::create(
+std::shared_ptr<SecuritySession> SessionRegistry::create(
     gn_conn_id_t conn,
     const SecurityEntry& entry,
     gn_trust_class_t trust,
@@ -282,7 +282,7 @@ std::shared_ptr<SecuritySession> Sessions::create(
     return session;
 }
 
-std::shared_ptr<SecuritySession> Sessions::find(
+std::shared_ptr<SecuritySession> SessionRegistry::find(
     gn_conn_id_t conn) const noexcept
 {
     std::shared_lock lock(mu_);
@@ -290,7 +290,7 @@ std::shared_ptr<SecuritySession> Sessions::find(
     return (it == map_.end()) ? std::shared_ptr<SecuritySession>{} : it->second;
 }
 
-void Sessions::destroy(gn_conn_id_t conn) {
+void SessionRegistry::destroy(gn_conn_id_t conn) {
     std::shared_ptr<SecuritySession> session;
     {
         std::unique_lock lock(mu_);
@@ -304,7 +304,7 @@ void Sessions::destroy(gn_conn_id_t conn) {
     /// them to release before running `handshake_close`.
 }
 
-std::size_t Sessions::size() const {
+std::size_t SessionRegistry::size() const {
     std::shared_lock lock(mu_);
     return map_.size();
 }

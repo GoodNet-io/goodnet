@@ -86,7 +86,7 @@ void fill_envelope(gn_message_t&    env,
 
 TEST(SafeInvoke_Router, ThrowingHandlerSurfacesAsRejected) {
     HandlerRegistry  registry;
-    LocalIdentitySet identities;
+    LocalIdentityRegistry identities;
     Router           router{identities, registry};
 
     const auto local  = pk_from_byte(0x11);
@@ -147,7 +147,7 @@ TEST(SafeInvoke_Router, ThrowingOnResultDoesNotCrash) {
     /// `handle_message` returned — `Consumed` here, since the
     /// throw is in `on_result`, not `handle_message`.
     HandlerRegistry  registry;
-    LocalIdentitySet identities;
+    LocalIdentityRegistry identities;
     Router           router{identities, registry};
 
     const auto local  = pk_from_byte(0x33);

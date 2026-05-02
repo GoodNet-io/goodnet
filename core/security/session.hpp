@@ -42,7 +42,7 @@ enum class SecurityPhase : std::uint8_t {
 /// One security session bound to a single `gn_conn_id_t`.
 ///
 /// Lifetime:
-///  1. `notify_connect` allocates the session via `Sessions::create`.
+///  1. `notify_connect` allocates the session via `SessionRegistry::create`.
 ///  2. The kernel calls `advance_handshake` with empty input to drive
 ///     the initiator's first message; for the responder this returns
 ///     an empty out_msg and waits for inbound.
@@ -54,7 +54,7 @@ enum class SecurityPhase : std::uint8_t {
 ///     the handshake state.
 ///  5. Transport-phase frames flow through `encrypt_transport` /
 ///     `decrypt_transport`.
-///  6. `notify_disconnect` triggers `Sessions::destroy`, which calls
+///  6. `notify_disconnect` triggers `SessionRegistry::destroy`, which calls
 ///     `handshake_close` then `Closed`.
 class SecuritySession {
 public:
@@ -65,7 +65,7 @@ public:
     /// Non-movable: `pending_mu_` is non-movable, and ownership
     /// of an open handshake state crosses an ABI boundary that
     /// the move would silently break. The kernel keeps every
-    /// session inside `Sessions::map_` under `shared_ptr`, so
+    /// session inside `SessionRegistry::map_` under `shared_ptr`, so
     /// move semantics are not part of the surface.
     SecuritySession(SecuritySession&&)                 = delete;
     SecuritySession& operator=(SecuritySession&&)      = delete;
@@ -121,7 +121,7 @@ public:
         std::vector<std::uint8_t>& out_plaintext);
 
     /// Close the session and release the provider's per-connection
-    /// state. Idempotent. Always called by `Sessions::destroy`.
+    /// state. Idempotent. Always called by `SessionRegistry::destroy`.
     void close() noexcept;
 
     [[nodiscard]] SecurityPhase phase() const noexcept {
@@ -191,13 +191,13 @@ private:
 
 
 /// Per-connection security session map. The kernel keeps one
-/// `Sessions` instance; thunks look up the session for a given
+/// `SessionRegistry` instance; thunks look up the session for a given
 /// `gn_conn_id_t` at every notify-class call.
-class Sessions {
+class SessionRegistry {
 public:
-    Sessions()                           = default;
-    Sessions(const Sessions&)            = delete;
-    Sessions& operator=(const Sessions&) = delete;
+    SessionRegistry()                           = default;
+    SessionRegistry(const SessionRegistry&)            = delete;
+    SessionRegistry& operator=(const SessionRegistry&) = delete;
 
     /// Allocate and return a session for @p conn. The session is
     /// inserted into the map under @p conn; existing entries are

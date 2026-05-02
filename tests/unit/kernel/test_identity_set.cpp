@@ -1,5 +1,5 @@
 /// @file   tests/unit/kernel/test_identity_set.cpp
-/// @brief  Tests for `gn::core::LocalIdentitySet`.
+/// @brief  Tests for `gn::core::LocalIdentityRegistry`.
 ///
 /// Pins multi-tenant routing: a kernel may host more than one node
 /// identity in one process. The set is consulted on every inbound
@@ -48,14 +48,14 @@ PublicKey pk_from_u32(std::uint32_t seed) noexcept {
 
 // ─── basic operations ───────────────────────────────────────────────
 
-TEST(LocalIdentitySet_Basic, EmptyByDefault) {
-    LocalIdentitySet set;
+TEST(LocalIdentityRegistry_Basic, EmptyByDefault) {
+    LocalIdentityRegistry set;
     EXPECT_EQ(set.size(), 0u);
     EXPECT_FALSE(set.contains(pk_from_byte(0x11)));
 }
 
-TEST(LocalIdentitySet_Basic, AddThenContainsThenRemove) {
-    LocalIdentitySet set;
+TEST(LocalIdentityRegistry_Basic, AddThenContainsThenRemove) {
+    LocalIdentityRegistry set;
     const auto a = pk_from_byte(0x11);
     const auto b = pk_from_byte(0x22);
 
@@ -78,14 +78,14 @@ TEST(LocalIdentitySet_Basic, AddThenContainsThenRemove) {
     EXPECT_EQ(set.size(), 0u);
 }
 
-TEST(LocalIdentitySet_Basic, RemoveAbsentIsNoOp) {
-    LocalIdentitySet set;
+TEST(LocalIdentityRegistry_Basic, RemoveAbsentIsNoOp) {
+    LocalIdentityRegistry set;
     set.remove(pk_from_byte(0x33));  // must not throw
     EXPECT_EQ(set.size(), 0u);
 }
 
-TEST(LocalIdentitySet_Basic, AddIsIdempotent) {
-    LocalIdentitySet set;
+TEST(LocalIdentityRegistry_Basic, AddIsIdempotent) {
+    LocalIdentityRegistry set;
     const auto a = pk_from_byte(0x44);
 
     set.add(a);
@@ -99,11 +99,11 @@ TEST(LocalIdentitySet_Basic, AddIsIdempotent) {
     EXPECT_EQ(set.size(), 0u);
 }
 
-TEST(LocalIdentitySet_Basic, BroadcastPkIsTreatedLikeAnyOther) {
+TEST(LocalIdentityRegistry_Basic, BroadcastPkIsTreatedLikeAnyOther) {
     /// The broadcast marker (`kBroadcastPk`, all zeros) is a valid value
     /// the set may hold; the *router* is what assigns it broadcast
     /// semantics, not the set itself.
-    LocalIdentitySet set;
+    LocalIdentityRegistry set;
     set.add(kBroadcastPk);
     EXPECT_TRUE(set.contains(kBroadcastPk));
     EXPECT_EQ(set.size(), 1u);
@@ -111,14 +111,14 @@ TEST(LocalIdentitySet_Basic, BroadcastPkIsTreatedLikeAnyOther) {
 
 // ─── concurrency ────────────────────────────────────────────────────
 
-TEST(LocalIdentitySet_Concurrency, FourThreadsAddAndContains) {
+TEST(LocalIdentityRegistry_Concurrency, FourThreadsAddAndContains) {
     /// Four writers + four readers race on the same shared set. The
     /// requirement is "no race, no deadlock" — final state must be
     /// fully populated and the run must finish in a bounded time.
 
     constexpr int kThreads   = 4;
     constexpr int kPerThread = 1024;
-    LocalIdentitySet set;
+    LocalIdentityRegistry set;
 
     std::atomic<int> reader_observations{0};
     std::atomic<bool> stop_readers{false};
@@ -151,18 +151,23 @@ TEST(LocalIdentitySet_Concurrency, FourThreadsAddAndContains) {
     };
 
     std::vector<std::thread> threads;
-    threads.reserve(kThreads * 2);
+    threads.reserve(static_cast<std::size_t>(kThreads) * 2);
 
     const auto start = std::chrono::steady_clock::now();
     for (int t = 0; t < kThreads; ++t) threads.emplace_back(writer, t);
     for (int t = 0; t < kThreads; ++t) threads.emplace_back(reader);
 
     /// Join writers first.
-    for (int t = 0; t < kThreads; ++t) threads[t].join();
+    for (std::size_t t = 0; t < static_cast<std::size_t>(kThreads); ++t) {
+        threads[t].join();
+    }
 
     /// Stop readers and join them.
     stop_readers.store(true, std::memory_order_release);
-    for (int t = kThreads; t < kThreads * 2; ++t) threads[t].join();
+    for (std::size_t t = static_cast<std::size_t>(kThreads);
+         t < static_cast<std::size_t>(kThreads) * 2; ++t) {
+        threads[t].join();
+    }
 
     const auto elapsed = std::chrono::steady_clock::now() - start;
     EXPECT_LT(elapsed, std::chrono::seconds(30))
@@ -179,23 +184,24 @@ TEST(LocalIdentitySet_Concurrency, FourThreadsAddAndContains) {
     (void)reader_observations.load(std::memory_order_relaxed);
 }
 
-TEST(LocalIdentitySet_Concurrency, AddRemoveContainsDoesNotDeadlock) {
+TEST(LocalIdentityRegistry_Concurrency, AddRemoveContainsDoesNotDeadlock) {
     /// Mixed add/remove/contains across four threads. We don't assert
     /// final cardinality — adds and removes are racing — only that the
     /// loop terminates and `contains` survives without UB.
 
     constexpr int kThreads   = 4;
     constexpr int kPerThread = 512;
-    LocalIdentitySet set;
+    LocalIdentityRegistry set;
 
     auto worker = [&](int tid) {
         for (int i = 0; i < kPerThread; ++i) {
             const auto pk = pk_from_u32(
                 static_cast<std::uint32_t>((tid << 16) | i));
             switch (i % 3) {
-                case 0: set.add(pk);    break;
-                case 1: set.remove(pk); break;
+                case 0: set.add(pk);            break;
+                case 1: set.remove(pk);         break;
                 case 2: (void)set.contains(pk); break;
+                default: break;  /// unreachable; tidy hates open switches.
             }
         }
     };

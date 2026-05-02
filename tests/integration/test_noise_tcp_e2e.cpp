@@ -227,7 +227,7 @@ TEST(NoiseTcpE2E, HandshakeOverRealSocketReachesTransportPhase) {
         /// Each kernel has exactly one connection at this point.
         if (alice->kernel->connections().size() == 1) {
             const auto& alice_conn = alice->kernel->connections();
-            (void)alice_conn;  /// linear scan via Sessions::find is enough
+            (void)alice_conn;  /// linear scan via SessionRegistry::find is enough
         }
         for (gn_conn_id_t id = 1; id <= 8; ++id) {
             if (auto s = alice->kernel->sessions().find(id);

@@ -97,12 +97,12 @@ public:
 
     /* ── Data-path components (owned by the kernel) ────────────────── */
 
-    [[nodiscard]] LocalIdentitySet&    identities()  noexcept { return identities_; }
+    [[nodiscard]] LocalIdentityRegistry&    identities()  noexcept { return identities_; }
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] LinkRegistry&        links()       noexcept { return links_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
-    [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
+    [[nodiscard]] SessionRegistry&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
     [[nodiscard]] Router&              router()      noexcept { return router_; }
     [[nodiscard]] TimerRegistry&       timers()      noexcept { return timers_; }
@@ -207,12 +207,12 @@ private:
     /// Data-path components live for the kernel's lifetime. Order of
     /// declaration matches construction order — Router depends on
     /// identities_ and handlers_, so they precede it.
-    LocalIdentitySet     identities_;
+    LocalIdentityRegistry     identities_;
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
     LinkRegistry         links_;
     SecurityRegistry     security_;
-    Sessions             sessions_;
+    SessionRegistry             sessions_;
     ExtensionRegistry    extensions_;
     Router               router_{identities_, handlers_};
     TimerRegistry        timers_;
