@@ -25,7 +25,7 @@ typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_DISCONNECTED       = 2, /**< notify_disconnect just fired */
     GN_CONN_EVENT_TRUST_UPGRADED     = 3, /**< Untrusted → Peer */
     GN_CONN_EVENT_BACKPRESSURE_SOFT  = 4, /**< pending_queue crossed *_high */
-    GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5, /**< pending_queue dropped below *_low */
+    GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5  /**< pending_queue dropped below *_low */
 } gn_conn_event_kind_t;
 
 /**
