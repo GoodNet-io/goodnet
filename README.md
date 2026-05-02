@@ -104,7 +104,7 @@ on every merge into `main`.
 Roadmap and version history: [`docs/ROADMAP.md`](docs/ROADMAP.md),
 [`CHANGELOG.md`](CHANGELOG.md).
 
-## Build
+## Quickstart
 
 The Nix flake pins the toolchain. The shortest path from clone to
 "two endpoints exchanged a frame over a Noise-secured TCP channel":
@@ -113,11 +113,79 @@ The Nix flake pins the toolchain. The shortest path from clone to
 nix run .#demo        # two in-process kernels, real socket, real Noise
 ```
 
-Configure and test:
+`examples/two_node/main.cpp` is the source of that demo and the
+shortest end-to-end host worth reading — the kernel construct,
+plugin load, identity setup, handler register, send + receive in
+under 200 lines.
+
+### Run a node with a config
+
+The kernel boots with sensible defaults and an empty config. To
+override limits, name an embedded protocol layer, or add operator
+metadata, hand the host a JSON document:
+
+```jsonc
+// node.json
+{
+  "limits": {
+    "max_connections":            1024,
+    "max_outbound_connections":   256,
+    "pending_queue_bytes_low":      262144,
+    "pending_queue_bytes_high":    1048576,
+    "pending_queue_bytes_hard":    4194304
+  }
+}
+```
+
+A host built around `sdk/core.h` passes that document to
+`gn_core_create_from_json`; an embedding C++ host calls
+`Kernel::reload_config` (see `docs/contracts/config.md` §3 for
+every recognised key, including profile presets).
+
+`Config::load_json` and `Kernel::reload_config` capture the
+parser's own line/column on rejection — operators see
+`expected ',' or ']' near line 7 column 3`, not a bare result
+code, in the kernel log.
+
+### Load a plugin
+
+A `.so` plugin is admitted only with a manifest entry that pins
+its path and SHA-256:
+
+```json
+{
+  "plugins": [
+    {
+      "path":   "build/plugins/libgoodnet_security_null.so",
+      "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    },
+    {
+      "path":   "build/plugins/libgoodnet_link_tcp.so",
+      "sha256": "<64-hex>"
+    }
+  ]
+}
+```
+
+The host points the kernel at the manifest, then calls
+`gn_core_load_plugin(path, sha256)` for each entry. A path whose
+on-disk bytes hash to anything other than the pinned value is
+rejected with `GN_ERR_INTEGRITY_FAILED` before `dlopen` runs. The
+full rule set lives in
+[`docs/contracts/plugin-manifest.md`](docs/contracts/plugin-manifest.md).
+
+The same plugin source produces both a static-link archive and the
+loadable `.so`; trusted-domain deployments use the former and skip
+the manifest path entirely.
+
+### Build & test
 
 ```bash
-nix run .#build
-nix run .#test
+nix run .#build       # Release build
+nix run .#test        # Debug build + ctest
+
+nix run .#test-asan   # AddressSanitizer + UBSan
+nix run .#test-tsan   # ThreadSanitizer
 ```
 
 Inside the dev shell, the standard CMake / CTest invocations work
@@ -129,13 +197,6 @@ nix develop      # gcc 15, asio, libsodium, openssl, spdlog,
 cmake -B build -G Ninja
 cmake --build build
 ctest --test-dir build
-```
-
-Sanitiser CI gates:
-
-```bash
-nix run .#test-asan   # AddressSanitizer + UBSan
-nix run .#test-tsan   # ThreadSanitizer
 ```
 
 ## Architecture
