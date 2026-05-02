@@ -895,6 +895,17 @@ gn_result_t WsLink::send(gn_conn_id_t conn,
     const auto framed = bytes.size() + 14U;
     if (pending_queue_bytes_hard_ != 0 &&
         s->bytes_buffered() + framed > pending_queue_bytes_hard_) {
+        if (api_) {
+            if (api_->emit_counter) {
+                api_->emit_counter(api_->host_ctx, "drop.queue_hard_cap");
+            }
+            gn_log_warn(api_,
+                "ws.send: queue hard cap — conn=%llu buffered=%zu add=%zu hard=%zu",
+                static_cast<unsigned long long>(conn),
+                s->bytes_buffered(),
+                framed,
+                pending_queue_bytes_hard_);
+        }
         return GN_ERR_LIMIT_REACHED;
     }
     s->enqueue_send(bytes);
@@ -918,6 +929,17 @@ gn_result_t WsLink::send_batch(
     const auto framed = total + 14U;
     if (pending_queue_bytes_hard_ != 0 &&
         s->bytes_buffered() + framed > pending_queue_bytes_hard_) {
+        if (api_) {
+            if (api_->emit_counter) {
+                api_->emit_counter(api_->host_ctx, "drop.queue_hard_cap");
+            }
+            gn_log_warn(api_,
+                "ws.send_batch: queue hard cap — conn=%llu buffered=%zu add=%zu hard=%zu",
+                static_cast<unsigned long long>(conn),
+                s->bytes_buffered(),
+                framed,
+                pending_queue_bytes_hard_);
+        }
         return GN_ERR_LIMIT_REACHED;
     }
     s->enqueue_send(std::span<const std::uint8_t>(coalesced));

@@ -685,6 +685,17 @@ gn_result_t TlsLink::send(gn_conn_id_t conn,
     if (pending_queue_bytes_hard_ != 0 &&
         session->bytes_buffered() + bytes.size() >
             pending_queue_bytes_hard_) {
+        if (api_) {
+            if (api_->emit_counter) {
+                api_->emit_counter(api_->host_ctx, "drop.queue_hard_cap");
+            }
+            gn_log_warn(api_,
+                "tls.send: queue hard cap — conn=%llu buffered=%zu add=%zu hard=%zu",
+                static_cast<unsigned long long>(conn),
+                session->bytes_buffered(),
+                bytes.size(),
+                pending_queue_bytes_hard_);
+        }
         return GN_ERR_LIMIT_REACHED;
     }
     session->do_send(bytes);
@@ -702,6 +713,17 @@ gn_result_t TlsLink::send_batch(
     for (const auto& f : frames) total += f.size();
     if (pending_queue_bytes_hard_ != 0 &&
         session->bytes_buffered() + total > pending_queue_bytes_hard_) {
+        if (api_) {
+            if (api_->emit_counter) {
+                api_->emit_counter(api_->host_ctx, "drop.queue_hard_cap");
+            }
+            gn_log_warn(api_,
+                "tls.send_batch: queue hard cap — conn=%llu buffered=%zu add=%zu hard=%zu",
+                static_cast<unsigned long long>(conn),
+                session->bytes_buffered(),
+                total,
+                pending_queue_bytes_hard_);
+        }
         return GN_ERR_LIMIT_REACHED;
     }
     session->do_send_batch(frames);
