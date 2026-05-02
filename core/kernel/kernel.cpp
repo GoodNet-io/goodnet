@@ -108,11 +108,21 @@ void Kernel::apply_log_config() noexcept {
     gn::log::LogConfig lc;
     {
         std::string s;
-        if (config_.get_string("log.level", s) == GN_OK)             lc.level         = std::move(s);
-        if (config_.get_string("log.file", s)  == GN_OK)             lc.log_file      = std::move(s);
-        if (config_.get_string("log.project_root", s) == GN_OK)      lc.project_root  = std::move(s);
-        if (config_.get_string("log.console_pattern", s) == GN_OK)   lc.console_pattern = std::move(s);
-        if (config_.get_string("log.file_pattern", s) == GN_OK)      lc.file_pattern  = std::move(s);
+        if (config_.get_string("log.level", s) == GN_OK) {
+            lc.level = std::move(s);
+        }
+        if (config_.get_string("log.file", s) == GN_OK) {
+            lc.log_file = std::move(s);
+        }
+        if (config_.get_string("log.project_root", s) == GN_OK) {
+            lc.project_root = std::move(s);
+        }
+        if (config_.get_string("log.console_pattern", s) == GN_OK) {
+            lc.console_pattern = std::move(s);
+        }
+        if (config_.get_string("log.file_pattern", s) == GN_OK) {
+            lc.file_pattern = std::move(s);
+        }
     }
     {
         std::int64_t i = 0;

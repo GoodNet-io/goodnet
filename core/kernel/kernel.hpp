@@ -100,7 +100,7 @@ public:
     [[nodiscard]] LocalIdentitySet&    identities()  noexcept { return identities_; }
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
-    [[nodiscard]] LinkRegistry&   links()       noexcept { return links_; }
+    [[nodiscard]] LinkRegistry&        links()       noexcept { return links_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
     [[nodiscard]] Sessions&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
