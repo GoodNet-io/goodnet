@@ -55,11 +55,34 @@ static_assert(
 void disconnect_on_consumer_failure(Kernel&          kernel,
                                      gn_conn_id_t    conn,
                                      gn_drop_reason_t reason) noexcept {
-    ::gn::log::warn("attestation: consumer step failed — conn={} reason={}",
-                    static_cast<std::uint64_t>(conn),
-                    drop_reason_label(reason));
-    kernel.sessions().destroy(conn);
+    /// Snapshot first so the warn line and the DISCONNECTED event
+    /// carry the same `(remote_pk, trust)` view of the registry.
     auto removed = kernel.connections().snapshot_and_erase(conn);
+
+    /// Per `metrics.md` §3 every drop site bumps both the named
+    /// counter and a structured log. Counter without log leaves
+    /// operators with a count and no `which conn?` follow-up;
+    /// log without counter hides the rate from the dashboard.
+    kernel.metrics().increment_drop_reason(reason);
+
+    if (removed.has_value()) {
+        ::gn::log::warn(
+            "attestation: consumer step failed — conn={} reason={} "
+            "remote_pk={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+            static_cast<std::uint64_t>(conn),
+            drop_reason_label(reason),
+            removed->remote_pk[0], removed->remote_pk[1],
+            removed->remote_pk[2], removed->remote_pk[3],
+            removed->remote_pk[4], removed->remote_pk[5],
+            removed->remote_pk[6], removed->remote_pk[7]);
+    } else {
+        ::gn::log::warn(
+            "attestation: consumer step failed — conn={} reason={} (registry miss)",
+            static_cast<std::uint64_t>(conn),
+            drop_reason_label(reason));
+    }
+
+    kernel.sessions().destroy(conn);
     if (removed.has_value()) {
         ConnEvent ev{};
         ev.kind      = GN_CONN_EVENT_DISCONNECTED;

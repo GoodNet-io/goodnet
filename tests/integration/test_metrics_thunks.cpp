@@ -9,6 +9,7 @@
 
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -20,6 +21,7 @@
 #include <core/kernel/plugin_context.hpp>
 
 #include <sdk/host_api.h>
+#include <sdk/limits.h>
 #include <sdk/metrics.h>
 #include <sdk/types.h>
 
@@ -84,6 +86,36 @@ TEST(HostApiMetrics, NullNameIsDroppedSilently) {
     const auto visited = api.iterate_counters(
         api.host_ctx, &collect, &bag);
     EXPECT_EQ(visited, 0u);
+}
+
+TEST(HostApiMetrics, FrameTooLargeBumpsDropCounter) {
+    /// `notify_inbound_bytes` rejects frames above `max_frame_bytes`
+    /// per `host-api.md`. Per `metrics.md` §3 the rejection is paired
+    /// with both a counter increment (`drop.frame_too_large`) and a
+    /// structured warn line carrying `(conn, observed, configured)`.
+    /// This test covers the counter half so dashboards see the rate.
+    Kernel k;
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    ctx.kind          = GN_PLUGIN_KIND_LINK;
+    ctx.plugin_name   = "frame-cap-fixture";
+    ctx.plugin_anchor = std::make_shared<PluginAnchor>();
+
+    /// A tight cap so the test sends a tiny over-cap buffer instead
+    /// of allocating megabytes.
+    gn_limits_t limits{};
+    limits.max_frame_bytes = 64;
+    k.set_limits(limits);
+
+    auto api = build_host_api(ctx);
+
+    const std::array<std::uint8_t, 128> big{};
+    EXPECT_EQ(
+        api.notify_inbound_bytes(api.host_ctx, /*conn=*/1,
+                                  big.data(), big.size()),
+        GN_ERR_PAYLOAD_TOO_LARGE);
+
+    EXPECT_EQ(k.metrics().value("drop.frame_too_large"), 1u);
 }
 
 TEST(HostApiMetrics, IteratorVisitorMaySignalEarlyExit) {
