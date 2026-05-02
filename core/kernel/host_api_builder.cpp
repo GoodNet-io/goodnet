@@ -1165,6 +1165,18 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     /// `gn_limits_t` family.
     const auto& limits = pc->kernel->limits();
     if (limits.max_frame_bytes != 0 && size > limits.max_frame_bytes) {
+        /// Drop site: bump the named counter and emit a structured
+        /// warn carrying the `(conn, observed, configured)` triple
+        /// per `metrics.md` §3 so the operator can move from the
+        /// counter rate on a dashboard to the offending connection
+        /// without a second tool.
+        pc->kernel->metrics().increment_drop_reason(GN_DROP_FRAME_TOO_LARGE);
+        ::gn::log::warn(
+            "host_api.notify_inbound_bytes: frame above cap — "
+            "conn={} observed={} configured_max={}",
+            static_cast<std::uint64_t>(conn),
+            size,
+            limits.max_frame_bytes);
         return GN_ERR_PAYLOAD_TOO_LARGE;
     }
 
