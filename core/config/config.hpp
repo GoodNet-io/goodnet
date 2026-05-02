@@ -39,7 +39,14 @@ public:
     /// in the document — operators routinely annotate config files
     /// with rationale, and a strict parser turns the convenience
     /// into hostility.
-    [[nodiscard]] gn_result_t load_json(std::string_view json);
+    ///
+    /// On failure, when @p out_reason is non-null, it is overwritten
+    /// with the parser's own diagnostic (line + column + reason from
+    /// `nlohmann::json::parse_error::what()`) or, for the
+    /// non-object root case, a short fixed message. The string is
+    /// untouched on success.
+    [[nodiscard]] gn_result_t load_json(std::string_view json,
+                                        std::string* out_reason = nullptr);
 
     /// Convenience: read the file at @p path off the filesystem,
     /// then hand the bytes to `load_json`. The kernel itself is
@@ -52,7 +59,8 @@ public:
     /// opened (missing path, permission denied), the same parse /
     /// invariant codes `load_json` would return otherwise. Failure
     /// leaves the existing state unchanged in every case.
-    [[nodiscard]] gn_result_t load_file(const std::string& path);
+    [[nodiscard]] gn_result_t load_file(const std::string& path,
+                                        std::string* out_reason = nullptr);
 
     /// Deep-merge @p overlay JSON on top of the current state.
     /// Nested objects merge field-by-field per RFC 7396 JSON Merge
@@ -71,7 +79,8 @@ public:
     /// Same parse / invariant atomicity as `load_json`: a parse
     /// failure or invariant violation rolls the kernel state back
     /// to whatever the previous successful load / merge left.
-    [[nodiscard]] gn_result_t merge_json(std::string_view overlay);
+    [[nodiscard]] gn_result_t merge_json(std::string_view overlay,
+                                         std::string* out_reason = nullptr);
 
     /// Validate cross-field invariants from `limits.md` §3. Returns
     /// `GN_ERR_LIMIT_REACHED` when any invariant fails; the offending
