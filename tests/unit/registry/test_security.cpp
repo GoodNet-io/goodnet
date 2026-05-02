@@ -27,7 +27,7 @@ const gn_security_provider_vtable_t* make_dummy_vtable() {
     return &vt;
 }
 
-// ─── argument validation ────────────────────────────────────────────
+// ── argument validation ──────────────────────────────────────────────────
 
 TEST(SecurityRegistry_Args, RegisterRejectsEmptyId) {
     SecurityRegistry r;
@@ -43,7 +43,7 @@ TEST(SecurityRegistry_Args, RegisterRejectsNullVtable) {
     EXPECT_FALSE(r.is_active());
 }
 
-// ─── single-active rule ─────────────────────────────────────────────
+// ── single-active rule ───────────────────────────────────────────────────
 
 TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
     SecurityRegistry r;
@@ -80,7 +80,7 @@ TEST(SecurityRegistry_SingleActive, SecondRegisterRejected) {
     EXPECT_EQ(cur.self, &self_a);
 }
 
-// ─── unregister ─────────────────────────────────────────────────────
+// ── unregister ───────────────────────────────────────────────────────────
 
 TEST(SecurityRegistry_Unregister, RemovesActive) {
     SecurityRegistry r;
@@ -127,7 +127,7 @@ TEST(SecurityRegistry_Unregister, AllowsReregisterAfterRemoval) {
     EXPECT_EQ(r.current().self, &self_b);
 }
 
-// ─── current() / is_active() ────────────────────────────────────────
+// ── current() / is_active() ──────────────────────────────────────────────
 
 TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
     SecurityRegistry r;
@@ -138,7 +138,7 @@ TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
     EXPECT_EQ(cur.self, nullptr);
 }
 
-// ─── §3a vtable api_size validation ─────────────────────────────────
+// ── §3a vtable api_size validation ───────────────────────────────────────
 
 TEST(SecurityRegistry_VtableApiSize, RejectsZeroApiSize) {
     /// `abi-evolution.md` §3a: zero-init vtable carries an api_size

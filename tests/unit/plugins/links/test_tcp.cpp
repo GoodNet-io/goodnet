@@ -104,7 +104,7 @@ void wait_for(const std::function<bool()>& pred,
 
 }  // namespace
 
-// ── listen / port allocation ────────────────────────────────────────
+// ── listen / port allocation ─────────────────────────────────────────────
 
 TEST(TcpLink, ListenOnEphemeralPortReturnsNonZero) {
     StubHost h;
@@ -140,7 +140,7 @@ TEST(TcpLink, ShutdownIsIdempotent) {
     t->shutdown();   /// second call is a no-op
 }
 
-// ── full loopback round-trip ────────────────────────────────────────
+// ── full loopback round-trip ─────────────────────────────────────────────
 
 TEST(TcpLink, LoopbackHandshakeAndPayloadRoundTrip) {
     StubHost h;

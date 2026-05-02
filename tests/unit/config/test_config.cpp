@@ -22,7 +22,7 @@
 namespace gn::core {
 namespace {
 
-// ─── load_json: success / failure modes ─────────────────────────────
+// ── load_json: success / failure modes ───────────────────────────────────
 
 TEST(Config_LoadJson, EmptyDocumentLeavesDefaults) {
     Config c;
@@ -121,7 +121,7 @@ TEST(Config_LoadJson, ValidationFailurePreservesPriorState) {
     EXPECT_EQ(s, "ok");
 }
 
-// ─── validate: cross-field invariants from limits.md §3 ─────────────
+// ── validate: cross-field invariants from limits.md §3 ───────────────────
 
 TEST(Config_Validate, DefaultsPass) {
     Config c;
@@ -230,7 +230,7 @@ TEST(Config_Validate, InjectRateZeroRateAcceptedAnyBurst) {
     EXPECT_EQ(c.load_json(doc), GN_OK);
 }
 
-// ─── get_string ─────────────────────────────────────────────────────
+// ── get_string ───────────────────────────────────────────────────────────
 
 TEST(Config_GetString, TopLevelKey) {
     Config c;
@@ -293,7 +293,7 @@ TEST(Config_GetString, DescendingIntoNonObjectMisses) {
     EXPECT_EQ(c.get_string("k.nested", out), GN_ERR_NOT_FOUND);
 }
 
-// ─── get_int64 ──────────────────────────────────────────────────────
+// ── get_int64 ────────────────────────────────────────────────────────────
 
 TEST(Config_GetInt64, TopLevelKey) {
     Config c;
@@ -353,7 +353,7 @@ TEST(Config_GetInt64, EmptySegmentRejected) {
     EXPECT_EQ(c.get_int64("k.", out), GN_ERR_NOT_FOUND);
 }
 
-// ─── get_bool ────────────────────────────────────────────────────
+// ── get_bool ─────────────────────────────────────────────────────────────
 
 TEST(Config_GetBool, ReadsTrueAndFalse) {
     Config c;
@@ -381,7 +381,7 @@ TEST(Config_GetBool, MissingReturnsNotFound) {
     EXPECT_EQ(c.get_bool("absent", v), GN_ERR_NOT_FOUND);
 }
 
-// ─── get_double ──────────────────────────────────────────────────
+// ── get_double ───────────────────────────────────────────────────────────
 
 TEST(Config_GetDouble, FloatLiteral) {
     Config c;
@@ -409,7 +409,7 @@ TEST(Config_GetDouble, StringRejected) {
     EXPECT_EQ(c.get_double("k", v), GN_ERR_INVALID_ENVELOPE);
 }
 
-// ─── get_array_* ─────────────────────────────────────────────────
+// ── get_array_* ──────────────────────────────────────────────────────────
 
 TEST(Config_GetArray, SizeOfFlatArray) {
     Config c;
@@ -471,7 +471,7 @@ TEST(Config_GetArray, IntegerArray) {
     EXPECT_EQ(v, 9001);
 }
 
-// ─── merge_json (layered config) ─────────────────────────────────
+// ── merge_json (layered config) ──────────────────────────────────────────
 
 TEST(Config_Merge, OverlayKeepsBaseFields) {
     /// Layered config pattern: defaults → site override. Fields
@@ -615,7 +615,7 @@ TEST(Config_Merge, ChainedMergesYieldExpectedFinalState) {
     EXPECT_EQ(c.limits().max_timers,              1024u);  // site
 }
 
-// ─── profiles ────────────────────────────────────────────────────
+// ── profiles ─────────────────────────────────────────────────────────────
 
 TEST(Config_Profile, NameParserAcceptsKnown) {
     EXPECT_EQ(Config::parse_profile_name("server"),
@@ -709,7 +709,7 @@ TEST(Config_Profile, MissingProfileFieldUsesServerBaseline) {
               GN_LIMITS_DEFAULT_MAX_TIMERS);
 }
 
-// ─── dump round-trip ─────────────────────────────────────────────
+// ── dump round-trip ──────────────────────────────────────────────────────
 
 TEST(Config_Dump, EmptyConfigYieldsEmptyObject) {
     Config c;
@@ -751,7 +751,7 @@ TEST(Config_Dump, ReflectsLatestLoadAfterReload) {
     EXPECT_NE(c.dump().find("second"), std::string::npos);
 }
 
-// ─── JSON5-style comments ─────────────────────────────────────────
+// ── JSON5-style comments ─────────────────────────────────────────────────
 
 TEST(Config_LoadJson, AcceptsLineComments) {
     /// Operators annotate config files routinely; a strict parser
@@ -785,7 +785,7 @@ TEST(Config_LoadJson, AcceptsBlockComments) {
     EXPECT_EQ(s, "ok");
 }
 
-// ─── load_file ────────────────────────────────────────────────────
+// ── load_file ────────────────────────────────────────────────────────────
 
 TEST(Config_LoadFile, ReadsExistingFile) {
     /// Write a temp file with a known config; load it through the

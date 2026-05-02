@@ -92,7 +92,7 @@ bool wait_for(auto&& predicate,
 
 } // namespace
 
-// ─── frame layout ──────────────────────────────────────────────
+// ── frame layout ─────────────────────────────────────────────────────────
 
 TEST(WsWire, SmallPayloadFrame) {
     const std::uint8_t payload[] = {0x01, 0x02, 0x03};
@@ -150,7 +150,7 @@ TEST(WsWire, HandshakeAcceptKnownVector) {
               "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=");
 }
 
-// ─── URI parsing ───────────────────────────────────────────────
+// ── URI parsing ──────────────────────────────────────────────────────────
 
 TEST(WsLink_Uri, AcceptsHostPortPath) {
     auto u = gn::link::ws::WsLink::Stats{};
@@ -202,7 +202,7 @@ TEST(WsLink_Uri, HostAuthorityBracketsV6) {
 }
 // NOLINTEND(bugprone-unchecked-optional-access)
 
-// ─── loopback round-trip ───────────────────────────────────────
+// ── loopback round-trip ──────────────────────────────────────────────────
 
 TEST(WsLink, LoopbackHandshakeAndPayloadRoundTrip) {
     WsHarness harness;
@@ -286,7 +286,7 @@ TEST(WsLink, LoopbackHandshakeAndPayloadRoundTrip) {
     server->shutdown();
 }
 
-// ─── backpressure §3.1 — control-reply hard-cap discipline ─────
+// ── backpressure §3.1 — control-reply hard-cap discipline ────────────────
 
 TEST(WsLink_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
     /// `backpressure.md` §3.1: a peer flooding pings cannot push
@@ -357,7 +357,7 @@ TEST(WsLink_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
     server->shutdown();
 }
 
-// ─── transport-extension capabilities ──────────────────────────
+// ── transport-extension capabilities ─────────────────────────────────────
 
 TEST(WsLink_Capabilities, AdvertisesStreamReliableOrdered) {
     const auto caps = gn::link::ws::WsLink::capabilities();

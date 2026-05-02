@@ -30,7 +30,7 @@ constexpr std::array<Phase, 8> kAllPhases{
     Phase::Unload,
 };
 
-// ─── phase_name ─────────────────────────────────────────────────────
+// ── phase_name ───────────────────────────────────────────────────────────
 
 TEST(Phase_Name, EveryEnumeratorHasStableString) {
     EXPECT_EQ(phase_name(Phase::Load),        std::string_view{"Load"});
@@ -50,7 +50,7 @@ TEST(Phase_Name, IsConstexprUsable) {
     SUCCEED();
 }
 
-// ─── is_forward_transition ──────────────────────────────────────────
+// ── is_forward_transition ────────────────────────────────────────────────
 
 TEST(Phase_Forward, SamePhaseIsAlwaysForward) {
     /// Idempotent transitions are explicitly permitted (§3 commit-then-notify

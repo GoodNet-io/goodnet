@@ -59,7 +59,7 @@ const gn_security_provider_vtable_t* dummy_security_vtable() {
 
 using namespace gn::core;
 
-// ─── HandlerRegistry: anchor copies into entry, snapshot inherits ───
+// ── HandlerRegistry: anchor copies into entry, snapshot inherits ─────────
 
 TEST(HandlerAnchor, RegistryEntryHoldsAnchor) {
     HandlerRegistry reg;
@@ -118,7 +118,7 @@ TEST(HandlerAnchor, LookupSnapshotInheritsAnchor) {
     EXPECT_TRUE(watch.expired());
 }
 
-// ─── LinkRegistry: same shape ──────────────────────────────────
+// ── LinkRegistry: same shape ─────────────────────────────────────────────
 
 TEST(LinkAnchor, EntryHoldsAnchorThroughLookup) {
     LinkRegistry reg;
@@ -144,7 +144,7 @@ TEST(LinkAnchor, EntryHoldsAnchorThroughLookup) {
     EXPECT_TRUE(watch.expired());
 }
 
-// ─── ExtensionRegistry: prefix snapshot inherits anchor ─────────────
+// ── ExtensionRegistry: prefix snapshot inherits anchor ───────────────────
 
 TEST(ExtensionAnchor, PrefixSnapshotInheritsAnchor) {
     ExtensionRegistry reg;
@@ -171,7 +171,7 @@ TEST(ExtensionAnchor, PrefixSnapshotInheritsAnchor) {
     EXPECT_TRUE(watch.expired());
 }
 
-// ─── SecurityRegistry: current() snapshot inherits anchor ───────────
+// ── SecurityRegistry: current() snapshot inherits anchor ─────────────────
 
 TEST(SecurityAnchor, CurrentSnapshotInheritsAnchor) {
     SecurityRegistry reg;

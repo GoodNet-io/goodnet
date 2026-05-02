@@ -97,7 +97,7 @@ RouteOutcome run_inbound(GnetProtocol&            proto,
 
 } // namespace
 
-// ── Direct: Alice frames, Bob deframes + routes to handler ─────────────────
+// ── Direct: Alice frames, Bob deframes + routes to handler ───────────────
 
 TEST(InboundChain, DirectFrameReachesHandler) {
     auto ctxs = PairedContexts::make(0xA1, 0xB1);
@@ -141,7 +141,7 @@ TEST(InboundChain, DirectFrameReachesHandler) {
     EXPECT_EQ(cap.last_receiver, ctxs.bob.local_pk);
 }
 
-// ── Broadcast: receiver_pk == ZERO, sender on wire ─────────────────────────
+// ── Broadcast: receiver_pk == ZERO, sender on wire ───────────────────────
 
 TEST(InboundChain, BroadcastFrameDispatches) {
     auto ctxs = PairedContexts::make(0xA2, 0xB2);
@@ -184,7 +184,7 @@ TEST(InboundChain, BroadcastFrameDispatches) {
     EXPECT_EQ(cap.last_receiver, zero);
 }
 
-// ── Two frames in one buffer, both dispatched ──────────────────────────────
+// ── Two frames in one buffer, both dispatched ────────────────────────────
 
 TEST(InboundChain, MultiFrameBufferRoutesEach) {
     auto ctxs = PairedContexts::make(0xA3, 0xB3);

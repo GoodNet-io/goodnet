@@ -40,7 +40,7 @@ constexpr std::array<std::uint8_t, kEd25519SeedBytes> kFixedSeed = {
 constexpr std::int64_t kFarFuture = 4'000'000'000;
 constexpr std::int64_t kPast      = 1'000'000;
 
-// ─── KeyPair: generate / sign / verify ─────────────────────────────
+// ── KeyPair: generate / sign / verify ────────────────────────────────────
 
 TEST(KeyPair_Generate, ProducesNonEmptyPublicKey) {
     auto kp = KeyPair::generate();
@@ -139,7 +139,7 @@ TEST(KeyPair_Default, UninitialisedSignFails) {
     EXPECT_EQ(sig.error().code, GN_ERR_INVALID_ENVELOPE);
 }
 
-// ─── KeyPair: move semantics ───────────────────────────────────────
+// ── KeyPair: move semantics ──────────────────────────────────────────────
 
 TEST(KeyPair_Move, MoveConstructTransfersAndWipesSource) {
     auto kp = KeyPair::generate();
@@ -184,7 +184,7 @@ TEST(KeyPair_Wipe, ExplicitWipeClearsPublicKey) {
     EXPECT_FALSE(sig.has_value());
 }
 
-// ─── derive_address ────────────────────────────────────────────────
+// ── derive_address ───────────────────────────────────────────────────────
 
 TEST(DeriveAddress, DeterministicForSameInputs) {
     auto u = KeyPair::generate();
@@ -234,7 +234,7 @@ TEST(DeriveAddress, NonZeroOutputForNonZeroInputs) {
     EXPECT_TRUE(nonzero);
 }
 
-// ─── Attestation: create / verify ──────────────────────────────────
+// ── Attestation: create / verify ─────────────────────────────────────────
 
 TEST(Attestation_Create, FieldsPopulated) {
     auto user   = KeyPair::generate();
@@ -334,7 +334,7 @@ TEST(Attestation_Verify, TamperedExpiryRejected) {
     EXPECT_FALSE(att->verify(user->public_key(), /*now*/ kPast));
 }
 
-// ─── Attestation: byte round-trip ──────────────────────────────────
+// ── Attestation: byte round-trip ─────────────────────────────────────────
 
 TEST(Attestation_Bytes, RoundTripPreservesEverything) {
     auto user   = KeyPair::generate();
@@ -379,7 +379,7 @@ TEST(Attestation_Bytes, ParsedNegativeExpiryPreserved) {
     EXPECT_EQ(parsed->expiry_unix_ts, -42);
 }
 
-// ─── NodeIdentity::generate ────────────────────────────────────────
+// ── NodeIdentity::generate ───────────────────────────────────────────────
 
 TEST(NodeIdentity_Generate, AddressMatchesDerivePair) {
     auto node = NodeIdentity::generate(kFarFuture);

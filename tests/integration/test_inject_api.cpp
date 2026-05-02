@@ -79,7 +79,7 @@ struct KernelHarness {
 
 }  // namespace
 
-// ── inject (LAYER_MESSAGE) ────────────────────────────────────────
+// ── inject (LAYER_MESSAGE) ───────────────────────────────────────────────
 
 TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     KernelHarness h;
@@ -187,7 +187,7 @@ TEST(InjectExternal, PayloadOverLimitRejected) {
               GN_ERR_PAYLOAD_TOO_LARGE);
 }
 
-// ── inject (LAYER_FRAME) ───────────────────────────────────────────────────
+// ── inject (LAYER_FRAME) ─────────────────────────────────────────────────
 
 TEST(InjectFrame, RejectsUnknownSource) {
     KernelHarness h;

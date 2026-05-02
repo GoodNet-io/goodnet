@@ -114,7 +114,7 @@ gn_result_t emit_buffer(std::vector<std::uint8_t>&& src,
     return GN_OK;
 }
 
-// ── vtable entries ──────────────────────────────────────────────────
+// ── vtable entries ───────────────────────────────────────────────────────
 
 const char* noise_provider_id(void* /*self*/) {
     return kProviderId;

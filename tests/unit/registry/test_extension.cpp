@@ -28,7 +28,7 @@ namespace {
 /// registry — the registry never dereferences it.
 const int kDummyVtable = 0;
 
-// ─── argument validation ────────────────────────────────────────────
+// ── argument validation ──────────────────────────────────────────────────
 
 TEST(ExtensionRegistry_Args, RegisterRejectsEmptyName) {
     ExtensionRegistry r;
@@ -60,7 +60,7 @@ TEST(ExtensionRegistry_Args, QueryRejectsNullOutVtable) {
               GN_ERR_NULL_ARG);
 }
 
-// ─── basic register / unregister ────────────────────────────────────
+// ── basic register / unregister ──────────────────────────────────────────
 
 TEST(ExtensionRegistry_Register, RoundTrip) {
     ExtensionRegistry r;
@@ -131,7 +131,7 @@ TEST(ExtensionRegistry_Unregister, AllowsReuseAfterRemoval) {
               GN_OK);
 }
 
-// ─── semver gate (abi-evolution.md §2) ──────────────────────────────
+// ── semver gate (abi-evolution.md §2) ────────────────────────────────────
 
 TEST(ExtensionRegistry_Semver, MajorMustMatchExactly) {
     ExtensionRegistry r;
@@ -197,7 +197,7 @@ TEST(ExtensionRegistry_Semver, PatchIgnored) {
     EXPECT_EQ(out, &kDummyVtable);
 }
 
-// ─── query_prefix ───────────────────────────────────────────────────
+// ── query_prefix ─────────────────────────────────────────────────────────
 
 TEST(ExtensionRegistry_QueryPrefix, MatchesByLeadingSegment) {
     ExtensionRegistry r;
@@ -234,7 +234,7 @@ TEST(ExtensionRegistry_QueryPrefix, EmptyPrefixReturnsAll) {
     EXPECT_EQ(all.size(), 2u);
 }
 
-// ─── concurrent stress ──────────────────────────────────────────────
+// ── concurrent stress ────────────────────────────────────────────────────
 
 /// Hammer register / unregister / query from multiple threads. Reader
 /// thread's clean join is the deadlock-absence proof; per-thread
@@ -301,7 +301,7 @@ TEST(ExtensionRegistry_Concurrency, FourThreadsRegisterQuery) {
               static_cast<std::size_t>(reg_ok.load() - unreg_ok.load()));
 }
 
-// ─── max_extensions cap (limits.md §4a) ────────────────────────────
+// ── max_extensions cap (limits.md §4a) ───────────────────────────────────
 
 TEST(ExtensionRegistry_MaxExtensions, ZeroMeansUnlimited) {
     ExtensionRegistry r;

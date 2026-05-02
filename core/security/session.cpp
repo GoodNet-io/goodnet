@@ -10,7 +10,7 @@
 
 namespace gn::core {
 
-// ── SecuritySession ─────────────────────────────────────────────────
+// ── SecuritySession ──────────────────────────────────────────────────────
 
 SecuritySession::~SecuritySession() {
     close();
@@ -225,7 +225,7 @@ gn_result_t SecuritySession::decrypt_transport(
     return GN_OK;
 }
 
-// ── SessionRegistry ────────────────────────────────────────────────────────
+// ── SessionRegistry ──────────────────────────────────────────────────────
 
 std::shared_ptr<SecuritySession> SessionRegistry::create(
     gn_conn_id_t conn,

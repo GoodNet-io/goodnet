@@ -165,7 +165,7 @@ std::optional<ParsedResponse> parse_http_response(std::string_view raw) {
 
 } // namespace
 
-// ── Session ─────────────────────────────────────────────────────
+// ── Session ──────────────────────────────────────────────────────────────
 
 class WsLink::Session : public std::enable_shared_from_this<Session> {
 public:
@@ -612,7 +612,7 @@ private:
     std::string                                         nonce_;
 };
 
-// ── WsLink ────────────────────────────────────────────────
+// ── WsLink ───────────────────────────────────────────────────────────────
 
 WsLink::WsLink()
     : ioc_(),

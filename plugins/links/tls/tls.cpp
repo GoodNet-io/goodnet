@@ -34,7 +34,7 @@ constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
 
 } // namespace
 
-// ── Session ──────────────────────────────────────────────────────
+// ── Session ──────────────────────────────────────────────────────────────
 
 class TlsLink::Session : public std::enable_shared_from_this<Session> {
 public:
@@ -234,7 +234,7 @@ private:
     std::atomic<bool>                                   soft_signaled_{false};
 };
 
-// ── TlsLink ─────────────────────────────────────────────────
+// ── TlsLink ──────────────────────────────────────────────────────────────
 
 TlsLink::TlsLink()
     : ioc_(),

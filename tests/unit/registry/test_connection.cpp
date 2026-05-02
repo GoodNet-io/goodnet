@@ -48,7 +48,7 @@ ConnectionRecord make_record(gn_conn_id_t id,
     return r;
 }
 
-// ─── alloc_id ────────────────────────────────────────────────────────
+// ── alloc_id ─────────────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_AllocId, MonotonicNonZero) {
     ConnectionRegistry reg;
@@ -73,7 +73,7 @@ TEST(ConnectionRegistry_AllocId, Unique1024) {
     }
 }
 
-// ─── insert / find round-trip ────────────────────────────────────────
+// ── insert / find round-trip ─────────────────────────────────────────────
 
 TEST(ConnectionRegistry_Insert, IdRoundTrip) {
     ConnectionRegistry reg;
@@ -135,7 +135,7 @@ TEST(ConnectionRegistry_Insert, PkIndexRoundTrip) {
     }
 }
 
-// ─── duplicate rejection (atomicity) ────────────────────────────────
+// ── duplicate rejection (atomicity) ──────────────────────────────────────
 
 TEST(ConnectionRegistry_Duplicate, IdRejectedAndAtomic) {
     ConnectionRegistry reg;
@@ -190,7 +190,7 @@ TEST(ConnectionRegistry_Duplicate, PkRejectedAndAtomic) {
     EXPECT_EQ(reg.size(), 1u);
 }
 
-// ─── erase ──────────────────────────────────────────────────────────
+// ── erase ────────────────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_Erase, RemovesFromAllIndexes) {
     ConnectionRegistry reg;
@@ -228,7 +228,7 @@ TEST(ConnectionRegistry_Erase, FreesKeysForReuse) {
               GN_OK);
 }
 
-// ─── snapshot_and_erase ─────────────────────────────────────────────
+// ── snapshot_and_erase ───────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_SnapshotAndErase, MissingIdReturnsNullopt) {
     ConnectionRegistry reg;
@@ -395,7 +395,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentSameIdExactlyOneSucceeds) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
-// ─── size() ─────────────────────────────────────────────────────────
+// ── size() ───────────────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_Size, ReflectsInsertEraseSequence) {
     ConnectionRegistry reg;
@@ -419,7 +419,7 @@ TEST(ConnectionRegistry_Size, ReflectsInsertEraseSequence) {
     EXPECT_EQ(reg.size(), 2u);
 }
 
-// ─── max_connections cap ────────────────────────────────────────────
+// ── max_connections cap ──────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_MaxConnections, ZeroMeansUnlimited) {
     ConnectionRegistry reg;
@@ -479,7 +479,7 @@ TEST(ConnectionRegistry_MaxConnections, ErasureFreesSlot) {
     EXPECT_EQ(reg.insert_with_index(make_record(id_d, "tcp://d", make_pk(0xDD))), GN_OK);
 }
 
-// ─── concurrency ─────────────────────────────────────────────────────
+// ── concurrency ──────────────────────────────────────────────────────────
 
 /// Hammer the registry from multiple threads doing interleaved
 /// insert+find+erase. Verifies registry.md §3 deadlock-free claim and
@@ -552,7 +552,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
         << "concurrent stress exceeded budget; deadlock or contention suspected";
 }
 
-// ─── pk hashing distribution ────────────────────────────────────────
+// ── pk hashing distribution ──────────────────────────────────────────────
 
 TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
     constexpr std::size_t kCount = 1024;
@@ -587,7 +587,7 @@ TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
     }
 }
 
-// ─── upgrade_trust ──────────────────────────────────────────────────
+// ── upgrade_trust ────────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_UpgradeTrust, UnknownIdRejected) {
     ConnectionRegistry reg;
@@ -662,7 +662,7 @@ TEST(ConnectionRegistry_UpgradeTrust, PeerToUntrustedRejected) {
     }
 }
 
-// ── update_remote_pk ────────────────────────────────────────────────
+// ── update_remote_pk ─────────────────────────────────────────────────────
 
 TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     /// Responder path: connection inserted with a placeholder
@@ -762,7 +762,7 @@ TEST(ConnectionRegistry_UpdateRemotePk, UnknownIdRejected) {
     EXPECT_EQ(reg.update_remote_pk(GN_INVALID_ID, pk), GN_ERR_NULL_ARG);
 }
 
-// ── Per-peer device-key pinning ─────────────────────────────────────
+// ── Per-peer device-key pinning ──────────────────────────────────────────
 
 TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {
     ConnectionRegistry reg;

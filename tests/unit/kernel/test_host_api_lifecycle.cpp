@@ -108,7 +108,7 @@ public:
 
 }  // namespace
 
-// ─── notify_connect: protocol-layer trust gate ───────────────────────
+// ── notify_connect: protocol-layer trust gate ────────────────────────────
 
 TEST(HostApiNotifyConnect, RejectsConnectionOutsideProtocolMask) {
     Kernel k;
@@ -171,7 +171,7 @@ TEST(HostApiNotifyConnect, AcceptsConnectionInsideProtocolMask) {
     EXPECT_EQ(bag.events[0].trust, GN_TRUST_LOOPBACK);
 }
 
-// ─── notify_disconnect: snapshot-before-erase ────────────────────────
+// ── notify_disconnect: snapshot-before-erase ─────────────────────────────
 
 TEST(HostApiNotifyDisconnect, SnapshotsTrustAndPkBeforeErase) {
     Kernel k;

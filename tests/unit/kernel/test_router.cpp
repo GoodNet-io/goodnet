@@ -28,7 +28,7 @@ namespace {
 
 constexpr std::string_view kProtocol = "gnet-v1";
 
-// ─── Recording handler stub ─────────────────────────────────────────
+// ── Recording handler stub ───────────────────────────────────────────────
 
 /// State recorded for a single handler instance across dispatches.
 struct HandlerRecord {
@@ -90,7 +90,7 @@ const gn_handler_vtable_t* stub_vtable() {
     return &vt;
 }
 
-// ─── Helpers ────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────
 
 /// Build a deterministic, distinguishable public key.
 PublicKey pk_from_byte(std::uint8_t seed) noexcept {
@@ -153,7 +153,7 @@ struct RouterFixture {
     }
 };
 
-// ─── Routing decision tests ────────────────────────────────────────
+// ── Routing decision tests ───────────────────────────────────────────────
 
 TEST(Router_Decision, DispatchedLocal) {
     RouterFixture f;
@@ -290,7 +290,7 @@ TEST(Router_Decision, RejectPropagatesAsRejectedOutcome) {
     EXPECT_EQ(rec->last_on_result.load(),  GN_PROPAGATION_REJECT);
 }
 
-// ─── Chain priority + propagation ──────────────────────────────────
+// ── Chain priority + propagation ─────────────────────────────────────────
 
 TEST(Router_Chain, PriorityOrderHighestFirst) {
     RouterFixture f;

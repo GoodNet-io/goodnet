@@ -180,7 +180,7 @@ TEST(AttestationDispatcher_Verify, RejectsCertEmittedWithPastExpiry) {
               AttestationDispatcher::Outcome::ExpiredOrInvalidCert);
 }
 
-// ─── mutual completion ────────────────────────────────────────────────
+// ── mutual completion ────────────────────────────────────────────────────
 
 namespace {
 

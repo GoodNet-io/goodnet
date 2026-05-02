@@ -37,7 +37,7 @@ struct MockClock {
 
 }  // namespace
 
-// ── TokenBucket ─────────────────────────────────────────────────────
+// ── TokenBucket ──────────────────────────────────────────────────────────
 
 TEST(TokenBucket, BurstConsumedThenEmpty) {
     MockClock::reset();
@@ -95,7 +95,7 @@ TEST(TokenBucket, ResetReplacesPolicyAndRefillsToBurst) {
     EXPECT_FALSE(bucket.try_consume(MockClock::now()));
 }
 
-// ── RateLimiterMap ──────────────────────────────────────────────────
+// ── RateLimiterMap ───────────────────────────────────────────────────────
 
 TEST(RateLimiterMap, FirstRequestPerKeyAllowed) {
     MockClock::reset();

@@ -46,7 +46,7 @@ PublicKey pk_from_u32(std::uint32_t seed) noexcept {
     return pk;
 }
 
-// ─── basic operations ───────────────────────────────────────────────
+// ── basic operations ─────────────────────────────────────────────────────
 
 TEST(LocalIdentityRegistry_Basic, EmptyByDefault) {
     LocalIdentityRegistry set;
@@ -109,7 +109,7 @@ TEST(LocalIdentityRegistry_Basic, BroadcastPkIsTreatedLikeAnyOther) {
     EXPECT_EQ(set.size(), 1u);
 }
 
-// ─── concurrency ────────────────────────────────────────────────────
+// ── concurrency ──────────────────────────────────────────────────────────
 
 TEST(LocalIdentityRegistry_Concurrency, FourThreadsAddAndContains) {
     /// Four writers + four readers race on the same shared set. The

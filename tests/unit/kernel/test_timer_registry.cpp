@@ -29,7 +29,7 @@ bool wait_for(auto&& predicate,
 
 } // namespace
 
-// ─── set_timer / cancel_timer basics ────────────────────────────
+// ── set_timer / cancel_timer basics ──────────────────────────────────────
 
 TEST(TimerRegistry_Schedule, FiresAfterDelay) {
     TimerRegistry r;
@@ -87,7 +87,7 @@ TEST(TimerRegistry_Schedule, RejectsNullCallback) {
               GN_ERR_NULL_ARG);
 }
 
-// ─── anchor-gated dispatch (plugin lifetime) ────────────────────
+// ── anchor-gated dispatch (plugin lifetime) ──────────────────────────────
 
 TEST(TimerRegistry_Anchor, ExpiredAnchorDropsCallback) {
     TimerRegistry r;
@@ -139,7 +139,7 @@ TEST(TimerRegistry_Anchor, CancelForAnchorRemovesMatchingTimers) {
     EXPECT_EQ(r.cancel_timer(id3), GN_OK);
 }
 
-// ─── fire-and-forget set_timer(0, ...) ─────────────────────────────────────────
+// ── fire-and-forget set_timer(0, ...) ────────────────────────────────────
 
 TEST(TimerRegistry_SetTimer, AcceptsNullOutIdForFireAndForget) {
     /// `host-api.md` §9 / `timer.md` §2 / `conn-events.md` §3.5
@@ -190,7 +190,7 @@ TEST(TimerRegistry_Post, AnchorExpiredSkips) {
     EXPECT_LE(hits.load(), 1);
 }
 
-// ─── quota enforcement ──────────────────────────────────────────
+// ── quota enforcement ────────────────────────────────────────────────────
 
 TEST(TimerRegistry_Quota, RejectsPastMaxTimers) {
     TimerRegistry r;
@@ -327,7 +327,7 @@ TEST(TimerRegistry_Quota, PostCapHoldsUnderConcurrentAdmits) {
     EXPECT_EQ(accepted.load() + rejected.load(), kThreads * kPosts);
 }
 
-// ─── per-plugin sub-quota (limits.md §4a) ──────────────────────
+// ── per-plugin sub-quota (limits.md §4a) ─────────────────────────────────
 
 TEST(TimerRegistry_Quota, PerPluginQuotaIsolatesSiblings) {
     /// Plugin A's anchor exhausts its per-plugin budget; plugin B
@@ -404,7 +404,7 @@ TEST(TimerRegistry_Quota, ZeroPerPluginCapMeansUnlimited) {
     EXPECT_EQ(anchor->active_timers.load(), 10u);
 }
 
-// ─── shutdown ───────────────────────────────────────────────────
+// ── shutdown ─────────────────────────────────────────────────────────────
 
 TEST(TimerRegistry_Shutdown, IdempotentAndCancelsPending) {
     auto r = std::make_unique<TimerRegistry>();

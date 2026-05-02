@@ -130,7 +130,7 @@ void wait_for(const std::function<bool()>& pred,
 
 }  // namespace
 
-// ── listen ──────────────────────────────────────────────────────────
+// ── listen ───────────────────────────────────────────────────────────────
 
 TEST(UdpLink, ListenBindsEphemeralPort) {
     auto t = std::make_shared<UdpLink>();
@@ -155,7 +155,7 @@ TEST(UdpLink, ShutdownIsIdempotent) {
     t->shutdown();
 }
 
-// ── connect / send / receive ────────────────────────────────────────
+// ── connect / send / receive ─────────────────────────────────────────────
 
 TEST(UdpLink, LoopbackDatagramRoundTrip) {
     StubHost h_server;

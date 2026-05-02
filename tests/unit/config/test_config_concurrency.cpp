@@ -45,7 +45,7 @@ std::string make_uri_json(std::string_view uri) {
            std::string{uri} + R"("}})";
 }
 
-// ─── int64 read while reload swaps the limits block ───────────────────
+// ── int64 read while reload swaps the limits block ───────────────────────
 
 TEST(ConfigConcurrency, ReloadWhileReadersActive) {
     constexpr std::size_t kReaderThreads = 4;
@@ -118,7 +118,7 @@ TEST(ConfigConcurrency, ReloadWhileReadersActive) {
     EXPECT_EQ(c.validate(), GN_OK);
 }
 
-// ─── string read while reload swaps the json_ root ────────────────────
+// ── string read while reload swaps the json_ root ────────────────────────
 
 TEST(ConfigConcurrency, ReloadDoesNotTearStringValues) {
     constexpr std::size_t kReaderThreads = 4;

@@ -277,7 +277,7 @@ int HeartbeatHandler::get_observed_address(gn_conn_id_t conn,
     return 0;
 }
 
-// ── static thunks ──────────────────────────────────────────────────
+// ── static thunks ────────────────────────────────────────────────────────
 
 const char* HeartbeatHandler::vtable_protocol_id(void* /*self*/) {
     return kProtocolId;

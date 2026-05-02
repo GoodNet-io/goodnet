@@ -18,14 +18,14 @@
 
 namespace {
 
-// ─── Same major, same minor — admit ────────────────────────────────
+// ── Same major, same minor — admit ───────────────────────────────────────
 
 TEST(AbiCrossVersion, ExactMatchAccepted) {
     EXPECT_NE(gn_version_compatible(1, 0, 1, 0), 0);
     EXPECT_NE(gn_version_compatible(1, 7, 1, 7), 0);
 }
 
-// ─── Plugin older minor than kernel — admit ────────────────────────
+// ── Plugin older minor than kernel — admit ───────────────────────────────
 
 TEST(AbiCrossVersion, OlderPluginAcceptedAgainstNewerKernel) {
     /// Plugin built against MINOR=0 must load against any v1.x
@@ -36,7 +36,7 @@ TEST(AbiCrossVersion, OlderPluginAcceptedAgainstNewerKernel) {
     EXPECT_NE(gn_version_compatible(1, 1, 1, 9), 0);
 }
 
-// ─── Plugin newer minor than kernel — reject ───────────────────────
+// ── Plugin newer minor than kernel — reject ──────────────────────────────
 
 TEST(AbiCrossVersion, NewerPluginRejectedAgainstOlderKernel) {
     /// A plugin built against the v1.5 SDK that calls v1.5-only
@@ -47,7 +47,7 @@ TEST(AbiCrossVersion, NewerPluginRejectedAgainstOlderKernel) {
     EXPECT_EQ(gn_version_compatible(1, 9, 1, 1), 0);
 }
 
-// ─── Major mismatch — reject either direction ──────────────────────
+// ── Major mismatch — reject either direction ─────────────────────────────
 
 TEST(AbiCrossVersion, MajorMismatchRejected) {
     EXPECT_EQ(gn_version_compatible(2, 0, 1, 0), 0);
@@ -55,7 +55,7 @@ TEST(AbiCrossVersion, MajorMismatchRejected) {
     EXPECT_EQ(gn_version_compatible(0, 0, 1, 0), 0);
 }
 
-// ─── Patch ignored across the predicate ────────────────────────────
+// ── Patch ignored across the predicate ───────────────────────────────────
 
 TEST(AbiCrossVersion, PatchVersionIgnored) {
     /// The compatibility helper takes (major, minor) only — patch
@@ -68,7 +68,7 @@ TEST(AbiCrossVersion, PatchVersionIgnored) {
     EXPECT_NE(gn_version_compatible(1, 0, 1, 0), 0);  /// patch ignored
 }
 
-// ─── Current SDK version self-consistency ──────────────────────────
+// ── Current SDK version self-consistency ─────────────────────────────────
 
 TEST(AbiCrossVersion, CurrentSdkSelfCompatible) {
     /// The kernel must always admit a plugin built from the same

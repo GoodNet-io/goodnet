@@ -137,7 +137,7 @@ make_envelope(std::uint8_t marker, const HeartbeatPayload& hb) {
 
 }  // namespace
 
-// ── PING reflection ────────────────────────────────────────────────
+// ── PING reflection ──────────────────────────────────────────────────────
 
 TEST(Heartbeat, PingProducesPongWithObservedAddress) {
     StubHost host;
@@ -304,7 +304,7 @@ TEST(Heartbeat, UnknownSenderRejected) {
     EXPECT_EQ(host.send_calls.load(), 0);
 }
 
-// ── send_ping ───────────────────────────────────────────────────────
+// ── send_ping ────────────────────────────────────────────────────────────
 
 TEST(Heartbeat, SendPingPopulatesPayloadFromClock) {
     StubHost host;
@@ -356,7 +356,7 @@ TEST(Heartbeat, SendPingIncrementsSequence) {
     }
 }
 
-// ── Extension API ──────────────────────────────────────────────────
+// ── Extension API ────────────────────────────────────────────────────────
 
 TEST(Heartbeat, ExtensionVtablePopulatedAndFunctional) {
     StubHost host;
