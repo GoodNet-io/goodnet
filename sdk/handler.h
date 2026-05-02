@@ -41,15 +41,20 @@ typedef struct gn_handler_vtable_s {
 
     /**
      * @brief Stable identifier of the protocol layer this handler binds to.
-     *        Returned pointer outlives the plugin.
+     *
+     * @return @borrowed pointer; valid for the lifetime of the plugin.
      */
     const char* (*protocol_id)(void* self);
 
     /**
      * @brief List of message IDs this handler subscribes to.
      *
-     * The kernel queries this once at registration. Returned span is
-     * borrowed for the lifetime of the handler.
+     * The kernel queries this once at registration.
+     *
+     * @param out_ids   @borrowed pointer-to-pointer; the array the
+     *                  plugin returns through `*out_ids` is
+     *                  @borrowed for the lifetime of the handler.
+     * @param out_count out parameter; written by the plugin, never read.
      */
     void (*supported_msg_ids)(void* self,
                               const uint32_t** out_ids,
@@ -58,8 +63,13 @@ typedef struct gn_handler_vtable_s {
     /**
      * @brief Dispatch entry point.
      *
-     * Synchronous; `envelope->payload` is borrowed and only valid until
-     * return. Handlers that need to retain payload bytes must copy.
+     * Synchronous; runs to completion before the kernel reuses the
+     * envelope storage.
+     *
+     * @param envelope @borrowed for the duration of this call;
+     *                 `envelope->payload` shares the same lifetime.
+     *                 Handlers that need to retain payload bytes
+     *                 past return must copy.
      */
     gn_propagation_t (*handle_message)(void* self,
                                        const gn_message_t* envelope);
@@ -72,6 +82,8 @@ typedef struct gn_handler_vtable_s {
      * to observe their own dispatch tail. Optional; the slot may be
      * NULL when the handler has nothing to do at completion. The pinned
      * fast-path invokes this slot identically to the slow path.
+     *
+     * @param envelope @borrowed for the duration of this call.
      */
     void (*on_result)(void* self,
                       const gn_message_t* envelope,

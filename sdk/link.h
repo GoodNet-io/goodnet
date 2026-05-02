@@ -42,7 +42,7 @@ typedef struct gn_link_vtable_s {
     /**
      * @brief Stable lowercase scheme. Examples: `"tcp"`, `"udp"`, `"ws"`.
      *
-     * Returned pointer outlives the plugin.
+     * @return @borrowed pointer; valid for the lifetime of the plugin.
      */
     const char* (*scheme)(void* self);
 
@@ -50,6 +50,8 @@ typedef struct gn_link_vtable_s {
      * @brief Begin accepting connections matching the scheme.
      *
      * Plugin is responsible for parsing the URI and binding sockets.
+     *
+     * @param uri @borrowed for the duration of the call.
      */
     gn_result_t (*listen)(void* self, const char* uri);
 
@@ -58,6 +60,8 @@ typedef struct gn_link_vtable_s {
      *
      * On success the link calls `host_api->notify_connect` once the
      * underlying handshake completes; the call below returns immediately.
+     *
+     * @param uri @borrowed for the duration of the call.
      */
     gn_result_t (*connect)(void* self, const char* uri);
 
@@ -96,8 +100,16 @@ typedef struct gn_link_vtable_s {
      * Returns NULL if the link exposes no extension. Otherwise
      * returns a stable name like `"gn.link.tcp"` and the matching
      * vtable through @ref extension_vtable. See `link.md` §8.
+     *
+     * @return @borrowed name pointer; valid for the lifetime of the
+     *         plugin.
      */
     const char* (*extension_name)(void* self);
+    /**
+     * @return @borrowed vtable pointer; valid while the plugin is
+     *         registered. The kernel passes it through
+     *         `query_extension_checked` to the consumer.
+     */
     const void* (*extension_vtable)(void* self);
 
     /**

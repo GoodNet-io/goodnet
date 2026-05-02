@@ -56,7 +56,7 @@ typedef struct gn_protocol_layer_vtable_s {
     /**
      * @brief Stable identifier; lowercase hyphenated. Example: "gnet-v1".
      *
-     * The returned pointer must remain valid for the lifetime of the plugin.
+     * @return @borrowed pointer; valid for the lifetime of the plugin.
      */
     const char* (*protocol_id)(void* self);
 
@@ -64,10 +64,15 @@ typedef struct gn_protocol_layer_vtable_s {
      * @brief Parse one or more envelopes from a decrypted byte stream.
      *
      * @param self       plugin instance
-     * @param ctx        per-connection context
-     * @param bytes      input buffer (may contain partial trailing frame)
+     * @param ctx        @borrowed per-connection context for this call
+     * @param bytes      @borrowed input buffer (may contain partial
+     *                   trailing frame)
      * @param bytes_size length of @p bytes
-     * @param out        populated on @ref GN_OK; messages borrow from `bytes`
+     * @param out        @borrowed caller-allocated result struct;
+     *                   populated on @ref GN_OK. The `messages` array
+     *                   inside is plugin-owned (lifetime: until next
+     *                   `deframe` call on the same `self`) and its
+     *                   payload pointers are @borrowed from @p bytes.
      *
      * @return @ref GN_OK and a populated @p out; @ref GN_ERR_DEFRAME_INCOMPLETE
      *         when no full frame is available (kernel will retry); other
@@ -81,9 +86,15 @@ typedef struct gn_protocol_layer_vtable_s {
     /**
      * @brief Serialise an envelope into wire bytes.
      *
-     * The plugin allocates the output buffer and sets `*out_free` to a
-     * destructor that the kernel calls once the bytes are committed to the
-     * security layer.
+     * @param ctx       @borrowed per-connection context.
+     * @param msg       @borrowed envelope; the plugin copies any bytes
+     *                  it needs to retain past return.
+     * @param out_bytes @owned heap buffer; the kernel hands it back to
+     *                  `*out_free` once the bytes have been committed
+     *                  to the security layer.
+     * @param out_size  out parameter — length of `*out_bytes`.
+     * @param out_free  out parameter — plugin-supplied free function;
+     *                  the kernel passes `*out_bytes` to it after use.
      */
     gn_result_t (*frame)(void* self,
                          gn_connection_context_t* ctx,
