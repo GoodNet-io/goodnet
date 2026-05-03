@@ -252,6 +252,12 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
         const std::uint32_t mask = mask_opt.value_or(0u);
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
+            /// `out_result = INVALID_ENVELOPE` is the same code the
+            /// protocol-layer gate in `host_api_builder.cpp:1068`
+            /// returns; the caller maps both gates onto the
+            /// `drop.trust_class_mismatch` metric so an operator
+            /// watching the counter sees a uniform rate regardless
+            /// of which gate fired. Per `security-trust.md` §4 + §9.
             out_result = GN_ERR_INVALID_ENVELOPE;
             return nullptr;
         }

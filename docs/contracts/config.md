@@ -123,6 +123,9 @@ parser.
         "inject_rate_burst":                50,
         "inject_rate_lru_cap":            4096,
 
+        // Metrics cardinality cap (metrics.md §3, Wave 9.1)
+        "max_counter_names":             8192, // reject-new past cap
+
         // Storage (sync.md, defer to v1.1 plugins)
         "max_storage_table_entries":     10000,
         "max_storage_value_bytes":       65522
