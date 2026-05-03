@@ -378,7 +378,7 @@ TEST(InjectLimits, MessagePayloadAboveCapBumpsDropCounter) {
 
     const std::vector<std::uint8_t> over_cap(64, 0xAA);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            /*msg_id*/ 0x11,
+                            /*msg_id*/ 0x42,
                             over_cap.data(), over_cap.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
     EXPECT_EQ(h.kernel->metrics().value("drop.payload_too_large"), 1u);
