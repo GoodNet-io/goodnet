@@ -127,11 +127,23 @@ exists, the security mask permits it, and `host-api.md` §8.1
 names the canonical pattern.
 
 A bridge that mistakenly declares `Untrusted` on its IPC link
-forces a Noise handshake the foreign client cannot drive; the
-conn never leaves the handshake phase and `send` enqueues into
-`pending_handshake_bytes` until the kernel tears it down. The
-contract surfaces this as a clear «wrong trust class for an
-in-process bridge» configuration error, not a silent stall.
+under the canonical v1 stack (null security loaded) is rejected
+synchronously: the security-mask gate at
+`SessionRegistry::create` (`core/security/session.cpp:245-263`)
+sees the trust-class miss against `null_allowed_trust_mask =
+Loopback | IntraNode`, returns `GN_ERR_INVALID_ENVELOPE`, and
+`thunk_notify_connect` erases the conn record before the bridge
+returns from the call. The kernel bumps
+`metrics.drop.trust_class_mismatch` so an operator watching the
+counter sees the misconfiguration immediately. There is no
+handshake phase, no `pending_handshake_bytes` accumulation.
+
+The same mistake under a Noise-only stack (no null provider
+loaded) succeeds at `notify_connect` — Noise admits all four
+trust classes — and the foreign client then cannot drive the
+Noise handshake, which is the original «stall» symptom for
+mis-declared bridges in non-canonical stacks. The IntraNode
+declaration above avoids both failure modes.
 
 ---
 

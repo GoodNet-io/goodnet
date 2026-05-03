@@ -444,9 +444,12 @@ A second shape — bridge installs a `subscribe_data` callback on
 another plugin's link conn through `sdk/extensions/link.h` composer
 slots, sees foreign-protocol bytes on a shared TCP/UDP/IPC socket,
 and feeds them through `inject(LAYER_FRAME)` — is reserved for v1.x.
-Composer slots return `GN_ERR_NOT_IMPLEMENTED` on every baseline
-link in v1; the L1-shared subscribe pattern lands with the relay /
-DHT layer.
+The baseline link plugins (TCP, UDP, WS, IPC) inherit
+`GN_ERR_NOT_IMPLEMENTED` defaults for the composer slots through the
+`GN_LINK_PLUGIN` macro (`sdk/cpp/link_plugin.hpp:216-240`); TLS is
+the sole link in v1 with explicit overrides, but those expose its
+own L2 shape, not a foreign-protocol composer surface. The L1-shared
+subscribe pattern lands with the relay / DHT layer.
 
 Bridges that fan in many foreign clients through one IPC source
 share a single rate-limit bucket per the §8 paragraph above; the
