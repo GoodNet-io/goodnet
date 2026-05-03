@@ -121,6 +121,12 @@ the failed call has no effect on registry state.
 | `0x00` | unset sentinel | this section |
 | `0x11` | attestation dispatcher | `attestation.md` §3 |
 
+The kernel owns the reserved msg_id table; the canonical
+enumeration lives in `core/kernel/system_handler_ids.hpp` and
+the `is_reserved_system_msg_id()` helper enforces it across
+every registration entry. New reservations land both in that
+header and as a row above.
+
 Kernel-internal handlers do not use the registry described in this
 contract. Their dispatch path runs ahead of the registry chain
 lookup — the kernel intercepts envelopes carrying a reserved
