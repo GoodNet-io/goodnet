@@ -70,9 +70,37 @@ public:
                         t->bytes_in_.fetch_add(n, std::memory_order_relaxed);
                         t->frames_in_.fetch_add(1, std::memory_order_relaxed);
                         if (t->api_ && t->api_->notify_inbound_bytes) {
-                            t->api_->notify_inbound_bytes(
-                                t->api_->host_ctx, self->conn_id,
-                                self->read_buf_.data(), n);
+                            const gn_result_t rc =
+                                t->api_->notify_inbound_bytes(
+                                    t->api_->host_ctx, self->conn_id,
+                                    self->read_buf_.data(), n);
+                            /// Bound consecutive `notify_inbound_bytes`
+                            /// failures so a peer that feeds garbage
+                            /// the kernel can't decrypt does not keep
+                            /// the connection alive indefinitely.
+                            /// 16 failures back-to-back means the
+                            /// security layer has refused 16 frames in
+                            /// a row — the peer is either broken or
+                            /// hostile, drop the conn rather than
+                            /// burn CPU on a feed that will never
+                            /// produce a valid frame.
+                            if (rc == GN_OK) {
+                                self->host_api_failures_.store(
+                                    0, std::memory_order_relaxed);
+                            } else {
+                                const auto fails =
+                                    self->host_api_failures_.fetch_add(
+                                        1, std::memory_order_relaxed) + 1;
+                                if (fails >= 16) {
+                                    if (t->api_->notify_disconnect) {
+                                        (void)t->api_->notify_disconnect(
+                                            t->api_->host_ctx,
+                                            self->conn_id, GN_OK);
+                                    }
+                                    t->erase_session(self->conn_id);
+                                    return;
+                                }
+                            }
                         }
                     }
                     self->start_read();
@@ -233,6 +261,10 @@ private:
     bool                                                      write_in_flight_ = false;
     std::atomic<std::uint64_t>                                bytes_buffered_{0};
     std::atomic<bool>                                         soft_signaled_{false};
+    /// Counter of consecutive non-OK results from
+    /// `notify_inbound_bytes`. Reset to 0 on every OK return; the
+    /// session disconnects when it crosses the threshold (16).
+    std::atomic<std::uint32_t>                                host_api_failures_{0};
 };
 
 // ── TcpLink ──────────────────────────────────────────────────────────────
