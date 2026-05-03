@@ -448,18 +448,22 @@ bool TlsLink::load_server_credentials() {
     if (!api_ || !api_->config_get) return false;
 
     char* cert_path = nullptr;
-    void (*cert_free)(void*) = nullptr;
+    void* cert_user_data = nullptr;
+    void (*cert_free)(void*, void*) = nullptr;
     if (gn_config_get_string(api_, "links.tls.cert_path",
-                              &cert_path, &cert_free) != GN_OK ||
+                              &cert_path, &cert_user_data,
+                              &cert_free) != GN_OK ||
         !cert_path) {
         return false;
     }
     char* key_path = nullptr;
-    void (*key_free)(void*) = nullptr;
+    void* key_user_data = nullptr;
+    void (*key_free)(void*, void*) = nullptr;
     if (gn_config_get_string(api_, "links.tls.key_path",
-                              &key_path, &key_free) != GN_OK ||
+                              &key_path, &key_user_data,
+                              &key_free) != GN_OK ||
         !key_path) {
-        if (cert_free) cert_free(cert_path);
+        if (cert_free) cert_free(cert_user_data, cert_path);
         return false;
     }
     bool ok = false;
@@ -471,8 +475,8 @@ bool TlsLink::load_server_credentials() {
     } catch (...) {
         ok = false;
     }
-    if (cert_free) cert_free(cert_path);
-    if (key_free)  key_free(key_path);
+    if (cert_free) cert_free(cert_user_data, cert_path);
+    if (key_free)  key_free(key_user_data, key_path);
     return ok;
 }
 

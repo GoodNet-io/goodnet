@@ -17,7 +17,7 @@ const char* protocol_id_thunk(void* /*self*/) noexcept {
 /// Free function matching `gn_protocol_layer_vtable_t::frame`'s
 /// `out_free` signature. The kernel calls this once it has
 /// finished pushing the framed bytes through the security layer.
-void free_buffer(std::uint8_t* p) noexcept {
+void free_buffer(void* /*user_data*/, std::uint8_t* p) noexcept {
     std::free(p);
 }
 
@@ -71,8 +71,9 @@ gn_result_t frame_thunk(void* /*self*/,
                         const gn_message_t* msg,
                         std::uint8_t** out_bytes,
                         std::size_t* out_size,
-                        void (**out_free)(std::uint8_t*)) noexcept {
-    if (!msg || !out_bytes || !out_size || !out_free) {
+                        void** out_user_data,
+                        void (**out_free)(void*, std::uint8_t*)) noexcept {
+    if (!msg || !out_bytes || !out_size || !out_user_data || !out_free) {
         return GN_ERR_NULL_ARG;
     }
     if (!msg->payload && msg->payload_size > 0) return GN_ERR_NULL_ARG;
@@ -81,7 +82,8 @@ gn_result_t frame_thunk(void* /*self*/,
     /// `raw` writes the payload verbatim. Allocate a copy so the
     /// kernel can hold the buffer past the synchronous return; the
     /// matching free function disposes of it after the security
-    /// layer consumes the bytes.
+    /// layer consumes the bytes. The plugin is stateless so
+    /// `out_user_data` stays NULL.
     auto* buf = static_cast<std::uint8_t*>(
         std::malloc(msg->payload_size > 0 ? msg->payload_size : 1));
     if (!buf) return GN_ERR_OUT_OF_MEMORY;
@@ -89,9 +91,10 @@ gn_result_t frame_thunk(void* /*self*/,
         std::memcpy(buf, msg->payload, msg->payload_size);
     }
 
-    *out_bytes = buf;
-    *out_size  = msg->payload_size;
-    *out_free  = &free_buffer;
+    *out_bytes     = buf;
+    *out_size      = msg->payload_size;
+    *out_user_data = nullptr;
+    *out_free      = &free_buffer;
     return GN_OK;
 }
 

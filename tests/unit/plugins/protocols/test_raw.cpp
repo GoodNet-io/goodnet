@@ -54,15 +54,15 @@ TEST(RawProtocol, FrameWritesPayloadVerbatim) {
 
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
-    void (*out_free)(std::uint8_t*) = nullptr;
+    void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
     ASSERT_EQ(vt.frame(nullptr, &ctx, &msg,
-                        &out_bytes, &out_size, &out_free),
+                        &out_bytes, &out_size, &out_user_data, &out_free),
               GN_OK);
     ASSERT_NE(out_bytes, nullptr);
     ASSERT_EQ(out_size, sizeof(payload));
     EXPECT_EQ(std::memcmp(out_bytes, payload, sizeof(payload)), 0);
 
-    out_free(out_bytes);
+    out_free(out_user_data, out_bytes);
 }
 
 TEST(RawProtocol, DeframeReproducesPayload) {
@@ -134,9 +134,9 @@ TEST(RawProtocol, FrameRejectsOversized) {
 
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
-    void (*out_free)(std::uint8_t*) = nullptr;
+    void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
     EXPECT_EQ(vt.frame(nullptr, &ctx, &msg,
-                        &out_bytes, &out_size, &out_free),
+                        &out_bytes, &out_size, &out_user_data, &out_free),
               GN_ERR_PAYLOAD_TOO_LARGE);
     EXPECT_EQ(out_bytes, nullptr);
 }
@@ -157,9 +157,9 @@ TEST(RawProtocol, RoundTripFrameDeframe) {
 
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
-    void (*out_free)(std::uint8_t*) = nullptr;
+    void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
     ASSERT_EQ(vt.frame(nullptr, &ctx, &msg,
-                        &out_bytes, &out_size, &out_free),
+                        &out_bytes, &out_size, &out_user_data, &out_free),
               GN_OK);
 
     gn_deframe_result_t res{};
@@ -168,5 +168,5 @@ TEST(RawProtocol, RoundTripFrameDeframe) {
     EXPECT_EQ(res.messages[0].payload_size, sizeof(payload));
     EXPECT_EQ(std::memcmp(res.messages[0].payload, payload, sizeof(payload)), 0);
 
-    out_free(out_bytes);
+    out_free(out_user_data, out_bytes);
 }

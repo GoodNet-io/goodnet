@@ -371,7 +371,7 @@ TEST_F(NullPluginTest, EncryptCopiesPayloadBytes) {
     /// The plugin allocates the buffer; we must free through the
     /// provided callback. Same-process here so this is a normal
     /// `std::free` — but the contract demands using `free_fn`.
-    out.free_fn(out.bytes);
+    out.free_fn(out.free_user_data, out.bytes);
     teardown(lp);
 }
 
@@ -385,7 +385,7 @@ TEST_F(NullPluginTest, DecryptCopiesPayloadBytes) {
     ASSERT_NE(out.bytes, nullptr);
     EXPECT_EQ(out.size,  sizeof(ciphertext) - 1);
     EXPECT_EQ(0, std::memcmp(out.bytes, ciphertext, sizeof(ciphertext) - 1));
-    out.free_fn(out.bytes);
+    out.free_fn(out.free_user_data, out.bytes);
     teardown(lp);
 }
 
@@ -407,8 +407,8 @@ TEST_F(NullPluginTest, EncryptDecryptRoundTrip) {
     EXPECT_EQ(dec.size,  sizeof(input));
     EXPECT_EQ(0, std::memcmp(dec.bytes, input, sizeof(input)));
 
-    enc.free_fn(enc.bytes);
-    dec.free_fn(dec.bytes);
+    enc.free_fn(enc.free_user_data, enc.bytes);
+    dec.free_fn(dec.free_user_data, dec.bytes);
     teardown(lp);
 }
 

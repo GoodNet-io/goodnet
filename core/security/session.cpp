@@ -109,7 +109,7 @@ gn_result_t SecuritySession::advance_handshake(
     }
     if (step_out.free_fn && step_out.bytes) {
         safe_call_void("security.handshake_step.free_fn",
-            step_out.free_fn, step_out.bytes);
+            step_out.free_fn, step_out.free_user_data, step_out.bytes);
     }
 
     /// Check completion. Provider returns nonzero when the handshake
@@ -155,7 +155,7 @@ gn_result_t SecuritySession::encrypt_transport(
     }
     if (enc_out.free_fn && enc_out.bytes) {
         safe_call_void("security.encrypt.free_fn",
-            enc_out.free_fn, enc_out.bytes);
+            enc_out.free_fn, enc_out.free_user_data, enc_out.bytes);
     }
     return GN_OK;
 }
@@ -220,7 +220,7 @@ gn_result_t SecuritySession::decrypt_transport(
     }
     if (dec_out.free_fn && dec_out.bytes) {
         safe_call_void("security.decrypt.free_fn",
-            dec_out.free_fn, dec_out.bytes);
+            dec_out.free_fn, dec_out.free_user_data, dec_out.bytes);
     }
     return GN_OK;
 }

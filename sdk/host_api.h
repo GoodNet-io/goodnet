@@ -207,17 +207,23 @@ typedef struct host_api_s {
      * array; pass @ref GN_CONFIG_NO_INDEX for scalar lookups and
      * for the `ARRAY_SIZE` query.
      *
-     * @p out_free is meaningful only for the `STRING` reads (scalar
-     * and array element); pass `NULL` for the other types. The
-     * kernel writes a destructor function pointer that the plugin
-     * calls on the returned string buffer.
+     * @p out_user_data and @p out_free are meaningful only for the
+     * `STRING` reads (scalar and array element); pass `NULL` for the
+     * other types. On a successful `STRING` read the kernel writes
+     * an opaque destruction-state pointer into `*out_user_data` and
+     * a destructor into `*out_free`; the plugin invokes
+     * `(*out_free)(*out_user_data, *out_value)` to release the
+     * buffer. Splitting destruction state from the function pointer
+     * lets a non-C language binding hand back a captured handle
+     * (Rust `Box`, Python object) without leaking it through the
+     * `void(*)(void*)` form.
      *
      * Failure modes:
      *
      * | Condition | Result |
      * |---|---|
      * | `key == NULL` or `out_value == NULL` | `GN_ERR_NULL_ARG` |
-     * | `STRING` read with `out_free == NULL`, or non-`STRING` read with `out_free != NULL` | `GN_ERR_NULL_ARG` |
+     * | `STRING` read with `out_free == NULL` or `out_user_data == NULL`, or non-`STRING` read with either non-`NULL` | `GN_ERR_NULL_ARG` |
      * | scalar read with `index != GN_CONFIG_NO_INDEX`, or array-element read with `index == GN_CONFIG_NO_INDEX` | `GN_ERR_OUT_OF_RANGE` |
      * | key not present in config | `GN_ERR_NOT_FOUND` |
      * | live value's parse type does not match @p type | `GN_ERR_INVALID_ENVELOPE` |
@@ -227,18 +233,21 @@ typedef struct host_api_s {
      *
      * Per `host-api.md` §2 and `config.md` §3.
      *
-     * @param key       dotted JSON path (`"foo.bar.baz"`).
-     * @param type      expected node type; see @ref gn_config_value_type_t.
-     * @param index     array-element ordinal, or @ref GN_CONFIG_NO_INDEX for scalar.
-     * @param out_value typed pointer per @p type.
-     * @param out_free  destructor for `STRING` reads; `NULL` otherwise.
+     * @param key            dotted JSON path (`"foo.bar.baz"`).
+     * @param type           expected node type; see @ref gn_config_value_type_t.
+     * @param index          array-element ordinal, or @ref GN_CONFIG_NO_INDEX for scalar.
+     * @param out_value      typed pointer per @p type.
+     * @param out_user_data  on success of a `STRING` read, opaque destruction-
+     *                       state pointer; `NULL` for non-`STRING` reads.
+     * @param out_free       destructor for `STRING` reads; `NULL` otherwise.
      */
     gn_result_t (*config_get)(void* host_ctx,
                               const char* key,
                               gn_config_value_type_t type,
                               size_t index,
                               void* out_value,
-                              void (**out_free)(void*));
+                              void** out_user_data,
+                              void (**out_free)(void* user_data, void* bytes));
 
     /* ── Limits read access ────────────────────────────────────────────── */
 
