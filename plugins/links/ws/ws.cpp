@@ -881,10 +881,25 @@ gn_result_t WsLink::connect(std::string_view uri) {
         Session::Mode::Client);
     auto& sock = session->socket();
     sock.async_connect(ep,
-        [session,
+        [weak = weak_from_this(),
+         session,
          host = parsed->host_authority(),
          path = parsed->path](const std::error_code& cec) {
-            if (cec) return;
+            if (cec) {
+                /// Connect failed before any `notify_connect` could
+                /// publish — kernel has no record to release, so
+                /// the diagnostic is operator-facing only. Without
+                /// the warn, the outbound URI sat in the WS log
+                /// silently; per `link.md` §9 a connect failure is
+                /// not a session release event but still must be
+                /// observable.
+                if (auto t = weak.lock(); t && t->api_) {
+                    gn_log_warn(t->api_,
+                        "ws: connect to %s failed: %s",
+                        host.c_str(), cec.message().c_str());
+                }
+                return;
+            }
             /// Disable Nagle on the outbound side, mirroring the
             /// accept path. Best-effort.
             std::error_code nodelay_ec;
