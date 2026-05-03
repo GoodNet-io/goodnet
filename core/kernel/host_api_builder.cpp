@@ -460,12 +460,30 @@ constexpr std::uint64_t kSubTokenMask    =
     return id & kSubTokenMask;
 }
 
-gn_result_t thunk_subscribe(void* host_ctx,
-                             gn_subscribe_channel_t channel,
-                             gn_subscribe_cb_t cb,
-                             void* user_data,
-                             void (*ud_destroy)(void*),
-                             gn_subscription_id_t* out_id) {
+/// RAII guard fires `ud_destroy(user_data)` exactly once when the
+/// subscription's lambda is destroyed — either through
+/// `unsubscribe()` or when the kernel observes the plugin anchor
+/// expire and tears the subscription down. Captured by
+/// `shared_ptr` into the channel lambda so the last reference
+/// drops the moment the channel removes the subscription, and
+/// the guard's dtor calls `ud_destroy` exactly once.
+struct UserDataGuard {
+    void* user_data = nullptr;
+    void (*ud_destroy)(void*) = nullptr;
+    UserDataGuard(void* ud, void (*d)(void*)) noexcept
+        : user_data(ud), ud_destroy(d) {}
+    UserDataGuard(const UserDataGuard&)            = delete;
+    UserDataGuard& operator=(const UserDataGuard&) = delete;
+    ~UserDataGuard() {
+        if (ud_destroy) ud_destroy(user_data);
+    }
+};
+
+gn_result_t thunk_subscribe_conn_state(void* host_ctx,
+                                        gn_conn_state_cb_t cb,
+                                        void* user_data,
+                                        void (*ud_destroy)(void*),
+                                        gn_subscription_id_t* out_id) {
     if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
@@ -473,81 +491,62 @@ gn_result_t thunk_subscribe(void* host_ctx,
 
     auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
-
-    /// RAII guard that fires `ud_destroy(user_data)` exactly once
-    /// when the subscription's lambda is destroyed — either
-    /// through `unsubscribe()` or when the kernel observes the
-    /// plugin anchor expire and tears the subscription down. The
-    /// `shared_ptr` capture inside the lambda keeps the guard
-    /// alive for as long as the channel holds the subscription;
-    /// the last reference drops the moment the channel removes it.
-    struct UserDataGuard {
-        void* user_data = nullptr;
-        void (*ud_destroy)(void*) = nullptr;
-        UserDataGuard(void* ud, void (*d)(void*)) noexcept
-            : user_data(ud), ud_destroy(d) {}
-        UserDataGuard(const UserDataGuard&)            = delete;
-        UserDataGuard& operator=(const UserDataGuard&) = delete;
-        ~UserDataGuard() {
-            if (ud_destroy) ud_destroy(user_data);
-        }
-    };
     auto ud_guard = std::make_shared<UserDataGuard>(user_data, ud_destroy);
 
-    switch (channel) {
-    case GN_SUBSCRIBE_CONN_STATE: {
-        auto token = pc->kernel->on_conn_event().subscribe(
-            [cb, ud_guard, anchor_weak, anchor_set](const ConnEvent& ev) {
-                /// Open a `GateGuard` for the dispatch so
-                /// `PluginManager::drain_anchor` cannot run `dlclose`
-                /// while the callback is still in the plugin's `.text`.
-                /// The guard refuses if rollback already published
-                /// `shutdown_requested = true`, dropping the dispatch.
-                std::optional<GateGuard> guard;
-                if (anchor_set) {
-                    guard = GateGuard::acquire(anchor_weak);
-                    if (!guard) return;
-                }
-                gn_conn_event_t e{};
-                e.api_size      = sizeof(gn_conn_event_t);
-                e.kind          = ev.kind;
-                e.conn          = ev.conn;
-                e.trust         = ev.trust;
-                e.pending_bytes = ev.pending_bytes;
-                std::memcpy(e.remote_pk, ev.remote_pk.data(),
-                            GN_PUBLIC_KEY_BYTES);
-                safe_call_void("subscriber.conn_state",
-                    cb, ud_guard->user_data,
-                    static_cast<const void*>(&e),
-                    sizeof(gn_conn_event_t));
-            });
-        *out_id = pack_subscription_id(GN_SUBSCRIBE_CONN_STATE,
-                                        static_cast<std::uint64_t>(token));
-        return GN_OK;
-    }
+    auto token = pc->kernel->on_conn_event().subscribe(
+        [cb, ud_guard, anchor_weak, anchor_set](const ConnEvent& ev) {
+            /// Open a `GateGuard` for the dispatch so
+            /// `PluginManager::drain_anchor` cannot run `dlclose`
+            /// while the callback is still in the plugin's `.text`.
+            /// The guard refuses if rollback already published
+            /// `shutdown_requested = true`, dropping the dispatch.
+            std::optional<GateGuard> guard;
+            if (anchor_set) {
+                guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+            }
+            gn_conn_event_t e{};
+            e.api_size      = sizeof(gn_conn_event_t);
+            e.kind          = ev.kind;
+            e.conn          = ev.conn;
+            e.trust         = ev.trust;
+            e.pending_bytes = ev.pending_bytes;
+            std::memcpy(e.remote_pk, ev.remote_pk.data(),
+                        GN_PUBLIC_KEY_BYTES);
+            safe_call_void("subscriber.conn_state",
+                cb, ud_guard->user_data, &e);
+        });
+    *out_id = pack_subscription_id(GN_SUBSCRIBE_CONN_STATE,
+                                    static_cast<std::uint64_t>(token));
+    return GN_OK;
+}
 
-    case GN_SUBSCRIBE_CONFIG_RELOAD: {
-        auto token = pc->kernel->on_config_reload().subscribe(
-            [cb, ud_guard, anchor_weak, anchor_set](const signal::Empty&) {
-                /// Same lifetime gate as the conn-state path: refuse
-                /// the dispatch if the plugin's anchor expired or
-                /// rollback published `shutdown_requested`.
-                if (anchor_set) {
-                    auto guard = GateGuard::acquire(anchor_weak);
-                    if (!guard) return;
-                }
-                safe_call_void("subscriber.config_reload",
-                    cb, ud_guard->user_data,
-                    static_cast<const void*>(nullptr),
-                    static_cast<std::size_t>(0));
-            });
-        *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
-                                        static_cast<std::uint64_t>(token));
-        return GN_OK;
-    }
-    }
+gn_result_t thunk_subscribe_config_reload(void* host_ctx,
+                                           gn_config_reload_cb_t cb,
+                                           void* user_data,
+                                           void (*ud_destroy)(void*),
+                                           gn_subscription_id_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
 
-    return GN_ERR_INVALID_ENVELOPE;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+    auto ud_guard = std::make_shared<UserDataGuard>(user_data, ud_destroy);
+
+    auto token = pc->kernel->on_config_reload().subscribe(
+        [cb, ud_guard, anchor_weak, anchor_set](const signal::Empty&) {
+            if (anchor_set) {
+                auto guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+            }
+            safe_call_void("subscriber.config_reload",
+                cb, ud_guard->user_data);
+        });
+    *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
+                                    static_cast<std::uint64_t>(token));
+    return GN_OK;
 }
 
 int32_t thunk_is_shutdown_requested(void* host_ctx) {
@@ -1493,7 +1492,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.set_timer               = &thunk_set_timer;
     a.cancel_timer            = &thunk_cancel_timer;
 
-    a.subscribe               = &thunk_subscribe;
+    a.subscribe_conn_state    = &thunk_subscribe_conn_state;
+    a.subscribe_config_reload = &thunk_subscribe_config_reload;
     a.unsubscribe             = &thunk_unsubscribe;
     a.for_each_connection     = &thunk_for_each_connection;
     a.notify_backpressure     = &thunk_notify_backpressure;

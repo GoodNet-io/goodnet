@@ -63,21 +63,22 @@ typedef enum gn_subscribe_channel_e {
 } gn_subscribe_channel_t;
 
 /**
- * @brief Universal subscriber callback used by `host_api->subscribe`.
+ * @brief Per-channel typed subscriber callbacks.
  *
- * Runs on the publishing thread per `conn-events.md` §3 / `config.md`
- * §2; @p payload borrows for the duration of the call.
+ * Each kernel pub/sub channel publishes through its own typed
+ * callback. The split mirrors the host-side `gn_message_cb_t` /
+ * `gn_conn_event_cb_t` split in `sdk/core.h` — a binding writes
+ * one strongly-typed signature per channel rather than casting
+ * `(const void*, size_t)` to the right shape at every call site.
  *
- * Per-channel payload shape:
- *
- * | Channel              | @p payload                    | @p size                       |
- * |----------------------|-------------------------------|-------------------------------|
- * | `GN_SUBSCRIBE_CONN_STATE`    | `const gn_conn_event_t*`      | `sizeof(gn_conn_event_t)`     |
- * | `GN_SUBSCRIBE_CONFIG_RELOAD` | `NULL`                        | `0`                           |
+ * Both run on the publishing thread per `conn-events.md` §3 /
+ * `config.md` §2; the payload borrows for the duration of the
+ * call.
  */
-typedef void (*gn_subscribe_cb_t)(void*       user_data,
-                                   const void* payload,
-                                   size_t      size);
+typedef void (*gn_conn_state_cb_t)(void* user_data,
+                                    const gn_conn_event_t* ev);
+
+typedef void (*gn_config_reload_cb_t)(void* user_data);
 
 /**
  * @brief Iteration visitor for `for_each_connection`. Returns 0 to

@@ -50,10 +50,9 @@ TEST(ConfigReload, ReloadFiresSubscriberCallback) {
 
     std::atomic<int> calls{0};
     gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(
+    ASSERT_EQ(api.subscribe_config_reload(
                 api.host_ctx,
-                GN_SUBSCRIBE_CONFIG_RELOAD,
-                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
+                +[](void* ud) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -81,10 +80,9 @@ TEST(ConfigReload, FailedReloadDoesNotFire) {
 
     std::atomic<int> calls{0};
     gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(
+    ASSERT_EQ(api.subscribe_config_reload(
                 api.host_ctx,
-                GN_SUBSCRIBE_CONFIG_RELOAD,
-                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
+                +[](void* ud) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -103,10 +101,9 @@ TEST(ConfigReload, FailedValidationDoesNotFire) {
 
     std::atomic<int> calls{0};
     gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(
+    ASSERT_EQ(api.subscribe_config_reload(
                 api.host_ctx,
-                GN_SUBSCRIBE_CONFIG_RELOAD,
-                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
+                +[](void* ud) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -130,10 +127,9 @@ TEST(ConfigReload, UnsubscribeStopsCallbacks) {
 
     std::atomic<int> calls{0};
     gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(
+    ASSERT_EQ(api.subscribe_config_reload(
                 api.host_ctx,
-                GN_SUBSCRIBE_CONFIG_RELOAD,
-                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
+                +[](void* ud) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
@@ -164,10 +160,9 @@ TEST(ConfigReload, MergeReloadAlsoFires) {
 
     std::atomic<int> calls{0};
     gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(
+    ASSERT_EQ(api.subscribe_config_reload(
                 api.host_ctx,
-                GN_SUBSCRIBE_CONFIG_RELOAD,
-                +[](void* ud, const void* /*payload*/, std::size_t /*size*/) {
+                +[](void* ud) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,

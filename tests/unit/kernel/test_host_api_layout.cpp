@@ -94,7 +94,8 @@ TEST(HostApiLayout, EveryFunctionPointerSlotPopulated) {
     EXPECT_NE(api.kick_handshake,           nullptr) << "kick_handshake";
     EXPECT_NE(api.register_security,        nullptr) << "register_security";
     EXPECT_NE(api.unregister_security,      nullptr) << "unregister_security";
-    EXPECT_NE(api.subscribe,                nullptr) << "subscribe";
+    EXPECT_NE(api.subscribe_conn_state,     nullptr) << "subscribe_conn_state";
+    EXPECT_NE(api.subscribe_config_reload,  nullptr) << "subscribe_config_reload";
     EXPECT_NE(api.unsubscribe,              nullptr) << "unsubscribe";
     EXPECT_NE(api.set_timer,                nullptr) << "set_timer";
     EXPECT_NE(api.cancel_timer,             nullptr) << "cancel_timer";

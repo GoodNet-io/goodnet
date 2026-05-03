@@ -420,31 +420,42 @@ typedef struct host_api_s {
     /* ── Channel subscription (conn-events.md / config.md authoritative) ── */
 
     /**
-     * @brief Subscribe to a kernel pub/sub channel.
+     * @brief Subscribe to the connection-event channel.
      *
      * The kernel pairs each subscription with a weak observer of
      * the calling plugin's lifetime anchor; a callback whose
-     * plugin already unloaded is dropped silently
-     * (`conn-events.md` §3 / `config.md` §2).
+     * plugin already unloaded is dropped silently per
+     * `conn-events.md` §3.
      *
-     * `cb` runs on the publishing thread and receives a typed
-     * payload — see @ref gn_subscribe_cb_t. Per-channel payload
-     * shape is documented on the same enum.
+     * `cb` runs on the publishing thread with a borrowed
+     * @ref gn_conn_event_t pointer.
      *
-     * @p ud_destroy, if non-NULL, is invoked exactly once with
-     * @p user_data when the subscription is removed — either
-     * through `unsubscribe(out_id)` or because the kernel observed
-     * the plugin's lifetime anchor expire. Bindings whose
-     * `user_data` captures heap state (Rust `Box::into_raw`,
-     * Python `Py_INCREF`'d object) point this slot at their
-     * destructor; callers that pass plain pointers leave it NULL.
+     * @p ud_destroy follows the same shape across both subscribe
+     * functions — invoked exactly once with @p user_data when the
+     * subscription is removed (through `unsubscribe(out_id)` or
+     * because the kernel observed the plugin's lifetime anchor
+     * expire).
      */
-    gn_result_t (*subscribe)(void* host_ctx,
-                              gn_subscribe_channel_t channel,
-                              gn_subscribe_cb_t cb,
-                              void* user_data,
-                              void (*ud_destroy)(void*),
-                              gn_subscription_id_t* out_id);
+    gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                         gn_conn_state_cb_t cb,
+                                         void* user_data,
+                                         void (*ud_destroy)(void*),
+                                         gn_subscription_id_t* out_id);
+
+    /**
+     * @brief Subscribe to the config-reload channel.
+     *
+     * Same lifetime / dispatch / destructor semantics as
+     * `subscribe_conn_state`, with no per-event payload — the
+     * callback signals only that a reload completed; the plugin
+     * re-reads `host_api->config_get` for the keys it cares
+     * about per `config.md` §2.
+     */
+    gn_result_t (*subscribe_config_reload)(void* host_ctx,
+                                            gn_config_reload_cb_t cb,
+                                            void* user_data,
+                                            void (*ud_destroy)(void*),
+                                            gn_subscription_id_t* out_id);
 
     /**
      * @brief Remove a subscription. Idempotent: removing an already-
