@@ -1033,11 +1033,10 @@ bool pk_is_known(const std::uint8_t pk[GN_PUBLIC_KEY_BYTES]) noexcept {
 gn_result_t thunk_notify_connect(void* host_ctx,
                                  const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                                  const char* uri,
-                                 const char* scheme,
                                  gn_trust_class_t trust,
                                  gn_handshake_role_t role,
                                  gn_conn_id_t* out_conn) {
-    if (!host_ctx || !remote_pk || !uri || !scheme || !out_conn) return GN_ERR_NULL_ARG;
+    if (!host_ctx || !remote_pk || !uri || !out_conn) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
@@ -1052,6 +1051,21 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     /// (Host header, request-target, log line) would smuggle a second
     /// HTTP request. Reject up front.
     if (gn::uri_has_control_bytes(uri)) return GN_ERR_INVALID_ENVELOPE;
+
+    /// Derive the link scheme from the URI prefix. The link plugin
+    /// owns the scheme-as-registry-key contract; pulling it from the
+    /// URI removes a redundant explicit parameter and makes any
+    /// scheme-vs-URI inconsistency unforgeable. URI without a
+    /// `scheme://` prefix is rejected — link registry would have no
+    /// way to attribute the conn for the ownership gate
+    /// (`security-trust.md` §6a) and downstream `notify_disconnect`
+    /// + `notify_inbound_bytes` would race a missing record.
+    const std::string_view uri_view(uri);
+    const auto sep = uri_view.find("://");
+    if (sep == std::string_view::npos || sep == 0) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    const std::string scheme = std::string(uri_view.substr(0, sep));
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
     /// active layer declares which trust classes it may deframe;

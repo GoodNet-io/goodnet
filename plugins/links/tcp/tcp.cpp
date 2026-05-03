@@ -484,7 +484,7 @@ void TcpLink::on_accept(std::shared_ptr<Session> session,
         gn_conn_id_t conn = GN_INVALID_ID;
         const std::string uri = endpoint_to_uri(remote);
         const gn_result_t rc = api_->notify_connect(
-            api_->host_ctx, remote_pk, uri.c_str(), "tcp",
+            api_->host_ctx, remote_pk, uri.c_str(),
             resolve_trust(remote), GN_ROLE_RESPONDER, &conn);
         if (rc == GN_OK && conn != GN_INVALID_ID) {
             session->conn_id = conn;
@@ -573,7 +573,7 @@ gn_result_t TcpLink::connect(std::string_view uri_sv) {
             std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
             gn_conn_id_t conn = GN_INVALID_ID;
             const gn_result_t rc = t->api_->notify_connect(
-                t->api_->host_ctx, remote_pk, canonical_uri.c_str(), "tcp",
+                t->api_->host_ctx, remote_pk, canonical_uri.c_str(),
                 t->resolve_trust(ep), GN_ROLE_INITIATOR, &conn);
             if (rc != GN_OK || conn == GN_INVALID_ID) {
                 session->do_close();

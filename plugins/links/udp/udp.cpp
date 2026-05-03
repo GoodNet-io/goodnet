@@ -291,7 +291,7 @@ gn_result_t UdpLink::connect(std::string_view uri_sv) {
             return GN_OK;
         }
         const gn_result_t rc = api_->notify_connect(
-            api_->host_ctx, remote_pk, canonical.c_str(), "udp",
+            api_->host_ctx, remote_pk, canonical.c_str(),
             resolve_trust(ep), GN_ROLE_INITIATOR, &conn);
         if (rc != GN_OK || conn == GN_INVALID_ID) {
             if (socket_freshly_created) {
@@ -497,7 +497,6 @@ void UdpLink::start_receive() {
                             endpoint_to_uri(self->recv_endpoint_);
                         const auto rc = self->api_->notify_connect(
                             self->api_->host_ctx, remote_pk, uri.c_str(),
-                            "udp",
                             self->resolve_trust(self->recv_endpoint_),
                             GN_ROLE_RESPONDER, &conn);
                         if (rc == GN_OK && conn != GN_INVALID_ID) {

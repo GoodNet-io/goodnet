@@ -63,7 +63,7 @@ TEST(ConnEvents, ConnectFiresEvent) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB, 0xCC};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9000",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn), GN_OK);
 
     {
@@ -91,7 +91,7 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {1, 2, 3};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9001",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn), GN_OK);
     ASSERT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
 
@@ -107,7 +107,7 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
     ASSERT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
     gn_conn_id_t conn2 = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9002",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn2), GN_OK);
     {
         std::lock_guard lk(bag.mu);
@@ -196,7 +196,7 @@ TEST(ConnEvents, AnchorExpiredDropsCallback) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9003",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn), GN_OK);
 
     std::lock_guard lk(bag.mu);
@@ -232,7 +232,7 @@ TEST(ConnEvents, ForEachConnectionWalksRegistry) {
         const std::string uri =
             "tcp://127.0.0.1:" + std::to_string(9100 + i);
         ASSERT_EQ(api.notify_connect(&ctx, pk, uri.c_str(),
-                                      "tcp", GN_TRUST_LOOPBACK,
+                                      GN_TRUST_LOOPBACK,
                                       GN_ROLE_RESPONDER, &conn), GN_OK);
     }
 
@@ -254,7 +254,7 @@ TEST(ConnEvents, ForEachVisitorStopOnNonZero) {
         const std::string uri =
             "tcp://127.0.0.1:" + std::to_string(9200 + i);
         ASSERT_EQ(api.notify_connect(&ctx, pk, uri.c_str(),
-                                      "tcp", GN_TRUST_LOOPBACK,
+                                      GN_TRUST_LOOPBACK,
                                       GN_ROLE_RESPONDER, &conn), GN_OK);
     }
 

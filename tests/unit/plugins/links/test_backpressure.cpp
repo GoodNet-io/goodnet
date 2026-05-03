@@ -47,7 +47,7 @@ struct CapHost {
 
     static gn_result_t on_connect(void* ctx,
                                    const std::uint8_t /*pk*/[GN_PUBLIC_KEY_BYTES],
-                                   const char* /*uri*/, const char* /*scheme*/,
+                                   const char* /*uri*/,
                                    gn_trust_class_t /*trust*/,
                                    gn_handshake_role_t role,
                                    gn_conn_id_t* out_conn) {
