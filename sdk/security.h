@@ -38,6 +38,9 @@ extern "C" {
  * zeroises its own copies and refuses further encrypt/decrypt calls.
  */
 typedef struct gn_handshake_keys_s {
+    /** sizeof(gn_handshake_keys_t) at producer build time per
+     *  `abi-evolution.md` §3. */
+    uint32_t api_size;
     uint8_t  send_cipher_key[GN_CIPHER_KEY_BYTES];
     uint8_t  recv_cipher_key[GN_CIPHER_KEY_BYTES];
     uint64_t initial_send_nonce;
@@ -48,6 +51,8 @@ typedef struct gn_handshake_keys_s {
     void*    _reserved[4];
 } gn_handshake_keys_t;
 
+GN_VTABLE_API_SIZE_FIRST(gn_handshake_keys_t);
+
 /**
  * @brief Output buffer for variable-length security messages.
  *
@@ -55,10 +60,15 @@ typedef struct gn_handshake_keys_s {
  * kernel can release it once the bytes have been handed to the transport.
  */
 typedef struct gn_secure_buffer_s {
+    /** sizeof(gn_secure_buffer_t) at producer build time per
+     *  `abi-evolution.md` §3. */
+    uint32_t api_size;
     uint8_t* bytes;
     size_t   size;
     void  (*free_fn)(uint8_t* bytes);
 } gn_secure_buffer_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_secure_buffer_t);
 
 /**
  * @brief Vtable for an `ISecurityProvider` implementation.

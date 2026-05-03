@@ -45,28 +45,30 @@
 
 /* ── sdk/core.h :: gn_stats_t ──────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_stats_t) == 104,
-               "gn_stats_t size pinned at 104");
-_Static_assert(offsetof(gn_stats_t, connections_active) == 0,
-               "gn_stats_t::connections_active offset pinned at 0");
-_Static_assert(offsetof(gn_stats_t, handlers_registered) == 8,
-               "gn_stats_t::handlers_registered offset pinned at 8");
-_Static_assert(offsetof(gn_stats_t, links_registered) == 16,
-               "gn_stats_t::links_registered offset pinned at 16");
-_Static_assert(offsetof(gn_stats_t, extensions_registered) == 24,
-               "gn_stats_t::extensions_registered offset pinned at 24");
-_Static_assert(offsetof(gn_stats_t, bytes_in) == 32,
-               "gn_stats_t::bytes_in offset pinned at 32");
-_Static_assert(offsetof(gn_stats_t, bytes_out) == 40,
-               "gn_stats_t::bytes_out offset pinned at 40");
-_Static_assert(offsetof(gn_stats_t, frames_in) == 48,
-               "gn_stats_t::frames_in offset pinned at 48");
-_Static_assert(offsetof(gn_stats_t, frames_out) == 56,
-               "gn_stats_t::frames_out offset pinned at 56");
-_Static_assert(offsetof(gn_stats_t, plugin_dlclose_leaks) == 64,
-               "gn_stats_t::plugin_dlclose_leaks offset pinned at 64");
-_Static_assert(offsetof(gn_stats_t, _reserved) == 72,
-               "gn_stats_t::_reserved offset pinned at 72");
+_Static_assert(sizeof(gn_stats_t) == 112,
+               "gn_stats_t size pinned at 112");
+_Static_assert(offsetof(gn_stats_t, api_size) == 0,
+               "gn_stats_t::api_size offset pinned at 0");
+_Static_assert(offsetof(gn_stats_t, connections_active) == 8,
+               "gn_stats_t::connections_active offset pinned at 8");
+_Static_assert(offsetof(gn_stats_t, handlers_registered) == 16,
+               "gn_stats_t::handlers_registered offset pinned at 16");
+_Static_assert(offsetof(gn_stats_t, links_registered) == 24,
+               "gn_stats_t::links_registered offset pinned at 24");
+_Static_assert(offsetof(gn_stats_t, extensions_registered) == 32,
+               "gn_stats_t::extensions_registered offset pinned at 32");
+_Static_assert(offsetof(gn_stats_t, bytes_in) == 40,
+               "gn_stats_t::bytes_in offset pinned at 40");
+_Static_assert(offsetof(gn_stats_t, bytes_out) == 48,
+               "gn_stats_t::bytes_out offset pinned at 48");
+_Static_assert(offsetof(gn_stats_t, frames_in) == 56,
+               "gn_stats_t::frames_in offset pinned at 56");
+_Static_assert(offsetof(gn_stats_t, frames_out) == 64,
+               "gn_stats_t::frames_out offset pinned at 64");
+_Static_assert(offsetof(gn_stats_t, plugin_dlclose_leaks) == 72,
+               "gn_stats_t::plugin_dlclose_leaks offset pinned at 72");
+_Static_assert(offsetof(gn_stats_t, _reserved) == 80,
+               "gn_stats_t::_reserved offset pinned at 80");
 _Static_assert(sizeof(((gn_stats_t*)0)->_reserved) == 4 * sizeof(void*),
                "gn_stats_t::_reserved holds the default 4 evolution slots");
 

@@ -352,6 +352,20 @@ static inline const char* gn_strerror(gn_result_t r) {
  * synthesises identities itself.
  */
 typedef struct gn_message_s {
+    /**
+     * sizeof(gn_message_t) at the producer's build time. Caller-
+     * allocated structs carry the size prefix so the consumer
+     * (kernel thunk, handler) can refuse to read fields the caller's
+     * SDK did not allocate. Per `abi-evolution.md` §3 the size lives
+     * at offset zero; the static_assert below pins that.
+     *
+     * Zero is permitted in v1.0 — pre-3.1 callsites that have not
+     * been migrated to set the field still produce a usable
+     * envelope under the v1.0 layout. v1.x consumers that read
+     * fields added after `_reserved` MUST gate the read on
+     * `api_size >= offsetof(gn_message_t, <field>) + sizeof(<field>)`.
+     */
+    uint32_t       api_size;
     uint8_t        sender_pk[GN_PUBLIC_KEY_BYTES];   /**< Ed25519, end-to-end identity */
     uint8_t        receiver_pk[GN_PUBLIC_KEY_BYTES]; /**< ZERO bytes ⇒ broadcast */
     uint32_t       msg_id;                           /**< per-protocol routing key */
@@ -380,6 +394,15 @@ _Static_assert(GN_PUBLIC_KEY_BYTES == 32,
                "Ed25519 public key is 32 bytes");
 _Static_assert(sizeof(((gn_message_t*)0)->_reserved) == 4 * sizeof(void*),
                "envelope reserved slots must be sized for ABI evolution");
+_Static_assert(offsetof(gn_message_t, api_size) == 0,
+               "gn_message_t must begin with `uint32_t api_size` per "
+               "abi-evolution.md §3");
+#endif
+
+#ifdef __cplusplus
+static_assert(offsetof(gn_message_t, api_size) == 0,
+              "gn_message_t must begin with `uint32_t api_size` per "
+              "abi-evolution.md §3");
 #endif
 
 #ifdef __cplusplus

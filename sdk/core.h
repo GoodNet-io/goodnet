@@ -298,6 +298,9 @@ GN_EXPORT gn_result_t gn_core_disconnect(gn_core_t* core, gn_conn_id_t conn);
  * counter granularity.
  */
 typedef struct gn_stats_s {
+    /** sizeof(gn_stats_t) at producer build time per
+     *  `abi-evolution.md` §3. */
+    uint32_t api_size;
     uint64_t connections_active;       /**< live entries in `ConnectionRegistry` */
     uint64_t handlers_registered;      /**< live entries in `HandlerRegistry`    */
     uint64_t links_registered;         /**< live entries in `LinkRegistry`       */
@@ -309,6 +312,8 @@ typedef struct gn_stats_s {
     uint64_t plugin_dlclose_leaks;     /**< from `plugin.leak.dlclose_skipped`   */
     void*    _reserved[4];             /**< MUST be zero per abi-evolution.md §4 */
 } gn_stats_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_stats_t);
 
 /**
  * @brief Snapshot the aggregate counters into @p out.

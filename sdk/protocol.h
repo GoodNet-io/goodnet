@@ -37,11 +37,16 @@ typedef struct gn_connection_context_s gn_connection_context_t;
  * of one dispatch cycle.
  */
 typedef struct gn_deframe_result_s {
+    /** sizeof(gn_deframe_result_t) at producer build time per
+     *  `abi-evolution.md` §3. */
+    uint32_t            api_size;
     const gn_message_t* messages;        /**< zero or more envelopes */
     size_t              count;
     size_t              bytes_consumed;  /**< wire bytes the kernel may discard */
     void*               _reserved[4];
 } gn_deframe_result_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_deframe_result_t);
 
 /**
  * @brief Vtable for an `IProtocolLayer` implementation in C.
