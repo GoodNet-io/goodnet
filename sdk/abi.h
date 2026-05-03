@@ -61,16 +61,21 @@ extern "C" {
  * adds a slot uses `GN_API_HAS` to gate calls into entries that the running
  * kernel may not implement.
  *
+ * @p api_type is the struct typedef (e.g. `host_api_t`); the macro names it
+ * explicitly instead of deriving it through `__typeof__` so MSVC bindings
+ * compile without a GCC/clang extension.
+ *
  * Usage:
  * @code
- *   if (GN_API_HAS(api, get_endpoint)) {
+ *   if (GN_API_HAS(host_api_t, api, get_endpoint)) {
  *       api->get_endpoint(host_ctx, conn, &out);
  *   }
  * @endcode
  */
-#define GN_API_HAS(api, field) \
+#define GN_API_HAS(api_type, api, field) \
     ((api) != NULL && \
-     (api)->api_size >= (offsetof(__typeof__(*(api)), field) + sizeof((api)->field)))
+     (api)->api_size >= (offsetof(api_type, field) + \
+                         sizeof(((const api_type*)0)->field)))
 
 /**
  * @brief Compile-time guard that @p T begins with `uint32_t api_size`.

@@ -26,6 +26,7 @@
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/plugin_context.hpp>
 
+#include <sdk/abi.h>
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 
@@ -133,6 +134,35 @@ TEST(HostApiLayout, ReservedTailZeroed) {
         EXPECT_EQ(api._reserved[i], nullptr)
             << "_reserved[" << i << "] not zero";
     }
+}
+
+TEST(HostApiLayout, GnApiHasGatesByApiSize) {
+    /// `GN_API_HAS` reads `api->api_size` and compares it against
+    /// the offset+size of a named field. The macro now takes the
+    /// vtable type explicitly (not through `__typeof__`) so MSVC
+    /// bindings compile. Synthesise a stripped table with
+    /// `api_size == offsetof(host_api_t, send)` and assert that
+    /// every slot at or before `send` is reachable while every
+    /// slot beyond it is gated off.
+    Kernel k;
+    PluginContext ctx;
+    auto api = fresh_api(k, ctx);
+
+    /// Full-sized table: every slot reachable.
+    EXPECT_TRUE(GN_API_HAS(host_api_t, &api, send));
+    EXPECT_TRUE(GN_API_HAS(host_api_t, &api, register_vtable));
+
+    /// Truncate api_size to one byte less than `send`'s start —
+    /// the macro must report `send` as unavailable while the field
+    /// before it stays reachable.
+    const std::uint32_t real_size = api.api_size;
+    api.api_size = static_cast<std::uint32_t>(offsetof(host_api_t, send));
+    EXPECT_FALSE(GN_API_HAS(host_api_t, &api, send));
+    api.api_size = real_size;
+
+    /// Null api short-circuits to false regardless of field.
+    const host_api_t* null_api = nullptr;
+    EXPECT_FALSE(GN_API_HAS(host_api_t, null_api, send));
 }
 
 TEST(HostApiLayout, IndependentBuildsProduceIdenticalShape) {

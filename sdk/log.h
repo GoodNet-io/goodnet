@@ -32,7 +32,7 @@ extern "C" {
  * Embedded in `host_api_t::log`. The first field carries the
  * struct's size at the producer's build time so consumer plugins
  * gate access to entries beyond their own SDK through
- * `GN_API_HAS(&api->log, slot)` from `sdk/abi.h`.
+ * `GN_API_HAS(gn_log_api_t, &api->log, slot)` from `sdk/abi.h`.
  */
 typedef struct gn_log_api_s {
     /** sizeof(gn_log_api_t) at producer build time. */
