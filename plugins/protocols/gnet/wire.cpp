@@ -62,7 +62,12 @@ gn_result_t parse_header(std::span<const std::uint8_t> bytes,
         return GN_ERR_DEFRAME_CORRUPT;
     }
     if (length > kMaxFrameBytes) {
-        return GN_ERR_DEFRAME_CORRUPT;
+        /// Distinct from generic deframe corruption: a length field
+        /// past the v1 wire ceiling is a hostile-peer signal
+        /// (`drop.frame_too_large` metric), not a magic-mismatch /
+        /// version-drift signal (`drop.deframe_corrupt`). Operators
+        /// distinguishing the two diagnose intent without strace.
+        return GN_ERR_FRAME_TOO_LARGE;
     }
 
     out.flags        = flags;
