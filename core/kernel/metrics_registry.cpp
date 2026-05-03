@@ -11,24 +11,6 @@ namespace gn::core {
 
 namespace {
 
-/// `std::unordered_map` with a transparent `equal_to<>` and
-/// `std::hash<std::string>` accepts `string_view` lookups only when
-/// the call goes through `find` with the heterogenous overload —
-/// resolved by the `is_transparent` typedef on `equal_to<>` and the
-/// matching hash specialisation. We provide our own hash that
-/// covers both `std::string` and `std::string_view` so the
-/// shared-lock fast path stays allocation-free.
-struct StringHash {
-    using is_transparent = void;
-
-    [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
-        return std::hash<std::string_view>{}(sv);
-    }
-    [[nodiscard]] std::size_t operator()(const std::string& s) const noexcept {
-        return std::hash<std::string_view>{}(s);
-    }
-};
-
 /// Stable name per `RouteOutcome` value. Kept inside the registry
 /// implementation so call sites never have to remember the canonical
 /// string. New `RouteOutcome` values land here in one place.
@@ -85,12 +67,13 @@ struct StringHash {
 
 MetricsRegistry::Map::const_iterator
 MetricsRegistry::find(std::string_view name) const {
-    /// `unordered_map`'s heterogenous lookup with
-    /// `is_transparent`-marked equal_to + hash widens the comparison
-    /// to `string_view`. The fast path therefore avoids constructing
-    /// a temporary `std::string` for the lookup — important on the
-    /// dispatch hot path where every router result emits a metric.
-    return counters_.find(std::string(name));
+    /// `unordered_map`'s heterogeneous lookup with
+    /// `is_transparent`-marked hash and equal_to widens the
+    /// comparison to `string_view`. The fast path therefore avoids
+    /// constructing a temporary `std::string` for the lookup —
+    /// important on the dispatch hot path where every router
+    /// result emits a metric.
+    return counters_.find(name);
 }
 
 void MetricsRegistry::increment(std::string_view name) {

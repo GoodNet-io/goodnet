@@ -81,11 +81,29 @@ public:
                                        void* user_data) const;
 
 private:
+    /// Heterogeneous hash + equality so the unordered_map's
+    /// transparent `find(string_view)` overload matches without
+    /// constructing a temporary `std::string`. The
+    /// `is_transparent` typedef on both is what teaches the
+    /// container to take the heterogeneous path.
+    struct StringHash {
+        using is_transparent = void;
+        [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
+            return std::hash<std::string_view>{}(sv);
+        }
+        [[nodiscard]] std::size_t operator()(const std::string& s) const noexcept {
+            return std::hash<std::string_view>{}(s);
+        }
+        [[nodiscard]] std::size_t operator()(const char* s) const noexcept {
+            return std::hash<std::string_view>{}(s);
+        }
+    };
+
     using Slot = std::unique_ptr<std::atomic<std::uint64_t>>;
-    using Map  = std::unordered_map<std::string, Slot, std::hash<std::string>,
+    using Map  = std::unordered_map<std::string, Slot, StringHash,
                                      std::equal_to<>>;
 
-    /// `transparent` lookup keyed on `string_view` so the
+    /// Transparent lookup keyed on `string_view` so the
     /// shared-lock fast path stops one allocation short — the
     /// caller's view does not have to widen into a `std::string`
     /// just to perform a `find`.
