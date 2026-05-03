@@ -34,6 +34,14 @@ These reads do not lock the kernel side. Stale reads are acceptable
 (the connection may close between read and use); the C ABI returns
 the most recent snapshot the kernel has published.
 
+`find_conn_by_pk` resolves a `pk → conn_id` lookup against the
+registry's pk index; it is **not** the inbound-edge resolver for an
+envelope. Handlers that gate behaviour on the connection an envelope
+arrived on read `gn_message_t::conn_id` directly per
+`handler-registration.md` §3a — `sender_pk` on a relay-transit
+envelope is the originating peer, not the receiving conn's remote_pk,
+so a pk-index lookup would either miss or hit the wrong conn.
+
 ---
 
 ## 3. Atomic insert

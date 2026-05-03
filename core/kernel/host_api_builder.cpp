@@ -9,6 +9,7 @@
 
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
+#include <sdk/endpoint.h>
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
@@ -1040,6 +1041,18 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     if (!link_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+
+    /// URI length cap. `gn_endpoint_t::uri` is a fixed-size buffer of
+    /// `GN_ENDPOINT_URI_MAX` bytes (`sdk/endpoint.h`); a URI longer
+    /// than that gets silently truncated when `get_endpoint` copies
+    /// `rec.uri` out, so two distinct longer URIs collapse to the
+    /// same endpoint after truncation. An out-of-tree bridge passing
+    /// a multi-megabyte URI would also bloat the kernel's URI index
+    /// (`ConnectionRegistry::uri_index_`) without a compensating cap.
+    /// `strnlen` rather than `strlen` to bound the scan itself.
+    if (::strnlen(uri, GN_ENDPOINT_URI_MAX) >= GN_ENDPOINT_URI_MAX) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
 
     /// URI control-byte gate (uri.md §5 #10). The kernel writes `uri`
     /// straight into `ConnectionRecord::uri` and the registry's URI
