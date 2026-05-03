@@ -192,6 +192,63 @@ TEST(HostApiChain, NotifyConnectMissingSchemePrefixRejected) {
                                    &conn),
               GN_ERR_INVALID_ENVELOPE);
     EXPECT_EQ(h.kernel->connections().size(), 0u);
+
+    /// Double `://` — first occurrence wins (`scheme = tcp`,
+    /// `path = x/path://embedded`). Pin the invariant against future
+    /// regex-based parsing changes that might fail-greedy on second
+    /// match.
+    PublicKey other_peer{};
+    other_peer[0] = 0xAB;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   other_peer.data(),
+                                   "tcp://1.2.3.4:9000/x://y",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_OK);
+    EXPECT_NE(conn, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 1u);
+}
+
+TEST(HostApiChain, NotifyConnectOversizedUriRejected) {
+    /// `gn_endpoint_t::uri` is a fixed-size buffer of
+    /// `GN_ENDPOINT_URI_MAX` (256). Without a length cap on
+    /// `notify_connect`, two distinct URIs longer than the buffer
+    /// would collapse to the same endpoint after truncation, and the
+    /// kernel's URI index would balloon to peer-controlled byte
+    /// counts. Reject before allocating the conn record.
+    KernelHarness h;
+    PublicKey peer_pk{};
+    peer_pk[0] = 0x99;
+
+    /// Construct a URI exactly at the cap boundary — accepted.
+    std::string at_cap = "tcp://";
+    at_cap.append(GN_ENDPOINT_URI_MAX - at_cap.size() - 1, 'a');
+    ASSERT_EQ(at_cap.size(), GN_ENDPOINT_URI_MAX - 1);
+    gn_conn_id_t conn = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   at_cap.c_str(),
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_OK);
+
+    /// One byte over — rejected.
+    PublicKey other_peer{};
+    other_peer[0] = 0x9A;
+    std::string over_cap = "tcp://";
+    over_cap.append(GN_ENDPOINT_URI_MAX, 'b');
+    ASSERT_EQ(over_cap.size(), GN_ENDPOINT_URI_MAX + 6);
+    gn_conn_id_t over = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   other_peer.data(),
+                                   over_cap.c_str(),
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &over),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(over, GN_INVALID_ID);
 }
 
 TEST(HostApiChain, NotifyConnectSchemeNotOwnedByCallerRejected) {
