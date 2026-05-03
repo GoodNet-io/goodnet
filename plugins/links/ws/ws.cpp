@@ -189,6 +189,24 @@ public:
                                  const std::string& path) {
         phase_      = Phase::Handshake;
         nonce_      = make_sec_websocket_key();
+        /// HTTP request-line injection gate. The path is interpolated
+        /// verbatim into `GET <path> HTTP/1.1\r\n`; a path containing
+        /// CR / LF / NUL would let an attacker terminate the
+        /// request line early and smuggle additional headers — the
+        /// classic HTTP request-smuggling shape on a WebSocket
+        /// upgrade. Reject and fail before writing any bytes.
+        for (const char c : path) {
+            if (c == '\r' || c == '\n' || c == '\0') {
+                fail();
+                return;
+            }
+        }
+        for (const char c : host_header) {
+            if (c == '\r' || c == '\n' || c == '\0') {
+                fail();
+                return;
+            }
+        }
         std::ostringstream req;
         req << "GET " << path << " HTTP/1.1\r\n"
             << "Host: " << host_header << "\r\n"
