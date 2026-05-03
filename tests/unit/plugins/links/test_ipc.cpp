@@ -44,6 +44,16 @@ struct StubHost {
     std::vector<gn_conn_id_t>                inbound_owners;
     std::atomic<gn_conn_id_t>                next_id{1};
 
+    /// Pinned caller thread for `link.md` §9 regression: shutdown
+    /// must fire `notify_disconnect` on the caller's thread, not
+    /// through an async strand-bound continuation (which would
+    /// drop on `ioc_.stop()`). The pre-fix race in IPC sometimes
+    /// wins on the worker thread before the io_context tears
+    /// down, so a count-only check is flaky; the thread-id check
+    /// is deterministic.
+    std::thread::id                          main_tid{};
+    std::atomic<int>                         on_main_disconnects{0};
+
     static gn_result_t on_connect(void* host_ctx,
                                    const std::uint8_t /*remote_pk*/[GN_PUBLIC_KEY_BYTES],
                                    const char* /*uri*/, const char* /*scheme*/,
@@ -77,6 +87,10 @@ struct StubHost {
                                       gn_result_t /*reason*/) {
         auto* h = static_cast<StubHost*>(host_ctx);
         h->disconnects.fetch_add(1);
+        if (h->main_tid != std::thread::id{} &&
+            std::this_thread::get_id() == h->main_tid) {
+            h->on_main_disconnects.fetch_add(1);
+        }
         return GN_OK;
     }
 };
@@ -225,6 +239,49 @@ TEST(IpcLink, LoopbackHandshakeAndPayloadRoundTrip) {
     wait_for([&] { return h.disconnects.load() >= 1; }, 2s, "disconnect notify");
 
     t->shutdown();
+}
+
+TEST(IpcLink, ShutdownFiresSynchronousNotifyDisconnect) {
+    /// `link.md` §9 — shutdown releases every kernel-observable
+    /// session before the io_context tear-down. Pre-fix, IPC closed
+    /// the per-session sockets and let `ioc_.stop()` drop the read-
+    /// completion path that fires `notify_disconnect`; the kernel-
+    /// side `ConnectionRegistry` then kept live records past
+    /// shutdown and held the security plugin's lifetime anchor.
+    /// Carry-over of the TCP fix in commit bda18c6.
+    const auto path = make_socket_path();
+    const auto uri  = "ipc://" + path;
+
+    StubHost h;
+    h.main_tid = std::this_thread::get_id();
+    auto api = make_stub_api(h);
+    auto t = std::make_shared<IpcLink>();
+    t->set_host_api(&api);
+
+    ASSERT_EQ(t->listen(uri), GN_OK);
+    ASSERT_EQ(t->connect(uri), GN_OK);
+
+    /// Both sides need a valid `conn_id` before shutdown — the path
+    /// only fires for sessions that completed `notify_connect`.
+    wait_for([&] { return h.connects.load() == 2; }, 2s,
+              "two notify_connect calls");
+    ASSERT_EQ(h.disconnects.load(), 0);
+    ASSERT_EQ(h.on_main_disconnects.load(), 0);
+
+    t->shutdown();
+
+    /// Pre-fix, `notify_disconnect` for live sessions fires from
+    /// the worker thread when the `async_read_some` completion
+    /// observes EOF (or, more often, gets dropped by `ioc_.stop()`
+    /// — no notify at all). Post-fix, every session's
+    /// `notify_disconnect` runs on the caller thread inside
+    /// `shutdown()` itself. The thread-id pin is deterministic
+    /// where a raw count is racy with worker-thread scheduling.
+    EXPECT_EQ(h.on_main_disconnects.load(), 2)
+        << "IpcLink::shutdown() must fire notify_disconnect "
+           "synchronously on the caller thread for every live "
+           "session before ioc_.stop() drops strand-bound "
+           "continuations (link.md §9).";
 }
 
 TEST(IpcLink, ConnectRejectsNonExistentSocket) {

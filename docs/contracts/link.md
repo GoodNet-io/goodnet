@@ -255,20 +255,24 @@ reconnect timers) never runs once the io_context is stopped.
 The canonical sequence inside a baseline link's `shutdown`:
 
 1. Close the acceptor.
-2. Snapshot the live `gn_conn_id_t` set under the sessions lock and
-   close each session's socket (synchronously where the
-   implementation allows; otherwise post the close on the strand —
-   the snapshot itself is what matters).
+2. Snapshot the live `gn_conn_id_t` set under the sessions lock.
+   Close each session's socket — either synchronously or via a
+   strand-posted task. The snapshot taken in this step, not the
+   close itself, carries the kernel-observable release; a
+   strand-posted close that the executor never gets to drain is
+   acceptable because step 3 already cleared the kernel-side
+   record.
 3. Walk the snapshot and call `host_api->notify_disconnect(host_ctx,
    id, GN_OK)` for every id while still on the shutdown caller's
    thread.
 4. Stop the executor and join the worker thread.
 
 Without step 3 the kernel-side `ConnectionRegistry` keeps the
-records past link shutdown; per `plugin-lifetime.md` §4 those
-records hold the security plugin's lifetime anchor, so
-`PluginManager::drain_anchor` blocks for the full quiescence
-budget and may leak the `dlclose` handle.
+records past link shutdown. Per `plugin-lifetime.md` §4 those
+records hold the security plugin's lifetime anchor —
+`PluginManager::drain_anchor` then blocks for the full quiescence
+budget while the anchor refuses to expire, and the manager logs
+a leak warning rather than completing the unload cleanly.
 
 `disconnect(conn)` keeps its async semantics — a single peer
 walk-out continues to drain through the strand. The synchronous
