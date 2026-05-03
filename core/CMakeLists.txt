@@ -30,6 +30,7 @@ set(_goodnet_kernel_sources
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
     util/log.cpp
+    util/log_config.cpp
 )
 
 add_library(goodnet_kernel_objects OBJECT ${_goodnet_kernel_sources})
