@@ -35,19 +35,18 @@
  * `gn_core_t` share the same kernel state through the existing
  * registry mutexes and atomic counters.
  *
- * Drift from the legacy `include/core.h` (audit-driven):
- *  - No `gn_core_register_defaults / register_noise / register_gnet`
- *    — hardcoded plugin names crystallised onto the C ABI; v1.x
- *    rename would break every host. Use `gn_core_load_plugin` with
- *    an explicit path + manifest hash, or compose static plugins at
- *    link time per `feedback_plugin_deployment_modes`.
- *  - No auto-load from `Config::stacks[].transport` — coupled the
- *    config schema to C ABI behaviour. Host loads plugins
+ * Surface invariants:
+ *  - No `gn_core_register_*` per-plugin entries. Hosts load plugins
+ *    through `gn_core_load_plugin` with an explicit path + manifest
+ *    hash, or compose static plugins at link time per
+ *    `feedback_plugin_deployment_modes`. Plugin names never appear
+ *    on the C ABI; a v1.x rename does not break any host.
+ *  - No auto-load from config schema; host loads plugins
  *    explicitly.
- *  - No typed extension accessors (`gn_core_health/relay/dht/…`) —
- *    bindings own the typed-wrapper layer in their own language;
- *    `gn_core_query_extension_checked` is the raw entry.
- *  - Manifest SHA-256 verification is now mandatory on
+ *  - No typed extension accessors. Bindings own the typed-wrapper
+ *    layer in their own language; `gn_core_query_extension_checked`
+ *    is the raw entry.
+ *  - Manifest SHA-256 verification is mandatory on
  *    `gn_core_load_plugin` per `plugin-manifest.md`.
  *
  * See `docs/contracts/core-c.md` for the full contract.
