@@ -48,7 +48,7 @@ TEST(HostApiConfigGet, ScalarInt64HappyPath) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_OK);
     EXPECT_EQ(v, 42);
 }
@@ -58,7 +58,7 @@ TEST(HostApiConfigGet, ScalarBoolHappyPath) {
     int32_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_bool",
                                 GN_CONFIG_VALUE_BOOL, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_OK);
     EXPECT_EQ(v, 1);
 }
@@ -68,7 +68,7 @@ TEST(HostApiConfigGet, ScalarDoubleHappyPath) {
     double v = 0.0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_dbl",
                                 GN_CONFIG_VALUE_DOUBLE, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_OK);
     EXPECT_DOUBLE_EQ(v, 0.5);
 }
@@ -76,15 +76,15 @@ TEST(HostApiConfigGet, ScalarDoubleHappyPath) {
 TEST(HostApiConfigGet, ScalarStringHappyPath) {
     ConfigHarness h{kSampleJson};
     char* str = nullptr;
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_str",
                                 GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,
-                                static_cast<void*>(&str), &free_fn),
+                                static_cast<void*>(&str), &free_user_data, &free_fn),
               GN_OK);
     ASSERT_NE(str, nullptr);
     ASSERT_NE(free_fn, nullptr);
     EXPECT_STREQ(str, "hello");
-    free_fn(str);
+    free_fn(free_user_data, str);
 }
 
 TEST(HostApiConfigGet, ArraySizeHappyPath) {
@@ -92,7 +92,7 @@ TEST(HostApiConfigGet, ArraySizeHappyPath) {
     std::size_t n = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
                                 GN_CONFIG_VALUE_ARRAY_SIZE, GN_CONFIG_NO_INDEX,
-                                &n, nullptr),
+                                &n, nullptr, nullptr),
               GN_OK);
     EXPECT_EQ(n, 3u);
 }
@@ -102,7 +102,7 @@ TEST(HostApiConfigGet, ArrayInt64Index) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
                                 GN_CONFIG_VALUE_INT64, /*index*/ 1,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_OK);
     EXPECT_EQ(v, 20);
 }
@@ -110,15 +110,15 @@ TEST(HostApiConfigGet, ArrayInt64Index) {
 TEST(HostApiConfigGet, ArrayStringIndex) {
     ConfigHarness h{kSampleJson};
     char* str = nullptr;
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_str",
                                 GN_CONFIG_VALUE_STRING, /*index*/ 0,
-                                static_cast<void*>(&str), &free_fn),
+                                static_cast<void*>(&str), &free_user_data, &free_fn),
               GN_OK);
     ASSERT_NE(str, nullptr);
     ASSERT_NE(free_fn, nullptr);
     EXPECT_STREQ(str, "alpha");
-    free_fn(str);
+    free_fn(free_user_data, str);
 }
 
 TEST(HostApiConfigGet, RejectsNullKey) {
@@ -126,7 +126,7 @@ TEST(HostApiConfigGet, RejectsNullKey) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, nullptr,
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_ERR_NULL_ARG);
 }
 
@@ -134,7 +134,7 @@ TEST(HostApiConfigGet, RejectsNullOutValue) {
     ConfigHarness h{kSampleJson};
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                nullptr, nullptr),
+                                nullptr, nullptr, nullptr),
               GN_ERR_NULL_ARG);
 }
 
@@ -145,7 +145,9 @@ TEST(HostApiConfigGet, RejectsStringWithoutOutFree) {
     char* str = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_str",
                                 GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,
-                                static_cast<void*>(&str), /*out_free*/ nullptr),
+                                static_cast<void*>(&str),
+                                /*out_user_data*/ nullptr,
+                                /*out_free*/ nullptr),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(str, nullptr);
 }
@@ -155,10 +157,10 @@ TEST(HostApiConfigGet, RejectsNonStringWithOutFree) {
     /// confused call shape that would leave free_fn dangling.
     ConfigHarness h{kSampleJson};
     int64_t v = 0;
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                &v, &free_fn),
+                                &v, &free_user_data, &free_fn),
               GN_ERR_NULL_ARG);
 }
 
@@ -169,13 +171,13 @@ TEST(HostApiConfigGet, RejectsScalarTypeWithIndex) {
     int32_t v_b = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_bool",
                                 GN_CONFIG_VALUE_BOOL, /*index*/ 0,
-                                &v_b, nullptr),
+                                &v_b, nullptr, nullptr),
               GN_ERR_OUT_OF_RANGE);
 
     double v_d = 0.0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_dbl",
                                 GN_CONFIG_VALUE_DOUBLE, /*index*/ 0,
-                                &v_d, nullptr),
+                                &v_d, nullptr, nullptr),
               GN_ERR_OUT_OF_RANGE);
 }
 
@@ -184,7 +186,7 @@ TEST(HostApiConfigGet, RejectsArraySizeWithIndex) {
     std::size_t n = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
                                 GN_CONFIG_VALUE_ARRAY_SIZE, /*index*/ 0,
-                                &n, nullptr),
+                                &n, nullptr, nullptr),
               GN_ERR_OUT_OF_RANGE);
 }
 
@@ -193,10 +195,10 @@ TEST(HostApiConfigGet, TypeMismatchRejected) {
     /// STRING surfaces INVALID_ENVELOPE rather than a silent zero.
     ConfigHarness h{kSampleJson};
     char* str = nullptr;
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,
-                                static_cast<void*>(&str), &free_fn),
+                                static_cast<void*>(&str), &free_user_data, &free_fn),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -205,7 +207,7 @@ TEST(HostApiConfigGet, ArraySizeOnNonArrayRejected) {
     std::size_t n = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 GN_CONFIG_VALUE_ARRAY_SIZE, GN_CONFIG_NO_INDEX,
-                                &n, nullptr),
+                                &n, nullptr, nullptr),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -214,7 +216,7 @@ TEST(HostApiConfigGet, IndexPastEndRejected) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
                                 GN_CONFIG_VALUE_INT64, /*index*/ 99,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_ERR_OUT_OF_RANGE);
 }
 
@@ -223,7 +225,7 @@ TEST(HostApiConfigGet, MissingKeyReturnsNotFound) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "absent.key",
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_ERR_NOT_FOUND);
 }
 
@@ -233,10 +235,10 @@ TEST(HostApiConfigGet, MissingStringKeyReturnsNotFound) {
     /// the actual diagnostic.
     ConfigHarness h{kSampleJson};
     char* str = nullptr;
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "absent.string",
                                 GN_CONFIG_VALUE_STRING, GN_CONFIG_NO_INDEX,
-                                static_cast<void*>(&str), &free_fn),
+                                static_cast<void*>(&str), &free_user_data, &free_fn),
               GN_ERR_NOT_FOUND);
     EXPECT_EQ(str, nullptr);
 }
@@ -248,7 +250,7 @@ TEST(HostApiConfigGet, BoolAskedAsInt64Mismatch) {
     int64_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_bool",
                                 GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -257,7 +259,7 @@ TEST(HostApiConfigGet, DoubleAskedAsBoolMismatch) {
     int32_t v = 0;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_dbl",
                                 GN_CONFIG_VALUE_BOOL, GN_CONFIG_NO_INDEX,
-                                &v, nullptr),
+                                &v, nullptr, nullptr),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -268,7 +270,9 @@ TEST(HostApiConfigGet, ArrayStringElementWithoutOutFreeRejected) {
     char* str = nullptr;
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_str",
                                 GN_CONFIG_VALUE_STRING, /*index*/ 0,
-                                static_cast<void*>(&str), /*out_free*/ nullptr),
+                                static_cast<void*>(&str),
+                                /*out_user_data*/ nullptr,
+                                /*out_free*/ nullptr),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(str, nullptr);
 }
@@ -283,15 +287,15 @@ TEST(HostApiConfigGet, UnknownEnumValueRejected) {
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 static_cast<gn_config_value_type_t>(99),
-                                GN_CONFIG_NO_INDEX, &v, nullptr),
+                                GN_CONFIG_NO_INDEX, &v, nullptr, nullptr),
               GN_ERR_INVALID_ENVELOPE);
 
     /// Same call shape with an out_free / non-NULL index that would
     /// otherwise trip earlier validation — unknown enum still wins.
-    void (*free_fn)(void*) = nullptr;
+    void (*free_fn)(void*, void*); void* free_user_data = nullptr;
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 static_cast<gn_config_value_type_t>(99),
-                                /*index*/ 5, &v, &free_fn),
+                                /*index*/ 5, &v, &free_user_data, &free_fn),
               GN_ERR_INVALID_ENVELOPE);
 }

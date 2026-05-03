@@ -79,25 +79,29 @@ std::optional<Keypair> ed25519_to_x25519(
     return kp;
 }
 
-void free_buffer(std::uint8_t* p) { std::free(p); }
+void free_buffer(void* /*user_data*/, std::uint8_t* p) { std::free(p); }
 
 /// Wrap a vector's payload into a plugin-owned `gn_secure_buffer_t`.
-/// The kernel calls `free_fn` once it is done with the bytes.
+/// The kernel calls `free_fn(free_user_data, bytes)` once it is done
+/// with the bytes; the noise provider is stateless so
+/// `free_user_data` stays NULL.
 gn_result_t emit_buffer(std::vector<std::uint8_t>&& src,
                          gn_secure_buffer_t* out) {
     if (!out) return GN_ERR_NULL_ARG;
     if (src.empty()) {
-        out->bytes   = nullptr;
-        out->size    = 0;
-        out->free_fn = nullptr;
+        out->bytes          = nullptr;
+        out->size           = 0;
+        out->free_user_data = nullptr;
+        out->free_fn        = nullptr;
         return GN_OK;
     }
     auto* heap = static_cast<std::uint8_t*>(std::malloc(src.size()));
     if (!heap) return GN_ERR_OUT_OF_MEMORY;
     std::memcpy(heap, src.data(), src.size());
-    out->bytes   = heap;
-    out->size    = src.size();
-    out->free_fn = &free_buffer;
+    out->bytes          = heap;
+    out->size           = src.size();
+    out->free_user_data = nullptr;
+    out->free_fn        = &free_buffer;
     return GN_OK;
 }
 
@@ -150,9 +154,10 @@ gn_result_t noise_handshake_step(void* /*self*/,
     if (!state || !out_message) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
 
-    out_message->bytes   = nullptr;
-    out_message->size    = 0;
-    out_message->free_fn = nullptr;
+    out_message->bytes          = nullptr;
+    out_message->size           = 0;
+    out_message->free_user_data = nullptr;
+    out_message->free_fn        = nullptr;
 
     /// Reader's branch: incoming bytes mean the peer just wrote a
     /// handshake message; consume it before deciding whether we write.

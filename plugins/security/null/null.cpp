@@ -55,9 +55,10 @@ gn_result_t null_handshake_step(void* /*self*/,
                                 gn_secure_buffer_t* out_message) {
     if (!out_message) return GN_ERR_NULL_ARG;
     /// Nothing to send; handshake already complete.
-    out_message->bytes   = nullptr;
-    out_message->size    = 0;
-    out_message->free_fn = nullptr;
+    out_message->bytes          = nullptr;
+    out_message->size           = 0;
+    out_message->free_user_data = nullptr;
+    out_message->free_fn        = nullptr;
     return GN_OK;
 }
 
@@ -76,7 +77,7 @@ gn_result_t null_export_transport_keys(void* /*self*/,
     return GN_OK;
 }
 
-void null_free_buffer(std::uint8_t* p) {
+void null_free_buffer(void* /*user_data*/, std::uint8_t* p) {
     std::free(p);
 }
 
@@ -85,17 +86,19 @@ void null_free_buffer(std::uint8_t* p) {
                                              gn_secure_buffer_t* out) {
     if (!out) return GN_ERR_NULL_ARG;
     if (in_size == 0) {
-        out->bytes   = nullptr;
-        out->size    = 0;
-        out->free_fn = nullptr;
+        out->bytes          = nullptr;
+        out->size           = 0;
+        out->free_user_data = nullptr;
+        out->free_fn        = nullptr;
         return GN_OK;
     }
     auto* heap = static_cast<std::uint8_t*>(std::malloc(in_size));
     if (!heap) return GN_ERR_OUT_OF_MEMORY;
     std::memcpy(heap, in, in_size);
-    out->bytes   = heap;
-    out->size    = in_size;
-    out->free_fn = &null_free_buffer;
+    out->bytes          = heap;
+    out->size           = in_size;
+    out->free_user_data = nullptr;
+    out->free_fn        = &null_free_buffer;
     return GN_OK;
 }
 

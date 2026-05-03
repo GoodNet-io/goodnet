@@ -181,10 +181,11 @@ struct TlsConfigHarness : TlsHarness {
                                      gn_config_value_type_t type,
                                      std::size_t index,
                                      void* out_value,
-                                     void (**out_free)(void*)) {
+                                     void** out_user_data,
+                                     void (**out_free)(void*, void*)) {
         auto* h = static_cast<TlsConfigHarness*>(host_ctx);
         if (!h || !key || !out_value) return GN_ERR_NULL_ARG;
-        if (out_free) return GN_ERR_NULL_ARG;
+        if (out_free || out_user_data) return GN_ERR_NULL_ARG;
         if (type != GN_CONFIG_VALUE_BOOL) return GN_ERR_NOT_FOUND;
         if (index != GN_CONFIG_NO_INDEX) return GN_ERR_OUT_OF_RANGE;
         if (std::string_view{key} == "links.tls.verify_peer"

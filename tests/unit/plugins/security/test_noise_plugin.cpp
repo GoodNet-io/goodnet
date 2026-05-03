@@ -173,7 +173,7 @@ step(const gn_security_provider_vtable_t* vt, void* self, void* state,
         out.assign(buf.bytes, buf.bytes + buf.size);
     }
     if (buf.free_fn && buf.bytes) {
-        buf.free_fn(buf.bytes);
+        buf.free_fn(buf.free_user_data, buf.bytes);
     }
     return out;
 }
@@ -295,8 +295,8 @@ TEST_F(NoisePluginTest, XxHandshakeReachesTransportPhase) {
     EXPECT_EQ(dec.size, sizeof(plain));
     EXPECT_EQ(std::memcmp(dec.bytes, plain, sizeof(plain)), 0);
 
-    if (enc.free_fn) enc.free_fn(enc.bytes);
-    if (dec.free_fn) dec.free_fn(dec.bytes);
+    if (enc.free_fn) enc.free_fn(enc.free_user_data, enc.bytes);
+    if (dec.free_fn) dec.free_fn(dec.free_user_data, dec.bytes);
 
     /// Reverse direction works too.
     const std::uint8_t plain2[] = {'p','o','n','g'};
@@ -306,8 +306,8 @@ TEST_F(NoisePluginTest, XxHandshakeReachesTransportPhase) {
     ASSERT_NE(dec2.bytes, nullptr);
     EXPECT_EQ(dec2.size, sizeof(plain2));
     EXPECT_EQ(std::memcmp(dec2.bytes, plain2, sizeof(plain2)), 0);
-    if (enc2.free_fn) enc2.free_fn(enc2.bytes);
-    if (dec2.free_fn) dec2.free_fn(dec2.bytes);
+    if (enc2.free_fn) enc2.free_fn(enc2.free_user_data, enc2.bytes);
+    if (dec2.free_fn) dec2.free_fn(dec2.free_user_data, dec2.bytes);
 
     vtable_->handshake_close(plugin_self_, alice);
     vtable_->handshake_close(plugin_self_, bob);

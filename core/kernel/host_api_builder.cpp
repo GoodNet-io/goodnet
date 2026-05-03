@@ -757,7 +757,8 @@ gn_result_t thunk_config_get(void* host_ctx,
                               gn_config_value_type_t type,
                               std::size_t index,
                               void* out_value,
-                              void (**out_free)(void*)) {
+                              void** out_user_data,
+                              void (**out_free)(void*, void*)) {
     if (!host_ctx || !key || !out_value) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
@@ -776,14 +777,14 @@ gn_result_t thunk_config_get(void* host_ctx,
         return GN_ERR_INVALID_ENVELOPE;
     }
 
-    /// `out_free` is meaningful only for STRING reads. Anything else
-    /// must pass NULL — otherwise the plugin author confused the
-    /// shape and would observe an undefined free callback after a
-    /// non-STRING read.
+    /// `out_free` and `out_user_data` are meaningful only for STRING
+    /// reads. Anything else must pass NULL on both — otherwise the
+    /// plugin author confused the shape and would observe an
+    /// undefined free callback after a non-STRING read.
     const bool is_string =
         (type == GN_CONFIG_VALUE_STRING);
-    if (is_string && !out_free)  return GN_ERR_NULL_ARG;
-    if (!is_string && out_free)  return GN_ERR_NULL_ARG;
+    if (is_string && (!out_free || !out_user_data))  return GN_ERR_NULL_ARG;
+    if (!is_string && (out_free || out_user_data))   return GN_ERR_NULL_ARG;
 
     /// Index sentinel rules: scalar / ARRAY_SIZE require
     /// GN_CONFIG_NO_INDEX; INT64 and STRING accept either form
@@ -830,14 +831,16 @@ gn_result_t thunk_config_get(void* host_ctx,
         if (rc != GN_OK) return rc;
 
         /// Plain malloc'd C string the caller frees through
-        /// *out_free. Cast to `char*` discards the void* tag.
+        /// (*out_free)(*out_user_data, *out_value). The kernel-side
+        /// destructor is stateless, so `out_user_data` stays NULL.
         auto* heap = static_cast<char*>(std::malloc(buf.size() + 1));
         if (!heap) return GN_ERR_OUT_OF_MEMORY;
         std::memcpy(heap, buf.data(), buf.size());
         heap[buf.size()] = '\0';
 
         *static_cast<char**>(out_value) = heap;
-        *out_free = +[](void* p) { std::free(p); };
+        *out_user_data = nullptr;
+        *out_free = +[](void* /*user_data*/, void* p) { std::free(p); };
         return GN_OK;
     }
     case GN_CONFIG_VALUE_ARRAY_SIZE: {

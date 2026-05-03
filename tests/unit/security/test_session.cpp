@@ -59,9 +59,10 @@ struct FakeProvider {
                              gn_secure_buffer_t* out) {
         ++static_cast<FakeProvider*>(self)->handshake_step_calls;
         if (out) {
-            out->bytes = nullptr;
-            out->size = 0;
-            out->free_fn = nullptr;
+            out->bytes          = nullptr;
+            out->size           = 0;
+            out->free_user_data = nullptr;
+            out->free_fn        = nullptr;
         }
         return GN_OK;
     }
@@ -76,23 +77,25 @@ struct FakeProvider {
         return GN_OK;
     }
 
-    static void free_buf(std::uint8_t* p) { std::free(p); }
+    static void free_buf(void* /*user_data*/, std::uint8_t* p) { std::free(p); }
 
     static gn_result_t copy_through(const std::uint8_t* in, std::size_t n,
                                      gn_secure_buffer_t* out) {
         if (!out) return GN_ERR_NULL_ARG;
         if (n == 0) {
-            out->bytes = nullptr;
-            out->size = 0;
-            out->free_fn = nullptr;
+            out->bytes          = nullptr;
+            out->size           = 0;
+            out->free_user_data = nullptr;
+            out->free_fn        = nullptr;
             return GN_OK;
         }
         auto* heap = static_cast<std::uint8_t*>(std::malloc(n));
         if (!heap) return GN_ERR_OUT_OF_MEMORY;
         std::memcpy(heap, in, n);
-        out->bytes = heap;
-        out->size = n;
-        out->free_fn = &FakeProvider::free_buf;
+        out->bytes          = heap;
+        out->size           = n;
+        out->free_user_data = nullptr;
+        out->free_fn        = &FakeProvider::free_buf;
         return GN_OK;
     }
 

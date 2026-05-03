@@ -65,7 +65,23 @@ typedef struct gn_secure_buffer_s {
     uint32_t api_size;
     uint8_t* bytes;
     size_t   size;
-    void  (*free_fn)(uint8_t* bytes);
+    /**
+     * Producer-supplied opaque pointer passed back through
+     * @ref free_fn. Captures whatever destruction state the
+     * producer needs — a Rust `Box::into_raw` handle, a Python
+     * `Py_INCREF`'d object, an arena id. May be NULL when the
+     * producer's free_fn is stateless (`std::free`, etc.).
+     */
+    void*    free_user_data;
+    /**
+     * Free the buffer. The first argument is the producer-supplied
+     * @ref free_user_data so non-C language bindings can recover
+     * captured destruction state without the C-level
+     * `void(*)(uint8_t*)` form leaking. The second argument is
+     * @ref bytes verbatim. NULL when the buffer needs no
+     * destruction (e.g. zero-length).
+     */
+    void  (*free_fn)(void* user_data, uint8_t* bytes);
 } gn_secure_buffer_t;
 
 GN_VTABLE_API_SIZE_FIRST(gn_secure_buffer_t);

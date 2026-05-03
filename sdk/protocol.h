@@ -91,21 +91,27 @@ typedef struct gn_protocol_layer_vtable_s {
     /**
      * @brief Serialise an envelope into wire bytes.
      *
-     * @param ctx       @borrowed per-connection context.
-     * @param msg       @borrowed envelope; the plugin copies any bytes
-     *                  it needs to retain past return.
-     * @param out_bytes @owned heap buffer; the kernel hands it back to
-     *                  `*out_free` once the bytes have been committed
-     *                  to the security layer.
-     * @param out_size  out parameter — length of `*out_bytes`.
-     * @param out_free  out parameter — plugin-supplied free function;
-     *                  the kernel passes `*out_bytes` to it after use.
+     * @param ctx           @borrowed per-connection context.
+     * @param msg           @borrowed envelope; the plugin copies any
+     *                      bytes it needs to retain past return.
+     * @param out_bytes     @owned heap buffer; the kernel hands it
+     *                      back to `*out_free` once the bytes have
+     *                      been committed to the security layer.
+     * @param out_size      out parameter — length of `*out_bytes`.
+     * @param out_user_data out parameter — opaque destruction-state
+     *                      pointer the kernel passes back to
+     *                      `*out_free`. May be `NULL` when the
+     *                      plugin's free is stateless.
+     * @param out_free      out parameter — plugin-supplied free
+     *                      function; the kernel calls
+     *                      `(*out_free)(*out_user_data, *out_bytes)`.
      */
     gn_result_t (*frame)(void* self,
                          gn_connection_context_t* ctx,
                          const gn_message_t* msg,
                          uint8_t** out_bytes, size_t* out_size,
-                         void (**out_free)(uint8_t*));
+                         void** out_user_data,
+                         void (**out_free)(void* user_data, uint8_t* bytes));
 
     /**
      * @brief Maximum payload that this protocol can frame in one message.

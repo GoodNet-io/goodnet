@@ -335,16 +335,18 @@ _Static_assert(offsetof(gn_handshake_keys_t, peer_static_pk) == 120,
 _Static_assert(offsetof(gn_handshake_keys_t, _reserved) == 152,
                "gn_handshake_keys_t::_reserved offset pinned at 152");
 
-_Static_assert(sizeof(gn_secure_buffer_t) == 32,
-               "gn_secure_buffer_t size pinned at 32");
+_Static_assert(sizeof(gn_secure_buffer_t) == 40,
+               "gn_secure_buffer_t size pinned at 40");
 _Static_assert(offsetof(gn_secure_buffer_t, api_size) == 0,
                "gn_secure_buffer_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_secure_buffer_t, bytes) == 8,
                "gn_secure_buffer_t::bytes offset pinned at 8");
 _Static_assert(offsetof(gn_secure_buffer_t, size) == 16,
                "gn_secure_buffer_t::size offset pinned at 16");
-_Static_assert(offsetof(gn_secure_buffer_t, free_fn) == 24,
-               "gn_secure_buffer_t::free_fn offset pinned at 24");
+_Static_assert(offsetof(gn_secure_buffer_t, free_user_data) == 24,
+               "gn_secure_buffer_t::free_user_data offset pinned at 24");
+_Static_assert(offsetof(gn_secure_buffer_t, free_fn) == 32,
+               "gn_secure_buffer_t::free_fn offset pinned at 32");
 
 _Static_assert(sizeof(gn_security_provider_vtable_t) == 128,
                "gn_security_provider_vtable_t size pinned at 128");
