@@ -384,6 +384,22 @@ typedef struct gn_message_s {
     uint32_t       msg_id;                           /**< per-protocol routing key */
     const uint8_t* payload;                          /**< borrowed; opaque application bytes */
     size_t         payload_size;
+    /**
+     * Connection on which the kernel observed the inbound bytes
+     * that produced this envelope. Populated by the kernel's
+     * `notify_inbound_bytes` thunk before dispatch; handlers consult
+     * it instead of resolving `sender_pk` through
+     * `find_conn_by_pk` — the latter is wrong on relay paths where
+     * `sender_pk` is the originating peer (set via EXPLICIT_SENDER)
+     * but the receiving connection belongs to the relay.
+     *
+     * `GN_INVALID_ID` for envelopes the kernel synthesised
+     * locally (`inject` thunks). Producers built before this field
+     * existed leave `api_size <` `offsetof(conn_id) + sizeof(conn_id)`
+     * — handlers that read the field MUST gate on the size check
+     * per the contract above.
+     */
+    gn_conn_id_t   conn_id;
     void*          _reserved[4];                     /**< must be NULL on init */
 } gn_message_t;
 

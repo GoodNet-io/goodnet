@@ -185,6 +185,16 @@ private:
         mutable std::mutex         mu;
         std::string                observed_addr;
         std::uint16_t              observed_port = 0;
+
+        /// Local timestamps of every PING that has not yet been
+        /// matched by a PONG. RTT is computed from this map, never
+        /// from the peer-echoed `timestamp_us` — a hostile peer
+        /// would otherwise pollute the recorded RTT by altering
+        /// the echoed value. Cleared on PONG match and bounded
+        /// implicitly by `missed` ramp-down (a reset_state /
+        /// disconnect path drops the entire PeerState, taking the
+        /// map with it).
+        std::unordered_map<std::uint32_t, std::uint64_t> outstanding_pings;
     };
 
     [[nodiscard]] std::shared_ptr<PeerState> ensure_peer(gn_conn_id_t conn);
@@ -207,6 +217,12 @@ private:
                                          std::size_t buf_size,
                                          std::uint16_t* out_port);
 
+    /// Static thunk for the conn-state subscription. The kernel
+    /// fires it for every CONNECTED / DISCONNECTED / TRUST_*
+    /// event; the handler erases its `PeerState` on
+    /// DISCONNECTED so peers do not accumulate forever.
+    static void on_conn_event(void* user_data, const gn_conn_event_t* ev);
+
     const host_api_t*                                     api_;
     ClockNowUs                                            now_us_;
     gn_handler_vtable_t                                   vtable_{};
@@ -214,6 +230,12 @@ private:
 
     mutable std::shared_mutex                             peers_mu_;
     std::unordered_map<gn_conn_id_t, std::shared_ptr<PeerState>> peers_;
+
+    /// Subscription token for the conn-state channel. Kept so
+    /// the dtor can unsubscribe before tearing down `peers_`.
+    /// `GN_INVALID_SUBSCRIPTION_ID` until the host_api is bound
+    /// or when `subscribe_conn_state` is unavailable.
+    gn_subscription_id_t conn_state_sub_ = GN_INVALID_SUBSCRIPTION_ID;
 };
 
 } // namespace gn::handler::heartbeat

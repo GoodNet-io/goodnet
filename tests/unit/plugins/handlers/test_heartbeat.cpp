@@ -123,15 +123,21 @@ struct WireEnvelope {
 };
 
 /// Build a wire envelope describing a PING/PONG sourced from a peer
-/// whose `sender_pk` first byte equals @p marker.
+/// whose `sender_pk` first byte equals @p marker. The optional
+/// `conn` argument matches the conn id the kernel would have
+/// stamped onto `msg.conn_id` before dispatch — passing
+/// `GN_INVALID_ID` simulates a malformed dispatch path that the
+/// handler must reject.
 [[nodiscard]] std::unique_ptr<WireEnvelope>
-make_envelope(std::uint8_t marker, const HeartbeatPayload& hb) {
+make_envelope(std::uint8_t marker, const HeartbeatPayload& hb,
+              gn_conn_id_t conn) {
     auto w = std::make_unique<WireEnvelope>();
     w->wire = serialize_payload(hb);
     w->msg.msg_id       = kHeartbeatMsgId;
     w->msg.sender_pk[0] = marker;
     w->msg.payload      = w->wire.data();
     w->msg.payload_size = w->wire.size();
+    w->msg.conn_id      = conn;
     return w;
 }
 
@@ -153,7 +159,7 @@ TEST(Heartbeat, PingProducesPongWithObservedAddress) {
     ping.seq          = 42;
     ping.flags        = kFlagPing;
 
-    auto env = make_envelope(0xAA, ping);
+    auto env = make_envelope(0xAA, ping, /*conn*/ 7);
     EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     ASSERT_EQ(host.send_calls.load(), 1);
@@ -178,22 +184,39 @@ TEST(Heartbeat, PongRecordsRttAndObservation) {
     host.add_peer(0xBB, /*conn*/ 11, "tcp://198.51.100.7:5000");
     auto api = make_stub_api(host);
     MockClock clock;
-    clock.set(2'000'000);
 
     HeartbeatHandler hh(&api, clock.as_callable());
 
+    /// Send a PING at t=1.5s so the matching PONG can be matched by
+    /// `seq` to the locally-stored `sent_at_us`. Per the Wave 7.1
+    /// contract: RTT comes from the local timestamp, NOT the
+    /// peer-echoed `timestamp_us` — a hostile peer that altered the
+    /// echo would otherwise pollute the recorded RTT.
+    clock.set(1'500'000);
+    ASSERT_EQ(hh.send_ping(/*conn*/ 11), GN_OK);
+    /// `send_ping` allocates seq starting at 0; capture the seq the
+    /// stub recorded so the PONG below echoes the right value.
+    ASSERT_EQ(host.send_calls.load(), 1);
+    /// First seq is 0 (atomic fetch_add of `peer->seq` from default 0).
+    const std::uint32_t expected_seq = 0;
+
+    /// Advance the clock to t=2s; the PONG arrives with the same
+    /// seq and the handler records `now - sent_at_us = 500ms`.
+    clock.set(2'000'000);
+
     HeartbeatPayload pong{};
-    pong.timestamp_us = 1'500'000;     /// PING was 500 ms ago
+    pong.seq          = expected_seq;
+    pong.timestamp_us = 999'999;       /// hostile / random echo — ignored
     pong.flags        = kFlagPong;
     std::strncpy(pong.observed_addr, "203.0.113.5",
                  sizeof(pong.observed_addr) - 1);
     pong.observed_port = 9000;
 
-    auto env = make_envelope(0xBB, pong);
+    auto env = make_envelope(0xBB, pong, /*conn*/ 11);
     EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     /// PONG path does not call send.
-    EXPECT_EQ(host.send_calls.load(), 0);
+    EXPECT_EQ(host.send_calls.load(), 1);
 
     std::uint64_t rtt = 0;
     ASSERT_EQ(hh.get_rtt(11, &rtt), 0);
@@ -214,18 +237,23 @@ TEST(Heartbeat, RttIsDeterministicUnderInjectedClock) {
 
     HeartbeatHandler hh(&api, clock.as_callable());
 
-    HeartbeatPayload pong{};
-    pong.flags = kFlagPong;
-
-    /// Three round-trips with different intervals — RTT reflects
-    /// each one without flake.
+    /// Three round-trips with different intervals — each PING is
+    /// stamped at t=0 (local), the matching PONG arrives at
+    /// t=interval, and the recorded RTT equals the interval. The
+    /// PONG's `timestamp_us` is left at zero (peer-echoed value
+    /// is ignored — Wave 7.1 contract).
+    std::uint32_t seq = 0;
     for (std::uint64_t interval : {std::uint64_t{1'000},
                                      std::uint64_t{100'000},
                                      std::uint64_t{7'500}}) {
         clock.set(0);
-        pong.timestamp_us = 0;
+        ASSERT_EQ(hh.send_ping(/*conn*/ 3), GN_OK);
         clock.set(interval);
-        auto env = make_envelope(0xCC, pong);
+
+        HeartbeatPayload pong{};
+        pong.flags = kFlagPong;
+        pong.seq   = seq++;
+        auto env = make_envelope(0xCC, pong, /*conn*/ 3);
         EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
         std::uint64_t rtt = 0;
@@ -243,20 +271,27 @@ TEST(Heartbeat, MultiplePeersTrackedIndependently) {
 
     HeartbeatHandler hh(&api, clock.as_callable());
 
+    /// Per-peer PING, per-peer PONG. RTT is per-peer because the
+    /// `outstanding_pings` map keys on `seq` per `PeerState`, and
+    /// every connection has its own `PeerState`.
     {
+        clock.set(50);
+        ASSERT_EQ(hh.send_ping(/*conn*/ 1), GN_OK);
         clock.set(100);
         HeartbeatPayload p{};
         p.flags = kFlagPong;
-        p.timestamp_us = 50;
-        auto env = make_envelope(0xAA, p);
+        p.seq   = 0;
+        auto env = make_envelope(0xAA, p, /*conn*/ 1);
         ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
     }
     {
+        clock.set(100);
+        ASSERT_EQ(hh.send_ping(/*conn*/ 2), GN_OK);
         clock.set(1000);
         HeartbeatPayload p{};
         p.flags = kFlagPong;
-        p.timestamp_us = 100;
-        auto env = make_envelope(0xBB, p);
+        p.seq   = 0;
+        auto env = make_envelope(0xBB, p, /*conn*/ 2);
         ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
     }
 
@@ -299,7 +334,7 @@ TEST(Heartbeat, UnknownSenderRejected) {
 
     HeartbeatPayload ping{};
     ping.flags = kFlagPing;
-    auto env = make_envelope(0xFF, ping);
+    auto env = make_envelope(0xFF, ping, /*conn*/ GN_INVALID_ID);
     EXPECT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONTINUE);
     EXPECT_EQ(host.send_calls.load(), 0);
 }
@@ -363,13 +398,21 @@ TEST(Heartbeat, ExtensionVtablePopulatedAndFunctional) {
     host.add_peer(0xAA, /*conn*/ 1, "tcp://1.2.3.4:1000");
     auto api = make_stub_api(host);
     MockClock clock;
-    clock.set(2'000);
 
     HeartbeatHandler hh(&api, clock.as_callable());
+
+    /// PING at t=1'500, PONG at t=2'000 → recorded RTT = 500us.
+    /// Wave 7.1 contract: RTT comes from local memory, so a
+    /// hostile peer's `timestamp_us` is ignored — set the
+    /// PING manually via `send_ping` so `outstanding_pings` has
+    /// a matching seq.
+    clock.set(1'500);
+    ASSERT_EQ(hh.send_ping(/*conn*/ 1), GN_OK);
+    clock.set(2'000);
     HeartbeatPayload pong{};
     pong.flags = kFlagPong;
-    pong.timestamp_us = 1'500;
-    auto env = make_envelope(0xAA, pong);
+    pong.seq   = 0;
+    auto env = make_envelope(0xAA, pong, /*conn*/ 1);
     ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     const auto& ext = hh.extension_vtable();
@@ -412,7 +455,7 @@ TEST(Heartbeat, ExtensionGetObservedAddressTruncationReturnsError) {
     std::strncpy(pong.observed_addr, "192.0.2.42",
                  sizeof(pong.observed_addr) - 1);
     pong.observed_port = 4242;
-    auto env = make_envelope(0xAA, pong);
+    auto env = make_envelope(0xAA, pong, /*conn*/ 1);
     ASSERT_EQ(hh.handle_message(&env->msg), GN_PROPAGATION_CONSUMED);
 
     char buf[3] = {};                 /// too small for "192.0.2.42"
