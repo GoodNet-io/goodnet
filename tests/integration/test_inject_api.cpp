@@ -29,6 +29,7 @@ struct Capture {
     std::uint32_t    last_msg_id{};
     PublicKey        last_sender{};
     PublicKey        last_receiver{};
+    gn_conn_id_t     last_conn_id{GN_INVALID_ID};
     std::vector<std::uint8_t> last_payload;
 
     static gn_propagation_t handle(void* self, const gn_message_t* env) {
@@ -36,6 +37,7 @@ struct Capture {
         c->last_msg_id = env->msg_id;
         std::memcpy(c->last_sender.data(),   env->sender_pk,   GN_PUBLIC_KEY_BYTES);
         std::memcpy(c->last_receiver.data(), env->receiver_pk, GN_PUBLIC_KEY_BYTES);
+        c->last_conn_id = env->conn_id;
         c->last_payload.assign(env->payload, env->payload + env->payload_size);
         c->calls.fetch_add(1);
         return GN_PROPAGATION_CONSUMED;
@@ -108,6 +110,11 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     EXPECT_EQ(cap.last_msg_id, 0x77u);
     EXPECT_EQ(cap.last_sender,   peer_pk);
     EXPECT_EQ(cap.last_receiver, local_pk);
+    /// Per `host-api.md` §8: kernel stamps `env.conn_id = source` so
+    /// conn-aware handlers (heartbeat RTT, future per-link gates) can
+    /// route back through the bridge edge directly. Pre-fix this read
+    /// zero (build_envelope zero-inits, no stamp site in thunk_inject).
+    EXPECT_EQ(cap.last_conn_id, src);
     EXPECT_EQ(cap.last_payload,
               std::vector<std::uint8_t>(payload, payload + sizeof(payload)));
 }
@@ -220,4 +227,55 @@ TEST(InjectFrame, EmptyBufferTreatedAsIncomplete) {
     EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
                                   /*frame*/ nullptr, /*size*/ 0),
               GN_OK);
+}
+
+TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
+    KernelHarness h;
+    PublicKey local_pk; local_pk.fill(0x55);
+    PublicKey peer_pk;  peer_pk.fill(0x66);
+    h.install_local_identity(local_pk);
+
+    Capture cap;
+    gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(gn_handler_vtable_t);
+    vt.handle_message = &Capture::handle;
+    gn_handler_id_t hid = GN_INVALID_ID;
+    ASSERT_EQ(h.api.register_vtable(h.api.host_ctx, GN_REGISTER_HANDLER,
+        []{ static gn_register_meta_t mt{}; mt.api_size = sizeof(gn_register_meta_t); mt.name = "gnet-v1"; mt.msg_id = 0x99; mt.priority = 128; return &mt; }(),
+        &vt, &cap, &hid),
+              GN_OK);
+
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    /// Build a direct frame (flags=0, no PK on wire) — sender =
+    /// local_pk, receiver = peer_pk, framed against (local, peer)
+    /// context. The conn record on the inject side carries
+    /// remote_pk = peer_pk so the deframer reconstructs env with
+    /// sender_pk = peer_pk (from ctx.remote_pk), receiver_pk =
+    /// local_pk (from ctx.local_pk). No relay flag needed.
+    gn_message_t env{};
+    std::memcpy(env.sender_pk,   local_pk.data(), 32);
+    std::memcpy(env.receiver_pk, peer_pk.data(),  32);
+    env.msg_id = 0x99;
+    const std::uint8_t payload[] = {0xCA, 0xFE};
+    env.payload      = payload;
+    env.payload_size = 2;
+
+    gn_connection_context_t fctx{};
+    fctx.local_pk  = local_pk;
+    fctx.remote_pk = peer_pk;
+    auto framed = h.proto->frame(fctx, env);
+    ASSERT_TRUE(framed.has_value());
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+                            framed->data(), framed->size()),
+              GN_OK);
+    EXPECT_EQ(cap.calls.load(), 1);
+    /// Per `host-api.md` §8: LAYER_FRAME stamps `env.conn_id = source`
+    /// on every dispatched envelope, mirroring `notify_inbound_bytes`
+    /// post-deframe. Pre-fix this read zero (no stamp site in the
+    /// thunk's deframe loop).
+    EXPECT_EQ(cap.last_conn_id, src);
+    EXPECT_EQ(cap.last_sender,   peer_pk);
+    EXPECT_EQ(cap.last_receiver, local_pk);
 }

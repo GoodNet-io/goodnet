@@ -385,19 +385,28 @@ typedef struct gn_message_s {
     const uint8_t* payload;                          /**< borrowed; opaque application bytes */
     size_t         payload_size;
     /**
-     * Connection on which the kernel observed the inbound bytes
-     * that produced this envelope. Populated by the kernel's
-     * `notify_inbound_bytes` thunk before dispatch; handlers consult
-     * it instead of resolving `sender_pk` through
-     * `find_conn_by_pk` — the latter is wrong on relay paths where
-     * `sender_pk` is the originating peer (set via EXPLICIT_SENDER)
-     * but the receiving connection belongs to the relay.
+     * Inbound-edge connection that produced this envelope.
      *
-     * `GN_INVALID_ID` for envelopes the kernel synthesised
-     * locally (`inject` thunks). Producers built before this field
-     * existed leave `api_size <` `offsetof(conn_id) + sizeof(conn_id)`
-     * — handlers that read the field MUST gate on the size check
-     * per the contract above.
+     * - For envelopes from `notify_inbound_bytes`: the connection on
+     *   which the bytes arrived (stamped by the kernel thunk before
+     *   dispatch).
+     * - For envelopes from `inject`: the bridge `source` connection
+     *   passed to the thunk (the bridge handler's IPC/foreign edge);
+     *   stamped at both `LAYER_MESSAGE` and `LAYER_FRAME` so handlers
+     *   reading `env.conn_id` get the bridge edge rather than zero.
+     *
+     * Handlers consult this field instead of resolving `sender_pk`
+     * through `find_conn_by_pk` — the latter is wrong on relay paths
+     * where `sender_pk` is the originating peer (set via
+     * `EXPLICIT_SENDER`) but the receiving connection belongs to the
+     * relay. Per `host-api.md` §8 (inject) and §7 (notify_inbound).
+     *
+     * Producers built before this field existed leave
+     * `api_size < offsetof(conn_id) + sizeof(conn_id)` — handlers that
+     * read the field MUST gate on the size check per the contract
+     * above. A `GN_INVALID_ID` value MUST be tolerated as an unknown
+     * edge: handlers degrade gracefully (return `CONTINUE`) rather
+     * than rejecting the envelope, per `handler-registration.md` §3a.
      */
     gn_conn_id_t   conn_id;
     void*          _reserved[4];                     /**< must be NULL on init */

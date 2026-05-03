@@ -188,6 +188,25 @@ generation no longer wants — never a use-after-free.
 
 ---
 
+### 3a. `gn_message_t::conn_id` handler contract
+
+A handler that gates behaviour on the inbound-edge connection MUST
+tolerate `env->conn_id == GN_INVALID_ID` as `CONTINUE` — never
+`REJECT`. The kernel stamps a real conn id on every envelope dispatched
+through `notify_inbound_bytes` and `inject` (see `host-api.md` §7 and
+§8); `GN_INVALID_ID` is the contract's escape hatch for envelopes a
+future producer might synthesise without a corresponding edge (none
+exist in v1). A handler that hard-rejects on `INVALID_ID` would close
+the connection on a forward-compatible producer and leak the rejection
+to peers that played by every existing rule.
+
+`plugins/handlers/heartbeat/heartbeat.cpp:212-213` is the canonical
+reference: handler reads `env->conn_id`; on `GN_INVALID_ID` returns
+`CONTINUE` without recording PeerState — the conn-blind branch is a
+no-op, not a fault.
+
+---
+
 ## 4. Priority semantics
 
 Three rules:

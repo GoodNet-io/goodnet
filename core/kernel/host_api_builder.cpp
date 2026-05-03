@@ -1426,6 +1426,13 @@ gn_result_t thunk_inject(void* host_ctx,
         gn_message_t env = build_envelope(
             rec->remote_pk, local_pk, msg_id, bytes, size);
 
+        /// Stamp the bridge edge so handlers can subscribe / respond /
+        /// disconnect on the foreign-protocol carrier conn rather than
+        /// resolving sender_pk through find_conn_by_pk (which is wrong
+        /// when the bridge re-publishes under its own identity). Per
+        /// `host-api.md §8` and `gn_message_t::conn_id` doc.
+        env.conn_id = source;
+
         route_one_envelope(*pc->kernel, layer->protocol_id(), env);
         return GN_OK;
     }
@@ -1450,8 +1457,19 @@ gn_result_t thunk_inject(void* host_ctx,
         return GN_ERR_DEFRAME_INCOMPLETE;
     }
 
+    /// Stamp the bridge edge on every dispatched envelope, mirroring
+    /// the `notify_inbound_bytes` post-deframe loop. The deframer
+    /// returns `span<const gn_message_t>` (envelope bytes are owned
+    /// by an upstream buffer); copy-then-stamp so the borrowed
+    /// payload pointers ride through unchanged. Without this,
+    /// conn-aware handlers (heartbeat RTT, future per-link gates,
+    /// observed-address learners) would see `conn_id == 0` on every
+    /// FRAME inject and silently degrade. Per `host-api.md §8` and
+    /// `gn_message_t::conn_id` doc.
     for (const auto& env : deframed->messages) {
-        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        gn_message_t stamped = env;
+        stamped.conn_id = source;
+        route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
     }
     return GN_OK;
 }
