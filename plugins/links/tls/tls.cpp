@@ -632,7 +632,20 @@ gn_result_t TlsLink::connect(std::string_view uri) {
     sock.async_connect(ep,
         [weak = weak_from_this(),
          session, ep](const std::error_code& cec) mutable {
-            if (cec) return;
+            if (cec) {
+                /// Connect failed before any `notify_connect` —
+                /// kernel has no record to release. Operator
+                /// diagnostic only; per `link.md` §9 a connect
+                /// failure is not a session release event but
+                /// still must be observable.
+                if (auto t = weak.lock(); t && t->api_) {
+                    gn_log_warn(t->api_,
+                        "tls: connect to %s failed: %s",
+                        TlsLink::endpoint_to_uri(ep).c_str(),
+                        cec.message().c_str());
+                }
+                return;
+            }
             auto t = weak.lock();
             if (!t || t->shutdown_.load(std::memory_order_acquire)) {
                 session->do_close();
