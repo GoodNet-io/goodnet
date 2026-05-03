@@ -145,14 +145,12 @@ TEST(SendLoopback, RoundTripThroughHostApi) {
     ASSERT_EQ(alice.api.notify_connect(alice.api.host_ctx,
                                        bob.pk.data(),
                                        "loopback://bob",
-                                       "loopback",
                                        GN_TRUST_PEER,
                                        GN_ROLE_INITIATOR,
                                        &alice_conn), GN_OK);
     ASSERT_EQ(bob.api.notify_connect(bob.api.host_ctx,
                                      alice.pk.data(),
                                      "loopback://alice",
-                                     "loopback",
                                      GN_TRUST_PEER,
                                      GN_ROLE_RESPONDER,
                                      &bob_conn), GN_OK);
@@ -216,7 +214,6 @@ TEST(SendLoopback, DisconnectThroughTransport) {
     ASSERT_EQ(alice.api.notify_connect(alice.api.host_ctx,
                                        peer_pk.data(),
                                        "loopback://peer",
-                                       "loopback",
                                        GN_TRUST_PEER,
                                        GN_ROLE_INITIATOR,
                                        &conn), GN_OK);
@@ -255,7 +252,6 @@ TEST(SendLoopback, CrossPluginConnIdRejected) {
     ASSERT_EQ(alice.api.notify_connect(alice.api.host_ctx,
                                        peer_pk.data(),
                                        "loopback://peer",
-                                       "loopback",
                                        GN_TRUST_PEER,
                                        GN_ROLE_INITIATOR,
                                        &conn), GN_OK);

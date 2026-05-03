@@ -123,7 +123,7 @@ TEST(HostApiNotifyConnect, RejectsConnectionOutsideProtocolMask) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0x11, 0x22, 0x33};
     gn_conn_id_t conn = GN_INVALID_ID;
     EXPECT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9500",
-                                  "tcp", GN_TRUST_UNTRUSTED,
+                                  GN_TRUST_UNTRUSTED,
                                   GN_ROLE_RESPONDER, &conn),
               GN_ERR_INVALID_ENVELOPE);
 
@@ -149,7 +149,7 @@ TEST(HostApiNotifyConnect, AcceptsConnectionInsideProtocolMask) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB, 0xCC};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9501",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn),
               GN_OK);
 
@@ -185,7 +185,7 @@ TEST(HostApiNotifyDisconnect, SnapshotsTrustAndPkBeforeErase) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xDE, 0xAD, 0xBE, 0xEF};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9600",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn),
               GN_OK);
 
@@ -244,7 +244,7 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAA, 0xBB};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9100",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn), GN_OK);
 
     /// First disconnect: removes the record, fires DISCONNECTED.
@@ -282,7 +282,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
         pk[0] = static_cast<std::uint8_t>(round);
         gn_conn_id_t conn = GN_INVALID_ID;
         const std::string uri = "tcp://127.0.0.1:" + std::to_string(20000 + round);
-        ASSERT_EQ(api.notify_connect(&ctx, pk, uri.c_str(), "tcp",
+        ASSERT_EQ(api.notify_connect(&ctx, pk, uri.c_str(),
                                       GN_TRUST_LOOPBACK,
                                       GN_ROLE_RESPONDER, &conn), GN_OK);
 
@@ -380,7 +380,7 @@ TEST(HostApiNotifyDisconnect, ReentrantFromCallbackReportsUnknown) {
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xCC};
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(api.notify_connect(&ctx, pk, "tcp://127.0.0.1:9200",
-                                  "tcp", GN_TRUST_LOOPBACK,
+                                  GN_TRUST_LOOPBACK,
                                   GN_ROLE_RESPONDER, &conn), GN_OK);
 
     /// Replace the subscriber sink with a re-entrant variant that

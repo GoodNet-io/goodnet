@@ -72,7 +72,6 @@ struct KernelHarness {
         EXPECT_EQ(api.notify_connect(api.host_ctx,
                                       remote_pk.data(),
                                       "ipc:///tmp/test-bridge",
-                                      "ipc",
                                       trust,
                                       GN_ROLE_RESPONDER,
                                       &id),

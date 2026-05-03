@@ -92,7 +92,6 @@ TEST(HostApiChain, NotifyConnectThenDisconnect) {
     ASSERT_EQ(h.api.notify_connect(h.api.host_ctx,
                                    peer_pk.data(),
                                    "tcp://127.0.0.1:9000",
-                                   "tcp",
                                    GN_TRUST_PEER,
                                    GN_ROLE_INITIATOR,
                                    &conn),
@@ -118,7 +117,6 @@ TEST(HostApiChain, NotifyConnectControlByteUriRejected) {
     EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
                                    peer_pk.data(),
                                    "ws://h:9/x HTTP/1.1\r\nEvil: 1\r\n\r\nGET /",
-                                   "ws",
                                    GN_TRUST_PEER,
                                    GN_ROLE_INITIATOR,
                                    &conn),
@@ -132,7 +130,38 @@ TEST(HostApiChain, NotifyConnectControlByteUriRejected) {
     EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
                                    peer_pk.data(),
                                    " tcp://h:9000",
-                                   "tcp",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+}
+
+TEST(HostApiChain, NotifyConnectMissingSchemePrefixRejected) {
+    /// `host_api_t::notify_connect` derives the link scheme from the
+    /// URI's `scheme://` prefix; the prefix doubles as the
+    /// `LinkRegistry` key for the conn-id ownership gate
+    /// (`security-trust.md` §6a). A URI without a scheme prefix has no
+    /// route for ownership attribution — reject up front so a hostile
+    /// caller cannot register an unattributable conn record.
+    KernelHarness h;
+    PublicKey peer_pk{};
+    peer_pk[0] = 0x55;
+
+    gn_conn_id_t conn = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "127.0.0.1:9000",  // no scheme prefix
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(conn, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "://just-the-separator",  // empty scheme
                                    GN_TRUST_PEER,
                                    GN_ROLE_INITIATOR,
                                    &conn),
@@ -173,7 +202,6 @@ TEST(HostApiChain, InboundBytesReachHandler) {
     ASSERT_EQ(bob.api.notify_connect(bob.api.host_ctx,
                                      alice_pk.data(),
                                      "tcp://127.0.0.1:9000",
-                                     "tcp",
                                      GN_TRUST_PEER,
                                      GN_ROLE_RESPONDER,
                                      &conn),
@@ -239,7 +267,7 @@ TEST(HostApiChain, NotifyInboundOverFrameLimitRejected) {
     gn_conn_id_t conn = GN_INVALID_ID;
     ASSERT_EQ(h.api.notify_connect(h.api.host_ctx,
                                     peer_pk.data(),
-                                    "tcp://127.0.0.1:9100", "tcp",
+                                    "tcp://127.0.0.1:9100",
                                     GN_TRUST_LOOPBACK,
                                     GN_ROLE_RESPONDER,
                                     &conn),
@@ -282,7 +310,7 @@ TEST(HostApiChain, NotifyConnectRejectedFromHandlerKind) {
     pk[0] = 0xAA;
     gn_conn_id_t out = GN_INVALID_ID;
     EXPECT_EQ(h.api.notify_connect(h.api.host_ctx, pk,
-                                    "tcp://1.2.3.4:9000", "tcp",
+                                    "tcp://1.2.3.4:9000",
                                     GN_TRUST_UNTRUSTED,
                                     GN_ROLE_INITIATOR, &out),
               GN_ERR_NOT_IMPLEMENTED);

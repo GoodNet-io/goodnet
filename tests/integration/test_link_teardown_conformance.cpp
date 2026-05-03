@@ -66,7 +66,6 @@ struct ConformanceHost {
     static gn_result_t s_notify_connect(void* host_ctx,
                                          const std::uint8_t* /*remote_pk*/,
                                          const char* /*uri*/,
-                                         const char* /*scheme*/,
                                          gn_trust_class_t /*trust*/,
                                          gn_handshake_role_t /*role*/,
                                          gn_conn_id_t* out_conn) {

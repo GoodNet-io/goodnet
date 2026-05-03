@@ -281,9 +281,13 @@ typedef struct host_api_s {
      *                  pk; all-zero for inbound responder-side
      *                  connections, where the pk is learned from the
      *                  handshake.
-     * @param uri       Connection URI as parsed by the link.
-     *                  Borrowed for the call.
-     * @param scheme    Link scheme (`"tcp"`, `"udp"`, …).
+     * @param uri       Connection URI as parsed by the link, including
+     *                  the `scheme://` prefix the kernel uses to route
+     *                  ownership through `LinkRegistry`. Borrowed for
+     *                  the call. A URI without a `scheme://` prefix is
+     *                  rejected with `GN_ERR_INVALID_ENVELOPE` — the
+     *                  link scheme is the registry key for the conn-id
+     *                  ownership gate (`security-trust.md` §6a).
      * @param trust     TrustClass computed from observable connection
      *                  properties per `link.md` §3.
      * @param role      Handshake role: initiator for outbound, responder
@@ -293,7 +297,6 @@ typedef struct host_api_s {
     gn_result_t (*notify_connect)(void* host_ctx,
                                   const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                                   const char* uri,
-                                  const char* scheme,
                                   gn_trust_class_t trust,
                                   gn_handshake_role_t role,
                                   gn_conn_id_t* out_conn);

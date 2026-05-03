@@ -426,7 +426,7 @@ private:
         gn_conn_id_t id = GN_INVALID_ID;
         if (t->api_->notify_connect(t->api_->host_ctx,
                                      /*remote_pk=*/nullptr,
-                                     uri.c_str(), "ws",
+                                     uri.c_str(),
                                      trust, role, &id) != GN_OK) {
             fail();
             return;
