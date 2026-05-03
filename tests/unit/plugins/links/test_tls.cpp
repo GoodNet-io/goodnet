@@ -96,6 +96,17 @@ struct TlsHarness {
     std::vector<gn_handshake_role_t>            roles;
     std::vector<std::vector<std::uint8_t>>      inbound;
 
+    /// Caller-thread pin for the `link.md` §9 regression. Set
+    /// `main_tid` to `std::this_thread::get_id()` from the test
+    /// before invoking `shutdown()`; `s_notify_disconnect`
+    /// increments `on_main_disconnects` only when the call lands
+    /// on the pinned thread. Lets a count-based assert be
+    /// deterministic where the worker thread might race the
+    /// main thread to fire the async-path notify first.
+    std::thread::id                              main_tid{};
+    std::atomic<int>                             disconnects{0};
+    std::atomic<int>                             on_main_disconnects{0};
+
     static gn_result_t s_notify_connect(void* host_ctx,
                                          const std::uint8_t* /*remote_pk*/,
                                          const char* /*uri*/,
@@ -119,8 +130,15 @@ struct TlsHarness {
         h->inbound.emplace_back(bytes, bytes + size);
         return GN_OK;
     }
-    static gn_result_t s_notify_disconnect(void*, gn_conn_id_t,
+    static gn_result_t s_notify_disconnect(void* host_ctx, gn_conn_id_t,
                                             gn_result_t) {
+        auto* h = static_cast<TlsHarness*>(host_ctx);
+        if (!h) return GN_OK;
+        h->disconnects.fetch_add(1);
+        if (h->main_tid != std::thread::id{} &&
+            std::this_thread::get_id() == h->main_tid) {
+            h->on_main_disconnects.fetch_add(1);
+        }
         return GN_OK;
     }
     static gn_result_t s_kick(void*, gn_conn_id_t) { return GN_OK; }
@@ -411,4 +429,57 @@ TEST(TlsLink, LoopbackHandshakeAndPayloadRoundTrip) {
 
     client->shutdown();
     server->shutdown();
+}
+
+TEST(TlsLink_Shutdown, SynchronousNotifyDisconnect) {
+    /// `link.md` §9 — shutdown releases every kernel-observable
+    /// session before the io_context tear-down. Pre-fix, TLS closed
+    /// the per-session sockets and let `ioc_.stop()` drop the read-
+    /// completion path that fires `notify_disconnect`; the kernel-
+    /// side `ConnectionRegistry` then kept live records past
+    /// shutdown and held the security plugin's lifetime anchor.
+    /// Carry-over of the TCP fix in commit bda18c6.
+    std::string cert, key;
+    ASSERT_TRUE(generate_self_signed(cert, key));
+
+    TlsHarness harness;
+    harness.main_tid = std::this_thread::get_id();
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::link::tls::TlsLink>();
+    auto client = std::make_shared<gn::link::tls::TlsLink>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+    server->set_server_credentials(cert, key);
+    client->set_verify_peer(false);
+
+    ASSERT_EQ(server->listen("tls://127.0.0.1:0"), GN_OK);
+    const auto port = server->listen_port();
+    ASSERT_GT(port, 0u);
+
+    const std::string uri =
+        "tls://127.0.0.1:" + std::to_string(port);
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    ASSERT_TRUE(wait_for([&] {
+        std::lock_guard lk(harness.mu);
+        return harness.connects.size() >= 2;
+    }));
+    EXPECT_EQ(harness.disconnects.load(), 0);
+    EXPECT_EQ(harness.on_main_disconnects.load(), 0);
+
+    client->shutdown();
+    server->shutdown();
+
+    /// Caller-thread pin: pre-fix, every notify_disconnect would
+    /// either be dropped (handler poisoned by `ioc_.stop()`) or
+    /// run on the worker thread that drained an EOF before the
+    /// stop landed; either way `on_main_disconnects` stays zero.
+    /// Post-fix, both shutdown calls fire on the caller thread,
+    /// matching the two observed `notify_connect` events.
+    EXPECT_EQ(harness.on_main_disconnects.load(), 2)
+        << "TlsLink::shutdown() must fire notify_disconnect "
+           "synchronously on the caller thread for every live "
+           "session before ioc_.stop() drops strand-bound "
+           "continuations (link.md §9).";
 }
