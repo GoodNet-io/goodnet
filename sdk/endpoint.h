@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 #include <sdk/trust.h>
 
@@ -30,6 +31,11 @@ extern "C" {
  * unwinds (URI is held inline in `uri[]`).
  */
 typedef struct gn_endpoint_s {
+    /** sizeof(gn_endpoint_t) at the producer's build time; see
+     *  `abi-evolution.md` §3. Zero is permitted in v1.0 — pre-3.1
+     *  callsites that have not been migrated to set the field still
+     *  produce a usable snapshot under the v1.0 layout. */
+    uint32_t          api_size;
     gn_conn_id_t      conn_id;
     uint8_t           remote_pk[GN_PUBLIC_KEY_BYTES];
     gn_trust_class_t  trust;
@@ -47,6 +53,8 @@ typedef struct gn_endpoint_s {
     /* ABI evolution. */
     void*             _reserved[4];
 } gn_endpoint_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_endpoint_t);
 
 #ifdef __cplusplus
 } /* extern "C" */
