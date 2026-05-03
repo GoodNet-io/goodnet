@@ -350,6 +350,15 @@ envelopes the deframer produces. `msg_id` is ignored; `size` is
 bounded by `limits.max_frame_bytes`. Used by relay-style tunnels that
 move opaque inner frames between mesh peers.
 
+Both layers stamp `gn_message_t::conn_id = source` on every dispatched
+envelope before the handler chain sees it. Conn-aware handlers
+(heartbeat RTT, future per-link gates) read `env.conn_id` directly —
+the bridge-source conn carries the edge identity that handlers use
+for `send`/`disconnect` back at the foreign system. Producers that
+synthesise envelopes outside `inject` and `notify_inbound_bytes`
+leave `conn_id == GN_INVALID_ID`; per `handler-registration.md` §3a
+handlers MUST tolerate that as `CONTINUE`, never `REJECT`.
+
 Failure modes:
 
 | Condition | Result |
@@ -368,6 +377,13 @@ share the same bucket. The bucket key is the source connection's
 `remote_pk`. The kernel creates buckets lazily; LRU eviction caps the
 map at 4 096 entries so unbounded source-id growth cannot exhaust
 memory.
+
+A bridge plugin that re-publishes many foreign clients through one
+source conn (the canonical v1 shape — see §8.1) shares a single
+bucket. The kernel limit is the **outer** guard against runaway
+inject. Bridges that fan in foreign-client traffic must layer their
+own per-foreign-client rate limit on the bridge side; the kernel
+neither sees nor scopes by foreign-client identity.
 
 A token is consumed only when the call has cleared every other gate:
 argument validation, layer-specific size cap, and presence of a
