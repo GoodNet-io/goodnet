@@ -1057,11 +1057,16 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     /// active layer declares which trust classes it may deframe;
     /// reject the connection up front if the declared `trust` is
     /// not in the layer's mask. The security-provider gate fires
-    /// later inside `SessionRegistry::create` against the security mask.
+    /// later inside `SessionRegistry::create` against the security
+    /// mask. The reject increments the operator metric so a spike
+    /// in unauthorized trust classes is visible without strace.
     if (auto layer = pc->kernel->protocol_layer(); layer != nullptr) {
         const std::uint32_t mask = layer->allowed_trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
-        if ((mask & bit) == 0u) return GN_ERR_INVALID_ENVELOPE;
+        if ((mask & bit) == 0u) {
+            pc->kernel->metrics().increment("drop.trust_class_mismatch");
+            return GN_ERR_INVALID_ENVELOPE;
+        }
     }
 
     ConnectionRecord rec;

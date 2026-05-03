@@ -87,6 +87,40 @@ the corresponding counter. The mapping is enumerated in
 enum values land alongside their metric name in one place — the
 external surface stays stable across releases.
 
+#### Drop counter discipline
+
+`drop.*` is the operator-facing namespace for "the kernel
+declined this byte sequence on the inbound path". Every reason
+surfaces through exactly one counter; a reason without an
+emitter is a contract bug, not an enum quietly waiting for
+v1.1. The currently-emitting reasons:
+
+| Counter | Emitter | Trigger |
+|---|---|---|
+| `drop.frame_too_large` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_FRAME_TOO_LARGE` (length past `kMaxFrameBytes`) — hostile-peer signal |
+| `drop.deframe_corrupt` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` — magic / version drift |
+| `drop.queue_hard_cap` | per-link `send` / `send_batch` (TCP / WS / IPC / TLS) | per-conn pending queue past `pending_queue_bytes_hard` |
+| `drop.trust_class_mismatch` | `notify_connect` thunk | declared trust not in `protocol_layer().allowed_trust_mask()` |
+| `attestation.bad_size` / `replay` / `parse_failed` / `bad_signature` / `expired_or_invalid` / `identity_change` | `attestation_dispatcher` | `attestation.md` §5 step failures |
+
+`route.outcome.*` is the **routing-pipeline** namespace ("a
+deframed envelope reached the dispatch chain — what happened
+next?"). The two namespaces are orthogonal: a payload that
+the kernel refused at deframe never reaches a `route.outcome.*`
+counter, and a payload that the chain rejected after a handler
+ran does not bump a `drop.*` counter. Operators sum
+`drop.* + route.outcome.dropped_* + route.outcome.rejected_*`
+to get the full bytes-not-delivered surface; the per-namespace
+breakdown answers the next question (where in the pipeline did
+the loss happen).
+
+Plugin counters never use the `drop.` prefix — the namespace is
+reserved for the kernel-internal mapping above so a single
+exporter scrape names every reason at the same level. Plugins
+that surface their own dropped-frame metrics use their
+subsystem prefix (`gnet.drop.reserved_bit`, etc.) — the plugin
+author owns name collisions inside their prefix.
+
 ### Plugin counters
 
 Plugins own their `<subsystem>.*` namespace. The kernel does not
