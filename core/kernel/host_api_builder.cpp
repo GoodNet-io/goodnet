@@ -1119,6 +1119,16 @@ gn_result_t thunk_notify_connect(void* host_ctx,
             rs_span,
             session_rc);
         if (session_rc != GN_OK) {
+            /// Mirror the protocol-layer mask gate above: a security-mask
+            /// rejection bumps the same `drop.trust_class_mismatch`
+            /// counter the operator watches at the protocol-side
+            /// boundary. `INVALID_ENVELOPE` from `SessionRegistry::create`
+            /// is the only documented mismatch outcome (per
+            /// `security-trust.md` §4); other failures stay outside this
+            /// counter.
+            if (session_rc == GN_ERR_INVALID_ENVELOPE) {
+                pc->kernel->metrics().increment("drop.trust_class_mismatch");
+            }
             (void)pc->kernel->connections().erase_with_index(new_id);
             return session_rc;
         }

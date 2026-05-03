@@ -193,61 +193,63 @@ typedef struct gn_secure_buffer_s {
 } gn_secure_buffer_t;
 ```
 
-## 4. Stack policy validation at construction time
+## 4. Trust-class admission via per-component masks
 
-A stack is `{transport, security, protocol}`. Each combination has a
-declared set of permitted TrustClass values at registration. The
-kernel enumerates the cartesian product on `Wire` phase and refuses
-unsafe combinations **before** reaching `Running`.
+A stack composes one transport + one security provider + one
+protocol layer. v1 admits trust classes through **two independent
+runtime gates** — one per component — rather than a cartesian-product
+enumeration at registration:
 
-The stack-policy descriptor carries:
+- The active **protocol layer** declares its admitted classes via
+  `IProtocolLayer::allowed_trust_mask()`. The kernel checks the bit
+  for the connection's `trust` at `notify_connect`
+  (`core/kernel/host_api_builder.cpp:1063-1070`); a miss returns
+  `GN_ERR_INVALID_ENVELOPE` and increments the
+  `drop.trust_class_mismatch` metric.
+- The active **security provider** declares its admitted classes via
+  `gn_security_provider_vtable_t::allowed_trust_mask`. The kernel
+  checks the bit at `SessionRegistry::create`
+  (`core/security/session.cpp:245-258`); a miss returns
+  `GN_ERR_INVALID_ENVELOPE` and increments the same metric.
 
-| Field | Purpose |
+The admitted set for any stack is the intersection of the two masks
+intersected with the connection's actual `trust`. The unsafe
+combinations the kernel rejects today fall out of this intersection:
+
+| Combination | How the rejection lands |
 |---|---|
-| `name` | stable stack identifier |
-| `allowed_for[]` | TrustClass values that may use this stack |
-| `requires_explicit_optin` | gate for null-security stacks |
-
-The default registry rejects:
-
-| Combination | Reason |
-|---|---|
-| `null` security with TrustClass `Untrusted` | plaintext over public internet |
-| `null` security with TrustClass `Peer` | keys exchanged but encryption disabled — silent downgrade |
-| `raw` protocol with TrustClass `Untrusted` | no framing, no integrity |
-
-Rejecting at config-load time, not runtime, makes the misconfiguration
-visible before any traffic moves.
+| `null` security with `Untrusted` | `null_allowed_trust_mask = Loopback \| IntraNode` (`plugins/security/null/null.cpp:138-140`) — security gate refuses |
+| `null` security with `Peer` | same null mask — security gate refuses |
+| `raw` protocol with `Untrusted` | `raw::allowed_trust_mask = Loopback \| IntraNode` (`plugins/protocols/raw/raw.cpp:109-115`) — protocol gate refuses |
 
 The fourth common combination — `null + raw` over `Loopback` — is
-allowed because both endpoints are by definition the same machine; the
-threat model excludes a local-process attacker who could equally read
-`/proc`.
+admitted because both masks include `Loopback`; the threat model
+excludes a local-process attacker who could equally read `/proc`.
+
+A unified StackRegistry that enumerates the cartesian product at
+admission, with `requires_explicit_optin` flags and
+`name`/`allowed_for[]` descriptors, lands in v1.x. v1 ships the
+per-component gates: simpler, deterministic, and already covers
+every combination the v1 plugin tree can produce.
 
 ---
 
-## 5. Explicit opt-in for null on `Untrusted`
+## 5. Null security on `Untrusted` is unreachable in v1
 
-Some users need plaintext on an untrusted link for testing or for use
-behind an external Noise/TLS terminator. The contract permits it only
-via explicit opt-in in the embedding configuration:
+The v1 null security provider's `allowed_trust_mask` is
+`Loopback | IntraNode` (`plugins/security/null/null.cpp:139`). The
+security gate (§4) refuses any other class. There is no v1
+configuration knob — JSON, env, host_api — that can widen the mask
+on a loaded null provider. An operator who needs plaintext over an
+untrusted link runs an external Noise/TLS terminator in front of
+the kernel; the kernel sees the terminated end as a `Loopback` or
+`IntraNode` link and admits null on it.
 
-```json
-{
-  "stacks": {
-    "test_clear": {
-      "transport": "tcp",
-      "security":  "null",
-      "protocol":  "gnet-v1",
-      "allow_null_untrusted": true
-    }
-  }
-}
-```
-
-Without the opt-in, stack construction returns
-`GN_ERR_INVALID_ENVELOPE`. The opt-in is logged at warn level on
-every connect using the stack — there is no quiet plaintext path.
+A future StackRegistry (v1.x) will introduce an explicit opt-in for
+plaintext-on-untrusted as a deployment-time descriptor, so operators
+can declare it in config rather than build a custom security
+provider. Until then the safer path through the static masks is the
+only path.
 
 ---
 
@@ -261,6 +263,13 @@ from loaded plugins. `core/` contains only interface declarations.
 
 This separation prevents the kernel from accidentally exposing a
 plaintext path through pure source-level reachability.
+
+v1 admits **at most one active security provider per kernel**. A
+second `register_security` call returns `GN_ERR_LIMIT_REACHED`
+(`core/registry/security.cpp:33`); the existing provider is
+unaffected. Multi-provider per-trust-class selection — running a
+null provider for `Loopback` traffic and Noise for `Peer` /
+`Untrusted` on the same kernel — lands in v1.x via StackRegistry.
 
 ---
 
@@ -326,4 +335,9 @@ consistency, buffer sizing, rekey semantics — lives in
   `noise-handshake.md`.
 - Transport-side TrustClass declaration: `link.md` §3.
 - Stack registration: `host-api.md` §2 (`register_*`).
-- Kernel error returned for invalid stacks: `fsm-events.md` §4.
+- Kernel error on a trust-class mismatch: `GN_ERR_INVALID_ENVELOPE`
+  from `notify_connect` (`core/kernel/host_api_builder.cpp:1067-1068`,
+  protocol-layer gate) and from `SessionRegistry::create`
+  (`core/security/session.cpp:255`, security-provider gate). Both
+  sites bump `metrics.drop.trust_class_mismatch` so an operator
+  watching the counter sees the rate without an strace.
