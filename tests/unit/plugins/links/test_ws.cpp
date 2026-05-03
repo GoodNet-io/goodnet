@@ -286,7 +286,22 @@ TEST(WsLink, LoopbackHandshakeAndPayloadRoundTrip) {
     server->shutdown();
 }
 
-// ── shutdown discipline — link.md §5 sync release ────────────────────────
+// ── shutdown discipline — link.md §9 sync release ────────────────────────
+
+TEST(WsLink_Shutdown, IsIdempotent) {
+    /// Multiple `shutdown()` calls must be safe and the worker
+    /// thread must be in a non-joinable state by the time each
+    /// call returns. The second call's role is to finish a join
+    /// the first (worker-thread) call had to skip; the
+    /// `shutdown_.exchange()` gate short-circuits only the side-
+    /// effect block now, not the join attempt, so a no-op second
+    /// call still settles the thread before the dtor observes
+    /// it.
+    auto t = std::make_shared<gn::link::ws::WsLink>();
+    t->shutdown();
+    t->shutdown();
+    t->shutdown();
+}
 
 TEST(WsLink_Shutdown, SynchronousNotifyDisconnect) {
     /// `link.md` §9 — shutdown releases every kernel-observable

@@ -636,10 +636,23 @@ WsLink::~WsLink() {
             gn_log_warn(api_, "ws: shutdown threw non-std exception");
         }
     }
-    /// `shutdown()` joins the worker only when called from outside
-    /// the worker; if it was called from inside, the thread is
-    /// detached here so the dtor stays noexcept.
-    if (worker_.joinable()) worker_.detach();
+    /// `shutdown()` joins the worker on every call where the
+    /// caller is not the worker thread itself. A still-joinable
+    /// worker here means the dtor itself ran on the worker — an
+    /// ownership cycle in the caller (an async session handler is
+    /// holding the last `shared_ptr<WsLink>`). `ioc_.stop()` from
+    /// the shutdown call has already been issued so the worker is
+    /// on its way to exit; detach lets the dtor stay noexcept and
+    /// surfaces the violation through the host log for the caller
+    /// to fix.
+    if (worker_.joinable()) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ws: dtor reached on worker thread "
+                "(ownership cycle in caller); detaching");
+        }
+        worker_.detach();
+    }
 }
 
 void WsLink::set_host_api(const host_api_t* api) noexcept {
@@ -954,47 +967,53 @@ gn_result_t WsLink::disconnect(gn_conn_id_t conn) {
 }
 
 void WsLink::shutdown() {
-    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
-    if (acceptor_) {
-        std::error_code ec;
-        if (acceptor_->close(ec)) {}
-    }
-
-    /// Snapshot conn ids under the lock, post the per-session close
-    /// onto each session's strand, then notify the kernel side
-    /// SYNCHRONOUSLY for each session before stopping the
-    /// io_context. `ioc_.stop()` would otherwise drop pending
-    /// strand-bound continuations — including the read-completion
-    /// path that normally fires `notify_disconnect`. Without sync
-    /// notification, kernel-side `ConnectionRegistry` keeps live
-    /// records past ws shutdown, which in turn keeps the security
-    /// plugin's lifetime anchor alive past the PluginManager drain
-    /// budget. Per `link.md` §9 the shutdown must release every
-    /// kernel-observable session before the io_context tear-down.
-    std::vector<gn_conn_id_t> live_ids;
-    {
-        std::lock_guard lk(sessions_mu_);
-        live_ids.reserve(sessions_.size());
-        for (auto& [id, s] : sessions_) {
-            live_ids.push_back(id);
-            s->enqueue_close();
+    /// Side-effect block runs only on the first call. The join
+    /// below runs on every call so a second `shutdown()` from a
+    /// non-worker thread can finish the join that the first
+    /// (worker-thread) call had to skip.
+    if (!shutdown_.exchange(true, std::memory_order_acq_rel)) {
+        if (acceptor_) {
+            std::error_code ec;
+            if (acceptor_->close(ec)) {}
         }
-        sessions_.clear();
-    }
 
-    if (api_ && api_->notify_disconnect) {
-        for (const auto id : live_ids) {
-            (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+        /// Snapshot conn ids under the lock, post the per-session
+        /// close onto each session's strand, then notify the kernel
+        /// side SYNCHRONOUSLY for each session before stopping the
+        /// io_context. `ioc_.stop()` would otherwise drop pending
+        /// strand-bound continuations — including the read-
+        /// completion path that normally fires `notify_disconnect`.
+        /// Without sync notification, kernel-side
+        /// `ConnectionRegistry` keeps live records past ws shutdown,
+        /// which in turn keeps the security plugin's lifetime
+        /// anchor alive past the PluginManager drain budget. Per
+        /// `link.md` §9 the shutdown must release every kernel-
+        /// observable session before the io_context tear-down.
+        std::vector<gn_conn_id_t> live_ids;
+        {
+            std::lock_guard lk(sessions_mu_);
+            live_ids.reserve(sessions_.size());
+            for (auto& [id, s] : sessions_) {
+                live_ids.push_back(id);
+                s->enqueue_close();
+            }
+            sessions_.clear();
         }
+
+        if (api_ && api_->notify_disconnect) {
+            for (const auto id : live_ids) {
+                (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+            }
+        }
+
+        work_.reset();
+        ioc_.stop();
     }
 
-    work_.reset();
-    ioc_.stop();
-    /// Join only when we're not the worker — `shutdown()` may run
-    /// on the worker thread itself when the last shared_ptr drops
-    /// inside an async completion, and joining yourself returns
-    /// EDEADLK. The dtor cleans up the joinable-but-not-joined case
-    /// via detach.
+    /// Join only when we're not the worker. Joining oneself
+    /// returns EDEADLK; the dtor catches a still-joinable thread
+    /// after `shutdown()` returns and surfaces it as an ownership-
+    /// cycle diagnostic.
     if (worker_.joinable() &&
         std::this_thread::get_id() != worker_.get_id()) {
         worker_.join();
