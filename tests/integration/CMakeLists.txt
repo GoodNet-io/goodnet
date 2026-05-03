@@ -24,10 +24,18 @@ target_link_libraries(goodnet_integration_tests
         GoodNet::protocol_gnet
         GoodNet::sdk
         goodnet_tcp_objects
+        goodnet_ws_objects
+        goodnet_ipc_objects
+        goodnet_tls_objects
         GTest::gtest
         GTest::gtest_main
         ${CMAKE_DL_LIBS}
 )
+
+if(TARGET OpenSSL::SSL)
+    target_link_libraries(goodnet_integration_tests
+        PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
 
 target_compile_features(goodnet_integration_tests PRIVATE cxx_std_23)
 goodnet_apply_pch(goodnet_integration_tests)
