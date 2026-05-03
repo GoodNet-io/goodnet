@@ -101,6 +101,7 @@ void UdpLink::set_host_api(const host_api_t* api) noexcept {
                 apply_udp_config(self, self->api_);
             },
             this,
+            /*ud_destroy*/ nullptr,
             &token);
         if (rc == GN_OK) {
             reload_sub_id_ = token;

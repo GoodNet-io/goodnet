@@ -100,7 +100,8 @@ TEST(BackpressureRole, AcceptsTransportKindPublisher) {
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     ASSERT_EQ(api.subscribe(api.host_ctx, GN_SUBSCRIBE_CONN_STATE,
-                             &record_event, &bag, &sub),
+                             &record_event, &bag,
+                             /*ud_destroy*/ nullptr, &sub),
               GN_OK);
 
     const std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES> pk{0xAA, 0xBB, 0xCC};

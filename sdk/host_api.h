@@ -430,11 +430,20 @@ typedef struct host_api_s {
      * `cb` runs on the publishing thread and receives a typed
      * payload — see @ref gn_subscribe_cb_t. Per-channel payload
      * shape is documented on the same enum.
+     *
+     * @p ud_destroy, if non-NULL, is invoked exactly once with
+     * @p user_data when the subscription is removed — either
+     * through `unsubscribe(out_id)` or because the kernel observed
+     * the plugin's lifetime anchor expire. Bindings whose
+     * `user_data` captures heap state (Rust `Box::into_raw`,
+     * Python `Py_INCREF`'d object) point this slot at their
+     * destructor; callers that pass plain pointers leave it NULL.
      */
     gn_result_t (*subscribe)(void* host_ctx,
                               gn_subscribe_channel_t channel,
                               gn_subscribe_cb_t cb,
                               void* user_data,
+                              void (*ud_destroy)(void*),
                               gn_subscription_id_t* out_id);
 
     /**

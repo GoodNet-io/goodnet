@@ -464,6 +464,7 @@ gn_result_t thunk_subscribe(void* host_ctx,
                              gn_subscribe_channel_t channel,
                              gn_subscribe_cb_t cb,
                              void* user_data,
+                             void (*ud_destroy)(void*),
                              gn_subscription_id_t* out_id) {
     if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
 
@@ -473,10 +474,30 @@ gn_result_t thunk_subscribe(void* host_ctx,
     auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
     const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
 
+    /// RAII guard that fires `ud_destroy(user_data)` exactly once
+    /// when the subscription's lambda is destroyed — either
+    /// through `unsubscribe()` or when the kernel observes the
+    /// plugin anchor expire and tears the subscription down. The
+    /// `shared_ptr` capture inside the lambda keeps the guard
+    /// alive for as long as the channel holds the subscription;
+    /// the last reference drops the moment the channel removes it.
+    struct UserDataGuard {
+        void* user_data = nullptr;
+        void (*ud_destroy)(void*) = nullptr;
+        UserDataGuard(void* ud, void (*d)(void*)) noexcept
+            : user_data(ud), ud_destroy(d) {}
+        UserDataGuard(const UserDataGuard&)            = delete;
+        UserDataGuard& operator=(const UserDataGuard&) = delete;
+        ~UserDataGuard() {
+            if (ud_destroy) ud_destroy(user_data);
+        }
+    };
+    auto ud_guard = std::make_shared<UserDataGuard>(user_data, ud_destroy);
+
     switch (channel) {
     case GN_SUBSCRIBE_CONN_STATE: {
         auto token = pc->kernel->on_conn_event().subscribe(
-            [cb, user_data, anchor_weak, anchor_set](const ConnEvent& ev) {
+            [cb, ud_guard, anchor_weak, anchor_set](const ConnEvent& ev) {
                 /// Open a `GateGuard` for the dispatch so
                 /// `PluginManager::drain_anchor` cannot run `dlclose`
                 /// while the callback is still in the plugin's `.text`.
@@ -496,7 +517,7 @@ gn_result_t thunk_subscribe(void* host_ctx,
                 std::memcpy(e.remote_pk, ev.remote_pk.data(),
                             GN_PUBLIC_KEY_BYTES);
                 safe_call_void("subscriber.conn_state",
-                    cb, user_data,
+                    cb, ud_guard->user_data,
                     static_cast<const void*>(&e),
                     sizeof(gn_conn_event_t));
             });
@@ -507,7 +528,7 @@ gn_result_t thunk_subscribe(void* host_ctx,
 
     case GN_SUBSCRIBE_CONFIG_RELOAD: {
         auto token = pc->kernel->on_config_reload().subscribe(
-            [cb, user_data, anchor_weak, anchor_set](const signal::Empty&) {
+            [cb, ud_guard, anchor_weak, anchor_set](const signal::Empty&) {
                 /// Same lifetime gate as the conn-state path: refuse
                 /// the dispatch if the plugin's anchor expired or
                 /// rollback published `shutdown_requested`.
@@ -516,7 +537,7 @@ gn_result_t thunk_subscribe(void* host_ctx,
                     if (!guard) return;
                 }
                 safe_call_void("subscriber.config_reload",
-                    cb, user_data,
+                    cb, ud_guard->user_data,
                     static_cast<const void*>(nullptr),
                     static_cast<std::size_t>(0));
             });

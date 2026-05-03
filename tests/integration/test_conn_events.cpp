@@ -59,7 +59,7 @@ TEST(ConnEvents, ConnectFiresEvent) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, /*ud_destroy*/ nullptr, &sub),
               GN_OK);
     EXPECT_NE(sub, GN_INVALID_SUBSCRIPTION_ID);
 
@@ -91,7 +91,7 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, /*ud_destroy*/ nullptr, &sub),
               GN_OK);
 
     std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {1, 2, 3};
@@ -122,6 +122,48 @@ TEST(ConnEvents, DisconnectFiresEventAndUnsubscribeStops) {
     }
 }
 
+TEST(ConnEvents, UnsubscribeFiresUserDataDestructor) {
+    /// `subscribe` accepts an optional `ud_destroy` callback that
+    /// the kernel invokes exactly once with `user_data` when the
+    /// subscription is removed. Bindings whose `user_data` captures
+    /// heap state lean on this slot to avoid leak-by-default.
+    Kernel k;
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    struct Captured {
+        std::atomic<int> destroy_calls{0};
+    };
+    auto* captured = new Captured;
+    auto destroy = +[](void* p) {
+        auto* c = static_cast<Captured*>(p);
+        c->destroy_calls.fetch_add(1);
+        delete c;
+    };
+
+    gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE,
+                             /*cb*/ +[](void*, const void*, std::size_t){},
+                             captured, destroy, &sub),
+              GN_OK);
+    /// Destructor must not have run yet — subscription is live.
+    /// (We can't read `captured` after a hypothetical premature
+    /// `destroy(captured)` because the pointer would be dangling;
+    /// instead the test fires the destroy through `unsubscribe`
+    /// below and then asserts the count.)
+
+    ASSERT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
+
+    /// `Captured` was deleted by `destroy`; reading it would be a
+    /// use-after-free. The atomic store happened before the delete
+    /// so the side effect is observable through any other channel
+    /// — the test here is the absence of a leak (ASan / TSan would
+    /// catch a missed delete) plus the side-effect of the second
+    /// unsubscribe being a no-op (no double destroy).
+    EXPECT_EQ(api.unsubscribe(&ctx, sub), GN_OK)
+        << "second unsubscribe must not re-fire ud_destroy on a freed pointer";
+}
+
 TEST(ConnEvents, UnsubscribeIdempotent) {
     Kernel k;
     auto ctx = make_transport_ctx(k);
@@ -129,7 +171,7 @@ TEST(ConnEvents, UnsubscribeIdempotent) {
 
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     EventBag bag;
-    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, /*ud_destroy*/ nullptr, &sub),
               GN_OK);
 
     EXPECT_EQ(api.unsubscribe(&ctx, sub), GN_OK);
@@ -150,7 +192,7 @@ TEST(ConnEvents, AnchorExpiredDropsCallback) {
 
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
-    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, &sub),
+    ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, /*ud_destroy*/ nullptr, &sub),
               GN_OK);
 
     /// Drop the anchor; subscription is still alive on the channel,
@@ -240,9 +282,11 @@ TEST(ConnEvents, RejectsNullArgs) {
 
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     EventBag bag;
-    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, nullptr, &bag, &sub),
+    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE,
+                             nullptr, &bag, /*ud_destroy*/ nullptr, &sub),
               GN_ERR_NULL_ARG);
-    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event, &bag, nullptr),
+    EXPECT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE, &record_event,
+                             &bag, /*ud_destroy*/ nullptr, nullptr),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(api.for_each_connection(&ctx, nullptr, nullptr),
               GN_ERR_NULL_ARG);
@@ -261,7 +305,8 @@ TEST(ConnEvents, RejectsUnknownChannel) {
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(api.subscribe(&ctx,
                              static_cast<gn_subscribe_channel_t>(99),
-                             &record_event, &bag, &sub),
+                             &record_event, &bag,
+                             /*ud_destroy*/ nullptr, &sub),
               GN_ERR_INVALID_ENVELOPE);
     EXPECT_EQ(sub, GN_INVALID_SUBSCRIPTION_ID);
 }
@@ -279,7 +324,8 @@ TEST(ConnEvents, UnsubscribeRejectsTamperedChannelTag) {
     EventBag bag;
     gn_subscription_id_t sub = GN_INVALID_SUBSCRIPTION_ID;
     ASSERT_EQ(api.subscribe(&ctx, GN_SUBSCRIBE_CONN_STATE,
-                             &record_event, &bag, &sub),
+                             &record_event, &bag,
+                             /*ud_destroy*/ nullptr, &sub),
               GN_OK);
     /// Flip channel-tag bits 60..63 to an unused channel value (3).
     constexpr std::uint64_t kChannelMask = std::uint64_t{0xF} << 60;

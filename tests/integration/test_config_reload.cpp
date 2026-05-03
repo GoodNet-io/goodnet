@@ -57,6 +57,7 @@ TEST(ConfigReload, ReloadFiresSubscriberCallback) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
+                /*ud_destroy*/ nullptr,
                 &token),
               GN_OK);
     EXPECT_NE(token, GN_INVALID_SUBSCRIPTION_ID);
@@ -87,6 +88,7 @@ TEST(ConfigReload, FailedReloadDoesNotFire) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
+                /*ud_destroy*/ nullptr,
                 &token),
               GN_OK);
 
@@ -108,6 +110,7 @@ TEST(ConfigReload, FailedValidationDoesNotFire) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
+                /*ud_destroy*/ nullptr,
                 &token),
               GN_OK);
 
@@ -134,6 +137,7 @@ TEST(ConfigReload, UnsubscribeStopsCallbacks) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
+                /*ud_destroy*/ nullptr,
                 &token),
               GN_OK);
 
@@ -167,6 +171,7 @@ TEST(ConfigReload, MergeReloadAlsoFires) {
                     static_cast<std::atomic<int>*>(ud)->fetch_add(1);
                 },
                 &calls,
+                /*ud_destroy*/ nullptr,
                 &token),
               GN_OK);
 
