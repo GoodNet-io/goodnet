@@ -773,10 +773,31 @@ void TlsLink::shutdown() {
         acceptor_.reset();
     }
 
+    /// Snapshot conn ids under the lock, close each session's
+    /// socket synchronously, then notify the kernel side
+    /// SYNCHRONOUSLY for each session before stopping the
+    /// io_context. `ioc_.stop()` would otherwise drop pending
+    /// strand-bound continuations — including the read-completion
+    /// path that normally fires `notify_disconnect`. Without sync
+    /// notification, kernel-side `ConnectionRegistry` keeps live
+    /// records past tls shutdown, which in turn keeps the security
+    /// plugin's lifetime anchor alive past the PluginManager drain
+    /// budget. Per `link.md` §9.
+    std::vector<gn_conn_id_t> live_ids;
     {
         std::lock_guard lk(sessions_mu_);
-        for (auto& [_, s] : sessions_) s->do_close();
+        live_ids.reserve(sessions_.size());
+        for (auto& [id, s] : sessions_) {
+            live_ids.push_back(id);
+            s->do_close();
+        }
         sessions_.clear();
+    }
+
+    if (api_ && api_->notify_disconnect) {
+        for (const auto id : live_ids) {
+            (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+        }
     }
 
     work_.reset();
