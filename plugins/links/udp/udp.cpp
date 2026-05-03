@@ -90,12 +90,11 @@ void UdpLink::set_host_api(const host_api_t* api) noexcept {
     /// Subscribe to config-reload events so the limiter shape
     /// re-reads on every operator-initiated reload, not just at
     /// initial set_host_api time.
-    if (api_ != nullptr && api_->subscribe != nullptr) {
+    if (api_ != nullptr && api_->subscribe_config_reload != nullptr) {
         gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
-        const auto rc = api_->subscribe(
+        const auto rc = api_->subscribe_config_reload(
             api_->host_ctx,
-            GN_SUBSCRIBE_CONFIG_RELOAD,
-            +[](void* user_data, const void* /*payload*/, std::size_t /*size*/) {
+            +[](void* user_data) {
                 auto* self =
                     static_cast<UdpLink*>(user_data);
                 apply_udp_config(self, self->api_);
