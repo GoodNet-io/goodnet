@@ -44,7 +44,7 @@ namespace gn::core {
 /// Thread-safe map of named monotonic counters.
 class MetricsRegistry {
 public:
-    MetricsRegistry()                                  = default;
+    MetricsRegistry();
     MetricsRegistry(const MetricsRegistry&)            = delete;
     MetricsRegistry& operator=(const MetricsRegistry&) = delete;
 
@@ -80,6 +80,13 @@ public:
     [[nodiscard]] std::size_t iterate(gn_counter_visitor_t visitor,
                                        void* user_data) const;
 
+    /// Cardinality cap (`limits.md` §3a /
+    /// `metrics.md` §3.1). Zero disables the cap entirely.
+    /// Setting it to a non-zero value below the current
+    /// counter count keeps existing counters in place — the cap
+    /// only blocks **new** insertions on the slow path.
+    void set_max_counter_names(std::uint32_t cap) noexcept;
+
 private:
     /// Heterogeneous hash + equality so the unordered_map's
     /// transparent `find(string_view)` overload matches without
@@ -111,6 +118,18 @@ private:
 
     mutable std::shared_mutex mu_;
     Map                       counters_;
+
+    /// Cardinality cap. Zero disables the check.
+    std::atomic<std::uint32_t> max_counter_names_{0};
+
+    /// Pointer to the atomic backing
+    /// `metrics.cardinality_rejected`. Pre-created in the
+    /// constructor so the slow-path reject branch increments
+    /// without an extra slot allocation under the writer lock.
+    /// The pointer is stable across rehashes — `unordered_map`
+    /// moves the `unique_ptr<atomic>` slot during a rehash but
+    /// the contained atomic stays at the same address.
+    std::atomic<std::uint64_t>* cardinality_rejected_ = nullptr;
 };
 
 }  // namespace gn::core

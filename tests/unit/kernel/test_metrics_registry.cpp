@@ -65,6 +65,14 @@ TEST(MetricsRegistry, ForEachVisitsEveryCounterOnce) {
         seen[std::string(name)] = v;
     });
 
+    /// `metrics.cardinality_rejected` is pre-created in the
+    /// constructor (Wave 9.1) and stays at 0 in this test —
+    /// the iteration MUST surface it so an exporter scrape sees
+    /// a `metrics.cardinality_rejected = 0` line on a healthy
+    /// registry. Filter the sentinel before counting the test's
+    /// own counters.
+    seen.erase("metrics.cardinality_rejected");
+
     EXPECT_EQ(seen.size(), 2u);
     EXPECT_EQ(seen["alpha"], 2u);
     EXPECT_EQ(seen["beta"], 1u);

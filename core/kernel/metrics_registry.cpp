@@ -65,6 +65,22 @@ namespace {
 
 }  // namespace
 
+MetricsRegistry::MetricsRegistry() {
+    /// Pre-create the cardinality-rejected slot so the slow-path
+    /// reject branch can increment without taking another writer
+    /// lock to allocate the slot itself. The slot stays present
+    /// regardless of cap state so an exporter scrape always finds
+    /// it.
+    auto slot = std::make_unique<std::atomic<std::uint64_t>>(0);
+    cardinality_rejected_ = slot.get();
+    counters_.emplace(std::string{"metrics.cardinality_rejected"},
+                       std::move(slot));
+}
+
+void MetricsRegistry::set_max_counter_names(std::uint32_t cap) noexcept {
+    max_counter_names_.store(cap, std::memory_order_release);
+}
+
 MetricsRegistry::Map::const_iterator
 MetricsRegistry::find(std::string_view name) const {
     /// `unordered_map`'s heterogeneous lookup with
@@ -92,11 +108,25 @@ void MetricsRegistry::increment(std::string_view name) {
     /// lock and re-check — a concurrent caller may have inserted
     /// between our shared-lock release and the unique-lock acquire.
     std::unique_lock lk(mu_);
-    auto& slot = counters_[std::string(name)];
-    if (!slot) {
-        slot = std::make_unique<std::atomic<std::uint64_t>>(0);
+    if (auto it = find(name); it != counters_.end()) {
+        it->second->fetch_add(1, std::memory_order_relaxed);
+        return;
     }
-    slot->fetch_add(1, std::memory_order_relaxed);
+
+    /// Cardinality cap (`metrics.md` §3.1). Zero disables the
+    /// check; a non-zero cap rejects the *new* counter and bumps
+    /// `metrics.cardinality_rejected` so the operator can spot the
+    /// cliff without losing established names. LRU eviction would
+    /// silently lose data on every Prometheus scrape.
+    const std::uint32_t cap =
+        max_counter_names_.load(std::memory_order_acquire);
+    if (cap != 0 && counters_.size() >= cap) {
+        cardinality_rejected_->fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+
+    auto slot = std::make_unique<std::atomic<std::uint64_t>>(1);
+    counters_.emplace(std::string{name}, std::move(slot));
 }
 
 void MetricsRegistry::increment_route_outcome(RouteOutcome outcome) {

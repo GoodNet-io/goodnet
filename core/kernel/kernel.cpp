@@ -78,6 +78,9 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     if (limits_.max_handlers_per_msg_id != 0) {
         handlers_.set_max_chain_length(limits_.max_handlers_per_msg_id);
     }
+    if (limits_.max_counter_names != 0) {
+        metrics_.set_max_counter_names(limits_.max_counter_names);
+    }
 }
 
 gn_result_t Kernel::reload_config(std::string_view text) {

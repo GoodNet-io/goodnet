@@ -70,7 +70,15 @@ TEST(HostApiMetrics, EmitCounterIncrementsThroughThunk) {
     Bag bag;
     const auto visited = api.iterate_counters(
         api.host_ctx, &collect, &bag);
-    EXPECT_EQ(visited, 2u);
+    /// `metrics.cardinality_rejected` is pre-created (Wave 9.1)
+    /// and surfaces in iteration even when zero — the exporter
+    /// always sees `=0` rather than missing-on-healthy. Drop it
+    /// before counting the test's own contribution.
+    bag.seen.erase("metrics.cardinality_rejected");
+    EXPECT_EQ(visited, 3u)
+        << "iterate sees the test's two counters + the pre-created "
+           "cardinality_rejected sentinel";
+    EXPECT_EQ(bag.seen.size(), 2u);
     EXPECT_EQ(bag.seen["plugin.test.events"], 2u);
     EXPECT_EQ(bag.seen["plugin.test.errors"], 1u);
 }
@@ -85,7 +93,11 @@ TEST(HostApiMetrics, NullNameIsDroppedSilently) {
     Bag bag;
     const auto visited = api.iterate_counters(
         api.host_ctx, &collect, &bag);
-    EXPECT_EQ(visited, 0u);
+    /// `metrics.cardinality_rejected` is pre-created — visited
+    /// reports 1, not 0.
+    bag.seen.erase("metrics.cardinality_rejected");
+    EXPECT_EQ(visited, 1u);
+    EXPECT_TRUE(bag.seen.empty());
 }
 
 TEST(HostApiMetrics, FrameTooLargeBumpsDropCounter) {

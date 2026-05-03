@@ -63,6 +63,7 @@ gn_limits_t server_profile() noexcept {
     L.inject_rate_per_source      = GN_LIMITS_DEFAULT_INJECT_RATE_PER_SOURCE;
     L.inject_rate_burst           = GN_LIMITS_DEFAULT_INJECT_RATE_BURST;
     L.inject_rate_lru_cap         = GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP;
+    L.max_counter_names           = GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES;
     return L;
 }
 
@@ -173,6 +174,7 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     GN_PICK_U32(inject_rate_per_source);
     GN_PICK_U32(inject_rate_burst);
     GN_PICK_U32(inject_rate_lru_cap);
+    GN_PICK_U32(max_counter_names);
 #undef GN_PICK_U32
 #undef GN_PICK_U64
     return L;

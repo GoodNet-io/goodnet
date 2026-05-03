@@ -83,12 +83,29 @@ typedef struct gn_limits_s {
     uint64_t max_storage_table_entries;
     uint64_t max_storage_value_bytes;
 
-    /* MUST be zero. Slot count `8` (uint32_t) follows the
+    /* Metrics cardinality (`metrics.md` §3.1).
+     *
+     * Hard cap on the number of distinct counter names a single
+     * `MetricsRegistry` will hold. The slow path of `increment`
+     * rejects new names past this cap and bumps
+     * `metrics.cardinality_rejected` so the operator can spot the
+     * cliff — the alternative (LRU eviction) silently loses
+     * established counters and produces missing-data spikes on
+     * every Prometheus scrape. Default 8192 = built-in counters
+     * + ~7 plugins × ~50 names + headroom; matches the per-target
+     * scrape budget Prometheus's default config tolerates.
+     *
+     * Slot promoted out of `_reserved[]` per `abi-evolution.md`
+     * §4 — the slot count drops by one to keep MINOR-compat
+     * bytes-precise. */
+    uint32_t max_counter_names;
+
+    /* MUST be zero. Slot count `7` (uint32_t) follows the
      * operator-tunable family per `abi-evolution.md` §4 — limits
      * accumulate faster than vtable slots over the platform's
      * lifetime, and the wider tail keeps a MAJOR bump off this
      * surface. */
-    uint32_t _reserved[8];
+    uint32_t _reserved[7];
 } gn_limits_t;
 
 /* ── Default values ──────────────────────────────────────────────────────── */
@@ -111,6 +128,7 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_INJECT_RATE_PER_SOURCE       100u
 #define GN_LIMITS_DEFAULT_INJECT_RATE_BURST            50u
 #define GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP          4096u
+#define GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES            8192u
 
 #ifdef __cplusplus
 } /* extern "C" */
