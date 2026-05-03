@@ -89,6 +89,32 @@ struct UriParts {
     return false;
 }
 
+/// Validate a URI scheme against RFC 3986 ABNF:
+///   scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+/// Used by entry points that derive the scheme from a URI prefix
+/// (`notify_connect` thunk) to reject non-ASCII or otherwise
+/// malformed scheme bytes that would corrupt the registry index.
+/// `uri_has_control_bytes` only catches 0x00-0x20 and 0x7F; this
+/// helper closes the high-bit gap (UTF-8 in scheme prefix) plus
+/// rejects digits-as-first-char and other RFC violations.
+[[nodiscard]] inline bool is_valid_scheme(std::string_view scheme) noexcept {
+    if (scheme.empty()) return false;
+    const auto is_alpha = [](unsigned char c) noexcept {
+        return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z');
+    };
+    const auto is_alpha_num_punct = [&](unsigned char c) noexcept {
+        return is_alpha(c) || (c >= '0' && c <= '9') ||
+               c == '+' || c == '-' || c == '.';
+    };
+    if (!is_alpha(static_cast<unsigned char>(scheme[0]))) return false;
+    for (std::size_t i = 1; i < scheme.size(); ++i) {
+        if (!is_alpha_num_punct(static_cast<unsigned char>(scheme[i]))) {
+            return false;
+        }
+    }
+    return true;
+}
+
 /// Parse a connection URI. Returns `nullopt` on every failure mode in
 /// `docs/contracts/uri.md` §5; never throws, never writes through a
 /// partial result.
