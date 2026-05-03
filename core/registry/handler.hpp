@@ -49,6 +49,13 @@ struct HandlerEntry {
     /// control block through `weak_ptr` during unload to drive the
     /// quiescence wait before `dlclose` (see `plugin-lifetime.md` §4).
     std::shared_ptr<void>      lifetime_anchor;
+
+    /// Plugin display name from `PluginContext::plugin_name`. Carried
+    /// onto the entry at register time so `safe_call_*` log lines
+    /// from dispatch (`router.cpp::dispatch_chain`) name the
+    /// misbehaving plugin without grepping symbol tables. Empty for
+    /// in-tree fixtures that register without a PluginManager.
+    std::string                plugin_name;
 };
 
 class HandlerRegistry {
@@ -76,7 +83,8 @@ public:
                                                const gn_handler_vtable_t* vtable,
                                                void*                      self,
                                                gn_handler_id_t*           out_id,
-                                               std::shared_ptr<void>      lifetime_anchor = {}) noexcept;
+                                               std::shared_ptr<void>      lifetime_anchor = {},
+                                               std::string_view           plugin_name = {}) noexcept;
 
     /// Remove the handler with id @p id from whichever chain holds it.
     [[nodiscard]] gn_result_t unregister_handler(gn_handler_id_t id) noexcept;

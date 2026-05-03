@@ -96,14 +96,24 @@ RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
         /// the misbehaving plugin's tag, and treats the slot as
         /// having returned `GN_PROPAGATION_REJECT` so the chain breaks
         /// instead of silently re-running on a partial state.
+        /// The site_tag carries `plugin_name` from the registered
+        /// entry so a throwing handler is identified in logs without
+        /// grepping symbol tables; in-tree fixtures register without
+        /// a plugin name and fall back to the bare slot label.
+        const std::string handle_tag = entry.plugin_name.empty()
+            ? std::string{"handler.handle_message"}
+            : "handler.handle_message[" + entry.plugin_name + "]";
         const auto r_opt = safe_call_value<gn_propagation_t>(
-            "handler.handle_message",
+            handle_tag.c_str(),
             entry.vtable->handle_message, entry.self, &env);
         const gn_propagation_t r =
             r_opt.value_or(GN_PROPAGATION_REJECT);
 
         if (entry.vtable->on_result != nullptr) {
-            safe_call_void("handler.on_result",
+            const std::string on_result_tag = entry.plugin_name.empty()
+                ? std::string{"handler.on_result"}
+                : "handler.on_result[" + entry.plugin_name + "]";
+            safe_call_void(on_result_tag.c_str(),
                 entry.vtable->on_result, entry.self, &env, r);
         }
 
