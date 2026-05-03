@@ -63,6 +63,14 @@ of any opt-in flag in the security configuration; the trust class is
 what lets the kernel permit `null+raw` stacks per
 `security-trust.md` §4.
 
+A link plugin that accepts hostname URIs runs the resolution
+through `dns.md` §2's `resolve_uri_host` at `connect` /
+`listen` time. Per `dns.md` §1a the operator-facing recommendation
+is to pre-resolve hostnames before configuring the kernel —
+production deployments should hand IP literals through; the
+hostname path is for dev / test convenience and inherits the OS
+resolver's adversarial-DNS exposure.
+
 ## 3a. Handshake role declaration
 
 The link **must** declare a `gn_handshake_role_t` on every

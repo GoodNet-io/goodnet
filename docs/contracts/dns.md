@@ -33,6 +33,30 @@ either the URI parser (`uri.md`) or the kernel C ABI (`host-api.md`).
 
 ---
 
+## 1a. Operator recommendation
+
+Production deployments **should** pre-resolve hostnames to IP
+literals before configuring the kernel. The helper documented
+below exists for the call-site that still needs convenience
+(short-lived initiator processes, dev / test harnesses), but
+every blocking `getaddrinfo` lookup inherits the OS resolver's
+adversarial-DNS surface — `EAI_AGAIN` retries, queue contention
+under `/etc/resolv.conf` `timeout` / `attempts`, and the
+fact that a local cached resolver (systemd-resolved, dnsmasq,
+unbound) is the only sensible cache layer; the helper does not
+cache because no in-process cache that is cheaper than asking
+the local resolver gives a meaningful win on the connect-time
+budget. An operator running an unattended daemon avoids the
+exposure entirely by shipping IP literals through configuration
+or letting a sidecar resolver write the configured URI.
+
+The deferred-to-v1.1 cancellation-token rewrite (per the rc1
+release notes) only buys the synchronous resolve a way out
+under load — not a different exposure surface. Pre-resolution
+remains the operator's lever.
+
+---
+
 ## 2. Surface
 
 ```cpp
