@@ -959,13 +959,35 @@ void WsLink::shutdown() {
         std::error_code ec;
         if (acceptor_->close(ec)) {}
     }
+
+    /// Snapshot conn ids under the lock, post the per-session close
+    /// onto each session's strand, then notify the kernel side
+    /// SYNCHRONOUSLY for each session before stopping the
+    /// io_context. `ioc_.stop()` would otherwise drop pending
+    /// strand-bound continuations — including the read-completion
+    /// path that normally fires `notify_disconnect`. Without sync
+    /// notification, kernel-side `ConnectionRegistry` keeps live
+    /// records past ws shutdown, which in turn keeps the security
+    /// plugin's lifetime anchor alive past the PluginManager drain
+    /// budget. Per `link.md` §9 the shutdown must release every
+    /// kernel-observable session before the io_context tear-down.
+    std::vector<gn_conn_id_t> live_ids;
     {
-        /// Each session closes its socket on its own strand so the
-        /// teardown does not race a pending read/write completion.
         std::lock_guard lk(sessions_mu_);
-        for (auto& [_, s] : sessions_) s->enqueue_close();
+        live_ids.reserve(sessions_.size());
+        for (auto& [id, s] : sessions_) {
+            live_ids.push_back(id);
+            s->enqueue_close();
+        }
         sessions_.clear();
     }
+
+    if (api_ && api_->notify_disconnect) {
+        for (const auto id : live_ids) {
+            (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+        }
+    }
+
     work_.reset();
     ioc_.stop();
     /// Join only when we're not the worker — `shutdown()` may run

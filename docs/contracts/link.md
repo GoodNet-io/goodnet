@@ -242,7 +242,42 @@ plugins (WSS, TLS) compose by ORing into the producer's flags.
 
 ---
 
-## 9. Cross-references
+## 9. Shutdown release
+
+A link's own shutdown path **must** fire `host_api->notify_disconnect`
+synchronously for every session that was published through
+`notify_connect`, before tearing down the executor that owns the
+session strands. Asynchronously-posted close handlers are dropped
+when the executor stops, so any cleanup that relied on a pending
+strand-bound continuation (the read-completion path, idle timers,
+reconnect timers) never runs once the io_context is stopped.
+
+The canonical sequence inside a baseline link's `shutdown`:
+
+1. Close the acceptor.
+2. Snapshot the live `gn_conn_id_t` set under the sessions lock and
+   close each session's socket (synchronously where the
+   implementation allows; otherwise post the close on the strand —
+   the snapshot itself is what matters).
+3. Walk the snapshot and call `host_api->notify_disconnect(host_ctx,
+   id, GN_OK)` for every id while still on the shutdown caller's
+   thread.
+4. Stop the executor and join the worker thread.
+
+Without step 3 the kernel-side `ConnectionRegistry` keeps the
+records past link shutdown; per `plugin-lifetime.md` §4 those
+records hold the security plugin's lifetime anchor, so
+`PluginManager::drain_anchor` blocks for the full quiescence
+budget and may leak the `dlclose` handle.
+
+`disconnect(conn)` keeps its async semantics — a single peer
+walk-out continues to drain through the strand. The synchronous
+release applies only to whole-link shutdown, where the executor
+is about to disappear.
+
+---
+
+## 10. Cross-references
 
 - Plugin lifetime + liveness probe rules: `plugin-lifetime.md`.
 - TrustClass policy: `security-trust.md`.
