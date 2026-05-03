@@ -375,26 +375,6 @@ void run_xx_handshake(HandshakeState& initiator,
     EXPECT_TRUE(responder.is_complete());
 }
 
-void run_ik_handshake(HandshakeState& initiator,
-                       HandshakeState& responder) {
-    // -> e, es, s, ss
-    auto m1 = initiator.write_message(std::span<const std::uint8_t>{});
-    ASSERT_TRUE(m1.has_value());
-    auto p1 = responder.read_message(*m1);
-    ASSERT_TRUE(p1.has_value());
-    EXPECT_TRUE(p1->empty());
-
-    // <- e, ee, se
-    auto m2 = responder.write_message(std::span<const std::uint8_t>{});
-    ASSERT_TRUE(m2.has_value());
-    auto p2 = initiator.read_message(*m2);
-    ASSERT_TRUE(p2.has_value());
-    EXPECT_TRUE(p2->empty());
-
-    EXPECT_TRUE(initiator.is_complete());
-    EXPECT_TRUE(responder.is_complete());
-}
-
 } // namespace
 
 TEST(NoiseHandshakeXX, FullRoundTripReachesMatchingHash) {
@@ -534,27 +514,6 @@ TEST(NoiseHandshakeForwardSecrecy, MoveAssignZeroisesSourceSecrets) {
 
 // NOLINTEND(bugprone-use-after-move,clang-analyzer-cplusplus.Move)
 
-TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretIK) {
-    /// Same invariant for IK: the responder holds its long-term
-    /// static across both pattern messages, the initiator holds its
-    /// across both messages too. Split fires the eager wipe on both
-    /// roles.
-    Keypair init_static = generate_keypair();
-    Keypair resp_static = generate_keypair();
-    HandshakeState initiator(Pattern::IK, true,  init_static, resp_static.pk);
-    HandshakeState responder(Pattern::IK, false, resp_static);
-    run_ik_handshake(initiator, responder);
-
-    EXPECT_FALSE(initiator.static_secret_zeroised_for_test());
-    EXPECT_FALSE(responder.static_secret_zeroised_for_test());
-
-    [[maybe_unused]] auto i_pair = initiator.split();
-    [[maybe_unused]] auto r_pair = responder.split();
-
-    EXPECT_TRUE(initiator.static_secret_zeroised_for_test());
-    EXPECT_TRUE(responder.static_secret_zeroised_for_test());
-}
-
 TEST(NoiseTransportRekey, SymmetricThresholdRekeyKeepsInterop) {
     /// Auto-rekey trigger fires inside `noise_encrypt`/`noise_decrypt`
     /// once a CipherState reaches `REKEY_INTERVAL` (2^60). Both peers
@@ -623,70 +582,6 @@ TEST(NoiseHandshakeXX, PayloadCarriedThroughEveryMessage) {
     auto r3 = responder.read_message(*m3);
     ASSERT_TRUE(r3.has_value());
     EXPECT_EQ(*r3, p3);
-}
-
-// ── HandshakeState — IK round-trip ───────────────────────────────────────
-
-TEST(NoiseHandshakeIK, FullRoundTripReachesMatchingHash) {
-    Keypair init_static = generate_keypair();
-    Keypair resp_static = generate_keypair();
-
-    HandshakeState initiator(Pattern::IK, true,  init_static, resp_static.pk);
-    HandshakeState responder(Pattern::IK, false, resp_static);
-
-    run_ik_handshake(initiator, responder);
-
-    Digest h_i = initiator.handshake_hash();
-    Digest h_r = responder.handshake_hash();
-    EXPECT_EQ(std::vector<std::uint8_t>(h_i.begin(), h_i.end()),
-              std::vector<std::uint8_t>(h_r.begin(), h_r.end()));
-}
-
-TEST(NoiseHandshakeIK, ResponderLearnsInitiatorStatic) {
-    Keypair init_static = generate_keypair();
-    Keypair resp_static = generate_keypair();
-    HandshakeState initiator(Pattern::IK, true,  init_static, resp_static.pk);
-    HandshakeState responder(Pattern::IK, false, resp_static);
-    run_ik_handshake(initiator, responder);
-
-    EXPECT_EQ(responder.peer_static_public_key(), init_static.pk);
-    EXPECT_EQ(initiator.peer_static_public_key(), resp_static.pk);  // preset
-}
-
-TEST(NoiseHandshakeIK, TransportCiphersInteroperate) {
-    Keypair init_static = generate_keypair();
-    Keypair resp_static = generate_keypair();
-    HandshakeState initiator(Pattern::IK, true,  init_static, resp_static.pk);
-    HandshakeState responder(Pattern::IK, false, resp_static);
-    run_ik_handshake(initiator, responder);
-
-    auto i_pair = initiator.split();
-    auto r_pair = responder.split();
-    TransportState init_t(std::move(i_pair.send), std::move(i_pair.recv));
-    TransportState resp_t(std::move(r_pair.send), std::move(r_pair.recv));
-
-    auto enc = init_t.encrypt(bytes_of("ik-msg"));
-    auto dec = resp_t.decrypt(enc);
-    ASSERT_TRUE(dec.has_value());
-    EXPECT_EQ(*dec, bytes_of("ik-msg"));
-}
-
-TEST(NoiseHandshakeIK, MismatchedRemoteStaticFails) {
-    Keypair init_static = generate_keypair();
-    Keypair resp_static = generate_keypair();
-    Keypair wrong_static = generate_keypair();
-    // Initiator uses the wrong responder pk — handshake completes the
-    // protocol but the resulting transport keys diverge, so the first
-    // transport message fails authentication on the responder side.
-    HandshakeState initiator(Pattern::IK, true,  init_static, wrong_static.pk);
-    HandshakeState responder(Pattern::IK, false, resp_static);
-
-    auto m1 = initiator.write_message(std::span<const std::uint8_t>{});
-    ASSERT_TRUE(m1.has_value());
-    // Responder cannot decrypt the encrypted-static segment because the
-    // ss DH leg differs.
-    auto p1 = responder.read_message(*m1);
-    EXPECT_FALSE(p1.has_value());
 }
 
 // ── TransportState rekey ─────────────────────────────────────────────────

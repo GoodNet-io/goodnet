@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   plugins/security/noise/handshake.hpp
-/// @brief  HandshakeState — XX and IK pattern progression on X25519.
+/// @brief  HandshakeState — Noise XX pattern progression on X25519.
 ///
 /// Per `docs/contracts/noise-handshake.md`. The state machine is a step
 /// counter advanced by `write_message` / `read_message` on the local
-/// role. After the last pattern message, `is_complete()` returns true
-/// and `split()` extracts the transport ciphers.
+/// role. After the third pattern message, `is_complete()` returns true
+/// and `split()` extracts the transport ciphers. The provider is
+/// XX-only in v1; future patterns land in a sibling provider plugin
+/// rather than as branches here.
 
 #pragma once
 
@@ -35,10 +37,11 @@ struct Keypair {
 /// Generate a fresh X25519 keypair using libsodium's CSPRNG.
 [[nodiscard]] Keypair generate_keypair();
 
-/// Pattern selector. The vtable picks the pattern at handshake_open time.
+/// Pattern selector. v1 ships the XX pattern only; the enum is kept
+/// as a single-value bag so a v1.1 sibling provider can extend it
+/// without an ABI break in the noise plugin's public surface.
 enum class Pattern : std::uint8_t {
     XX = 0,  ///< unknown peer, three-message mutual auth
-    IK = 1,  ///< initiator knows responder pk, two-message
 };
 
 /// On-wire protocol-name strings — pinned by the contract.
@@ -46,13 +49,13 @@ enum class Pattern : std::uint8_t {
 
 class HandshakeState {
 public:
-    /// Construct a fresh handshake.
-    ///
-    /// @param remote_static_pk required for IK initiator; ignored otherwise.
+    /// Construct a fresh XX handshake. The pattern parameter is
+    /// passed verbatim through to `protocol_name()` and is required
+    /// to be `Pattern::XX`; future patterns ship as a separate
+    /// provider plugin per `noise-handshake.md` §1.
     HandshakeState(Pattern pattern,
                     bool initiator,
-                    const Keypair& static_keys,
-                    std::optional<PublicKey> remote_static_pk = std::nullopt);
+                    const Keypair& static_keys);
 
     HandshakeState(const HandshakeState&)            = delete;
     HandshakeState& operator=(const HandshakeState&) = delete;
@@ -75,8 +78,8 @@ public:
     [[nodiscard]] bool is_complete() const noexcept;
 
     /// Number of pattern messages already processed (read or written).
-    /// XX completes at 3, IK at 2. Plugins consult this to decide
-    /// whose turn the next message belongs to.
+    /// XX completes at 3. Plugins consult this to decide whose turn
+    /// the next message belongs to.
     [[nodiscard]] int step() const noexcept { return step_; }
 
     /// Local role chosen at construction time.
@@ -88,9 +91,9 @@ public:
         return symmetric_.handshake_hash();
     }
 
-    /// Peer static public key. For IK initiator this is the preshared
-    /// value supplied at construction; for every other role it becomes
-    /// valid after the pattern reveals it.
+    /// Peer static public key. Becomes valid after the pattern's
+    /// encrypted-static message is consumed (XX message 2 on the
+    /// initiator side, message 3 on the responder).
     [[nodiscard]] const PublicKey& peer_static_public_key() const noexcept {
         return rs_;
     }

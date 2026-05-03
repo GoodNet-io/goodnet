@@ -43,24 +43,22 @@ using gn::noise::TransportState;
 constexpr const char* kProviderId = "noise";
 
 /// Per-connection state owned by the kernel through `void* state`.
+/// XX is the only pattern v1 ships; future patterns (IK, NK) land
+/// as sibling provider plugins per `noise-handshake.md` §1, so the
+/// session struct does not carry a pattern selector.
 struct NoiseSession {
     HandshakeState                handshake;
     TransportState                transport;
-    gn::noise::Pattern            pattern   = gn::noise::Pattern::XX;
-    gn_handshake_role_t           role      = GN_ROLE_INITIATOR;
-    int                           total_steps = 3;   ///< XX: 3, IK: 2
+    gn_handshake_role_t           role        = GN_ROLE_INITIATOR;
     bool                          split_done  = false;
     PublicKey                     local_pk{};        ///< X25519 form
     bool                          peer_pk_present = false;
     PublicKey                     peer_x25519_pk{}; ///< filled at split
 
-    NoiseSession(Pattern p, bool initiator,
-                  const Keypair& static_keypair,
-                  std::optional<PublicKey> remote_static_pk)
-        : handshake(p, initiator, static_keypair, remote_static_pk),
-          pattern(p),
+    NoiseSession(bool initiator,
+                  const Keypair& static_keypair)
+        : handshake(Pattern::XX, initiator, static_keypair),
           role(initiator ? GN_ROLE_INITIATOR : GN_ROLE_RESPONDER),
-          total_steps(p == Pattern::IK ? 2 : 3),
           local_pk(static_keypair.pk) {}
 };
 
@@ -79,17 +77,6 @@ std::optional<Keypair> ed25519_to_x25519(
         return std::nullopt;
     }
     return kp;
-}
-
-/// Convert a peer's Ed25519 pk to its X25519 form.
-std::optional<PublicKey> ed25519_pk_to_x25519(
-    std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES> ed_pk)
-{
-    PublicKey out;
-    if (crypto_sign_ed25519_pk_to_curve25519(out.data(), ed_pk.data()) != 0) {
-        return std::nullopt;
-    }
-    return out;
 }
 
 void free_buffer(std::uint8_t* p) { std::free(p); }
@@ -135,23 +122,17 @@ gn_result_t noise_handshake_open(void* /*self*/,
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(local_static_pk, GN_PUBLIC_KEY_BYTES));
     if (!static_kp) return GN_ERR_INVALID_ENVELOPE;
 
-    /// Pattern selection: when the kernel hands a known peer pk we
-    /// could pick IK to save one round-trip, but XX accepts either
-    /// scenario (it just learns the static during the handshake) and
-    /// keeps the surface uniform. Future work splits into two
-    /// providers; for now everything runs on XX.
-    std::optional<PublicKey> peer_x;
-    if (remote_static_pk != nullptr) {
-        peer_x = ed25519_pk_to_x25519(
-            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(remote_static_pk, GN_PUBLIC_KEY_BYTES));
-        if (!peer_x) return GN_ERR_INVALID_ENVELOPE;
-    }
+    /// `remote_static_pk` is unused: XX learns the peer's static key
+    /// during the handshake's second message, so a known peer pk
+    /// passed in here would only be checked against the learned one
+    /// — and that cross-check belongs to the kernel-side trust gate,
+    /// not the provider. A future IK provider plugin consumes this
+    /// argument when selected; the XX provider ignores it.
+    (void)remote_static_pk;
 
     auto* session = new (std::nothrow) NoiseSession(
-        Pattern::XX,
         role == GN_ROLE_INITIATOR,
-        *static_kp,
-        peer_x);
+        *static_kp);
     if (!session) return GN_ERR_OUT_OF_MEMORY;
 
     *out_state = session;

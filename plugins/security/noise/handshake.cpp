@@ -13,7 +13,6 @@ namespace gn::noise {
 namespace {
 
 constexpr int xx_total_steps = 3;
-constexpr int ik_total_steps = 2;
 
 /// X25519 ECDH. Returns the 32-byte shared secret, or nullopt if the
 /// peer pk is the all-zero point (libsodium signals an error).
@@ -42,41 +41,19 @@ Keypair generate_keypair() {
 const char* protocol_name(Pattern p) noexcept {
     switch (p) {
         case Pattern::XX: return "Noise_XX_25519_ChaChaPoly_BLAKE2b";
-        case Pattern::IK: return "Noise_IK_25519_ChaChaPoly_BLAKE2b";
     }
     return "";
 }
 
 HandshakeState::HandshakeState(Pattern pattern,
                                 bool initiator,
-                                const Keypair& static_keys,
-                                std::optional<PublicKey> remote_static_pk)
+                                const Keypair& static_keys)
     : pattern_(pattern),
       initiator_(initiator),
-      steps_total_(pattern == Pattern::IK ? ik_total_steps : xx_total_steps),
+      steps_total_(xx_total_steps),
       s_sk_(static_keys.sk),
       s_pk_(static_keys.pk) {
     symmetric_.initialize(protocol_name(pattern));
-
-    if (pattern == Pattern::IK) {
-        if (initiator) {
-            // Initiator presets responder's static pk as the IK pre-message.
-            if (!remote_static_pk) {
-                // Defensive: contract requires it; default to all-zero so a
-                // misuse fails the first DH rather than corrupts state.
-                rs_.fill(0);
-            } else {
-                rs_ = *remote_static_pk;
-                rs_known_ = true;
-            }
-            symmetric_.mix_hash(
-                std::span<const std::uint8_t>(rs_.data(), DH_PUBLIC_KEY_BYTES));
-        } else {
-            // Responder mixes its own static pk as the pre-message.
-            symmetric_.mix_hash(
-                std::span<const std::uint8_t>(s_pk_.data(), DH_PUBLIC_KEY_BYTES));
-        }
-    }
 }
 
 HandshakeState::~HandshakeState() {
@@ -187,53 +164,30 @@ HandshakeState::write_message(std::span<const std::uint8_t> payload) {
         out.insert(out.end(), enc.begin(), enc.end());
     };
 
-    if (pattern_ == Pattern::XX) {
-        switch (step_) {
-            case 0: {
-                // -> e
-                write_e();
-                encrypt_payload();
-                break;
-            }
-            case 1: {
-                // <- e, ee, s, es
-                write_e();
-                if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
-                encrypt_static();                                      // s
-                if (!mix_dh(s_sk_, re_)) return std::nullopt;          // es (responder)
-                encrypt_payload();
-                break;
-            }
-            case 2: {
-                // -> s, se
-                encrypt_static();                                      // s
-                if (!mix_dh(s_sk_, re_)) return std::nullopt;          // se (initiator)
-                encrypt_payload();
-                break;
-            }
-            default: return std::nullopt;
+    switch (step_) {
+        case 0: {
+            // -> e
+            write_e();
+            encrypt_payload();
+            break;
         }
-    } else {  // Pattern::IK
-        switch (step_) {
-            case 0: {
-                // -> e, es, s, ss   (initiator)
-                write_e();
-                if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // es
-                encrypt_static();                                      // s
-                if (!mix_dh(s_sk_, rs_)) return std::nullopt;          // ss
-                encrypt_payload();
-                break;
-            }
-            case 1: {
-                // <- e, ee, se      (responder)
-                write_e();
-                if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
-                if (!mix_dh(s_sk_, re_)) return std::nullopt;          // se (responder)
-                encrypt_payload();
-                break;
-            }
-            default: return std::nullopt;
+        case 1: {
+            // <- e, ee, s, es
+            write_e();
+            if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
+            encrypt_static();                                      // s
+            if (!mix_dh(s_sk_, re_)) return std::nullopt;          // es (responder)
+            encrypt_payload();
+            break;
         }
+        case 2: {
+            // -> s, se
+            encrypt_static();                                      // s
+            if (!mix_dh(s_sk_, re_)) return std::nullopt;          // se (initiator)
+            encrypt_payload();
+            break;
+        }
+        default: return std::nullopt;
     }
 
     ++step_;
@@ -276,48 +230,27 @@ HandshakeState::read_message(std::span<const std::uint8_t> message) {
         return true;
     };
 
-    if (pattern_ == Pattern::XX) {
-        switch (step_) {
-            case 0: {
-                // -> e
-                if (!read_e()) return std::nullopt;
-                break;
-            }
-            case 1: {
-                // <- e, ee, s, es
-                if (!read_e()) return std::nullopt;
-                if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
-                if (!read_encrypted_static()) return std::nullopt;     // s
-                if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // es (initiator)
-                break;
-            }
-            case 2: {
-                // -> s, se
-                if (!read_encrypted_static()) return std::nullopt;     // s
-                if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // se (responder)
-                break;
-            }
-            default: return std::nullopt;
+    switch (step_) {
+        case 0: {
+            // -> e
+            if (!read_e()) return std::nullopt;
+            break;
         }
-    } else {  // Pattern::IK
-        switch (step_) {
-            case 0: {
-                // -> e, es, s, ss   (responder reads)
-                if (!read_e()) return std::nullopt;
-                if (!mix_dh(s_sk_, re_)) return std::nullopt;          // es (responder side)
-                if (!read_encrypted_static()) return std::nullopt;     // s
-                if (!mix_dh(s_sk_, rs_)) return std::nullopt;          // ss
-                break;
-            }
-            case 1: {
-                // <- e, ee, se      (initiator reads)
-                if (!read_e()) return std::nullopt;
-                if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
-                if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // se (initiator side: peer's s mixed with our e)
-                break;
-            }
-            default: return std::nullopt;
+        case 1: {
+            // <- e, ee, s, es
+            if (!read_e()) return std::nullopt;
+            if (!mix_dh(e_sk_, re_)) return std::nullopt;          // ee
+            if (!read_encrypted_static()) return std::nullopt;     // s
+            if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // es (initiator)
+            break;
         }
+        case 2: {
+            // -> s, se
+            if (!read_encrypted_static()) return std::nullopt;     // s
+            if (!mix_dh(e_sk_, rs_)) return std::nullopt;          // se (responder)
+            break;
+        }
+        default: return std::nullopt;
     }
 
     auto plain = symmetric_.decrypt_and_hash(
