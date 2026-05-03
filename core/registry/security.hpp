@@ -3,13 +3,15 @@
 ///
 /// Per `security-trust.md` §4 a node uses one default security
 /// provider per trust class. v1 simplification: one provider total.
-/// Multi-class policy lands when StackRegistry arrives.
+/// The backend is `std::atomic<std::shared_ptr<const SecurityEntry>>`
+/// — a CAS-driven swap; the registry-shape mutex+bool that v0 used
+/// was over-built for a single-slot holder. Multi-class policy lands
+/// when StackRegistry arrives in v1.x.
 
 #pragma once
 
 #include <atomic>
 #include <memory>
-#include <shared_mutex>
 #include <string>
 #include <string_view>
 
@@ -46,15 +48,14 @@ public:
     /// Remove the provider matching @p provider_id.
     [[nodiscard]] gn_result_t unregister_provider(std::string_view provider_id) noexcept;
 
-    /// Snapshot of the currently active provider, or nullopt.
+    /// Snapshot of the currently active provider, or a default-
+    /// constructed entry when no provider is installed.
     [[nodiscard]] SecurityEntry current() const;
 
     [[nodiscard]] bool is_active() const noexcept;
 
 private:
-    mutable std::shared_mutex mu_;
-    SecurityEntry             entry_{};
-    bool                      active_{false};
+    std::atomic<std::shared_ptr<const SecurityEntry>> entry_{nullptr};
 };
 
 } // namespace gn::core

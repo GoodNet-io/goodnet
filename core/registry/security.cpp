@@ -2,8 +2,6 @@
 
 #include "security.hpp"
 
-#include <mutex>
-
 namespace gn::core {
 
 gn_result_t SecurityRegistry::register_provider(
@@ -19,37 +17,50 @@ gn_result_t SecurityRegistry::register_provider(
         return GN_ERR_VERSION_MISMATCH;
     }
 
-    std::unique_lock lock(mu_);
-    if (active_) return GN_ERR_LIMIT_REACHED;
+    auto fresh = std::make_shared<const SecurityEntry>(SecurityEntry{
+        .provider_id     = std::string{provider_id},
+        .vtable          = vtable,
+        .self            = self,
+        .lifetime_anchor = std::move(lifetime_anchor),
+    });
 
-    entry_.provider_id     = provider_id;
-    entry_.vtable          = vtable;
-    entry_.self            = self;
-    entry_.lifetime_anchor = std::move(lifetime_anchor);
-    active_                = true;
+    /// CAS from empty to fresh. A non-null incumbent means the
+    /// slot is taken; reject without mutating it.
+    std::shared_ptr<const SecurityEntry> empty;
+    if (!entry_.compare_exchange_strong(empty, std::move(fresh),
+                                         std::memory_order_acq_rel,
+                                         std::memory_order_acquire)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     return GN_OK;
 }
 
 gn_result_t SecurityRegistry::unregister_provider(
     std::string_view provider_id) noexcept {
 
-    std::unique_lock lock(mu_);
-    if (!active_ || entry_.provider_id != provider_id) {
+    auto cur = entry_.load(std::memory_order_acquire);
+    if (!cur || cur->provider_id != provider_id) {
         return GN_ERR_NOT_FOUND;
     }
-    entry_ = SecurityEntry{};
-    active_ = false;
+    /// Swap to empty atomically. A concurrent register would have
+    /// observed the slot taken; a concurrent unregister observes
+    /// the same `cur` and the CAS only succeeds for one of them.
+    std::shared_ptr<const SecurityEntry> empty;
+    if (!entry_.compare_exchange_strong(cur, std::move(empty),
+                                         std::memory_order_acq_rel,
+                                         std::memory_order_acquire)) {
+        return GN_ERR_NOT_FOUND;
+    }
     return GN_OK;
 }
 
 SecurityEntry SecurityRegistry::current() const {
-    std::shared_lock lock(mu_);
-    return active_ ? entry_ : SecurityEntry{};
+    auto cur = entry_.load(std::memory_order_acquire);
+    return cur ? *cur : SecurityEntry{};
 }
 
 bool SecurityRegistry::is_active() const noexcept {
-    std::shared_lock lock(mu_);
-    return active_;
+    return static_cast<bool>(entry_.load(std::memory_order_acquire));
 }
 
 } // namespace gn::core
