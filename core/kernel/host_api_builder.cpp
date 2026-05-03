@@ -1065,7 +1065,36 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     if (sep == std::string_view::npos || sep == 0) {
         return GN_ERR_INVALID_ENVELOPE;
     }
-    const std::string scheme = std::string(uri_view.substr(0, sep));
+    const std::string_view scheme_view = uri_view.substr(0, sep);
+    /// RFC 3986 ABNF on the derived scheme — closes the gap above
+    /// `uri_has_control_bytes` (which only catches 0x00-0x20 + 0x7F).
+    /// Without this gate, a non-ASCII scheme prefix would store
+    /// garbage in `ConnectionRecord::scheme`, never match any
+    /// `LinkRegistry::find_by_scheme` lookup, and `get_endpoint`
+    /// would silently truncate the bytes into a fixed-size buffer.
+    if (!gn::is_valid_scheme(scheme_view)) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    const std::string scheme(scheme_view);
+
+    /// Caller-anchor gate per `security-trust.md` §6a, ingress side.
+    /// A link plugin may only announce conns whose derived scheme it
+    /// owns in `LinkRegistry`. Without this gate a TCP plugin could
+    /// call `notify_connect("ws://...")` and stash an orphan record
+    /// indexed under `ws` that the WS plugin cannot serve — the WS
+    /// vtable would receive `send`/`disconnect` for a conn id it
+    /// doesn't know. Match the egress gate shape from
+    /// `conn_owned_by_caller`: only reject on a registered-scheme
+    /// anchor mismatch; an unregistered scheme stays permissive so
+    /// in-tree fixtures (which set `plugin_anchor` without
+    /// registering a link) and unregister-races don't break.
+    if (pc->plugin_anchor) {
+        if (const auto link = pc->kernel->links().find_by_scheme(scheme);
+            link && link->lifetime_anchor &&
+            link->lifetime_anchor != pc->plugin_anchor) {
+            return GN_ERR_NOT_FOUND;
+        }
+    }
 
     /// Protocol-layer trust gate per `security-trust.md` §4: the
     /// active layer declares which trust classes it may deframe;

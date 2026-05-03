@@ -167,6 +167,103 @@ TEST(HostApiChain, NotifyConnectMissingSchemePrefixRejected) {
                                    &conn),
               GN_ERR_INVALID_ENVELOPE);
     EXPECT_EQ(h.kernel->connections().size(), 0u);
+
+    /// RFC 3986 says `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )`.
+    /// `uri_has_control_bytes` only catches 0x00-0x20 and 0x7F; non-ASCII
+    /// (0x80+) bytes in scheme prefix slip through without the dedicated
+    /// `is_valid_scheme` gate. Without it, `ConnectionRecord::scheme`
+    /// would store UTF-8 garbage and `get_endpoint` would silently
+    /// truncate.
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "tc\xC3\xB1p://1.2.3.4:9000",  // non-ASCII byte
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+
+    /// Scheme starting with a digit also rejected (RFC ABNF first char
+    /// must be ALPHA).
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "9tcp://1.2.3.4:9000",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(h.kernel->connections().size(), 0u);
+}
+
+TEST(HostApiChain, NotifyConnectSchemeNotOwnedByCallerRejected) {
+    /// Caller-anchor gate per `security-trust.md` §6a (ingress side).
+    /// A link plugin may only announce conns whose derived scheme it
+    /// owns in `LinkRegistry`. Without this gate a TCP plugin could
+    /// register an orphan conn under `ws` that no plugin can serve.
+    KernelHarness h;
+    /// The harness defaults to no plugin anchor (in-tree fixture
+    /// permissive path). Install one so the gate fires.
+    auto tcp_anchor = std::make_shared<gn::core::PluginAnchor>();
+    h.plugin_ctx.plugin_anchor = tcp_anchor;
+    h.api = gn::core::build_host_api(h.plugin_ctx);
+
+    /// Register `tcp` and `ws` schemes under different anchors —
+    /// the harness owns `tcp`; `ws` belongs to a different plugin.
+    auto ws_anchor = std::make_shared<gn::core::PluginAnchor>();
+    gn_link_vtable_t dummy_vt{};
+    dummy_vt.api_size = sizeof(gn_link_vtable_t);
+    gn_link_id_t tcp_id = GN_INVALID_ID;
+    gn_link_id_t ws_id  = GN_INVALID_ID;
+    ASSERT_EQ(h.kernel->links().register_link(
+                  "tcp", &dummy_vt, nullptr, &tcp_id, tcp_anchor), GN_OK);
+    ASSERT_EQ(h.kernel->links().register_link(
+                  "ws", &dummy_vt, nullptr, &ws_id, ws_anchor), GN_OK);
+
+    PublicKey peer_pk{};
+    peer_pk[0] = 0x77;
+    gn_conn_id_t conn = GN_INVALID_ID;
+
+    /// TCP plugin announces a conn with its own scheme — admitted.
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "tcp://1.2.3.4:9000",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &conn),
+              GN_OK);
+    EXPECT_NE(conn, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 1u);
+
+    /// TCP plugin announces a conn under WS scheme — rejected without
+    /// inserting a record. The WS-scheme entry's anchor differs from
+    /// the caller's, so the gate fires.
+    gn_conn_id_t orphan = GN_INVALID_ID;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   peer_pk.data(),
+                                   "ws://1.2.3.4:8080",
+                                   GN_TRUST_PEER,
+                                   GN_ROLE_INITIATOR,
+                                   &orphan),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(orphan, GN_INVALID_ID);
+    EXPECT_EQ(h.kernel->connections().size(), 1u);
+
+    /// Unregistered scheme stays permissive — matches the egress gate
+    /// shape (`conn_owned_by_caller` returns true on `!link`) so
+    /// fixtures setting `plugin_anchor` without registering a link
+    /// continue to work, and an unregister-race between
+    /// `notify_connect` and `unregister_link` doesn't reject a
+    /// well-formed call. Distinct peer_pk because the connection
+    /// registry holds one record per remote_pk.
+    PublicKey other_peer{};
+    other_peer[0] = 0x88;
+    EXPECT_EQ(h.api.notify_connect(h.api.host_ctx,
+                                   other_peer.data(),
+                                   "ipc:///tmp/x",
+                                   GN_TRUST_LOOPBACK,
+                                   GN_ROLE_INITIATOR,
+                                   &orphan),
+              GN_OK);
+    EXPECT_EQ(h.kernel->connections().size(), 2u);
 }
 
 TEST(HostApiChain, InboundBytesReachHandler) {
