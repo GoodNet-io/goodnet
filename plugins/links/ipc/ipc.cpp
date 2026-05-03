@@ -14,6 +14,7 @@
 #include <asio/write.hpp>
 #include <system_error>
 
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -283,11 +284,36 @@ std::string IpcLink::path_from_uri(std::string_view uri) {
     return parts->path;
 }
 
+namespace {
+
+/// Reject paths with `..` traversal components or NUL bytes. The
+/// listen / connect entries trust the operator's URI but a config-
+/// reload from a less-trusted source could feed a path that walks
+/// out of the intended namespace — e.g. `/var/run/gn/../../etc/`.
+[[nodiscard]] bool path_is_normalised(std::string_view path) noexcept {
+    namespace fs = std::filesystem;
+    if (path.find('\0') != std::string_view::npos) return false;
+    for (const auto& comp : fs::path(path)) {
+        if (comp == "..") return false;
+    }
+    return true;
+}
+
+}  // namespace
+
 gn_result_t IpcLink::listen(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_NULL_ARG;
 
     const auto path = path_from_uri(uri_sv);
     if (path.empty()) return GN_ERR_INVALID_ENVELOPE;
+    if (!path_is_normalised(path)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ipc: listen rejected non-normalised path: %s",
+                path.c_str());
+        }
+        return GN_ERR_INVALID_ENVELOPE;
+    }
 
     /// Lock the parent directory to owner-only access *before* bind so
     /// the socket inode is never reachable by other users — eliminates
@@ -298,7 +324,19 @@ gn_result_t IpcLink::listen(std::string_view uri_sv) {
         if (!parent.empty()) {
             std::error_code dir_ec;
             fs::create_directories(parent, dir_ec);
-            ::chmod(parent.c_str(), 0700);
+            if (::chmod(parent.c_str(), 0700) != 0) {
+                /// Best-effort — a parent that already has
+                /// looser perms (operator-managed
+                /// `/var/run/<service>/`) is OK to bind into; a
+                /// parent we can't tighten is a red flag, log and
+                /// continue. A future strict mode can promote this
+                /// to a hard refusal.
+                if (api_) {
+                    gn_log_warn(api_,
+                        "ipc: chmod 0700 on parent %s failed: %s",
+                        parent.c_str(), std::strerror(errno));
+                }
+            }
         }
     }
 
@@ -349,6 +387,47 @@ void IpcLink::on_accept(std::shared_ptr<Session> session,
                               const std::error_code& ec) {
     if (ec || shutdown_.load(std::memory_order_acquire)) return;
 
+    /// SO_PEERCRED gate: refuse cross-UID connects on the IPC
+    /// socket. The default policy is "same UID as the listener
+    /// process" — the unix-socket parent dir lock to 0700 already
+    /// blocks cross-UID dial, but PEERCRED defends against a
+    /// privileged peer that bypassed the dir gate (e.g. a
+    /// `setuid` helper running as root that connected to a
+    /// non-root listener's socket). Future strict mode can
+    /// switch to operator-supplied allowlist.
+    {
+        struct ::ucred cred{};
+        ::socklen_t len = sizeof(cred);
+        const int fd = session->socket().native_handle();
+        if (::getsockopt(fd, SOL_SOCKET, SO_PEERCRED,
+                          &cred, &len) == 0 &&
+            len == sizeof(cred)) {
+            const ::uid_t expected_uid = ::geteuid();
+            if (cred.uid != expected_uid) {
+                if (api_) {
+                    gn_log_warn(api_,
+                        "ipc: rejected accept from uid=%u (expected=%u, "
+                        "pid=%ld) — peer-credential gate",
+                        static_cast<unsigned>(cred.uid),
+                        static_cast<unsigned>(expected_uid),
+                        static_cast<long>(cred.pid));
+                }
+                session->do_close();
+                start_accept();
+                return;
+            }
+        } else {
+            /// Kernel without SO_PEERCRED on this socket type —
+            /// non-Linux build. The dir-perm gate above is the
+            /// only defence; log debug for visibility but accept.
+            if (api_) {
+                gn_log_debug(api_,
+                    "ipc: SO_PEERCRED unavailable: %s",
+                    std::strerror(errno));
+            }
+        }
+    }
+
     if (api_ && api_->notify_connect) {
         std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
         gn_conn_id_t conn = GN_INVALID_ID;
@@ -380,6 +459,14 @@ gn_result_t IpcLink::connect(std::string_view uri_sv) {
 
     const auto path = path_from_uri(uri_sv);
     if (path.empty()) return GN_ERR_INVALID_ENVELOPE;
+    if (!path_is_normalised(path)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ipc: connect rejected non-normalised path: %s",
+                path.c_str());
+        }
+        return GN_ERR_INVALID_ENVELOPE;
+    }
 
     auto session = std::make_shared<Session>(
         local_proto::stream_protocol::socket(ioc_),
