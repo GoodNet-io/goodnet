@@ -286,6 +286,59 @@ TEST(WsLink, LoopbackHandshakeAndPayloadRoundTrip) {
     server->shutdown();
 }
 
+// ── shutdown discipline — link.md §5 sync release ────────────────────────
+
+TEST(WsLink_Shutdown, SynchronousNotifyDisconnect) {
+    /// `link.md` §9 — shutdown releases every kernel-observable
+    /// session before the io_context tear-down. Pre-fix, WS posted
+    /// per-session close onto each strand and let `ioc_.stop()` drop
+    /// the read-completion path that fires `notify_disconnect`; the
+    /// kernel-side `ConnectionRegistry` then kept live records past
+    /// shutdown and held the security plugin's lifetime anchor.
+    /// Carry-over of the TCP fix in commit bda18c6.
+    WsHarness harness;
+    auto api = harness.make_api();
+
+    auto server = std::make_shared<gn::link::ws::WsLink>();
+    auto client = std::make_shared<gn::link::ws::WsLink>();
+    server->set_host_api(&api);
+    client->set_host_api(&api);
+
+    ASSERT_EQ(server->listen("ws://127.0.0.1:0/"), GN_OK);
+    const auto port = server->listen_port();
+    ASSERT_GT(port, 0u);
+
+    const std::string uri =
+        "ws://127.0.0.1:" + std::to_string(port) + "/";
+    ASSERT_EQ(client->connect(uri), GN_OK);
+
+    /// Both sides must hold a valid `conn_id_` before shutdown — the
+    /// shutdown path only fires for sessions registered through
+    /// `notify_connect`.
+    ASSERT_TRUE(wait_for([&]() {
+        std::lock_guard lk(harness.mu);
+        return harness.connects.size() >= 2;
+    }));
+    std::size_t connects = 0;
+    {
+        std::lock_guard lk(harness.mu);
+        connects = harness.connects.size();
+        EXPECT_EQ(harness.disconnects.size(), 0u);
+    }
+
+    client->shutdown();
+    server->shutdown();
+
+    /// Sync fire: by the time both shutdowns return, every connect
+    /// has a matching disconnect. No `wait_for` — an async drain
+    /// would defeat the regression pin.
+    std::lock_guard lk(harness.mu);
+    EXPECT_EQ(harness.disconnects.size(), connects)
+        << "WsLink::shutdown() must fire notify_disconnect "
+           "synchronously for every live session before ioc_.stop() "
+           "drops strand-bound continuations (link.md §9).";
+}
+
 // ── backpressure §3.1 — control-reply hard-cap discipline ────────────────
 
 TEST(WsLink_PingFlood, ServerDisconnectsOnPongQueueOverflow) {
