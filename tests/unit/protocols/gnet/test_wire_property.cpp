@@ -127,7 +127,7 @@ RC_GTEST_PROP(GnetWireProperty,
 
     std::array<std::uint8_t, kFixedHeaderSize> buf{};
     encode_header(buf, /*flags=*/0x00, /*msg_id=*/1,
-                  /*length=*/static_cast<std::uint32_t>(kFixedHeaderSize));
+                  /*total_length=*/static_cast<std::uint32_t>(kFixedHeaderSize));
     buf[pos] = mutation;
 
     ParsedHeader out{};
@@ -143,33 +143,40 @@ RC_GTEST_PROP(GnetWireProperty,
 
     std::array<std::uint8_t, kFixedHeaderSize> buf{};
     encode_header(buf, /*flags=*/0x00, /*msg_id=*/1,
-                  /*length=*/static_cast<std::uint32_t>(kFixedHeaderSize));
+                  /*total_length=*/static_cast<std::uint32_t>(kFixedHeaderSize));
     buf[kOffsetVersion] = bad_ver;
 
     ParsedHeader out{};
     RC_ASSERT(parse_header(buf, out) == GN_ERR_DEFRAME_CORRUPT);
 }
 
-/* ── Rejection: any reserved bit set ─────────────────────────────────────── */
+/* ── Forward-compat: any reserved bit set is masked, not rejected ─────── */
 
 RC_GTEST_PROP(GnetWireProperty,
-              ReservedBitSetRejected,
+              ReservedBitSetMasked,
               ()) {
     /// Pick a non-zero pattern that lives entirely inside the reserved
-    /// bits 3..7 — these MUST be rejected even when the rest is legal.
+    /// bits 3..7 — these are forward-compat slots: a v1 reader masks
+    /// them off and continues parsing rather than dropping the
+    /// connection. v1.1 flags land here without breaking v1 peers.
+    /// Restrict the pattern to ONLY reserved bits — a generated
+    /// value with low bits set could trip the broadcast / explicit
+    /// validation downstream and falsely look like a rejection of
+    /// the reserved-bit branch.
     const std::uint8_t reserved =
         *rc::gen::suchThat(rc::gen::arbitrary<std::uint8_t>(),
                            [](std::uint8_t v) {
                                return (v & kReservedBitsMask) != 0;
-                           });
+                           }) & kReservedBitsMask;
 
     std::array<std::uint8_t, kFixedHeaderSize> buf{};
     encode_header(buf, reserved, /*msg_id=*/1,
-                  /*length=*/static_cast<std::uint32_t>(
+                  /*total_length=*/static_cast<std::uint32_t>(
                       kFixedHeaderSize + conditional_pk_size(reserved)));
 
     ParsedHeader out{};
-    RC_ASSERT(parse_header(buf, out) == GN_ERR_DEFRAME_CORRUPT);
+    RC_ASSERT(parse_header(buf, out) == GN_OK);
+    RC_ASSERT((out.flags & kReservedBitsMask) == 0);
 }
 
 }  // namespace

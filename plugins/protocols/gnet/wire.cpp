@@ -26,12 +26,16 @@ gn_result_t parse_header(std::span<const std::uint8_t> bytes,
         return GN_ERR_DEFRAME_CORRUPT;
     }
 
-    const std::uint8_t flags = bytes[kOffsetFlags];
+    const std::uint8_t raw_flags = bytes[kOffsetFlags];
 
-    /// Reserved bits must be zero in v1.
-    if ((flags & kReservedBitsMask) != 0) {
-        return GN_ERR_DEFRAME_CORRUPT;
-    }
+    /// Reserved bits are forward-compatible slots — v1.1+ flags
+    /// land in them. Mask the unknown bits off so a frame from a
+    /// v1.1 sender survives parsing on a v1 reader instead of
+    /// dropping the connection. The deframe path stays
+    /// strict on the bits it understands; the rest are
+    /// invisible. Operator surface stays in `metrics.md` once the
+    /// v1.1 spec lands a per-flag counter.
+    const std::uint8_t flags = raw_flags & ~kReservedBitsMask;
 
     /// Broadcast frames must declare EXPLICIT_SENDER and must NOT
     /// declare EXPLICIT_RECEIVER — receiver is implicit ZERO.

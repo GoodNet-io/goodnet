@@ -239,30 +239,40 @@ TEST(GnetWireParseRejection, ZeroVersion) {
     EXPECT_EQ(parse_header(buf, out), GN_ERR_DEFRAME_CORRUPT);
 }
 
-TEST(GnetWireParseRejection, ReservedBit3Set) {
+TEST(GnetWireForwardCompat, ReservedBit3Masked) {
+    /// Reserved bits are forward-compat — v1.1+ flags land in
+    /// them. v1 must mask the unknown bit off and continue
+    /// parsing rather than drop the connection.
     auto buf = make_valid_header(0, 1, kFixedHeaderSize);
     buf[kOffsetFlags] = 0x08;  /// bit 3 reserved
     ParsedHeader out{};
-    EXPECT_EQ(parse_header(buf, out), GN_ERR_DEFRAME_CORRUPT);
+    EXPECT_EQ(parse_header(buf, out), GN_OK);
+    EXPECT_EQ(out.flags & 0x08, 0u)
+        << "reserved bit must be masked off in the parsed flags";
 }
 
-TEST(GnetWireParseRejection, ReservedBit7Set) {
+TEST(GnetWireForwardCompat, ReservedBit7Masked) {
     auto buf = make_valid_header(0, 1, kFixedHeaderSize);
     buf[kOffsetFlags] = 0x80;  /// bit 7 reserved
     ParsedHeader out{};
-    EXPECT_EQ(parse_header(buf, out), GN_ERR_DEFRAME_CORRUPT);
+    EXPECT_EQ(parse_header(buf, out), GN_OK);
+    EXPECT_EQ(out.flags & 0x80, 0u);
 }
 
-TEST(GnetWireParseRejection, AnyReservedBitSet) {
-    /// Walk every bit in the reserved-bits mask in isolation.
+TEST(GnetWireForwardCompat, AnyReservedBitMasked) {
+    /// Walk every bit in the reserved-bits mask in isolation;
+    /// each must round-trip parse as `GN_OK` with the bit
+    /// masked off in `out.flags`.
     for (std::uint8_t bit = 3; bit < 8; ++bit) {
         auto buf = make_valid_header(0, 1, kFixedHeaderSize);
         buf[kOffsetFlags] = static_cast<std::uint8_t>(1u << bit);
         ParsedHeader out{};
-        EXPECT_EQ(parse_header(buf, out), GN_ERR_DEFRAME_CORRUPT)
+        EXPECT_EQ(parse_header(buf, out), GN_OK)
             << "reserved bit " << static_cast<int>(bit)
-            << " (mask 0x" << std::hex << static_cast<int>(1u << bit) << ") "
-            << "must reject";
+            << " must parse cleanly (forward-compat)";
+        EXPECT_EQ(out.flags & static_cast<std::uint8_t>(1u << bit), 0u)
+            << "reserved bit " << static_cast<int>(bit)
+            << " must be masked off in `out.flags`";
     }
 }
 
