@@ -418,6 +418,41 @@ convenience wrappers `gn_inject_external_message` and
 `gn_inject_frame` in `sdk/convenience.h` expand to the corresponding
 `inject(LAYER, …)` call.
 
+### 8.1 Shippable bridge shape in v1
+
+A bridge plugin connects an external system (MQTT, HTTP, OPC-UA,
+foreign mesh) to the GoodNet mesh. v1 admits one canonical shape:
+
+1. The foreign-protocol logic runs **out-of-process**. The bridge
+   plugin owns an IPC connection to the goodnet kernel — same shape
+   as any in-process plugin, but the foreign socket lives in the
+   bridge's own process and the kernel never sees it.
+2. The bridge calls `notify_connect` on its IPC link with
+   `gn_trust_class = IntraNode` (per `security-trust.md` §3); the
+   kernel admits the conn under the null security provider, whose
+   mask permits `IntraNode` (`plugins/security/null/null.cpp:139`).
+   No Noise handshake runs on the bridge edge.
+3. For every foreign-system message the bridge wants to publish to
+   the mesh, the bridge calls `inject(LAYER_MESSAGE, source =
+   ipc_conn, msg_id, bytes)`. The kernel routes the envelope
+   through the active protocol layer's handler chain exactly as if
+   the bytes had arrived from the bridge's `remote_pk` — see §8 for
+   per-conn rate limiting and `gn_message_t::conn_id` doc for the
+   stamping invariant.
+
+A second shape — bridge installs a `subscribe_data` callback on
+another plugin's link conn through `sdk/extensions/link.h` composer
+slots, sees foreign-protocol bytes on a shared TCP/UDP/IPC socket,
+and feeds them through `inject(LAYER_FRAME)` — is reserved for v1.x.
+Composer slots return `GN_ERR_NOT_IMPLEMENTED` on every baseline
+link in v1; the L1-shared subscribe pattern lands with the relay /
+DHT layer.
+
+Bridges that fan in many foreign clients through one IPC source
+share a single rate-limit bucket per the §8 paragraph above; the
+bridge plugin layers its own per-foreign-client limiter on top.
+The kernel never sees foreign-client identity.
+
 ---
 
 ## 9. Service executor

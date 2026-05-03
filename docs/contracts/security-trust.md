@@ -113,6 +113,26 @@ transports do not duplicate it:
   Identity is the security-pipeline's job; the transport surfaces
   the URI and trust class only.
 
+### Bridge plugins declare `IntraNode`
+
+A bridge plugin that re-publishes foreign-system payloads
+(MQTT, HTTP, OPC-UA) into the mesh runs out-of-process and opens
+an IPC link to the kernel — see `host-api.md` §8.1 for the v1
+shape. The bridge's IPC conn declares `gn_trust_class = IntraNode`
+on `notify_connect`; the null security provider's
+`allowed_trust_mask` already permits `IntraNode`
+(`plugins/security/null/null.cpp:139`), so the bridge edge runs
+without a Noise handshake. No new ABI is needed — the trust class
+exists, the security mask permits it, and `host-api.md` §8.1
+names the canonical pattern.
+
+A bridge that mistakenly declares `Untrusted` on its IPC link
+forces a Noise handshake the foreign client cannot drive; the
+conn never leaves the handshake phase and `send` enqueues into
+`pending_handshake_bytes` until the kernel tears it down. The
+contract surfaces this as a clear «wrong trust class for an
+in-process bridge» configuration error, not a silent stall.
+
 ---
 
 ## 3a. `gn_security_provider_vtable_t` layout
