@@ -789,7 +789,15 @@ gn_result_t WsLink::listen(std::string_view uri) {
 
     std::error_code ec;
     asio::ip::tcp::acceptor acc(ioc_);
-    if (acc.open(ep.protocol(), ec)) return GN_ERR_NULL_ARG;
+    if (acc.open(ep.protocol(), ec)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ws: acceptor open failed (uri=%.*s, errno=%d): %s",
+                static_cast<int>(uri.size()), uri.data(),
+                ec.value(), ec.message().c_str());
+        }
+        return GN_ERR_NULL_ARG;
+    }
     /// IPv6 wildcard `::` — disable `IPV6_V6ONLY` so dual-stack
     /// listens accept v4-mapped clients on Linux. Best-effort:
     /// pre-Linux-3.x kernels lack the option and the connection
@@ -804,10 +812,30 @@ gn_result_t WsLink::listen(std::string_view uri) {
         }
     }
     if (acc.set_option(asio::ip::tcp::acceptor::reuse_address(true), ec)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ws: reuse_address failed (uri=%.*s, errno=%d): %s",
+                static_cast<int>(uri.size()), uri.data(),
+                ec.value(), ec.message().c_str());
+        }
         return GN_ERR_LIMIT_REACHED;
     }
-    if (acc.bind(ep, ec)) return GN_ERR_LIMIT_REACHED;
+    if (acc.bind(ep, ec)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ws: bind failed (uri=%.*s, errno=%d): %s",
+                static_cast<int>(uri.size()), uri.data(),
+                ec.value(), ec.message().c_str());
+        }
+        return GN_ERR_LIMIT_REACHED;
+    }
     if (acc.listen(asio::socket_base::max_listen_connections, ec)) {
+        if (api_) {
+            gn_log_warn(api_,
+                "ws: listen failed (uri=%.*s, errno=%d): %s",
+                static_cast<int>(uri.size()), uri.data(),
+                ec.value(), ec.message().c_str());
+        }
         return GN_ERR_LIMIT_REACHED;
     }
     listen_port_.store(acc.local_endpoint().port(),
