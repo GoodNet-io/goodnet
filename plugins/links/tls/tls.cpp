@@ -172,11 +172,25 @@ public:
 
     void do_close() {
         asio::dispatch(strand_, [self = shared_from_this()] {
-            std::error_code ec;
-            /// `shutdown` issues TLS close_notify; the close that
-            /// follows is what guarantees the FD goes away.
-            if (self->ssl_.shutdown(ec)) {}
-            if (self->lowest_layer().close(ec)) {}
+            /// `async_shutdown` writes the TLS close_notify alert
+            /// and waits for the peer's matching alert (or the
+            /// underlying transport teardown) before completing.
+            /// The synchronous `shutdown()` returned immediately
+            /// without flushing the alert under common asio
+            /// configurations, so the peer saw a TCP RST instead
+            /// of a graceful close — RFC 5246 §7.2.1 requires the
+            /// alert exchange for clean session resumption.
+            ///
+            /// The completion handler closes the FD regardless of
+            /// the alert outcome; an idempotent close is the
+            /// correct shape since the strand owns the socket and
+            /// no other path holds a reference past `do_close`.
+            self->ssl_.async_shutdown(
+                asio::bind_executor(self->strand_,
+                    [self](const std::error_code& /*shutdown_ec*/) {
+                        std::error_code close_ec;
+                        if (self->lowest_layer().close(close_ec)) {}
+                    }));
         });
     }
 
