@@ -3,7 +3,9 @@
 
 #include <sodium.h>
 
+#include <cstdlib>
 #include <cstring>
+#include <limits>
 
 namespace gn::noise {
 namespace {
@@ -53,6 +55,17 @@ CipherState::encrypt_with_ad(std::span<const std::uint8_t> ad,
         return std::vector<std::uint8_t>(plaintext.begin(), plaintext.end());
     }
 
+    /// Per Noise §5.1: signal an error if incrementing `n` would
+    /// wrap. ChaCha20-Poly1305-IETF is a deterministic AEAD —
+    /// reusing a nonce under the same key reveals plaintext XOR
+    /// and forges authenticator tags. There is no recovery path
+    /// in the wire protocol once a nonce wraps, so abort rather
+    /// than continue with broken crypto. The bound is
+    /// 2^64-1 messages per direction per key — at any realistic
+    /// rate the bound is unreachable, but the check costs nothing.
+    if (n_ == std::numeric_limits<std::uint64_t>::max()) {
+        std::abort();
+    }
     std::uint8_t nonce[AEAD_NONCE_BYTES];
     encode_nonce(n_, nonce);
 
@@ -79,6 +92,13 @@ CipherState::decrypt_with_ad(std::span<const std::uint8_t> ad,
         return std::nullopt;
     }
 
+    /// Same wrap guard as `encrypt_with_ad`. Decrypt and encrypt
+    /// share one counter on each end of the bidirectional pair
+    /// (each direction has its own `CipherState`), so abusing a
+    /// nonce here is just as catastrophic as on the encrypt side.
+    if (n_ == std::numeric_limits<std::uint64_t>::max()) {
+        std::abort();
+    }
     std::uint8_t nonce[AEAD_NONCE_BYTES];
     encode_nonce(n_, nonce);
 

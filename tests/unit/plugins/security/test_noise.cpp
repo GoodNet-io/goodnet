@@ -22,6 +22,7 @@
 #include <array>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <span>
 #include <string>
 #include <string_view>
@@ -236,6 +237,35 @@ TEST(NoiseCipher, AdMismatchFailsAuth) {
     auto enc = cs1.encrypt_with_ad(ad_a, plain);
     auto bad = cs2.decrypt_with_ad(ad_b, enc);
     EXPECT_FALSE(bad.has_value());
+}
+
+TEST(NoiseCipherDeath, AbortsOnCounterAtMax) {
+    /// Per Noise §5.1: incrementing the nonce counter past
+    /// 2^64 - 1 must signal an error. The deterministic AEAD
+    /// breaks catastrophically on nonce reuse — no recovery
+    /// path exists in the wire protocol — so the cipher
+    /// aborts before the next `crypto_aead_*` call.
+    /// `test_set_nonce` is the in-tree test hatch on
+    /// `cipher.hpp:63`; production code never reaches the
+    /// 2^64 ceiling at any realistic message rate.
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
+    CipherKey k;
+    k.fill(0xAA);
+    EXPECT_DEATH({
+        CipherState cs;
+        cs.initialize_key(k);
+        cs.test_set_nonce(std::numeric_limits<std::uint64_t>::max());
+        (void)cs.encrypt_with_ad(std::span<const std::uint8_t>{},
+                                  bytes_of("never"));
+    }, "");
+    EXPECT_DEATH({
+        CipherState cs;
+        cs.initialize_key(k);
+        cs.test_set_nonce(std::numeric_limits<std::uint64_t>::max());
+        std::uint8_t ct[AEAD_TAG_BYTES] = {};
+        (void)cs.decrypt_with_ad(std::span<const std::uint8_t>{},
+                                  std::span<const std::uint8_t>(ct, sizeof(ct)));
+    }, "");
 }
 
 TEST(NoiseCipher, RekeyChangesKey) {
