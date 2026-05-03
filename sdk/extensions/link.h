@@ -27,6 +27,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <sdk/abi.h>
 #include <sdk/link.h>
 #include <sdk/types.h>
 
@@ -236,6 +237,8 @@ typedef struct gn_link_api_s {
 
     void* _reserved[4];      /**< MUST be zero; see `abi-evolution.md` §4 */
 } gn_link_api_t;
+
+GN_VTABLE_API_SIZE_FIRST(gn_link_api_t);
 
 #ifdef __cplusplus
 } /* extern "C" */
