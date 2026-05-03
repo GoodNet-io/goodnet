@@ -193,8 +193,9 @@ generation no longer wants — never a use-after-free.
 A handler that gates behaviour on the inbound-edge connection MUST
 tolerate `env->conn_id == GN_INVALID_ID` as `CONTINUE` — never
 `REJECT`. The kernel stamps a real conn id on every envelope dispatched
-through `notify_inbound_bytes` and `inject` (see `host-api.md` §7 and
-§8); `GN_INVALID_ID` is the contract's escape hatch for envelopes a
+through `notify_inbound_bytes` (the slot is §2 of `host-api.md`; the
+stamping invariant is in §8 alongside `inject`); `GN_INVALID_ID` is
+the contract's escape hatch for envelopes a
 future producer might synthesise without a corresponding edge (none
 exist in v1). A handler that hard-rejects on `INVALID_ID` would close
 the connection on a forward-compatible producer and leak the rejection

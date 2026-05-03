@@ -127,13 +127,19 @@ so callers do not read uninitialised bytes).
 
 ## 4. Dependencies on other extensions / host_api
 
-The handler depends on three `host_api` slots:
+The handler depends on four `host_api` slots:
 
 | Slot | Use |
 |---|---|
-| `find_conn_by_pk` | resolve the source connection from `gn_message_t::sender_pk` |
+| `subscribe_conn_state` / `unsubscribe` | watch DISCONNECTED events to drop `peers_[conn]` and outstanding pings — see `handler-registration.md` §3a |
 | `get_endpoint` | look up the URI of `conn` to fill `observed_addr` / `observed_port` on PONG |
 | `send` | emit PING / PONG payloads through the active protocol layer |
+
+The handler reads the inbound-edge connection straight from
+`gn_message_t::conn_id` per `handler-registration.md` §3a;
+`find_conn_by_pk` would be wrong on relay paths where `sender_pk`
+identifies the originating peer but the receiving connection
+belongs to the relay.
 
 It does **not** depend on any other extension. The plugin
 descriptor declares no `ext_requires`.

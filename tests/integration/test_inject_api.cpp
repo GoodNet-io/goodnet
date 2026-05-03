@@ -30,6 +30,7 @@ struct Capture {
     PublicKey        last_sender{};
     PublicKey        last_receiver{};
     gn_conn_id_t     last_conn_id{GN_INVALID_ID};
+    std::uint32_t    last_api_size{0};
     std::vector<std::uint8_t> last_payload;
 
     static gn_propagation_t handle(void* self, const gn_message_t* env) {
@@ -37,7 +38,8 @@ struct Capture {
         c->last_msg_id = env->msg_id;
         std::memcpy(c->last_sender.data(),   env->sender_pk,   GN_PUBLIC_KEY_BYTES);
         std::memcpy(c->last_receiver.data(), env->receiver_pk, GN_PUBLIC_KEY_BYTES);
-        c->last_conn_id = env->conn_id;
+        c->last_conn_id  = env->conn_id;
+        c->last_api_size = env->api_size;
         c->last_payload.assign(env->payload, env->payload + env->payload_size);
         c->calls.fetch_add(1);
         return GN_PROPAGATION_CONSUMED;
@@ -115,8 +117,31 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     /// route back through the bridge edge directly. Pre-fix this read
     /// zero (build_envelope zero-inits, no stamp site in thunk_inject).
     EXPECT_EQ(cap.last_conn_id, src);
+    /// Kernel stamps `api_size = sizeof(gn_message_t)` at the same
+    /// site so handlers compiled against later v1.x SDKs see the
+    /// kernel-stamped fields through `GN_API_HAS`. Pre-fix this read
+    /// zero (build_envelope zero-inits api_size).
+    EXPECT_EQ(cap.last_api_size, sizeof(gn_message_t));
     EXPECT_EQ(cap.last_payload,
               std::vector<std::uint8_t>(payload, payload + sizeof(payload)));
+}
+
+TEST(InjectExternal, ReservedSystemMsgIdRejected) {
+    /// `attestation.md §3` reserves msg_id 0x11 for the kernel-internal
+    /// dispatcher. `notify_inbound_bytes` intercepts and routes to
+    /// the dispatcher with the conn's own session; injected envelopes
+    /// can't legitimately drive that path (the bridge IPC's session
+    /// is not the originator-to-relay session attestation needs), so
+    /// the thunk rejects up front. Mirrors the registration-side
+    /// rejection at `is_reserved_system_msg_id`.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0xF1);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+    const std::uint8_t payload[] = {0};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            /*msg_id*/ 0x11,
+                            payload, sizeof(payload)),
+              GN_ERR_INVALID_ENVELOPE);
 }
 
 TEST(InjectExternal, UnknownSourceRejected) {
@@ -229,6 +254,44 @@ TEST(InjectFrame, EmptyBufferTreatedAsIncomplete) {
               GN_OK);
 }
 
+TEST(InjectFrame, ReservedSystemMsgIdSkippedInDispatchLoop) {
+    /// Inner frame carries msg_id 0x11 (attestation reserved). The
+    /// inject thunk's per-envelope loop must skip these — bridge
+    /// IPC's session is not the originator-to-relay session
+    /// attestation needs, and routing them through the plugin chain
+    /// would smuggle reserved msg_ids past `is_reserved_system_msg_id`
+    /// (which gates registration). Pre-fix the loop called
+    /// `route_one_envelope` and bumped `route.outcome.dropped_no_handler`
+    /// (no plugin can register against 0x11). Post-fix nothing routes.
+    KernelHarness h;
+    PublicKey local_pk; local_pk.fill(0xA0);
+    PublicKey peer_pk;  peer_pk.fill(0xB0);
+    h.install_local_identity(local_pk);
+
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    gn_message_t env{};
+    std::memcpy(env.sender_pk,   local_pk.data(), 32);
+    std::memcpy(env.receiver_pk, peer_pk.data(),  32);
+    env.msg_id = 0x11;
+    const std::uint8_t payload[] = {0xDE, 0xAD};
+    env.payload      = payload;
+    env.payload_size = 2;
+
+    gn_connection_context_t fctx{};
+    fctx.local_pk  = local_pk;
+    fctx.remote_pk = peer_pk;
+    auto framed = h.proto->frame(fctx, env);
+    ASSERT_TRUE(framed.has_value());
+
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+                            framed->data(), framed->size()),
+              GN_OK);
+
+    EXPECT_EQ(h.kernel->metrics().value("route.outcome.dropped_no_handler"), 0u);
+    EXPECT_EQ(h.kernel->metrics().value("route.outcome.dispatched_local"),   0u);
+}
+
 TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     KernelHarness h;
     PublicKey local_pk; local_pk.fill(0x55);
@@ -276,6 +339,7 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     /// post-deframe. Pre-fix this read zero (no stamp site in the
     /// thunk's deframe loop).
     EXPECT_EQ(cap.last_conn_id, src);
+    EXPECT_EQ(cap.last_api_size, sizeof(gn_message_t));
     EXPECT_EQ(cap.last_sender,   peer_pk);
     EXPECT_EQ(cap.last_receiver, local_pk);
 }

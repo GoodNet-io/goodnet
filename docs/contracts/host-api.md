@@ -379,11 +379,13 @@ map at 4 096 entries so unbounded source-id growth cannot exhaust
 memory.
 
 A bridge plugin that re-publishes many foreign clients through one
-source conn (the canonical v1 shape — see §8.1) shares a single
-bucket. The kernel limit is the **outer** guard against runaway
-inject. Bridges that fan in foreign-client traffic must layer their
-own per-foreign-client rate limit on the bridge side; the kernel
-neither sees nor scopes by foreign-client identity.
+source conn shares a single bucket. The kernel limit is the
+**outer** guard against runaway inject; the per-source key is
+`inject_rate_key(remote_pk)`, which takes the first 8 bytes of the
+source conn's `remote_pk`. Bridges that fan in foreign-client
+traffic must layer their own per-foreign-client rate limit on the
+bridge side; the kernel neither sees nor scopes by foreign-client
+identity.
 
 A token is consumed only when the call has cleared every other gate:
 argument validation, layer-specific size cap, and presence of a

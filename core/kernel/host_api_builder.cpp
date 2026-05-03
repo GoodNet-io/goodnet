@@ -1303,15 +1303,20 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     }
 
     for (const auto& env : deframed->messages) {
-        /// Stamp the receiving connection's id onto the envelope
-        /// before dispatch. Handlers consult `env.conn_id` instead
-        /// of resolving `sender_pk` through `find_conn_by_pk` —
-        /// the latter is wrong on relay paths where `sender_pk`
-        /// is the originating peer (set via EXPLICIT_SENDER) but
-        /// the receiving connection belongs to the relay. Per
-        /// `gn_message_t::conn_id` documentation in `sdk/types.h`.
+        /// Stamp ABI metadata + receiving connection id onto every
+        /// envelope before dispatch. `api_size = sizeof(gn_message_t)`
+        /// advertises the full v1 layout so size-prefix-gated reads
+        /// from handlers compiled against later v1.x SDKs see the
+        /// kernel-stamped fields. `conn_id` names the inbound edge —
+        /// handlers consult `env.conn_id` instead of resolving
+        /// `sender_pk` through `find_conn_by_pk`, which is wrong on
+        /// relay paths where `sender_pk` is the originating peer
+        /// (set via EXPLICIT_SENDER) but the receiving connection
+        /// belongs to the relay. Per `gn_message_t::conn_id`
+        /// documentation in `sdk/types.h`.
         gn_message_t stamped = env;
-        stamped.conn_id = conn;
+        stamped.api_size     = sizeof(gn_message_t);
+        stamped.conn_id      = conn;
 
         /// Reserved system msg_ids are intercepted before the
         /// regular dispatch chain. `0x11` (attestation) per
@@ -1363,6 +1368,17 @@ gn_result_t thunk_inject(void* host_ctx,
     case GN_INJECT_LAYER_MESSAGE:
         if (!bytes && size > 0) return GN_ERR_NULL_ARG;
         if (msg_id == 0)        return GN_ERR_INVALID_ENVELOPE;
+        /// Reserved kernel-internal msg_ids (`attestation.md` §3 etc.)
+        /// must not enter the handler chain through the bridge path.
+        /// `notify_inbound_bytes` intercepts them and routes to the
+        /// owning subsystem with the conn's own session; that
+        /// session is the wrong context for an injected envelope —
+        /// the bridge IPC's session cannot legitimately complete the
+        /// originator-to-relay attestation binding. Reject up front;
+        /// handler-registration.md §2a names the same set as
+        /// unregisterable for symmetric reasons.
+        if (is_reserved_system_msg_id(msg_id))
+            return GN_ERR_INVALID_ENVELOPE;
         if (limits.max_payload_bytes != 0 &&
             size > limits.max_payload_bytes) {
             pc->kernel->metrics().increment_drop_reason(
@@ -1426,12 +1442,18 @@ gn_result_t thunk_inject(void* host_ctx,
         gn_message_t env = build_envelope(
             rec->remote_pk, local_pk, msg_id, bytes, size);
 
-        /// Stamp the bridge edge so handlers can subscribe / respond /
-        /// disconnect on the foreign-protocol carrier conn rather than
-        /// resolving sender_pk through find_conn_by_pk (which is wrong
-        /// when the bridge re-publishes under its own identity). Per
-        /// `host-api.md §8` and `gn_message_t::conn_id` doc.
-        env.conn_id = source;
+        /// Stamp ABI metadata + bridge edge. `api_size` advertises the
+        /// full v1 layout so handlers gating field reads through
+        /// `GN_API_HAS` see every slot (the gate would otherwise
+        /// reject `conn_id` reads against `api_size == 0`). `conn_id`
+        /// names the bridge-source conn so handlers can subscribe /
+        /// respond / disconnect on the foreign-protocol carrier
+        /// without resolving `sender_pk` through `find_conn_by_pk`
+        /// (which is wrong when the bridge re-publishes under its
+        /// own identity). Per `host-api.md §8` and
+        /// `gn_message_t::conn_id` doc.
+        env.api_size = sizeof(gn_message_t);
+        env.conn_id  = source;
 
         route_one_envelope(*pc->kernel, layer->protocol_id(), env);
         return GN_OK;
@@ -1461,14 +1483,20 @@ gn_result_t thunk_inject(void* host_ctx,
     /// the `notify_inbound_bytes` post-deframe loop. The deframer
     /// returns `span<const gn_message_t>` (envelope bytes are owned
     /// by an upstream buffer); copy-then-stamp so the borrowed
-    /// payload pointers ride through unchanged. Without this,
-    /// conn-aware handlers (heartbeat RTT, future per-link gates,
-    /// observed-address learners) would see `conn_id == 0` on every
-    /// FRAME inject and silently degrade. Per `host-api.md §8` and
-    /// `gn_message_t::conn_id` doc.
+    /// payload pointers ride through unchanged. Reserved
+    /// kernel-internal msg_ids never reach the handler chain — the
+    /// inject source's session is not the originator-to-relay
+    /// session attestation needs, so even routing the envelope to
+    /// the kernel-internal dispatcher would fail the binding check.
+    /// Drop them here so a relay-style bridge cannot smuggle a
+    /// reserved msg_id into a plugin chain.
     for (const auto& env : deframed->messages) {
-        gn_message_t stamped = env;
-        stamped.conn_id = source;
+        if (is_reserved_system_msg_id(env.msg_id)) {
+            continue;
+        }
+        gn_message_t stamped  = env;
+        stamped.api_size      = sizeof(gn_message_t);
+        stamped.conn_id       = source;
         route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
     }
     return GN_OK;
