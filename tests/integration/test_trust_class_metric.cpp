@@ -83,7 +83,58 @@ gn_security_provider_vtable_t make_loopback_only_vtable() {
     return v;
 }
 
+/// Protocol layer that admits only Loopback / IntraNode, so an
+/// inbound `Untrusted` connect hits the protocol-side gate at
+/// `notify_connect` before reaching the security stack.
+class StrictProtocolLayer : public gn::IProtocolLayer {
+public:
+    std::string_view protocol_id() const noexcept override { return "strict-v1"; }
+
+    gn::Result<gn::DeframeResult> deframe(
+        gn::ConnectionContext&, std::span<const std::uint8_t>) override {
+        return gn::DeframeResult{};
+    }
+
+    gn::Result<std::vector<std::uint8_t>> frame(
+        gn::ConnectionContext&, const gn_message_t&) override {
+        return std::vector<std::uint8_t>{};
+    }
+
+    std::size_t max_payload_size() const noexcept override { return 0; }
+
+    std::uint32_t allowed_trust_mask() const noexcept override {
+        return (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    }
+};
+
 }  // namespace
+
+TEST(TrustClassMetric, ProtocolGateBumpsCounterOnUntrustedConnect) {
+    /// The protocol-side gate at `host_api_builder.cpp:1067` has bumped
+    /// `drop.trust_class_mismatch` since Wave 6.1 but never had a
+    /// regression — coverage only by diagonal of the security-side
+    /// test below. This pins the protocol-side bump directly.
+    Kernel kernel;
+    kernel.set_protocol_layer(std::make_shared<StrictProtocolLayer>());
+
+    PluginContext ctx;
+    ctx.plugin_name = "trust-test";
+    ctx.kernel      = &kernel;
+    auto api = build_host_api(ctx);
+
+    PublicKey peer_pk; peer_pk.fill(0x01);
+    gn_conn_id_t conn = GN_INVALID_ID;
+    EXPECT_EQ(api.notify_connect(api.host_ctx,
+                                 peer_pk.data(),
+                                 "tcp://1.2.3.4:9000",
+                                 "tcp",
+                                 GN_TRUST_UNTRUSTED,
+                                 GN_ROLE_RESPONDER,
+                                 &conn),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(conn, GN_INVALID_ID);
+    EXPECT_EQ(kernel.metrics().value("drop.trust_class_mismatch"), 1u);
+}
 
 TEST(TrustClassMetric, SecurityGateBumpsCounterOnUntrustedConnect) {
     Kernel kernel;
