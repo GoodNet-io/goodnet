@@ -16,7 +16,8 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
                                               const gn_handler_vtable_t* vtable,
                                               void*                      self,
                                               gn_handler_id_t*           out_id,
-                                              std::shared_ptr<void>      lifetime_anchor) noexcept {
+                                              std::shared_ptr<void>      lifetime_anchor,
+                                              std::string_view           plugin_name) noexcept {
     if (vtable == nullptr || out_id == nullptr || protocol_id.empty()) {
         return GN_ERR_NULL_ARG;
     }
@@ -50,6 +51,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
     entry.self            = self;
     entry.insertion_seq   = insertion_seq_.fetch_add(1, std::memory_order_relaxed);
     entry.lifetime_anchor = std::move(lifetime_anchor);
+    entry.plugin_name     = std::string{plugin_name};
 
     Key key{entry.protocol_id, msg_id};
 

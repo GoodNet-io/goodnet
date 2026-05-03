@@ -725,7 +725,7 @@ gn_result_t thunk_register_vtable(void* host_ctx,
         const auto rc = pc->kernel->handlers().register_handler(
             meta->name, meta->msg_id, meta->priority,
             static_cast<const gn_handler_vtable_t*>(vtable),
-            self, &inner, pc->plugin_anchor);
+            self, &inner, pc->plugin_anchor, pc->plugin_name);
         if (rc != GN_OK) return rc;
         *out_id = pack_register_id(GN_REGISTER_HANDLER,
                                     static_cast<std::uint64_t>(inner));

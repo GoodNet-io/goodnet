@@ -105,6 +105,35 @@ TEST(HandlerRegistry_Args, RejectsZeroMsgId) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
+TEST(HandlerRegistry_Args, CarriesPluginNameOntoEntry) {
+    /// `register_handler` accepts an optional `plugin_name` that the
+    /// dispatcher's `safe_call_*` site_tag picks up on a throwing
+    /// handler — the log line names the plugin without grepping
+    /// symbol tables. Pin the name carry-through here; downstream
+    /// `router.cpp::dispatch_chain` formats the tag.
+    HandlerRegistry reg;
+    gn_handler_id_t id = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler("gnet-v1", 0x42, 128,
+                                   dummy_vtable(), nullptr, &id,
+                                   /*lifetime_anchor=*/{},
+                                   /*plugin_name=*/"my-handler-plugin"),
+              GN_OK);
+    const auto chain = reg.lookup("gnet-v1", 0x42);
+    ASSERT_EQ(chain.size(), 1u);
+    EXPECT_EQ(chain[0].plugin_name, "my-handler-plugin");
+
+    /// Empty name (in-tree fixture default) is preserved as empty,
+    /// not coerced to a placeholder; the router falls back to the
+    /// bare slot label when the name is empty.
+    gn_handler_id_t id_empty = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler("gnet-v1", 0x43, 128,
+                                   dummy_vtable(), nullptr, &id_empty),
+              GN_OK);
+    const auto chain_empty = reg.lookup("gnet-v1", 0x43);
+    ASSERT_EQ(chain_empty.size(), 1u);
+    EXPECT_TRUE(chain_empty[0].plugin_name.empty());
+}
+
 TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
     /// Per `handler-registration.md` §2a — `0x11` is reserved for
     /// the kernel-internal attestation dispatcher
