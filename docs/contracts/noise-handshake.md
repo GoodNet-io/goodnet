@@ -10,18 +10,39 @@
 ## 1. Purpose
 
 This contract pins the cryptographic surface of the canonical
-security provider: handshake patterns, hash function, buffer sizing,
-and rekey semantics. Two Noise patterns are declared:
+security provider: handshake pattern, hash function, buffer
+sizing, and rekey semantics. v1 ships one pattern:
 
 | Pattern | When used | Identity |
 |---|---|---|
 | `Noise_XX_25519_ChaChaPoly_BLAKE2b` | unknown peer, mutual auth | both sides Ed25519 keys |
-| `Noise_IK_25519_ChaChaPoly_BLAKE2b` | initiator knows responder pk | both sides Ed25519, initiator preshared responder pk |
 
 The protocol name string is the **on-wire** name; the implementation
 **must** match it exactly. A name string that disagrees with the
 actual hash function produces wire-incompatible peers — no external
 Noise stack will interoperate.
+
+A v1.1 sibling provider (`noise-ik`) registers under a distinct
+`provider_id` and adds the `Noise_IK_25519_ChaChaPoly_BLAKE2b`
+pattern for the initiator-knows-peer-pk case. Selection between
+providers happens through `register_security` per
+`security-trust.md`, not through a runtime selector inside this
+provider's vtable.
+
+## 1a. Prologue (domain separation)
+
+Both sides mix the literal byte string `"goodnet/v1/noise"` into
+the symmetric handshake hash immediately after `InitializeSymmetric`
+per Noise §6.5. The prologue binds the handshake transcript to
+the GoodNet protocol context: an Ed25519 message that happens to
+share a transcript prefix with an XX run cannot be replayed as
+the start of a hostile handshake because the prefix bytes
+disagree with the prologue.
+
+The string changes when the wire format changes. A v1.x
+extension that needs a fresh transcript domain bumps the prologue
+to `"goodnet/v1.x/noise"` (or further) — Noise transcripts under
+two different prologues never collide.
 
 ---
 
@@ -33,9 +54,8 @@ patterns. The implementation **must**:
 1. Match the protocol-name string (§1).
 2. Produce 64-byte digests (`HASHLEN = 64`).
 3. Pass the Noise reference test vectors for
-   `Noise_XX_25519_ChaChaPoly_BLAKE2b` and
-   `Noise_IK_25519_ChaChaPoly_BLAKE2b` — included in the property-test
-   suite.
+   `Noise_XX_25519_ChaChaPoly_BLAKE2b` — included in the
+   property-test suite.
 
 The choice of BLAKE2b over BLAKE2s comes from libsodium availability:
 `crypto_generichash_blake2b` is the canonical primitive in our
@@ -56,11 +76,11 @@ Channel binding security is preserved (256-bit collision-resistance).
 
 ## 3. Handshake buffer sizing
 
-The handshake state machine produces messages up to about 96 bytes
-for `XX` and 80 bytes for `IK`. A fixed-size stack buffer paired with
-an unbounded write call is unsafe — a peer who provokes an oversized
-prologue triggers a stack-buffer overflow, an RCE-class hazard on any
-public listener.
+The handshake state machine produces messages up to about 96
+bytes for `XX`. A fixed-size stack buffer paired with an
+unbounded write call is unsafe — a peer who provokes an oversized
+prologue triggers a stack-buffer overflow, an RCE-class hazard
+on any public listener.
 
 The contract: **handshake message buffers are heap-allocated and
 size-bounded by the call site, not the source-code-fixed buffer
