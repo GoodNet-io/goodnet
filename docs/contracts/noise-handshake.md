@@ -274,6 +274,35 @@ that.
 
 ---
 
+## 7a. Transport invariants required by this provider
+
+The Noise transport ciphers consume a 64-bit nonce that
+increments deterministically on every encrypt / decrypt call —
+the security session does not maintain a replay window because
+the v1 deployment relies on its underlying transport to deliver
+each frame **at most once and in order**. The provider is
+correct on a transport that satisfies the following:
+
+| Invariant | Required by |
+|---|---|
+| **Reliable delivery** — every frame either reaches the peer or the connection is torn down | the symmetric-rekey schedule in §4 — a silently dropped frame leaves the two sides on diverging counters and breaks the next AEAD authentication |
+| **In-order delivery** — frames arrive in the order they were sent | the receive nonce is implicit; a re-ordered frame fails AEAD authentication and the connection is torn down |
+| **No replay at the link layer** — the same frame is not delivered twice | the nonce check at decrypt would reject the second copy, but the kernel-side metric attribution would log a spurious authentication failure |
+
+TCP, TLS-over-TCP, IPC, and WS satisfy all three. UDP-class
+transports do not — datagram delivery is best-effort and
+unordered — and the v1 noise provider therefore does not run on
+top of them: a UDP-class link plugin pairing with this provider
+will see its first re-ordered or duplicate frame fail AEAD
+authentication, the kernel tears the connection down, and the
+peer reconnects through a fresh handshake. A future provider
+extension that targets UDP-class transports must dedup at the
+frame layer (separate replay window per security session) before
+reaching the AEAD; that work is deferred to v1.1 and tracked in
+the rc1 release notes.
+
+---
+
 ## 8. Identity binding
 
 The Ed25519 static keys used for Noise handshakes are the same keys
