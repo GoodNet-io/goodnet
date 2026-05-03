@@ -8,11 +8,21 @@
 #include <sodium.h>
 
 #include <cstring>
+#include <string_view>
 
 namespace gn::noise {
 namespace {
 
 constexpr int xx_total_steps = 3;
+
+/// Domain-separation prologue mixed in immediately after symmetric
+/// initialisation per Noise §6.5. Binds the handshake transcript to
+/// the GoodNet protocol context so an Ed25519 message that happens
+/// to share the bytes of an XX transcript prefix cannot be replayed
+/// as an attacker-controlled handshake start. The string is opaque
+/// from the AEAD's POV; its only role is to differ from any
+/// transcript a peer outside GoodNet could produce.
+constexpr std::string_view kPrologue = "goodnet/v1/noise";
 
 /// X25519 ECDH. Returns the 32-byte shared secret, or nullopt if the
 /// peer pk is the all-zero point (libsodium signals an error).
@@ -54,6 +64,9 @@ HandshakeState::HandshakeState(Pattern pattern,
       s_sk_(static_keys.sk),
       s_pk_(static_keys.pk) {
     symmetric_.initialize(protocol_name(pattern));
+    symmetric_.mix_hash(std::span<const std::uint8_t>(
+        reinterpret_cast<const std::uint8_t*>(kPrologue.data()),
+        kPrologue.size()));
 }
 
 HandshakeState::~HandshakeState() {
