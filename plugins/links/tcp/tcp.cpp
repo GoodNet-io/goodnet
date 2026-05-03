@@ -376,7 +376,21 @@ gn_result_t TcpLink::listen(std::string_view uri_sv) {
         listen_port_.store(acceptor.local_endpoint().port(),
                             std::memory_order_release);
         acceptor_.emplace(std::move(acceptor));
-    } catch (const std::exception&) {
+    } catch (const std::system_error& e) {
+        if (api_) {
+            gn_log_warn(api_,
+                "tcp: listen failed (uri=%.*s, errno=%d): %s",
+                static_cast<int>(uri_sv.size()), uri_sv.data(),
+                e.code().value(), e.what());
+        }
+        return GN_ERR_NULL_ARG;
+    } catch (const std::exception& e) {
+        if (api_) {
+            gn_log_warn(api_,
+                "tcp: listen failed (uri=%.*s): %s",
+                static_cast<int>(uri_sv.size()), uri_sv.data(),
+                e.what());
+        }
         return GN_ERR_NULL_ARG;
     }
 
