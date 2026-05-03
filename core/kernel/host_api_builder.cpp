@@ -1303,24 +1303,34 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     }
 
     for (const auto& env : deframed->messages) {
+        /// Stamp the receiving connection's id onto the envelope
+        /// before dispatch. Handlers consult `env.conn_id` instead
+        /// of resolving `sender_pk` through `find_conn_by_pk` —
+        /// the latter is wrong on relay paths where `sender_pk`
+        /// is the originating peer (set via EXPLICIT_SENDER) but
+        /// the receiving connection belongs to the relay. Per
+        /// `gn_message_t::conn_id` documentation in `sdk/types.h`.
+        gn_message_t stamped = env;
+        stamped.conn_id = conn;
+
         /// Reserved system msg_ids are intercepted before the
         /// regular dispatch chain. `0x11` (attestation) per
         /// `attestation.md` §3 routes to the kernel-internal
         /// dispatcher; the envelope never reaches plugin
         /// handlers regardless of any registration.
-        if (env.msg_id == kAttestationMsgId) {
+        if (stamped.msg_id == kAttestationMsgId) {
             std::shared_ptr<SecuritySession> session_for_inbound =
                 pc->kernel->sessions().find(conn);
             if (session_for_inbound != nullptr) {
                 std::span<const std::uint8_t> payload_span{
-                    env.payload, env.payload_size};
+                    stamped.payload, stamped.payload_size};
                 (void)pc->kernel->attestation_dispatcher().on_inbound(
                     *pc->kernel, conn, *session_for_inbound,
                     payload_span);
             }
             continue;
         }
-        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
     }
     return GN_OK;
 }

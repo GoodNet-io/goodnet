@@ -88,10 +88,51 @@ HeartbeatHandler::HeartbeatHandler(const host_api_t* api,
     ext_vtable_.get_rtt               = &HeartbeatHandler::ext_get_rtt;
     ext_vtable_.get_observed_address  = &HeartbeatHandler::ext_get_observed_address;
     ext_vtable_.ctx                   = this;
+
+    /// Subscribe to conn-state events so a DISCONNECTED notification
+    /// can drop the matching `PeerState` from `peers_`. Without this,
+    /// peers accumulate forever and the registered ext slots
+    /// (`get_rtt`, etc.) keep hitting stale entries past the
+    /// connection's actual lifetime.
+    if (api_ != nullptr && api_->subscribe_conn_state != nullptr) {
+        gn_subscription_id_t token = GN_INVALID_SUBSCRIPTION_ID;
+        const auto rc = api_->subscribe_conn_state(
+            api_->host_ctx,
+            &HeartbeatHandler::on_conn_event,
+            this,
+            /*ud_destroy*/ nullptr,
+            &token);
+        if (rc == GN_OK) {
+            conn_state_sub_ = token;
+        }
+    }
 }
 
 HeartbeatHandler::~HeartbeatHandler() {
+    /// Tear the subscription down before clearing peers — the
+    /// kernel guarantees `unsubscribe` waits for any in-flight
+    /// callback to settle, so by the time `reset_state` runs no
+    /// stray `on_conn_event` can race with the map clear.
+    if (conn_state_sub_ != GN_INVALID_SUBSCRIPTION_ID &&
+        api_ != nullptr && api_->unsubscribe != nullptr) {
+        (void)api_->unsubscribe(api_->host_ctx, conn_state_sub_);
+        conn_state_sub_ = GN_INVALID_SUBSCRIPTION_ID;
+    }
     reset_state();
+}
+
+void HeartbeatHandler::on_conn_event(void* user_data,
+                                      const gn_conn_event_t* ev) {
+    auto* self = static_cast<HeartbeatHandler*>(user_data);
+    if (self == nullptr || ev == nullptr) return;
+    /// Only DISCONNECTED is interesting — every other event
+    /// (CONNECTED, BACKPRESSURE_*, TRUST_UPGRADED) is consumed by
+    /// other handlers; the heartbeat's `peers_` is created lazily
+    /// on the first PING and torn down here on the matching
+    /// disconnect.
+    if (ev->kind != GN_CONN_EVENT_DISCONNECTED) return;
+    std::unique_lock lock(self->peers_mu_);
+    self->peers_.erase(ev->conn);
 }
 
 void HeartbeatHandler::reset_state() noexcept {
@@ -128,9 +169,20 @@ gn_result_t HeartbeatHandler::send_ping(gn_conn_id_t conn) {
     auto peer = ensure_peer(conn);
 
     HeartbeatPayload hb{};
-    hb.timestamp_us = now_us_();
+    /// `timestamp_us` on the wire stays for compatibility with
+    /// observers that decode the legacy 88-byte layout. RTT is
+    /// computed from the locally-stored `sent_at_us` map, NEVER
+    /// from this echoed value — see PONG path in
+    /// `handle_message` for the rationale.
+    const std::uint64_t sent_at_us = now_us_();
+    hb.timestamp_us = sent_at_us;
     hb.seq          = peer->seq.fetch_add(1, std::memory_order_acq_rel);
     hb.flags        = kFlagPing;
+
+    {
+        std::lock_guard plk(peer->mu);
+        peer->outstanding_pings[hb.seq] = sent_at_us;
+    }
 
     const auto wire = serialize_payload(hb);
     return api_->send(api_->host_ctx, conn, kHeartbeatMsgId,
@@ -149,15 +201,15 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
     }
     const HeartbeatPayload& hb = *parsed;
 
-    /// Locate the source connection from the envelope's sender pk;
-    /// the host_api `find_conn_by_pk` resolves it through the
-    /// connection registry.
-    gn_conn_id_t conn = GN_INVALID_ID;
-    if (api_ && api_->find_conn_by_pk) {
-        if (api_->find_conn_by_pk(api_->host_ctx, env->sender_pk, &conn) != GN_OK) {
-            return GN_PROPAGATION_CONTINUE;
-        }
-    }
+    /// Take the conn id straight from the envelope. The kernel
+    /// stamped it before dispatch (`notify_inbound_bytes` thunk).
+    /// `find_conn_by_pk(env->sender_pk)` is wrong on relay paths
+    /// where `sender_pk` is the originating peer (set via
+    /// EXPLICIT_SENDER) but the receiving connection belongs to
+    /// the relay — the registry would either miss the lookup or
+    /// hit a different conn entirely. `gn_message_t::conn_id` is
+    /// the authoritative source.
+    const gn_conn_id_t conn = env->conn_id;
     if (conn == GN_INVALID_ID) return GN_PROPAGATION_CONTINUE;
 
     auto peer = ensure_peer(conn);
@@ -193,9 +245,29 @@ gn_propagation_t HeartbeatHandler::handle_message(const gn_message_t* env) {
     }
 
     if (hb.flags == kFlagPong) {
+        /// RTT comes from the locally stored `sent_at_us` keyed
+        /// by `seq`, NOT from the peer-echoed `timestamp_us` —
+        /// otherwise a hostile peer could pollute the recorded
+        /// RTT by altering the echoed value (always emit a
+        /// PONG with `timestamp_us = 0` and the local computer
+        /// would record the full wall-clock time as the RTT).
         const std::uint64_t now = now_us_();
-        const std::uint64_t rtt =
-            (now > hb.timestamp_us) ? (now - hb.timestamp_us) : 0;
+        std::uint64_t rtt = 0;
+        bool matched = false;
+        {
+            std::lock_guard plk(peer->mu);
+            if (auto it = peer->outstanding_pings.find(hb.seq);
+                it != peer->outstanding_pings.end()) {
+                rtt = (now > it->second) ? (now - it->second) : 0;
+                peer->outstanding_pings.erase(it);
+                matched = true;
+            }
+        }
+        if (!matched) {
+            /// PONG carrying a `seq` we never sent — drop the
+            /// stat update rather than write a meaningless RTT.
+            return GN_PROPAGATION_CONSUMED;
+        }
         peer->last_rtt_us.store(rtt, std::memory_order_release);
         peer->missed.store(0, std::memory_order_release);
 

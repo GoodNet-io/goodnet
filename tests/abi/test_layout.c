@@ -46,8 +46,8 @@
 
 /* ── sdk/types.h ───────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_message_t) == 120,
-               "gn_message_t size pinned at 120");
+_Static_assert(sizeof(gn_message_t) == 128,
+               "gn_message_t size pinned at 128");
 _Static_assert(offsetof(gn_message_t, api_size) == 0,
                "gn_message_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_message_t, sender_pk) == 4,
@@ -60,8 +60,10 @@ _Static_assert(offsetof(gn_message_t, payload) == 72,
                "gn_message_t::payload offset pinned at 72");
 _Static_assert(offsetof(gn_message_t, payload_size) == 80,
                "gn_message_t::payload_size offset pinned at 80");
-_Static_assert(offsetof(gn_message_t, _reserved) == 88,
-               "gn_message_t::_reserved offset pinned at 88");
+_Static_assert(offsetof(gn_message_t, conn_id) == 88,
+               "gn_message_t::conn_id offset pinned at 88");
+_Static_assert(offsetof(gn_message_t, _reserved) == 96,
+               "gn_message_t::_reserved offset pinned at 96");
 
 /* ── sdk/conn_events.h ─────────────────────────────────────────────────────── */
 
