@@ -313,9 +313,12 @@ TEST(GnetWireParseRejection, LengthSmallerThanHeaderRelayTransit) {
 }
 
 TEST(GnetWireParseRejection, LengthExceedsMaxFrameBytes) {
+    /// Frame length past the v1 wire ceiling is a hostile-peer
+    /// signal — distinct from generic corruption so the operator
+    /// metric (`drop.frame_too_large`) names the suspicion.
     auto buf = make_valid_header(0, 1, static_cast<std::uint32_t>(kMaxFrameBytes + 1));
     ParsedHeader out{};
-    EXPECT_EQ(parse_header(buf, out), GN_ERR_DEFRAME_CORRUPT);
+    EXPECT_EQ(parse_header(buf, out), GN_ERR_FRAME_TOO_LARGE);
 }
 
 TEST(GnetWireParseRejection, LengthAtMaxFrameBytesAccepted) {

@@ -1281,7 +1281,21 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     auto deframed = layer->deframe(ctx, wire_bytes);
-    if (!deframed.has_value()) return deframed.error().code;
+    if (!deframed.has_value()) {
+        /// Map deframe error codes to the operator-facing drop
+        /// metric so a hostile-peer signal stays distinguishable
+        /// from a generic corruption. The error code propagates
+        /// back unchanged for the caller's local handling.
+        const auto err = deframed.error().code;
+        const char* drop_metric =
+            (err == GN_ERR_FRAME_TOO_LARGE) ? "drop.frame_too_large"
+          : (err == GN_ERR_DEFRAME_CORRUPT) ? "drop.deframe_corrupt"
+                                             : nullptr;
+        if (drop_metric != nullptr) {
+            pc->kernel->metrics().increment(drop_metric);
+        }
+        return err;
+    }
 
     for (const auto& env : deframed->messages) {
         /// Reserved system msg_ids are intercepted before the

@@ -287,11 +287,23 @@ typedef enum gn_result_e {
                                        *   message-routing receiver_pk path
                                        *   (no local identity matches /
                                        *   no relay loaded). */
-    GN_ERR_OUT_OF_RANGE       = -15  /**< value outside the contract's
+    GN_ERR_OUT_OF_RANGE       = -15, /**< value outside the contract's
                                        *   permitted range — config integer
                                        *   above the cap declared in
                                        *   `limits.md`, array index past
                                        *   end, etc. */
+    GN_ERR_FRAME_TOO_LARGE    = -16  /**< wire frame length exceeds the
+                                       *   contract's per-frame ceiling
+                                       *   (`gnet-protocol.md` §2.4
+                                       *   `kMaxFrameBytes`). Distinct from
+                                       *   `GN_ERR_DEFRAME_CORRUPT` so the
+                                       *   operator metric distinguishes a
+                                       *   hostile peer (frame_too_large)
+                                       *   from a random corruption
+                                       *   (deframe_corrupt). The kernel
+                                       *   maps this code to the
+                                       *   `drop.frame_too_large` counter
+                                       *   per `metrics.md` §3. */
 } gn_result_t;
 
 /**
@@ -325,6 +337,7 @@ static inline const char* gn_strerror(gn_result_t r) {
         case GN_ERR_INTERNAL:              return "internal kernel error (exception crossed a C ABI boundary)";
         case GN_ERR_NOT_FOUND:             return "not found";
         case GN_ERR_OUT_OF_RANGE:          return "value outside the contract's permitted range";
+        case GN_ERR_FRAME_TOO_LARGE:       return "wire frame exceeds kMaxFrameBytes ceiling";
     }
     return "unknown gn_result_t";
 }
