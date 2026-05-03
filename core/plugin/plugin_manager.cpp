@@ -348,13 +348,32 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     for (auto& inst : instances_) {
         auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
             ::dlsym(inst.so_handle, "gn_plugin_init"));
+        const auto init_tag =
+            "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
         const auto rc = safe_call_result(
-            "plugin.gn_plugin_init",
+            init_tag.c_str(),
             init_fn, &inst.api, &inst.self);
         if (rc != GN_OK) {
             note("gn_plugin_init failed for " + inst.descriptor.plugin_name);
             rollback();
             return rc;
+        }
+        /// `gn_plugin_init` returned `GN_OK` but did not write a
+        /// non-NULL `self`. Stateless plugins legitimately leave
+        /// `self == NULL` (raw protocol, null security), so this is
+        /// a soft warning rather than a hard failure — but every
+        /// subsequent vtable call will dispatch with a NULL `self`
+        /// argument, and a stateful plugin that forgot to assign
+        /// `*self_out` would crash on the first slot invocation.
+        /// The log line names the plugin so the operator can pick
+        /// up the trail without digging through symbol tables.
+        if (inst.self == nullptr) {
+            SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
+                "plugin '{}' returned GN_OK from gn_plugin_init but did "
+                "not set *self_out; subsequent vtable calls will run "
+                "with self == NULL — verify the plugin is stateless or "
+                "fix the init entry",
+                inst.descriptor.plugin_name);
         }
     }
 
