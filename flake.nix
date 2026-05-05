@@ -206,26 +206,36 @@
             ];
             doCheck = false;
           };
+          # Discover every plugin under `plugins/<kind>/<name>/` instead
+          # of hard-coding the list — adding a plugin (or pulling an
+          # extracted one back into the tree via the eventual
+          # `pull-plugin` workflow) lands automatically without
+          # editing this file. A directory without a `default.nix`
+          # is reported through `discovered.missing` and aborts
+          # evaluation loudly rather than silently disappearing.
+          discovered = import ./nix/auto-discover.nix {
+            pluginsDir = ./plugins;
+          };
+          discoveredPlugins = pkgs.lib.foldl'
+            (acc: p: acc // { ${p.attr} = callPlugin p.name p.kind; })
+            { }
+            discovered.plugins;
+          missingDefaultNix =
+            if discovered.missing == [ ] then null else
+            throw ("auto-discover: plugin directories without default.nix: "
+                   + pkgs.lib.concatStringsSep ", "
+                       (map (p: "${p.kind}/${p.name}") discovered.missing));
         in
-        {
+        # Force the missing-plugin guard before merging.
+        builtins.seq missingDefaultNix
+        ({
           # Operator default: kernel only. The Linux-model analogue is
           # `linux-headers` + selected drivers, not a kitchen-sink
           # `linux-all`. Per-plugin packages follow below.
           default = goodnet-core;
 
           inherit goodnet-core everything;
-
-          goodnet-handler-heartbeat = callPlugin "heartbeat" "handlers";
-          goodnet-link-tcp          = callPlugin "tcp"       "links";
-          goodnet-link-udp          = callPlugin "udp"       "links";
-          goodnet-link-ws           = callPlugin "ws"        "links";
-          goodnet-link-ipc          = callPlugin "ipc"       "links";
-          goodnet-link-tls          = callPlugin "tls"       "links";
-          goodnet-security-noise    = callPlugin "noise"     "security";
-          goodnet-security-null     = callPlugin "null"      "security";
-          goodnet-protocol-gnet     = callPlugin "gnet"      "protocols";
-          goodnet-protocol-raw      = callPlugin "raw"       "protocols";
-        });
+        } // discoveredPlugins));
 
       apps = forAllSystems (system: pkgs:
         let
