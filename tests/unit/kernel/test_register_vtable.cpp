@@ -89,6 +89,8 @@ TEST(RegisterVtable, RejectsUnknownKind) {
     Harness h;
 
     std::uint64_t id = 0;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.register_vtable(h.api.host_ctx,
                                      static_cast<gn_register_kind_t>(99),
@@ -96,6 +98,7 @@ TEST(RegisterVtable, RejectsUnknownKind) {
                                      /*vtable*/ nullptr,
                                      nullptr, &id),
               GN_ERR_INVALID_ENVELOPE);
+#pragma GCC diagnostic pop
     EXPECT_EQ(id, 0u);
 }
 

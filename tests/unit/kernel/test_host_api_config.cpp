@@ -284,6 +284,8 @@ TEST(HostApiConfigGet, UnknownEnumValueRejected) {
     /// out_free contract.
     ConfigHarness h{kSampleJson};
     int64_t v = 0;
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
                                 static_cast<gn_config_value_type_t>(99),
@@ -298,4 +300,5 @@ TEST(HostApiConfigGet, UnknownEnumValueRejected) {
                                 static_cast<gn_config_value_type_t>(99),
                                 /*index*/ 5, &v, &free_user_data, &free_fn),
               GN_ERR_INVALID_ENVELOPE);
+#pragma GCC diagnostic pop
 }

@@ -248,25 +248,37 @@ inline std::vector<std::uint8_t> build_binary_frame(
     std::span<const std::uint8_t> payload,
     bool mask,
     std::uint32_t mask_seed) {
-    std::vector<std::uint8_t> out;
-    out.reserve(payload.size() + 16);
+    /// Header layout: 1 opcode byte + length (1, 3 or 9 bytes) +
+    /// optional 4-byte mask. Pre-sizing the destination buffer to the
+    /// exact total avoids any realloc on the write path and lets the
+    /// optimiser treat the writes as straight stores.
+    const std::size_t length_bytes =
+        payload.size() < 126U        ? std::size_t{1}
+        : payload.size() <= 0xffffU  ? std::size_t{3}
+                                     : std::size_t{9};
+    const std::size_t mask_bytes  = mask ? std::size_t{4} : std::size_t{0};
+    const std::size_t header_size = 1U + length_bytes + mask_bytes;
+    const std::size_t total       = header_size + payload.size();
 
-    out.push_back(static_cast<std::uint8_t>(0x80U | 0x02U));  // FIN | binary
+    std::vector<std::uint8_t> out(total);
+
+    out[0] = static_cast<std::uint8_t>(0x80U | 0x02U);  // FIN | binary
 
     const std::uint8_t mask_bit =
         mask ? static_cast<std::uint8_t>(0x80U) : std::uint8_t{0};
-    if (payload.size() < 126) {
-        out.push_back(static_cast<std::uint8_t>(
-            mask_bit | static_cast<std::uint8_t>(payload.size())));
+    std::size_t cursor = 1;
+    if (payload.size() < 126U) {
+        out[cursor++] = static_cast<std::uint8_t>(
+            mask_bit | static_cast<std::uint8_t>(payload.size()));
     } else if (payload.size() <= 0xffffU) {
-        out.push_back(static_cast<std::uint8_t>(mask_bit | 126U));
-        out.push_back(static_cast<std::uint8_t>(payload.size() >> 8U));
-        out.push_back(static_cast<std::uint8_t>(payload.size()));
+        out[cursor++] = static_cast<std::uint8_t>(mask_bit | 126U);
+        out[cursor++] = static_cast<std::uint8_t>(payload.size() >> 8U);
+        out[cursor++] = static_cast<std::uint8_t>(payload.size());
     } else {
-        out.push_back(static_cast<std::uint8_t>(mask_bit | 127U));
+        out[cursor++] = static_cast<std::uint8_t>(mask_bit | 127U);
         const std::uint64_t n = payload.size();
         for (int shift = 56; shift >= 0; shift -= 8) {
-            out.push_back(static_cast<std::uint8_t>(n >> shift));
+            out[cursor++] = static_cast<std::uint8_t>(n >> shift);
         }
     }
 
@@ -277,14 +289,16 @@ inline std::vector<std::uint8_t> build_binary_frame(
             static_cast<std::uint8_t>(mask_seed >>  8),
             static_cast<std::uint8_t>(mask_seed),
         };
-        out.insert(out.end(), std::begin(mk), std::end(mk));
-        const std::size_t base = out.size();
-        out.insert(out.end(), payload.begin(), payload.end());
+        out[cursor++] = mk[0];
+        out[cursor++] = mk[1];
+        out[cursor++] = mk[2];
+        out[cursor++] = mk[3];
         for (std::size_t i = 0; i < payload.size(); ++i) {
-            out[base + i] ^= mk[i & 3u];
+            out[cursor + i] =
+                static_cast<std::uint8_t>(payload[i] ^ mk[i & 3u]);
         }
-    } else {
-        out.insert(out.end(), payload.begin(), payload.end());
+    } else if (!payload.empty()) {
+        std::memcpy(out.data() + cursor, payload.data(), payload.size());
     }
     return out;
 }

@@ -690,7 +690,9 @@ TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
     auto fetched = reg.find_by_id(id);
     ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) EXPECT_EQ(fetched->remote_pk, real_pk);
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->remote_pk, real_pk);
+    }
 }
 
 TEST(ConnectionRegistry_Insert, ZeroPkSkipsPkIndex) {
@@ -727,7 +729,9 @@ TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {
     EXPECT_EQ(reg.update_remote_pk(id, pk), GN_OK);
     auto fetched = reg.find_by_id(id);
     ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) EXPECT_EQ(fetched->remote_pk, pk);
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->remote_pk, pk);
+    }
 }
 
 TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
@@ -751,8 +755,12 @@ TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
     auto by_b = reg.find_by_pk(pk_b);
     ASSERT_TRUE(by_a.has_value());
     ASSERT_TRUE(by_b.has_value());
-    if (by_a.has_value()) EXPECT_EQ(by_a->id, id_a);
-    if (by_b.has_value()) EXPECT_EQ(by_b->id, id_b);
+    if (by_a.has_value()) {
+        EXPECT_EQ(by_a->id, id_a);
+    }
+    if (by_b.has_value()) {
+        EXPECT_EQ(by_b->id, id_b);
+    }
 }
 
 TEST(ConnectionRegistry_UpdateRemotePk, UnknownIdRejected) {
@@ -772,7 +780,9 @@ TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {
     EXPECT_EQ(reg.pin_device_pk(peer, device), GN_OK);
     auto fetched = reg.get_pinned_device_pk(peer);
     ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) EXPECT_EQ(*fetched, device);
+    if (fetched.has_value()) {
+        EXPECT_EQ(*fetched, device);
+    }
     EXPECT_EQ(reg.pin_count(), 1u);
 }
 
@@ -800,7 +810,9 @@ TEST(ConnectionRegistry_PinDevicePk, RepinDifferentDeviceRejected) {
     /// The earlier pin survives.
     auto fetched = reg.get_pinned_device_pk(peer);
     ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) EXPECT_EQ(*fetched, device_a);
+    if (fetched.has_value()) {
+        EXPECT_EQ(*fetched, device_a);
+    }
 }
 
 TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
@@ -818,7 +830,9 @@ TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
     EXPECT_EQ(reg.size(), 0u);
     auto fetched = reg.get_pinned_device_pk(peer);
     ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) EXPECT_EQ(*fetched, device);
+    if (fetched.has_value()) {
+        EXPECT_EQ(*fetched, device);
+    }
 }
 
 TEST(ConnectionRegistry_PinDevicePk, ConcurrentDifferentDeviceLeavesOneWinner) {

@@ -277,11 +277,14 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
     /// Out-of-range enum cast is the point of the assertion: the
     /// kernel must reject unknown layer values without consuming a
     /// token, so we deliberately ignore the analyzer's warning.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.inject(h.api.host_ctx,
                             static_cast<gn_inject_layer_t>(99),
                             source, kMsgId, small, sizeof(small)),
               GN_ERR_INVALID_ENVELOPE);
+#pragma GCC diagnostic pop
 
     /// Restore generous size limits so the three valid sends below
     /// don't trip the size cap.

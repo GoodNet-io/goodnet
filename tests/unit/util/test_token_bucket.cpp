@@ -70,7 +70,7 @@ TEST(TokenBucket, RefillCappedAtBurst) {
     ::gn::util::TokenBucket<MockClock> bucket(/*rate*/ 100.0, /*burst*/ 4.0,
                                                 MockClock::now());
     /// Drain
-    for (int i = 0; i < 4; ++i) bucket.try_consume(MockClock::now());
+    for (int i = 0; i < 4; ++i) (void)bucket.try_consume(MockClock::now());
 
     MockClock::advance(10s);     /// would refill 1000, but capped at 4
     EXPECT_TRUE(bucket.try_consume(MockClock::now()));

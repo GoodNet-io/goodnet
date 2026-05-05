@@ -68,8 +68,11 @@ TEST(GnStrerror, UnknownValueReturnsSentinel) {
     /// that they do not recognise; the sentinel keeps log call sites
     /// safe rather than degrading to NULL. The cast is intentional —
     /// we exercise the unknown-value branch.
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wconversion"
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     const auto bogus = static_cast<gn_result_t>(-9999);
+#pragma GCC diagnostic pop
     const char* msg = gn_strerror(bogus);
     ASSERT_NE(msg, nullptr);
     EXPECT_EQ(std::string_view{msg}, kUnknownSentinel);
