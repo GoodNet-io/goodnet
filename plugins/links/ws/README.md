@@ -6,7 +6,7 @@ to the same byte stream the TCP transport publishes, so the kernel
 sees identical `notify_inbound_bytes` semantics on either scheme.
 
 **Kind**: link · **Artefact**: dynamic plugin (`.so` via dlopen)
-· **License**: MIT (see `LICENSE`)
+· **License**: GPL-2.0 with Linking Exception (see `LICENSE`)
 
 ## Build
 

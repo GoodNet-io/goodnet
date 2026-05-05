@@ -7,7 +7,7 @@ per-connection RTT and observed-address samples through the
 `gn.heartbeat` extension API.
 
 **Kind**: handler · **Artefact**: dynamic plugin (`.so` via dlopen)
-· **License**: Apache-2.0 (see `LICENSE`)
+· **License**: GPL-2.0 with Linking Exception (see `LICENSE`)
 
 ## Build
 

@@ -1,21 +1,19 @@
-MIT License
+GoodNet Plugin — GPL-2.0 with Linking Exception
+================================================
 
-Copyright (c) 2026 GoodNet Contributors
+This plugin is licensed under the GNU General Public License v2.0 with
+the same Linking Exception that covers the GoodNet kernel: a plugin or
+host program that interfaces with the kernel only through the stable
+C ABI defined in `sdk/` is not a derivative work of this plugin and
+may carry any license.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+Copyright (c) 2026 GoodNet Contributors.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+The full text of the licence, including the Linking Exception clause,
+the GPL-2.0 base text, and the boundary definition, lives in
+`core/LICENSE` of the canonical GoodNet repository
+(https://github.com/GoodNet-io/goodnet/blob/main/core/LICENSE). When
+this plugin is lifted into a spinoff repository the full text travels
+alongside as `LICENSE` at that repository's root.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+SPDX-License-Identifier: GPL-2.0-only

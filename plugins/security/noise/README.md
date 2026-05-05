@@ -8,7 +8,7 @@ cross to X25519 inside this plugin via libsodium's birational map;
 the kernel never sees the X25519 form.
 
 **Kind**: security provider · **Artefact**: dynamic plugin (`.so` via
-dlopen) · **License**: Apache-2.0 (see `LICENSE`)
+dlopen) · **License**: GPL-2.0 with Linking Exception (see `LICENSE`)
 
 ## Build
 

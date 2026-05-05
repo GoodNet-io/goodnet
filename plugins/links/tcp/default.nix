@@ -27,7 +27,7 @@ stdenv.mkDerivation {
 
   meta = {
     description = "GoodNet plugin: goodnet-link-tcp";
-    license = lib.licenses.asl20;
+    license = lib.licenses.gpl2Only;  # GPL-2.0 with Linking Exception (see LICENSE)
     platforms = lib.platforms.linux;
   };
 }

@@ -27,7 +27,7 @@ stdenv.mkDerivation {
 
   meta = {
     description = "GoodNet plugin: goodnet-protocol-raw";
-    license = lib.licenses.asl20;
+    license = lib.licenses.mit;
     platforms = lib.platforms.linux;
   };
 }

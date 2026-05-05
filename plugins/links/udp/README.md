@@ -8,7 +8,7 @@ runs a frame-layer replay window (the v1 Noise XX provider does
 not, hence noise + UDP is unsupported in v1).
 
 **Kind**: link · **Artefact**: dynamic plugin (`.so` via dlopen)
-· **License**: MIT (see `LICENSE`)
+· **License**: GPL-2.0 with Linking Exception (see `LICENSE`)
 
 ## Build
 

@@ -7,7 +7,7 @@ loopback IP). Refuses to upgrade Untrusted connections — production
 deployments do not load this plugin on public-facing transports.
 
 **Kind**: security provider · **Artefact**: dynamic plugin (`.so` via
-dlopen) · **License**: Apache-2.0 (see `LICENSE`)
+dlopen) · **License**: MIT (see `LICENSE`)
 
 ## Build
 

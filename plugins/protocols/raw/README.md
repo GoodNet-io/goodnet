@@ -7,7 +7,7 @@ foreign-protocol passthrough scenarios where the application owns
 the framing.
 
 **Kind**: protocol layer · **Artefact**: STATIC library linked into
-the host binary (not a dlopen plugin) · **License**: Apache-2.0
+the host binary (not a dlopen plugin) · **License**: MIT
 (see `LICENSE`)
 
 ## Build
