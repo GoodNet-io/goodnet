@@ -45,6 +45,14 @@ public:
     [[nodiscard]] bool          has_key() const noexcept { return has_key_; }
     [[nodiscard]] std::uint64_t nonce()   const noexcept { return n_; }
 
+    /// Read the cipher key for the kernel-side inline-crypto export
+    /// path per `plugins/security/noise/docs/handshake.md` §6. The
+    /// caller copies the bytes immediately and zeroises its local
+    /// buffer; the source CipherState lives only inside the noise
+    /// plugin's own translation unit so the accessor's reach is the
+    /// plugin itself, never user code.
+    [[nodiscard]] const CipherKey& key_for_export() const noexcept { return k_; }
+
     /// Reset the nonce counter to zero. Called by `TransportState::rekey`
     /// per `plugins/security/noise/docs/handshake.md` §4 — both sides reset on the same
     /// boundary so AES-GCM with a fresh key + zero nonce is independent
