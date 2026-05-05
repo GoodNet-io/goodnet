@@ -92,3 +92,8 @@ result-*
 !apps/**/*.hpp
 !apps/**/*.md
 !apps/**/CMakeLists.txt
+
+# Distribution artefacts (systemd units, example configs, packaging)
+!dist/**/*.service
+!dist/**/*.json
+!dist/**/*.md
