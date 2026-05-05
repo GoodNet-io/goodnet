@@ -18,5 +18,6 @@ namespace gn::apps::goodnet {
 [[nodiscard]] int cmd_plugin_hash(std::span<const std::string_view> args);
 [[nodiscard]] int cmd_manifest_gen(std::span<const std::string_view> args);
 [[nodiscard]] int cmd_identity(std::span<const std::string_view> args);
+[[nodiscard]] int cmd_run(std::span<const std::string_view> args);
 
 }  // namespace gn::apps::goodnet

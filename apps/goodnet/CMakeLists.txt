@@ -15,11 +15,13 @@ add_executable(goodnet
     subcommands/plugin_hash.cpp
     subcommands/manifest_gen.cpp
     subcommands/identity.cpp
+    subcommands/run.cpp
 )
 
 target_link_libraries(goodnet
     PRIVATE
         goodnet_kernel
+        GoodNet::protocol_gnet
 )
 
 target_compile_features(goodnet PRIVATE cxx_std_23)
