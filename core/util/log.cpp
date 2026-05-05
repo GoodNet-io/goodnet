@@ -202,16 +202,30 @@ bool init_with(const LogConfig& cfg) noexcept try {
     sinks.reserve(2);
 
     /// Console sink — always present. Pattern defaults to the
-    /// build-aware shape unless the operator overrode it.
+    /// build-aware shape unless the operator overrode it. The sink
+    /// minimum level is build-aware too: Release pins WARN as the
+    /// production noise filter, Debug carries everything. The
+    /// operator can override via `log.console_level` to surface
+    /// Release-build INFO startup markers without rebuilding.
     {
         auto console = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
         const std::string_view pattern =
             cfg.console_pattern.empty() ? kDefaultPattern
                                          : std::string_view{cfg.console_pattern};
         console->set_formatter(make_formatter(pattern));
+        if (!cfg.console_level.empty()) {
+            console->set_level(parse_level(cfg.console_level,
 #if defined(NDEBUG)
-        console->set_level(spdlog::level::warn);
+                                            spdlog::level::warn
+#else
+                                            spdlog::level::trace
 #endif
+                                            ));
+        } else {
+#if defined(NDEBUG)
+            console->set_level(spdlog::level::warn);
+#endif
+        }
         sinks.push_back(std::move(console));
     }
 

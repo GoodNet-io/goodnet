@@ -10,6 +10,7 @@
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/plugin_context.hpp>
 #include <core/plugin/plugin_manager.hpp>
+#include <core/util/log.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
 #include <plugins/links/tcp/tcp.hpp>
@@ -185,6 +186,20 @@ bool find_transport_session(Kernel& k, gn_conn_id_t* out_id) {
 }  // namespace
 
 int main() {
+    /// The kernel logger defaults to a build-aware level (Release =
+    /// info, Debug = debug) and a Release-only console floor of WARN.
+    /// The demo wants the kernel's INFO startup markers visible in
+    /// either build, so push the console sink to `info` and lift the
+    /// logger level to match. Operators running `goodnet run` get the
+    /// same behaviour through the `log.console_level = "info"` knob in
+    /// `dist/example/node.json`.
+    {
+        gn::log::LogConfig lc;
+        lc.level         = "info";
+        lc.console_level = "info";
+        (void)gn::log::init_with(lc);
+    }
+
     std::cout << "[demo] GoodNet two-node quickstart\n"
               << "[demo] noise plugin: " << GOODNET_NOISE_PLUGIN_PATH << "\n";
 

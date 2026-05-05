@@ -17,6 +17,9 @@ gn::log::LogConfig load_log_config(const gn::core::Config& cfg) {
         if (cfg.get_string("log.level", s) == GN_OK) {
             lc.level = std::move(s);
         }
+        if (cfg.get_string("log.console_level", s) == GN_OK) {
+            lc.console_level = std::move(s);
+        }
         if (cfg.get_string("log.file", s) == GN_OK) {
             lc.log_file = std::move(s);
         }
