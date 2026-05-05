@@ -57,15 +57,29 @@ let
   # Every app re-enters the plugin's own dev shell through `nix
   # develop --command` so PATH / CMAKE_PREFIX_PATH / pkg-config
   # resolve identically whether the user runs `nix run .#test` or
-  # types `cmake --build build` by hand inside `nix develop`. The
-  # `''${FLAKE_DIR:-.}` fallback lets a caller override the flake
-  # location explicitly (`FLAKE_DIR=plugins/security/noise nix run
-  # .#test`); the default `.` matches the standard "cd into the
-  # plugin directory first" workflow.
-  mkDevApp = pkgs: name: cmd: {
+  # types `cmake --build build` by hand inside `nix develop`.
+  #
+  # PWD safety: `nix develop "."` resolves the dot at exec time, so
+  # a stray PWD outside the plugin directory used to silently route
+  # the operator into the kernel monorepo's flake (which exposes
+  # apps under the same names) and run the wrong build. Each
+  # standalone plugin flake carries the `# goodnet-standalone-plugin
+  # : <name>` marker comment so the wrapper can refuse to enter a
+  # flake that isn't the plugin it was built for. `FLAKE_DIR` is
+  # an explicit override for callers running from elsewhere.
+  mkDevApp = pkgs: pluginName: name: cmd: {
     type = "app";
     program = "${pkgs.writeShellScriptBin name ''
-      exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" \
+      set -euo pipefail
+      flake_dir="''${FLAKE_DIR:-$PWD}"
+      marker="# goodnet-standalone-plugin: ${pluginName}"
+      if ! grep -qF "$marker" "$flake_dir/flake.nix" 2>/dev/null; then
+        echo "${name}: $flake_dir is not the ${pluginName} plugin flake." >&2
+        echo "       cd into the plugin directory first," >&2
+        echo "       or set FLAKE_DIR=<plugin-path>." >&2
+        exit 1
+      fi
+      exec ${pkgs.nix}/bin/nix develop "$flake_dir" \
         --command bash -c '${cmd}'
     ''}/bin/${name}";
   };
@@ -106,11 +120,12 @@ EOF
     { pluginName, hasTests ? true, debugBinary ? "test_${pluginName}" }:
     let
       mkBuild = mkBuildScript pkgs;
-      buildApp = mkDevApp pkgs "${pluginName}-build" ''
+      mkApp = mkDevApp pkgs pluginName;
+      buildApp = mkApp "${pluginName}-build" ''
         set -euo pipefail
         ${mkBuild { dir = "build"; buildType = "Release"; }}
       '';
-      debugApp = mkDevApp pkgs "${pluginName}-debug" ''
+      debugApp = mkApp "${pluginName}-debug" ''
         set -euo pipefail
         ${mkBuild { dir = "build-dbg"; buildType = "Debug"; testing = hasTests; }}
         exec ${pkgs.gdb}/bin/gdb \
@@ -118,12 +133,12 @@ EOF
           "''${BUILD_DIR:-build-dbg}/tests/${debugBinary}" "$@"
       '';
       testApps = pkgs.lib.optionalAttrs hasTests {
-        test = mkDevApp pkgs "${pluginName}-test" ''
+        test = mkApp "${pluginName}-test" ''
           set -euo pipefail
           ${mkBuild { dir = "build"; buildType = "Release"; testing = true; }}
           (cd "''${BUILD_DIR:-build}" && ctest --output-on-failure)
         '';
-        test-asan = mkDevApp pkgs "${pluginName}-test-asan" ''
+        test-asan = mkApp "${pluginName}-test-asan" ''
           set -euo pipefail
           ${mkBuild {
             dir = "build-asan"; buildType = "Debug";
@@ -131,7 +146,7 @@ EOF
           }}
           (cd "''${BUILD_DIR:-build-asan}" && ctest --output-on-failure)
         '';
-        test-tsan = mkDevApp pkgs "${pluginName}-test-tsan" ''
+        test-tsan = mkApp "${pluginName}-test-tsan" ''
           set -euo pipefail
           ${mkBuild {
             dir = "build-tsan"; buildType = "Debug";

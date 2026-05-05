@@ -4,15 +4,19 @@
 # flag tuples, the dev-shell shape, the five-app set — lives in one
 # place. Plugin-specific knobs stay here.
 #
-# Switch `inputs.goodnet.url` from `path:../../..` to `github:goodnet
-# -io/kernel?ref=…` once the kernel extracts to its own repository.
+# `nixpkgs` follows the kernel's pin so a single nixpkgs bump in the
+# monorepo propagates to every plugin instead of every plugin owning
+# its own pin and drifting independently. Switch `inputs.goodnet.url`
+# from `path:../../..` to `github:goodnet-io/kernel?ref=…` once the
+# kernel extracts to its own repository — the rest stays unchanged.
+#
+# goodnet-standalone-plugin: noise
 {
   description = "GoodNet Noise XX security provider — standalone plugin flake.";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    goodnet.url = "path:../../..";
-    goodnet.inputs.nixpkgs.follows = "nixpkgs";
+    goodnet.url     = "path:../../..";
+    nixpkgs.follows = "goodnet/nixpkgs";
   };
 
   outputs = { self, nixpkgs, goodnet }:
