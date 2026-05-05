@@ -126,9 +126,44 @@
             doCheck = false;
           };
 
-          callPlugin = name: kind: pkgs.callPackage
-            (./plugins + "/${kind}/${name}/default.nix")
-            { inherit goodnet-core; };
+          # Per-package distribution wrappers per
+          # docs/contracts/plugin-manifest.md §8 +
+          # project_goodnet_subplan_infrastructure §I-A/§I-B.
+          # Per-plugin default.nix may opt into the high-level shape
+          # `{ pkgs, mkCppPlugin, goodnet-core }: mkCppPlugin { … }`
+          # or stay on raw mkDerivation — both shapes accept the
+          # same `goodnet-core` derivation, so the choice is per
+          # plugin author.
+          buildPlugin = import ./nix/buildPlugin.nix {
+            inherit (pkgs) lib;
+            inherit pkgs;
+          };
+          mkCppPlugin = import ./nix/mkCppPlugin.nix {
+            inherit pkgs buildPlugin;
+          };
+
+          # Conditionally inject `mkCppPlugin` based on the plugin's
+          # declared argument set so existing raw-mkDerivation
+          # default.nix files keep building unchanged. A plugin
+          # author opts into the wrapper by adding `mkCppPlugin`
+          # to their function signature; legacy shape is left alone.
+          callPlugin = name: kind:
+            let
+              pluginPath = ./plugins + "/${kind}/${name}/default.nix";
+              pluginExpr = import pluginPath;
+              pluginArgs =
+                if builtins.isFunction pluginExpr
+                then builtins.functionArgs pluginExpr
+                else throw ("callPlugin: plugins/${kind}/${name}/default.nix"
+                            + " must be a function taking { goodnet-core, ...},"
+                            + " got ${builtins.typeOf pluginExpr}");
+              extra = { inherit goodnet-core; }
+                // pkgs.lib.optionalAttrs (pluginArgs ? mkCppPlugin)
+                     { inherit mkCppPlugin; }
+                // pkgs.lib.optionalAttrs (pluginArgs ? buildPlugin)
+                     { inherit buildPlugin; };
+            in
+            pkgs.callPackage pluginPath extra;
 
           # Full in-tree build: kernel + every bundled plugin + tests.
           # Used by CI sanitisers and the dev-shell quickstart; not

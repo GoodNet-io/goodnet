@@ -231,10 +231,94 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 
 ---
 
-## 8. Cross-references
+## 8. Per-package distribution manifest
+
+The kernel-side manifest in §2 lists `(path, sha256)` pairs the
+operator has approved. A separate, complementary artefact ships
+with each plugin distribution: a JSON document next to the `.so`
+that carries the build-time metadata about the plugin itself —
+its name, kind, version, description, and integrity hash.
+
+The build infrastructure emits `<libfile>.json` next to each
+`<libfile>.so` it produces:
+
+```json
+{
+  "meta": {
+    "name":        "goodnet-plugin-noise",
+    "type":        "security",
+    "version":     "0.1.0",
+    "description": "Noise XX security provider",
+    "timestamp":   "2026-05-05T12:34:56Z"
+  },
+  "integrity": {
+    "alg":  "sha256",
+    "hash": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+  }
+}
+```
+
+### 8.1 Field semantics
+
+| Field | Type | Required | Notes |
+|---|---|---|---|
+| `meta.name` | string | yes | canonical plugin identifier, matches the binary's `gn_plugin_descriptor::name` |
+| `meta.type` | string | yes | one of `security`, `link`, `handler`, `protocol` |
+| `meta.version` | string | yes | semver triple (`MAJOR.MINOR.PATCH`) of the plugin distribution |
+| `meta.description` | string | yes | short single-line plugin summary; may be empty |
+| `meta.timestamp` | ISO-8601 UTC string | yes | when the manifest was generated |
+| `integrity.alg` | string | yes | hash algorithm; v1 ships `sha256` only |
+| `integrity.hash` | 64-character lowercase hex | yes | SHA-256 of the `<libfile>.so` bytes |
+
+### 8.2 Relation to the operator manifest (§2)
+
+The per-package JSON is **not** the trust root. The operator's §2
+manifest is — the kernel reads the operator manifest at load and
+ignores the per-package JSON entirely.
+
+The per-package JSON is for downstream tooling:
+- `goodnet manifest gen <so>...` reads each `<so>` and the
+  adjacent `<so>.json` to assemble the operator manifest;
+- distribution tarballs ship `<so>` + `<so>.json` paired so the
+  receiver can rebuild the operator manifest without re-hashing
+  every binary;
+- `goodnet plugin hash <so>` corroborates the per-package
+  integrity field independently of the operator manifest.
+
+### 8.3 Failure modes
+
+| Condition | Result |
+|---|---|
+| `<libfile>.so` exists, `<libfile>.json` missing | tooling falls back to fresh hash compute; plugin still loads (operator manifest is the trust root) |
+| `<libfile>.json` exists, malformed JSON | tooling rejects the per-package file with a parse error citing line:column; does not fall back |
+| `meta.type` not in {security, link, handler, protocol} | tooling rejects with «unknown plugin type» |
+| `integrity.hash` does not match the actual `.so` bytes | tooling rejects with «per-package integrity mismatch» citing both observed and declared hashes |
+| `meta.timestamp` not ISO-8601 | tooling rejects with «invalid timestamp format» |
+
+Tooling MUST emit loud errors per the failure-mode table; silent
+skips are forbidden per the build infrastructure contract in
+`project_goodnet_subplan_infrastructure.md` anti-«тяп-ляп»
+discipline.
+
+### 8.4 Out of scope for v1
+
+- **Capability declarations.** Per-plugin `ext_provides` /
+  `ext_requires` / `capabilities` arrays land with the sandbox /
+  manifest-v2 work in v1.x; the v1 per-package JSON carries only
+  meta + integrity.
+- **Signed per-package manifests.** The per-package JSON is
+  unsigned at v1. Tampered per-package metadata is detected at
+  the operator-manifest layer (§2) when the operator regenerates
+  their manifest.
+
+---
+
+## 9. Cross-references
 
 - Loader semantics: `plugin-lifetime.md` §5 (two-phase activation).
 - Resource limits: `limits.md` §4a (`max_plugins`).
 - Error codes: `sdk/types.h` `GN_ERR_INTEGRITY_FAILED`.
 - Implementation: `core/plugin/plugin_manifest.{hpp,cpp}` and
   `core/plugin/plugin_manager.cpp::open_one`.
+- Per-package emission: `nix/buildPlugin.nix` (build infrastructure).
+- Aggregate manifest CLI: `apps/goodnet/subcommands/manifest_gen.cpp`.
