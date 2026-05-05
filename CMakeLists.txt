@@ -136,6 +136,8 @@ if(GOODNET_BUILD_TESTS)
     enable_testing()
     find_package(GTest      REQUIRED)
     find_package(rapidcheck REQUIRED)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake")
+    goodnet_patch_rapidcheck_targets()
 endif()
 
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────
@@ -211,6 +213,7 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfigVersion.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake"
     DESTINATION "${GOODNET_CMAKE_DIR}")
 
 # ── Summary ──────────────────────────────────────────────────────────────────
