@@ -10,7 +10,9 @@ target_link_libraries(test_ipc PRIVATE
     GTest::gtest
     GTest::gtest_main)
 target_compile_features(test_ipc PRIVATE cxx_std_23)
-goodnet_apply_pch(test_ipc)
+if(COMMAND goodnet_apply_pch)
+    goodnet_apply_pch(test_ipc)
+endif()
 gtest_discover_tests(test_ipc
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60)

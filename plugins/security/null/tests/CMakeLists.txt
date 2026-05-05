@@ -15,7 +15,9 @@ if(TARGET goodnet_security_null)
     add_dependencies(test_null goodnet_security_null)
     target_compile_definitions(test_null PRIVATE
         "GOODNET_NULL_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_null>\"")
-    goodnet_apply_pch(test_null)
+    if(COMMAND goodnet_apply_pch)
+        goodnet_apply_pch(test_null)
+    endif()
     gtest_discover_tests(test_null
         DISCOVERY_TIMEOUT 30
         PROPERTIES TIMEOUT 60)

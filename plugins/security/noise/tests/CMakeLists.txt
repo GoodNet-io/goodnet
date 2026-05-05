@@ -19,7 +19,9 @@ target_link_libraries(test_noise PRIVATE
     rapidcheck_gtest)
 target_compile_features(test_noise PRIVATE cxx_std_23)
 target_compile_definitions(test_noise PRIVATE GN_TEST_HOOKS)
-goodnet_apply_pch(test_noise)
+if(COMMAND goodnet_apply_pch)
+    goodnet_apply_pch(test_noise)
+endif()
 gtest_discover_tests(test_noise
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60)
@@ -39,7 +41,9 @@ if(TARGET goodnet_security_noise)
     add_dependencies(test_noise_plugin goodnet_security_noise)
     target_compile_definitions(test_noise_plugin PRIVATE
         "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\"")
-    goodnet_apply_pch(test_noise_plugin)
+    if(COMMAND goodnet_apply_pch)
+        goodnet_apply_pch(test_noise_plugin)
+    endif()
     gtest_discover_tests(test_noise_plugin
         DISCOVERY_TIMEOUT 30
         PROPERTIES TIMEOUT 60)
