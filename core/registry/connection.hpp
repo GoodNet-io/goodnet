@@ -51,7 +51,7 @@ struct ConnectionRecord {
 
     /// Relay capability: when set, the protocol layer accepts inbound
     /// frames carrying EXPLICIT_SENDER / EXPLICIT_RECEIVER (relay or
-    /// broadcast paths) per `gnet-protocol.md` §5. Default `false`
+    /// broadcast paths) per `plugins/protocols/gnet/docs/wire-format.md` §5. Default `false`
     /// implies the connection is a regular peer; the deframe layer
     /// rejects EXPLICIT_SENDER as a sender_pk-spoofing attempt.
     /// Operator-supplied through configuration / a future relay

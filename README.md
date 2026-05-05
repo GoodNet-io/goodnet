@@ -237,7 +237,7 @@ authors read these in order:
 3. [`plugin-lifetime.md`](docs/contracts/plugin-lifetime.md) — when each
    entry point is called and what each phase may do.
 4. The contract for the role you are filling: `link.md`,
-   `handler-registration.md`, `noise-handshake.md`, `security-trust.md`.
+   `handler-registration.md`, `plugins/security/noise/docs/handshake.md`, `security-trust.md`.
 
 Code follows contracts; contracts move first.
 

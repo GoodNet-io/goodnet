@@ -27,7 +27,7 @@ gate refuses promotion.
 
 The exchange rides on system msg_id `0x11` over the secured channel.
 Any security provider that exports a `gn_handshake_keys_t::handshake_hash`
-(per `noise-handshake.md` §2) carries the attestation flow without
+(per `plugins/security/noise/docs/handshake.md` §2) carries the attestation flow without
 modification — the dispatcher is provider-agnostic.
 
 ---
@@ -326,6 +326,6 @@ more frequent re-attestation.
 
 - Attestation cert format and verification: `identity.md` §4.
 - Trust upgrade gate fired by §6: `security-trust.md` §3.
-- Channel-binding `handshake_hash` carrier: `noise-handshake.md` §2.
+- Channel-binding `handshake_hash` carrier: `plugins/security/noise/docs/handshake.md` §2.
 - System msg_id range: `handler-registration.md` §2a.
 - Per-connection event surface for state cleanup: `conn-events.md` §2a.

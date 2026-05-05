@@ -61,7 +61,7 @@ public:
 
     /// Forward-secrecy observable: the chaining key buffer inside this
     /// state is fully zero. The regression suite that pins
-    /// `noise-handshake.md` §5 clause 4 consults this — production
+    /// `plugins/security/noise/docs/handshake.md` §5 clause 4 consults this — production
     /// callers do not.
     [[nodiscard]] bool chaining_key_zeroised_for_test() const noexcept;
 

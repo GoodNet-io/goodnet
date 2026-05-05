@@ -46,7 +46,7 @@ public:
     [[nodiscard]] std::uint64_t nonce()   const noexcept { return n_; }
 
     /// Reset the nonce counter to zero. Called by `TransportState::rekey`
-    /// per `noise-handshake.md` §4 — both sides reset on the same
+    /// per `plugins/security/noise/docs/handshake.md` §4 — both sides reset on the same
     /// boundary so AES-GCM with a fresh key + zero nonce is independent
     /// of any earlier (key, nonce) pair. Restricted to the rekey path
     /// because arbitrary nonce assignment would let a caller force a
@@ -80,7 +80,7 @@ public:
     /// REKEY per Noise §4.2: new key = first 32 bytes of
     /// ENCRYPT(k, 2^64-1, ad="", plaintext=zeros[32]). Nonce is left
     /// untouched at this layer; the TransportState resets nonces on
-    /// both ciphers atomically per `noise-handshake.md` §4.
+    /// both ciphers atomically per `plugins/security/noise/docs/handshake.md` §4.
     void rekey() noexcept;
 
     /// Securely erase key material and reset state.

@@ -3,7 +3,7 @@
 /// @brief  Noise security provider — gn_security_provider_vtable
 ///         bound to the XX state machines under this directory.
 ///
-/// Per `noise-handshake.md` the wire pattern is fixed at
+/// Per `plugins/security/noise/docs/handshake.md` the wire pattern is fixed at
 /// `Noise_XX_25519_ChaChaPoly_BLAKE2b`. Future work registers a second
 /// provider for IK; the SDK already accommodates two with distinct
 /// `provider_id` strings.
@@ -44,7 +44,7 @@ constexpr const char* kProviderId = "noise";
 
 /// Per-connection state owned by the kernel through `void* state`.
 /// XX is the only pattern v1 ships; future patterns (IK, NK) land
-/// as sibling provider plugins per `noise-handshake.md` §1, so the
+/// as sibling provider plugins per `plugins/security/noise/docs/handshake.md` §1, so the
 /// session struct does not carry a pattern selector.
 struct NoiseSession {
     HandshakeState                handshake;
@@ -212,7 +212,7 @@ gn_result_t noise_export_transport_keys(void* /*self*/,
     std::memcpy(out_keys->peer_static_pk, s->peer_x25519_pk.data(),
                 GN_PUBLIC_KEY_BYTES);
     /// Channel binding: first GN_HASH_BYTES (32) of the 64-byte
-    /// handshake hash — see noise-handshake.md §2.
+    /// handshake hash — see plugins/security/noise/docs/handshake.md §2.
     auto h = s->handshake.handshake_hash();
     std::memcpy(out_keys->handshake_hash, h.data(), GN_HASH_BYTES);
     return GN_OK;
@@ -229,7 +229,7 @@ gn_result_t noise_encrypt(void* /*self*/,
 
     auto cipher = s->transport.encrypt(
         std::span<const std::uint8_t>(plaintext, plaintext_size));
-    /// Both sides reach the same nonce per `noise-handshake.md` §4
+    /// Both sides reach the same nonce per `plugins/security/noise/docs/handshake.md` §4
     /// because send/recv counters mirror — every encrypt by the
     /// local side increments the peer's recv counter symmetrically.
     /// Triggering rekey at the threshold on every encrypt/decrypt

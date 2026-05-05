@@ -26,7 +26,7 @@ plugin author's reading order is:
    when the kernel calls each entry point and what each phase may
    safely do.
 4. The contract for the role you are filling: `link.md`,
-   `handler-registration.md`, `noise-handshake.md`, etc.
+   `handler-registration.md`, `plugins/security/noise/docs/handshake.md`, etc.
 
 ---
 

@@ -32,7 +32,7 @@ struct gn_connection_context_s {
     /// would otherwise spoof handlers that authenticate by sender_pk.
     /// The kernel sets this from the connection record's `allows_relay`
     /// flag, populated by the relay handler / operator configuration
-    /// (post-RC handler work pinned in `gnet-protocol.md`).
+    /// (post-RC handler work pinned in `plugins/protocols/gnet/docs/wire-format.md`).
     bool               allows_relay{false};
 
     /// ABI evolution; must be zero-initialised.

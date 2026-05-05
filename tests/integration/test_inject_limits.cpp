@@ -64,7 +64,7 @@ struct InjectHarness {
         rec.role             = GN_ROLE_RESPONDER;
         rec.scheme      = "test";
         /// Broadcast injection paths carry EXPLICIT_SENDER, which the
-        /// `gnet-protocol.md` §5 relay-capability gate rejects on a
+        /// `plugins/protocols/gnet/docs/wire-format.md` §5 relay-capability gate rejects on a
         /// regular peer connection. The test fixture grants relay
         /// capability so the rate-limiter is the only thing on the
         /// rejection path.

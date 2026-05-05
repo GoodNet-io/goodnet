@@ -1,7 +1,7 @@
 /// @file   tests/unit/protocols/gnet/test_wire.cpp
 /// @brief  Deterministic GoogleTest cases for the GNET v1 wire layer.
 ///
-/// Pins the byte-level behaviour from `docs/contracts/gnet-protocol.md`:
+/// Pins the byte-level behaviour from `plugins/protocols/gnet/docs/wire-format.md`:
 ///   §2.1  fixed 14-byte header at the documented offsets,
 ///   §2.2  conditional pk fields gated by `EXPLICIT_*` flags,
 ///   §2.3  reserved bits and BROADCAST/EXPLICIT_RECEIVER conflict rules,

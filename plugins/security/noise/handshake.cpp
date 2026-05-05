@@ -276,7 +276,7 @@ HandshakeState::read_message(std::span<const std::uint8_t> message) {
 }
 
 HandshakeState::TransportPair HandshakeState::split() {
-    /// Per noise-handshake.md §5 clause 4: the long-term static
+    /// Per plugins/security/noise/docs/handshake.md §5 clause 4: the long-term static
     /// private key, the ephemeral key pair, and the peer ephemeral
     /// key have no remaining purpose inside the handshake state once
     /// Split has produced the transport ciphers. The wipe runs on

@@ -1,7 +1,7 @@
 /// @file   plugins/protocols/gnet/wire.hpp
 /// @brief  Byte-level encoding and decoding for the GNET v1 wire format.
 ///
-/// Implements the layout from `docs/contracts/gnet-protocol.md` §2.
+/// Implements the layout from `plugins/protocols/gnet/docs/wire-format.md` §2.
 /// Pure byte operations — no `ConnectionContext`, no envelope. The
 /// surrounding `protocol.hpp` ties wire bytes to the kernel envelope.
 

@@ -26,7 +26,7 @@ A v1.1 sibling provider (`noise-ik`) registers under a distinct
 `provider_id` and adds the `Noise_IK_25519_ChaChaPoly_BLAKE2b`
 pattern for the initiator-knows-peer-pk case. Selection between
 providers happens through `register_security` per
-`security-trust.md`, not through a runtime selector inside this
+`docs/contracts/security-trust.md`, not through a runtime selector inside this
 provider's vtable.
 
 ## 1a. Prologue (domain separation)
@@ -282,7 +282,7 @@ offset  size            field
 ```
 
 Length is a 16-bit unsigned because the post-decryption plaintext
-(the GNET frame; see `gnet-protocol.md`) is bounded by the GNET
+(the GNET frame; see `plugins/protocols/gnet/docs/wire-format.md`) is bounded by the GNET
 layer maximum. Larger payloads are pre-fragmented at the kernel
 level before reaching the security layer.
 
@@ -344,14 +344,14 @@ After a successful Noise handshake:
 
 1. The transport called `host_api->notify_connect` at the moment
    the socket established, with `trust` derived from the address
-   (per `link.md` §3 — `Loopback` for `127.0.0.1`/`::1`/
+   (per `docs/contracts/link.md` §3 — `Loopback` for `127.0.0.1`/`::1`/
    AF_UNIX, `Untrusted` for public). Trust class **stays
    `Untrusted`** when the handshake reaches the Transport phase —
    completing the cryptographic handshake proves the peer holds
    the static key but not that the kernel should treat the peer
    as a `Peer`-class participant. The promotion to `Peer` is
    gated by the attestation dual-flag protocol per
-   `attestation.md` §6, which fires after both sides exchange a
+   `docs/contracts/attestation.md` §6, which fires after both sides exchange a
    valid attestation envelope; `Loopback` and `IntraNode`
    connections never upgrade — `gn_trust_can_upgrade` in
    `sdk/trust.h` refuses any other transition.
@@ -367,6 +367,6 @@ fail to authenticate any frame signed with a different static.
 
 ## 9. Cross-references
 
-- TrustClass policy that gates this provider's use: `security-trust.md`.
-- Frame layout that wraps Noise output: `gnet-protocol.md`.
-- Handshake buffer ownership annotation: `abi-evolution.md` §6.
+- TrustClass policy that gates this provider's use: `docs/contracts/security-trust.md`.
+- Frame layout that wraps Noise output: `plugins/protocols/gnet/docs/wire-format.md`.
+- Handshake buffer ownership annotation: `docs/contracts/abi-evolution.md` §6.

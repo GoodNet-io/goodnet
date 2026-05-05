@@ -2,7 +2,7 @@
 /// @brief  Per-connection security state machine.
 ///
 /// Implements `docs/contracts/security-trust.md` §3 + the handshake
-/// loop described in `noise-handshake.md`. The kernel owns one
+/// loop described in `plugins/security/noise/docs/handshake.md`. The kernel owns one
 /// `SecuritySession` per active connection; the session drives the
 /// security provider's `handshake_open → handshake_step` cycle, then
 /// transitions to transport-phase encrypt/decrypt on completion.

@@ -84,13 +84,13 @@ public:
     /// loads come through `links.tls.cert_path` /
     /// `links.tls.key_path` on the kernel-owned config. The
     /// key buffer is wiped before the new bytes overwrite it per
-    /// `noise-handshake.md` §5b.
+    /// `plugins/security/noise/docs/handshake.md` §5b.
     void set_server_credentials(std::string_view cert_pem,
                                  std::string_view key_pem);
 
     /// Forward-secrecy observable: the override server private key
     /// buffer is fully zero. Used by the regression suite that
-    /// pins `noise-handshake.md` §5b — production callers do not
+    /// pins `plugins/security/noise/docs/handshake.md` §5b — production callers do not
     /// consult this.
     [[nodiscard]] bool key_pem_zeroised_for_test() const noexcept;
 
@@ -149,7 +149,7 @@ private:
     std::string                                                      override_cert_pem_;
     /// Owns the override server private key bytes. Storage is a
     /// byte vector so the destructor and the reassignment path can
-    /// `sodium_memzero` the buffer per `noise-handshake.md` §5b —
+    /// `sodium_memzero` the buffer per `plugins/security/noise/docs/handshake.md` §5b —
     /// `std::string` would leave libstdc++'s internal capacity
     /// buffer unmanaged.
     std::vector<std::uint8_t>                                        override_key_pem_;

@@ -310,8 +310,8 @@ the kernel may interpret them.
 ## 10. Cross-references
 
 - Wire details for the canonical mesh-framing implementation:
-  `gnet-protocol.md`.
-- Noise security: `noise-handshake.md`.
+  `plugins/protocols/gnet/docs/wire-format.md`.
+- Noise security: `plugins/security/noise/docs/handshake.md`.
 - Transport ABI: `link.md`.
 - Handler registration: `handler-registration.md`.
 - Trust-class policy: `security-trust.md`.

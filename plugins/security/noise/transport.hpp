@@ -16,7 +16,7 @@ namespace gn::noise {
 inline constexpr std::uint64_t REKEY_INTERVAL = 1ULL << 60;
 
 /// TransportState carries the two CipherStates produced by Split().
-/// Per `noise-handshake.md` §4 a `rekey()` call advances both ciphers
+/// Per `plugins/security/noise/docs/handshake.md` §4 a `rekey()` call advances both ciphers
 /// atomically and resets both nonces to zero.
 class TransportState {
 public:
@@ -42,7 +42,7 @@ public:
     }
 
     /// Atomic rekey: derive next keys on both ciphers and reset both
-    /// nonces to zero per `noise-handshake.md` §4. The peer is expected
+    /// nonces to zero per `plugins/security/noise/docs/handshake.md` §4. The peer is expected
     /// to invoke `rekey()` at the same point in its own counter so the
     /// two sides stay in sync.
     void rekey() noexcept {

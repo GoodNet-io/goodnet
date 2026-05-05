@@ -432,7 +432,7 @@ TEST(NoiseHandshakeXX, TransportCiphersInteroperate) {
 }
 
 TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretXX) {
-    /// `noise-handshake.md` §5 clause 4: Split clears the long-term
+    /// `plugins/security/noise/docs/handshake.md` §5 clause 4: Split clears the long-term
     /// static private key inside the handshake state. Before Split
     /// the buffer carries the supplied secret; after Split it is
     /// fully zero — the destructor sees an already-cleared buffer
@@ -454,7 +454,7 @@ TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesStaticSecretXX) {
 }
 
 TEST(NoiseHandshakeForwardSecrecy, SplitZeroisesChainingKeyXX) {
-    /// `noise-handshake.md` §5 clause 4: the symmetric chaining key
+    /// `plugins/security/noise/docs/handshake.md` §5 clause 4: the symmetric chaining key
     /// has no remaining cryptographic purpose once Split has
     /// produced the transport ciphers. The buffer is cleared inside
     /// `SymmetricState::split()`; the handshake-state forwarder
@@ -520,7 +520,7 @@ TEST(NoiseTransportRekey, SymmetricThresholdRekeyKeepsInterop) {
     /// see the matching counter symmetrically — every encrypt by one
     /// side advances the peer's recv counter by one — so each side
     /// rekeys at the same point without coordination per
-    /// `noise-handshake.md` §4. Pushing the counters to one short of
+    /// `plugins/security/noise/docs/handshake.md` §4. Pushing the counters to one short of
     /// the threshold and exchanging two frames runs the rekey path
     /// on both peers and asserts traffic continues to authenticate.
     Keypair init_static = generate_keypair();

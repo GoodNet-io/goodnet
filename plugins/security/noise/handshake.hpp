@@ -2,7 +2,7 @@
 /// @file   plugins/security/noise/handshake.hpp
 /// @brief  HandshakeState — Noise XX pattern progression on X25519.
 ///
-/// Per `docs/contracts/noise-handshake.md`. The state machine is a step
+/// Per `plugins/security/noise/docs/handshake.md`. The state machine is a step
 /// counter advanced by `write_message` / `read_message` on the local
 /// role. After the third pattern message, `is_complete()` returns true
 /// and `split()` extracts the transport ciphers. The provider is
@@ -52,7 +52,7 @@ public:
     /// Construct a fresh XX handshake. The pattern parameter is
     /// passed verbatim through to `protocol_name()` and is required
     /// to be `Pattern::XX`; future patterns ship as a separate
-    /// provider plugin per `noise-handshake.md` §1.
+    /// provider plugin per `plugins/security/noise/docs/handshake.md` §1.
     HandshakeState(Pattern pattern,
                     bool initiator,
                     const Keypair& static_keys);
@@ -115,7 +115,7 @@ public:
 
     /// Forward-secrecy observable: the long-term static private key
     /// buffer inside this handshake state is fully zero. Used by the
-    /// regression suite that pins `noise-handshake.md` §5 clause 4 —
+    /// regression suite that pins `plugins/security/noise/docs/handshake.md` §5 clause 4 —
     /// production callers have no reason to consult this, the contract
     /// already states the handshake is unsafe to reuse after Split.
     [[nodiscard]] bool static_secret_zeroised_for_test() const noexcept;

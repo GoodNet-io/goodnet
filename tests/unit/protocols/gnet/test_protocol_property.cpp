@@ -4,7 +4,7 @@
 /// Quantifies the round-trip contract of the IProtocolLayer envelope
 /// through `frame` then `deframe` against the identity-sourcing rules
 /// from `docs/contracts/protocol-layer.md` §5 and the wire-format from
-/// `docs/contracts/gnet-protocol.md`:
+/// `plugins/protocols/gnet/docs/wire-format.md`:
 ///
 ///   ∀ legal envelope (msg_id != 0, sender_pk != ZERO, payload ≤ cap):
 ///       deframe(frame(env)) recovers msg_id, identity (per §5), payload
@@ -171,7 +171,7 @@ RC_GTEST_PROP(GnetProtocolProperty,
 
     auto mc = mirror(alice_pk, bob_pk);
     /// Broadcast carries EXPLICIT_SENDER, so the receiving context
-    /// must opt in to relay framing per `gnet-protocol.md` §5.
+    /// must opt in to relay framing per `plugins/protocols/gnet/docs/wire-format.md` §5.
     mc.bob.allows_relay = true;
     GnetProtocol alice_proto, bob_proto;
 

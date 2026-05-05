@@ -1,6 +1,6 @@
 # Noise security provider — Apache-2.0. Implements the
 # Noise_XX_25519_ChaChaPoly_BLAKE2b pattern from
-# `docs/contracts/noise-handshake.md` on libsodium primitives.
+# `plugins/security/noise/docs/handshake.md` on libsodium primitives.
 #
 # Two build artefacts share the same source files:
 #   - `goodnet_noise_objects` OBJECT library carrying the crypto

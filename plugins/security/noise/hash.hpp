@@ -2,7 +2,7 @@
 /// @file   plugins/security/noise/hash.hpp
 /// @brief  BLAKE2b primitive used by the Noise plugin.
 ///
-/// Per `docs/contracts/noise-handshake.md` §2 the canonical hash for
+/// Per `plugins/security/noise/docs/handshake.md` §2 the canonical hash for
 /// `Noise_*_25519_ChaChaPoly_BLAKE2b` is BLAKE2b with `HASHLEN = 64`.
 /// Implemented through libsodium's `crypto_generichash_blake2b_*`.
 

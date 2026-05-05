@@ -357,14 +357,14 @@ that is the handler's responsibility per its registered policy.
 This contract scopes TrustClass policy. The cryptographic correctness
 of the security providers — Noise wire layout, hash function
 consistency, buffer sizing, rekey semantics — lives in
-`noise-handshake.md`.
+`plugins/security/noise/docs/handshake.md`.
 
 ---
 
 ## 9. Cross-references
 
 - Wire details for the canonical security provider:
-  `noise-handshake.md`.
+  `plugins/security/noise/docs/handshake.md`.
 - Transport-side TrustClass declaration: `link.md` §3.
 - Stack registration: `host-api.md` §2 (`register_*`).
 - Kernel error on a trust-class mismatch: `GN_ERR_INVALID_ENVELOPE`

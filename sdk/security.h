@@ -4,7 +4,7 @@
  *
  * Security providers terminate the handshake, derive transport keys,
  * and perform per-message encryption/decryption. The canonical
- * implementation is the Noise provider (`noise-handshake.md`).
+ * implementation is the Noise provider (`plugins/security/noise/docs/handshake.md`).
  *
  * See `docs/contracts/security-trust.md` for trust-class policy.
  */
