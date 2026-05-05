@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-/// @file   tests/unit/plugins/links/test_udp.cpp
+/// @file   plugins/links/udp/tests/test_udp.cpp
 /// @brief  UdpLink — datagram-mode listen + connect + boundary
 ///         preservation, MTU enforcement, trust-class by address.
 

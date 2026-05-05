@@ -1,4 +1,4 @@
-/// @file   tests/unit/plugins/links/test_extension_api.cpp
+/// @file   tests/integration/test_link_extension_api.cpp
 /// @brief  `gn.link.<scheme>` extension API surface — every
 ///         baseline transport publishes the same vtable shape under
 ///         the convention prefix and the steady slots produce live

@@ -17,7 +17,7 @@ namespace {
 /// Every test below pre-checks `r.has_value()` via gtest's `ASSERT_TRUE`
 /// before dereferencing through `r->...`. clang-tidy's data-flow can't
 /// see the abort, so the whole anonymous namespace is silenced. Same
-/// pattern as `tests/unit/plugins/security/test_noise.cpp`.
+/// pattern as `plugins/security/noise/tests/test_noise.cpp`.
 // NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 // ── §2 recognised forms ──────────────────────────────────────────────────

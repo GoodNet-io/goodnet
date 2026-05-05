@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   tests/unit/plugins/security/test_noise_transport.cpp
+/// @file   plugins/security/noise/tests/test_noise_transport.cpp
 /// @brief  Unit pin for `gn::noise::TransportState` — the post-Split
 ///         send/recv ciphers + rekey state machine.
 ///

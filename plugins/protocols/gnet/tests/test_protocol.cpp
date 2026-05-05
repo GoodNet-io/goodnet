@@ -1,4 +1,4 @@
-/// @file   tests/unit/protocols/gnet/test_protocol.cpp
+/// @file   plugins/protocols/gnet/tests/test_protocol.cpp
 /// @brief  GoogleTest cases for `gn::plugins::gnet::GnetProtocol`.
 ///
 /// Pins the IProtocolLayer envelope semantics from

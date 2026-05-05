@@ -39,3 +39,7 @@ target_link_libraries(goodnet_security_noise
     PRIVATE goodnet_noise_objects PkgConfig::SODIUM)
 target_include_directories(goodnet_security_noise
     PRIVATE ${SODIUM_INCLUDE_DIRS})
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

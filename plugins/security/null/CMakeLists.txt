@@ -6,3 +6,7 @@
 add_plugin(goodnet_security_null
     null.cpp
 )
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

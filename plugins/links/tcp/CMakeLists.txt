@@ -20,3 +20,7 @@ add_plugin(goodnet_link_tcp
 )
 target_link_libraries(goodnet_link_tcp
     PRIVATE goodnet_tcp_objects asio::asio Threads::Threads)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

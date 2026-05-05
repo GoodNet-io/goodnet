@@ -15,7 +15,7 @@
 /// before dereferencing through `r->...`. clang-tidy's data-flow can't
 /// see the abort, so the whole anonymous namespace is silenced. Same
 /// pattern as `tests/unit/util/test_uri.cpp` and
-/// `tests/unit/plugins/security/test_noise.cpp`.
+/// `plugins/security/noise/tests/test_noise.cpp`.
 // NOLINTBEGIN(bugprone-unchecked-optional-access)
 
 namespace {
@@ -49,7 +49,7 @@ rc::Gen<std::uint16_t> gen_port() {
 rc::Gen<std::string> gen_v4_uri() {
     return rc::gen::map(
         rc::gen::tuple(gen_scheme(), gen_v4(), gen_port()),
-        [](auto t) {
+        [](const auto& t) {
             const auto& [s, h, p] = t;
             return s + "://" + h + ":" + std::to_string(p);
         });

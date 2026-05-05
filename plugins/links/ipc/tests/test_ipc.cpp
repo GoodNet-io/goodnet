@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-/// @file   tests/unit/plugins/links/test_ipc.cpp
+/// @file   plugins/links/ipc/tests/test_ipc.cpp
 /// @brief  IpcLink — listen+connect on a per-PID socket path,
 ///         payload round-trip, socket-file cleanup on shutdown.
 

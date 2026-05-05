@@ -22,3 +22,7 @@ add_plugin(goodnet_link_tls
 target_link_libraries(goodnet_link_tls
     PRIVATE goodnet_tls_objects asio::asio Threads::Threads
             OpenSSL::SSL OpenSSL::Crypto)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

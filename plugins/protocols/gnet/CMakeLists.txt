@@ -22,3 +22,7 @@ target_link_libraries(goodnet_protocol_gnet
 )
 
 target_compile_features(goodnet_protocol_gnet PUBLIC cxx_std_23)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
