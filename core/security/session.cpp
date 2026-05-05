@@ -299,7 +299,28 @@ gn_result_t SecuritySession::decrypt_transport_stream(
     /// even when no complete frame surfaced this call — that is
     /// the legitimate "need more bytes" path on every chunk that
     /// straddles a boundary.
+    ///
+    /// Per-frame failure (malformed length, oversized frame, AEAD
+    /// authentication fail) erases every byte consumed so far —
+    /// including the bad frame — before returning. Without the
+    /// erase the next `notify_inbound_bytes` would re-decrypt the
+    /// same OK-frames already moved into `out_plaintexts`, double-
+    /// dispatching them to the handler, and re-hit the bad frame
+    /// every call until the link plugin's failure threshold tears
+    /// the conn down. The drain-on-error invariant keeps
+    /// `recv_buffer_` aligned to "no consumed bytes ever live past
+    /// a return".
     std::size_t cursor = 0;
+    auto erase_consumed = [&] {
+        if (cursor > 0) {
+            using diff_t = std::vector<std::uint8_t>::difference_type;
+            recv_buffer_.erase(recv_buffer_.begin(),
+                                recv_buffer_.begin()
+                                    + static_cast<diff_t>(cursor));
+            cursor = 0;
+        }
+    };
+
     while (cursor + kFramePrefixBytes <= recv_buffer_.size()) {
         const std::uint16_t len = static_cast<std::uint16_t>(
             (static_cast<std::uint16_t>(recv_buffer_[cursor]) << 8) |
@@ -308,11 +329,15 @@ gn_result_t SecuritySession::decrypt_transport_stream(
             /// A zero-length frame is malformed: the AEAD always
             /// produces a 16-byte tag, so a payload-free frame
             /// would still occupy 16 wire bytes.
+            cursor += kFramePrefixBytes;
+            erase_consumed();
             return GN_ERR_INVALID_ENVELOPE;
         }
         if (len > kFrameCipherMaxBytes) {
             /// u16 caps at 65535 — covered above by the type — so
             /// this branch is defensive.
+            cursor += kFramePrefixBytes;
+            erase_consumed();
             return GN_ERR_FRAME_TOO_LARGE;
         }
         const std::size_t total = kFramePrefixBytes + len;
@@ -345,21 +370,20 @@ gn_result_t SecuritySession::decrypt_transport_stream(
                 }
             }
         } else {
+            erase_consumed();
             return GN_ERR_NOT_IMPLEMENTED;
         }
-        if (rc != GN_OK) return rc;
+        if (rc != GN_OK) {
+            cursor += total;       // drop the bad frame too
+            erase_consumed();
+            return rc;
+        }
 
         out_plaintexts.push_back(std::move(plaintext));
         cursor += total;
     }
 
-    /// Erase the consumed prefix in one shot; the trailing partial
-    /// bytes shift to the front of the buffer in O(N partial).
-    if (cursor > 0) {
-        using diff_t = std::vector<std::uint8_t>::difference_type;
-        recv_buffer_.erase(recv_buffer_.begin(),
-                            recv_buffer_.begin() + static_cast<diff_t>(cursor));
-    }
+    erase_consumed();
     return GN_OK;
 }
 

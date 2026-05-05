@@ -24,6 +24,7 @@
 #include <sdk/plugin.h>
 #include <sdk/security.h>
 
+#include <atomic>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
@@ -55,7 +56,15 @@ struct NoiseSession {
     /// vtable's encrypt/decrypt slots refuse further work — the
     /// kernel runs the inline-crypto path on the exported keys per
     /// `plugins/security/noise/docs/handshake.md` §5+§6.
-    bool                          keys_exported = false;
+    ///
+    /// Atomic because the C ABI vtable is reachable from any thread
+    /// the host wires up. The kernel itself serialises through a
+    /// per-conn strand, but a future host (or a third-party caller
+    /// integrating against `host_api_t`) might call `vtable->encrypt`
+    /// concurrently with the kernel's `export_transport_keys`. The
+    /// atomic gate closes the TOCTOU window between writer-set and
+    /// reader-check that a plain `bool` would leave open.
+    std::atomic<bool>             keys_exported{false};
     PublicKey                     local_pk{};        ///< X25519 form
     bool                          peer_pk_present = false;
     PublicKey                     peer_x25519_pk{}; ///< filled at split
@@ -248,7 +257,7 @@ gn_result_t noise_export_transport_keys(void* /*self*/,
     /// re-zeroise the key buffers as a defence-in-depth backstop on
     /// the local copies the export already wiped above.
     s->split_done    = true;
-    s->keys_exported = true;
+    s->keys_exported.store(true, std::memory_order_release);
     return GN_OK;
 }
 
@@ -265,7 +274,7 @@ gn_result_t noise_encrypt(void* /*self*/,
     /// path does the work. A fallback caller that wants to drive the
     /// vtable encrypt directly never reaches here because the kernel
     /// session steers through `InlineCrypto` once `seeded()`.
-    if (s->keys_exported) return GN_ERR_INVALID_STATE;
+    if (s->keys_exported.load(std::memory_order_acquire)) return GN_ERR_INVALID_STATE;
 
     auto cipher = s->transport.encrypt(
         std::span<const std::uint8_t>(plaintext, plaintext_size));
@@ -289,7 +298,7 @@ gn_result_t noise_decrypt(void* /*self*/,
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
     if (!s->split_done) return GN_ERR_INVALID_STATE;
-    if (s->keys_exported) return GN_ERR_INVALID_STATE;
+    if (s->keys_exported.load(std::memory_order_acquire)) return GN_ERR_INVALID_STATE;
 
     auto plain = s->transport.decrypt(
         std::span<const std::uint8_t>(ciphertext, ciphertext_size));
@@ -307,7 +316,7 @@ gn_result_t noise_rekey(void* /*self*/, void* state) {
     /// Post-export the kernel-side InlineCrypto owns the cipher
     /// schedule; rekey on a discarded TransportState would be a
     /// no-op surfaced as success and leak the contract intent.
-    if (s->keys_exported) return GN_ERR_INVALID_STATE;
+    if (s->keys_exported.load(std::memory_order_acquire)) return GN_ERR_INVALID_STATE;
     s->transport.rekey();
     return GN_OK;
 }
