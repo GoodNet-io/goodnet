@@ -28,10 +28,11 @@ void print_usage() {
         "  config validate <file>        validate a kernel config JSON file\n"
         "  plugin hash <so>              print SHA-256 of a plugin .so\n"
         "  manifest gen <so>...          emit plugins.json manifest entries\n"
+        "  identity gen --out <file>     generate a fresh node identity (mode 0600)\n"
+        "  identity show <file>          print public surface of a saved identity\n"
         "\n"
         "v1 deferred (separate follow-up branches):\n"
-        "  run --config X --manifest Y   load kernel + plugins, run until SIGTERM\n"
-        "  identity gen|show <file>      generate / inspect a node identity\n",
+        "  run --config X --manifest Y   load kernel + plugins, run until SIGTERM\n",
         stderr);
 }
 
@@ -86,11 +87,13 @@ int main(int argc, char** argv) {
         }
         return cmd_manifest_gen(tail.subspan(1));
     }
-    if (sub == "run" || sub == "identity") {
+    if (sub == "identity") {
+        return cmd_identity(tail);
+    }
+    if (sub == "run") {
         (void)std::fprintf(stderr,
-            "goodnet %.*s: not yet implemented in this build — "
-            "ship target for the follow-up branch (see plan Wave 8.1.b)\n",
-            static_cast<int>(sub.size()), sub.data());
+            "goodnet run: not yet implemented in this build — "
+            "ship target for the follow-up branch (see plan Wave 8.1.b)\n");
         return 1;
     }
 
