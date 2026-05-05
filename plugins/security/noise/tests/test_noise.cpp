@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   tests/unit/plugins/security/test_noise.cpp
+/// @file   plugins/security/noise/tests/test_noise.cpp
 /// @brief  Noise plugin — primitives (BLAKE2b, HMAC, HKDF, ChaCha20Poly1305)
 ///         and full XX / IK handshake round-trips.
 

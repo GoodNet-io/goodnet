@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   tests/unit/plugins/security/test_noise_plugin.cpp
+/// @file   plugins/security/noise/tests/test_noise_plugin.cpp
 /// @brief  dlopen + register + drive Noise XX handshake against the
 ///         .so plugin. Mirrors the harness used for the null provider:
 ///         a stub host_api captures the registered vtable, the test

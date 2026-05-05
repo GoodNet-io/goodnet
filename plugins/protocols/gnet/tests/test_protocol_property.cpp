@@ -1,4 +1,4 @@
-/// @file   tests/unit/protocols/gnet/test_protocol_property.cpp
+/// @file   plugins/protocols/gnet/tests/test_protocol_property.cpp
 /// @brief  RapidCheck property tests for `gn::plugins::gnet::GnetProtocol`.
 ///
 /// Quantifies the round-trip contract of the IProtocolLayer envelope

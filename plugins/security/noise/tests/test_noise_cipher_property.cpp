@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   tests/unit/plugins/security/test_noise_cipher_property.cpp
+/// @file   plugins/security/noise/tests/test_noise_cipher_property.cpp
 /// @brief  RapidCheck property tests for the Noise CipherState
 ///         AEAD wrapper. Quantifies the encrypt/decrypt contract over
 ///         random keys, associated data, and plaintexts.

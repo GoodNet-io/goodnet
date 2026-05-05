@@ -22,3 +22,7 @@ add_plugin(goodnet_handler_heartbeat
 )
 target_link_libraries(goodnet_handler_heartbeat
     PRIVATE goodnet_heartbeat_objects)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

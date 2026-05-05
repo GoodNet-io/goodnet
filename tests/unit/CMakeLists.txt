@@ -1,8 +1,10 @@
-# Unit tests for the kernel and SDK.
+# Kernel + SDK unit tests.
 #
-# All `tests/unit/**/test_*.cpp` files are compiled into a single
-# `goodnet_unit_tests` executable; CTest discovers individual cases via
-# `gtest_discover_tests`.
+# `goodnet_unit_tests` covers `core/`, `sdk/`, and the cross-cutting
+# kernel surface (PluginManager, registries, util). Plugin-specific
+# unit tests live with their plugin under `plugins/<kind>/<name>/tests/`
+# and produce their own gtest binaries; this binary stops linking
+# plugin OBJECT libraries.
 
 include(GoogleTest)
 
@@ -20,8 +22,6 @@ if(GN_RAPIDCHECK_PC_FOUND)
     endif()
 endif()
 
-# CONFIGURE_DEPENDS so adding a new test_*.cpp shows up on the next
-# `cmake --build` without re-running configure.
 file(GLOB_RECURSE goodnet_unit_test_sources
     CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/test_*.cpp"
@@ -38,15 +38,6 @@ add_executable(goodnet_unit_tests ${goodnet_unit_test_sources})
 target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
-        GoodNet::protocol_gnet
-        GoodNet::protocol_raw
-        goodnet_noise_objects
-        goodnet_tcp_objects
-        goodnet_ipc_objects
-        goodnet_udp_objects
-        goodnet_ws_objects
-        goodnet_tls_objects
-        goodnet_heartbeat_objects
         GTest::gtest
         GTest::gtest_main
         rapidcheck
@@ -57,34 +48,15 @@ target_link_libraries(goodnet_unit_tests
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
 goodnet_apply_pch(goodnet_unit_tests)
 
-# Test seams in plugin internals (e.g. `test_set_nonces` in
-# `plugins/security/noise/transport.hpp`) are gated behind the
-# `GN_TEST_HOOKS` define so they cannot ship in production binaries.
-# Surfacing nonce assignment in a shipped Noise CipherState would
-# let a misuse trip a (key, nonce) collision and hand the attacker
-# a keystream — the test build is the only context where the seams
-# are reachable.
-target_compile_definitions(goodnet_unit_tests PRIVATE GN_TEST_HOOKS)
-
-# The NullProvider plugin test resolves entry symbols via dlopen at
-# runtime — the .so must exist in the build tree before ctest runs.
-# Adding the plugin target as a build dependency forces ninja to
-# produce it before linking the test executable, and the path is
-# threaded through a compile-time define so the test file knows where
-# to look.
+# PluginManager regression suite dlopens the null security provider .so
+# to drive the load/verify/anchor paths. Force ninja to ship the .so
+# before linking the test binary; the path threads through a compile-
+# time define.
 if(TARGET goodnet_security_null)
     add_dependencies(goodnet_unit_tests goodnet_security_null)
     target_compile_definitions(goodnet_unit_tests
         PRIVATE
             "GOODNET_NULL_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_null>\""
-    )
-endif()
-
-if(TARGET goodnet_security_noise)
-    add_dependencies(goodnet_unit_tests goodnet_security_noise)
-    target_compile_definitions(goodnet_unit_tests
-        PRIVATE
-            "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
     )
 endif()
 

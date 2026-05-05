@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-/// @file   tests/unit/plugins/protocols/test_raw.cpp
+/// @file   plugins/protocols/raw/tests/test_raw.cpp
 /// @brief  Raw protocol — opaque-payload frame/deframe + trust gate.
 
 #include <gtest/gtest.h>

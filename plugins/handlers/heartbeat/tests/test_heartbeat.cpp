@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   tests/unit/plugins/handlers/test_heartbeat.cpp
+/// @file   plugins/handlers/heartbeat/tests/test_heartbeat.cpp
 /// @brief  HeartbeatHandler — PING/PONG state machine + observed-address
 ///         reflection + extension surface, with deterministic clock.
 

@@ -1,4 +1,4 @@
-/// @file   tests/unit/plugins/security/test_null.cpp
+/// @file   plugins/security/null/tests/test_null.cpp
 /// @brief  GoogleTest unit tests for the `null` security provider.
 ///
 /// Per `docs/contracts/security-trust.md` §6 the null provider lives as

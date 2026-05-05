@@ -5,7 +5,7 @@
 /// end-to-end, so the test exercises every step from `dlopen` to the
 /// reference-counted ownership drain wait that gates `dlclose`. The
 /// path to the .so is injected via the build-system define
-/// `GOODNET_NULL_PLUGIN_PATH` (mirrors `tests/unit/plugins/security/test_null.cpp`).
+/// `GOODNET_NULL_PLUGIN_PATH` (mirrors `plugins/security/null/tests/test_null.cpp`).
 
 #include <gtest/gtest.h>
 

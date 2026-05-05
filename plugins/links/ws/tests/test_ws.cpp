@@ -1,4 +1,4 @@
-/// @file   tests/unit/plugins/links/test_ws.cpp
+/// @file   plugins/links/ws/tests/test_ws.cpp
 /// @brief  RFC 6455 framing + URI parsing + loopback round-trip
 ///         coverage for the `ws` transport plugin.
 

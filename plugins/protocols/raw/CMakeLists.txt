@@ -23,3 +23,7 @@ target_compile_options(goodnet_protocol_raw PRIVATE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter)
 set_target_properties(goodnet_protocol_raw PROPERTIES
     POSITION_INDEPENDENT_CODE ON)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()

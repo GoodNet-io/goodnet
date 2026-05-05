@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-/// @file   tests/unit/plugins/links/test_tcp.cpp
+/// @file   plugins/links/tcp/tests/test_tcp.cpp
 /// @brief  TcpLink — listen+connect loopback drives the full
 ///         vtable contract: dual notify_connect (initiator + responder),
 ///         strand-serialised send/recv round-trip, idempotent shutdown.

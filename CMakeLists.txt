@@ -122,6 +122,17 @@ add_library(asio::asio INTERFACE IMPORTED)
 target_link_libraries(asio::asio INTERFACE PkgConfig::ASIO)
 target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
 
+# ── Test framework discovery ─────────────────────────────────────────────────
+# Hoisted before plugin/test subdirectories so per-plugin
+# `tests/CMakeLists.txt` files (added under each plugin's umbrella when
+# GOODNET_BUILD_TESTS is on) can reference GTest::gtest and the rapidcheck
+# imported targets directly.
+if(GOODNET_BUILD_TESTS)
+    enable_testing()
+    find_package(GTest      REQUIRED)
+    find_package(rapidcheck REQUIRED)
+endif()
+
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────
 add_subdirectory(sdk)
 add_subdirectory(core)
@@ -159,9 +170,6 @@ if(GOODNET_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMake
 endif()
 
 if(GOODNET_BUILD_TESTS)
-    enable_testing()
-    find_package(GTest      REQUIRED)
-    find_package(rapidcheck REQUIRED)
     add_subdirectory(tests)
 endif()
 

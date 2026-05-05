@@ -1,4 +1,4 @@
-/// @file   tests/unit/plugins/links/test_tls.cpp
+/// @file   plugins/links/tls/tests/test_tls.cpp
 /// @brief  Loopback TLS handshake + payload round-trip.
 
 #include <gtest/gtest.h>

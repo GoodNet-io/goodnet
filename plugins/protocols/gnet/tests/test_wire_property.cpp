@@ -1,4 +1,4 @@
-/// @file   tests/unit/protocols/gnet/test_wire_property.cpp
+/// @file   plugins/protocols/gnet/tests/test_wire_property.cpp
 /// @brief  RapidCheck property tests for the GNET v1 wire layer.
 ///
 /// Quantifies the encode/decode contract from

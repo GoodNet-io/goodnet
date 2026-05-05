@@ -1,4 +1,4 @@
-/// @file   tests/unit/plugins/links/test_backpressure.cpp
+/// @file   tests/integration/test_backpressure.cpp
 /// @brief  `backpressure.md` §1 hard cap — TCP refuses fresh sends
 ///         once the per-connection write queue holds more than
 ///         `gn_limits_t::pending_queue_bytes_hard` bytes.

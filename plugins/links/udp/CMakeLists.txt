@@ -18,3 +18,7 @@ add_plugin(goodnet_link_udp
 )
 target_link_libraries(goodnet_link_udp
     PRIVATE goodnet_udp_objects asio::asio Threads::Threads)
+
+if(GOODNET_BUILD_TESTS)
+    add_subdirectory(tests)
+endif()
