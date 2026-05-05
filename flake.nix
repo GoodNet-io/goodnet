@@ -98,6 +98,14 @@
       lib = {
         # Operator entry point: `goodnet.lib.compose pkgs { ... }`.
         compose = composeNode;
+
+        # Building blocks for per-plugin standalone flakes — see
+        # `nix/plugin-helpers.nix` for the consumed interface.
+        # A plugin's `flake.nix` uses these to keep its outputs
+        # under ~50 lines instead of carrying an inline copy of
+        # the sanitizer flag tuple, the dev shell shape, and the
+        # five-app set every plugin shares.
+        plugin-helpers = import ./nix/plugin-helpers.nix;
       };
 
 
