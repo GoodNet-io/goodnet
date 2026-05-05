@@ -48,6 +48,14 @@ if(TARGET goodnet_security_noise)
     )
 endif()
 
+if(TARGET goodnet)
+    add_dependencies(goodnet_integration_tests goodnet)
+    target_compile_definitions(goodnet_integration_tests
+        PRIVATE
+            "GOODNET_BIN_PATH=\"$<TARGET_FILE:goodnet>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_integration_tests
     PROPERTIES LABELS integration
 )

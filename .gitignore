@@ -86,3 +86,9 @@ result-*
 !examples/**/*.md
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
+
+# Apps (operator-facing CLI binaries)
+!apps/**/*.cpp
+!apps/**/*.hpp
+!apps/**/*.md
+!apps/**/CMakeLists.txt
