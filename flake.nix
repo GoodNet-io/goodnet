@@ -122,6 +122,45 @@
             ' _ "$@"
           '';
 
+          # `nix run .#goodnet -- <subcommand> [args]` — operator-facing
+          # multicall CLI. Builds Release if needed, then runs the
+          # in-tree binary with the passed args. Same shell-app pattern
+          # as `gn-demo` so the dev shell's CMAKE_PREFIX_PATH /
+          # PKG_CONFIG_PATH are available for `find_package`.
+          gn-goodnet = pkgs.writeShellScriptBin "gn-goodnet" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build-release"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring Release build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DGOODNET_BUILD_TESTS=OFF
+              fi
+              cmake --build "$BUILD_DIR" --target goodnet -j"$(nproc)"
+              "$BUILD_DIR/bin/goodnet" "$@"
+            ' _ "$@"
+          '';
+
+          # `nix run .#node -- --config X --manifest Y` — alias for the
+          # `goodnet run` subcommand. v1 ships the alias even though
+          # `run` itself lands in Wave 8.1.b: when the subcommand
+          # ships, the alias starts working without a flake bump. For
+          # now it forwards to `goodnet run` and exits with the
+          # «not yet implemented» message.
+          gn-node = pkgs.writeShellScriptBin "gn-node" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              BUILD_DIR="build-release"
+              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
+                echo ">>> Configuring Release build..."
+                cmake -B "$BUILD_DIR" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Release \
+                  -DGOODNET_BUILD_TESTS=OFF
+              fi
+              cmake --build "$BUILD_DIR" --target goodnet -j"$(nproc)"
+              "$BUILD_DIR/bin/goodnet" run "$@"
+            ' _ "$@"
+          '';
+
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
         in
         {
@@ -133,6 +172,8 @@
           test-tsan     = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
           install-hooks = { type = "app"; program = "${gn-install-hooks}/bin/gn-install-hooks"; };
           demo          = { type = "app"; program = "${gn-demo}/bin/gn-demo"; };
+          goodnet       = { type = "app"; program = "${gn-goodnet}/bin/gn-goodnet"; };
+          node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -171,6 +212,8 @@ GoodNet devShell  (gcc15, C++23)
   nix run .#test-asan
   nix run .#test-tsan
   nix run .#demo           — two-node Noise-over-TCP quickstart
+  nix run .#goodnet -- ... — operator CLI (version, config validate, ...)
+  nix run .#node    -- ... — operator CLI alias for `goodnet run`
   nix run .#install-hooks  — wire .githooks/ into this clone
 
 EOF
