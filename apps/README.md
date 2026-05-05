@@ -28,4 +28,4 @@ nix run .#node    -- --config /etc/goodnet/node.json --manifest ... --identity .
 
 ## License
 
-Apache 2.0 — see top-level `LICENSE` and the linking-exception text.
+GPL-2.0 with Linking Exception. See top-level `LICENSE`.

@@ -50,4 +50,4 @@ run.cpp` shape instead.
 
 ## License
 
-Apache 2.0.
+GPL-2.0 with Linking Exception. See top-level `LICENSE`.

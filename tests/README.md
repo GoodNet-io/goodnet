@@ -37,4 +37,4 @@ strict `--warnings-as-errors=*` clang-tidy gating every merge.
 
 ## License
 
-Apache 2.0.
+GPL-2.0 with Linking Exception. See top-level `LICENSE`.

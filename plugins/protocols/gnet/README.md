@@ -9,7 +9,7 @@ PK on wire — peers learned identity at handshake), broadcast
 `EXPLICIT_RECEIVER`).
 
 **Kind**: protocol layer · **Artefact**: STATIC library linked into
-the kernel binary (not a dlopen plugin) · **License**: Apache-2.0
+the kernel binary (not a dlopen plugin) · **License**: GPL-2.0 with Linking Exception
 (see `LICENSE`)
 
 ## Build

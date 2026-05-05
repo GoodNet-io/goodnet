@@ -12,13 +12,15 @@ SDK.
 Platform Components
 -------------------
 
-  Kernel  (core/, plugins/protocols/gnet/)
-                                     GNU GPL-2.0 with Linking Exception
+  Kernel  (core/)                    GNU GPL-2.0 with Linking Exception
                                      →  core/LICENSE
-                                     →  plugins/protocols/gnet/LICENSE
 
   SDK     (sdk/, public headers)     MIT License
                                      →  sdk/LICENSE
+
+  Plugins (plugins/<kind>/<name>/)   Per-plugin LICENSE; see «Plugins»
+                                     below for the strategic-baseline
+                                     vs periphery split.
 
 
 Linking Exception (summary)
@@ -55,28 +57,54 @@ Plugins
 
 Plugins are independent builds. Each carries its own LICENSE file in
 its directory. The Linking Exception above means any license is
-permitted, statically or dynamically linked.
+permitted for plugins that interface with the kernel only through the
+stable C ABI in the SDK.
 
-In-tree convention for the bundled plugins shipped in this repository:
+In-tree licensing for the bundled plugins shipped in this repository:
 
-  - Reference / template / debug providers
-    (null, raw, ...)               .. MIT License
-  - Common transports
-    (tcp, udp)                     .. MIT License
-  - Real implementations with
-    original work and no obvious
-    upstream analogues
-    (noise, ipc, heartbeat, ...)   .. Apache 2.0 License
+  Strategic baseline — community-locked under GPL-2.0 with the same
+  Linking Exception as the kernel. The kernel's value as an
+  anti-enclosure platform depends on these layers staying free in
+  the strong sense; a fork must publish its modifications.
 
-These are conventions for the bundled tree. Out-of-tree plugins choose
-freely.
+    - plugins/protocols/gnet      .. GPL-2.0 + Linking Exception
+                                     (mandatory mesh framing)
+    - plugins/links/tcp           .. GPL-2.0 + Linking Exception
+    - plugins/links/udp           .. GPL-2.0 + Linking Exception
+    - plugins/links/ws            .. GPL-2.0 + Linking Exception
+                                     (web access bet — strategic)
+    - plugins/security/noise      .. GPL-2.0 + Linking Exception
+    - plugins/handlers/heartbeat  .. GPL-2.0 + Linking Exception
+                                     (canonical reference handler)
 
-The mandatory mesh-framing plugin under `plugins/protocols/gnet/` is
-GPL-2.0 with the same Linking Exception as the kernel: it is
-structurally part of the kernel binary and shares the kernel's
-copyleft, while still permitting independent plugins to link
-statically through the SDK.
+  Periphery — permissive. Templates, debug providers, host-OS-tied
+  transports without strategic weight.
+
+    - plugins/security/null       .. MIT License
+                                     (loopback / IntraNode-only debug)
+    - plugins/protocols/raw       .. MIT License
+                                     (template; opaque-payload layer)
+    - plugins/links/ipc           .. MIT License
+                                     (local AF_UNIX socket)
+
+  OpenSSL-tied — Apache-2.0 to align with OpenSSL 3.x and avoid the
+  GPL-2 ↔ Apache-2.0 incompatibility on the link.
+
+    - plugins/links/tls           .. Apache-2.0 License
+
+Out-of-tree plugins choose freely; the Linking Exception applies
+regardless of the plugin's license, so a proprietary plugin loaded
+through the SDK does not contaminate the kernel binary.
+
+License compatibility detail: Apache-2.0 is incompatible with
+GPL-2.0 on a static-link boundary because of Apache's patent-
+retaliation clause. The Linking Exception releases the SDK boundary
+from that restriction for plugin loading; the OpenSSL-tied TLS
+plugin keeps Apache-2.0 internally so it can continue linking
+OpenSSL without an additional exception clause. See
+`docs/LICENSES.md` for the full compatibility matrix and the
+upstream-dependency licence audit.
 
 
-Copyright (c) 2026 GoodNet Contributors (kernel + SDK).
-Plugins copyright their respective authors.
+Copyright (c) 2026 GoodNet Contributors (kernel + SDK + bundled
+plugins). Out-of-tree plugins copyright their respective authors.

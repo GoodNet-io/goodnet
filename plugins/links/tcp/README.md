@@ -6,7 +6,7 @@ dials remote URIs, hands inbound bytes up to the kernel router via
 counters through the `gn.link.tcp` extension.
 
 **Kind**: link · **Artefact**: dynamic plugin (`.so` via dlopen)
-· **License**: MIT (see `LICENSE`)
+· **License**: GPL-2.0 with Linking Exception (see `LICENSE`)
 
 ## Build
 
