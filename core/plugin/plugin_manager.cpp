@@ -194,8 +194,19 @@ gn_result_t PluginManager::open_one(const std::string& path,
         (void)std::snprintf(proc_path, sizeof(proc_path),
                             "/proc/self/fd/%d", fd);
         out.so_handle = ::dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
-        ::close(fd);
+        /// Keep the fd open across the rest of `load`. glibc's
+        /// dlopen caches by path string; closing the fd here lets
+        /// the kernel reuse fd N for the next plugin's open, the
+        /// next `dlopen("/proc/self/fd/N")` then hits the cached
+        /// handle from the first plugin and the second plugin's
+        /// symbols never enter the address space. The fd lives
+        /// alongside `so_handle` and closes at plugin shutdown
+        /// or `rollback`. This preserves the TOCTOU pin per
+        /// plugin-manifest.md without breaking multi-plugin loads.
+        out.integrity_fd = fd;
         if (!out.so_handle) {
+            ::close(fd);
+            out.integrity_fd = -1;
             diag = "dlopen failed for ";
             diag += path;
             diag += ": ";
@@ -237,6 +248,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
     if (rc != GN_OK) {
         ::dlclose(out.so_handle);
         out.so_handle = nullptr;
+        if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
         return rc;
     }
 
@@ -244,6 +256,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
         diag = "sdk-version mismatch in " + path;
         ::dlclose(out.so_handle);
         out.so_handle = nullptr;
+        if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
         return GN_ERR_VERSION_MISMATCH;
     }
 
@@ -532,6 +545,17 @@ void PluginManager::rollback() {
                 ::dlclose(it->so_handle);
             }
             it->so_handle = nullptr;
+        }
+
+        /// Close the integrity fd that pinned the inode through the
+        /// dlopen call. It only stayed open so the kernel could not
+        /// reuse the fd number for the next plugin's
+        /// `dlopen("/proc/self/fd/N")` and hit a glibc cache line.
+        /// After dlopen has the .so mapped, the fd has no further
+        /// purpose.
+        if (it->integrity_fd >= 0) {
+            ::close(it->integrity_fd);
+            it->integrity_fd = -1;
         }
 
         /// ctx is the last kernel-side owner of the heap allocation.
