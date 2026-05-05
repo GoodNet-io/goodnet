@@ -11,6 +11,7 @@
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/plugin_context.hpp>
+#include <core/registry/handler.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
 #include <plugins/links/tcp/tcp.hpp>
@@ -324,6 +325,118 @@ TEST(NoiseTcpE2E, HandshakeOverRealSocketReachesTransportPhase) {
 
     /// Tear down — destruction joins worker threads and closes the
     /// listening socket.
+    bob.reset();
+    alice.reset();
+}
+
+namespace {
+
+constexpr std::uint32_t kCoalesceMsgId = 0xC0A1E5C5u;
+
+struct CountingConsumer {
+    std::atomic<std::uint64_t> pkts{0};
+    std::atomic<std::uint64_t> bytes{0};
+};
+
+gn_propagation_t coalesce_consume(void* self, const gn_message_t* env) {
+    auto* c = static_cast<CountingConsumer*>(self);
+    c->pkts.fetch_add(1, std::memory_order_relaxed);
+    c->bytes.fetch_add(env->payload_size, std::memory_order_relaxed);
+    return GN_PROPAGATION_CONSUMED;
+}
+
+gn_conn_id_t find_transport_conn(Kernel& k) {
+    for (gn_conn_id_t id = 1; id <= 8; ++id) {
+        if (auto s = k.sessions().find(id);
+            s && s->phase() == SecurityPhase::Transport) {
+            return id;
+        }
+    }
+    return GN_INVALID_ID;
+}
+
+}  // namespace
+
+/// Regression test for the multi-message send defect surfaced by the
+/// 2026-05-05 bench harness. Bob spam-sends N application frames to
+/// alice through one TCP connection; TCP-side read coalescing puts
+/// multiple security frames in one `notify_inbound_bytes` call, which
+/// pre-fix the kernel decrypted as a single AEAD blob — every
+/// post-coalesce decrypt failed and the per-conn 16-failure threshold
+/// tore the connection down. Post-fix the security session frames the
+/// wire bytes (per `noise/handshake.md` §7) and decrypts each frame
+/// independently, so every send that bob enqueues lands at alice's
+/// consumer.
+TEST(NoiseTcpE2E, HighRateApplicationFramesSurviveCoalescing) {
+    NoisePlugin plugin;
+    ASSERT_NE(plugin.handle, nullptr) << "noise.so failed to load";
+
+    auto alice = std::make_unique<Node>(plugin, "alice");
+    auto bob   = std::make_unique<Node>(plugin, "bob");
+
+    /// Counting handler on alice for the rate-test msg_id.
+    CountingConsumer consumer;
+    gn_handler_vtable_t vt{};
+    vt.api_size       = sizeof(vt);
+    vt.handle_message = &coalesce_consume;
+    gn_handler_id_t hid = GN_INVALID_ID;
+    ASSERT_EQ(alice->kernel->handlers().register_handler(
+                  "gnet-v1", kCoalesceMsgId, /*priority*/128,
+                  &vt, &consumer, &hid),
+              GN_OK);
+
+    ASSERT_EQ(alice->tcp->listen("tcp://127.0.0.1:0"), GN_OK);
+    const auto port = alice->tcp->listen_port();
+    ASSERT_NE(port, 0);
+
+    const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
+    ASSERT_EQ(bob->tcp->connect(uri), GN_OK);
+
+    /// Wait for both ends to reach Transport phase.
+    wait_for([&] {
+        return find_transport_conn(*alice->kernel) != GN_INVALID_ID &&
+               find_transport_conn(*bob->kernel)   != GN_INVALID_ID;
+    }, 5s, "Noise XX completes on both sides");
+
+    const auto bob_conn = find_transport_conn(*bob->kernel);
+    ASSERT_NE(bob_conn, GN_INVALID_ID);
+
+    /// 1 KiB payload — small enough that several frames coalesce in
+    /// one TCP read on a fast loopback.
+    constexpr std::size_t   kPayloadSize = 1024;
+    constexpr std::uint64_t kSendCount   = 200;
+    std::vector<std::uint8_t> payload(kPayloadSize);
+    for (std::size_t i = 0; i < kPayloadSize; ++i) {
+        payload[i] = static_cast<std::uint8_t>(i);
+    }
+
+    /// Tight loop, no pacing — this is the path that pre-fix
+    /// disconnected after ~90-130 sends.
+    for (std::uint64_t i = 0; i < kSendCount; ++i) {
+        const gn_result_t rc = bob->api.send(
+            bob->api.host_ctx, bob_conn, kCoalesceMsgId,
+            payload.data(), payload.size());
+        if (rc == GN_ERR_LIMIT_REACHED) {
+            /// Backpressure is allowed; pause and retry the same i.
+            std::this_thread::sleep_for(1ms);
+            --i;
+            continue;
+        }
+        ASSERT_EQ(rc, GN_OK)
+            << "bob.api.send failed at i=" << i << " rc=" << rc;
+    }
+
+    /// Wait for alice's consumer to catch up. Pre-fix this never
+    /// reaches kSendCount because the conn dies after ~16 decrypt
+    /// failures; the test fails on timeout instead of on a wrong
+    /// count, which makes the regression easy to spot in CI logs.
+    wait_for([&] {
+        return consumer.pkts.load(std::memory_order_acquire) >= kSendCount;
+    }, 10s, "alice consumes every bob send");
+
+    EXPECT_EQ(consumer.pkts.load(), kSendCount);
+    EXPECT_EQ(consumer.bytes.load(), kSendCount * kPayloadSize);
+
     bob.reset();
     alice.reset();
 }
