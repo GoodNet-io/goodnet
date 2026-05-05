@@ -150,7 +150,13 @@
           callPlugin = name: kind:
             let
               pluginPath = ./plugins + "/${kind}/${name}/default.nix";
-              pluginArgs = builtins.functionArgs (import pluginPath);
+              pluginExpr = import pluginPath;
+              pluginArgs =
+                if builtins.isFunction pluginExpr
+                then builtins.functionArgs pluginExpr
+                else throw ("callPlugin: plugins/${kind}/${name}/default.nix"
+                            + " must be a function taking { goodnet-core, ...},"
+                            + " got ${builtins.typeOf pluginExpr}");
               extra = { inherit goodnet-core; }
                 // pkgs.lib.optionalAttrs (pluginArgs ? mkCppPlugin)
                      { inherit mkCppPlugin; }

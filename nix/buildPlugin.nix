@@ -49,6 +49,15 @@ pkgs.stdenv.mkDerivation {
   inherit version;
   src     = drv;
 
+  # Plugin metadata exported as env vars so the installPhase can pass
+  # them to jq via `--arg name "$pluginName"` instead of inlining Nix
+  # values into single-quoted shell — apostrophes in `description`
+  # would otherwise break the splice.
+  pluginName        = name;
+  pluginType        = type;
+  pluginVersion     = version;
+  pluginDescription = description;
+
   nativeBuildInputs = [ pkgs.jq pkgs.coreutils ];
 
   # Pure shell — no scripts checked into the tree per the infrastructure
@@ -61,7 +70,7 @@ pkgs.stdenv.mkDerivation {
 
     shopt -s nullglob
     so_count=0
-    for sofile in "$src"/lib/*.so "$src"/*.so; do
+    for sofile in "$src"/lib/*.so "$src"/*.so "$src"/lib/goodnet/plugins/*.so; do
       [ -f "$sofile" ] || continue
       cp "$sofile" "$out/lib/"
       so_count=$((so_count + 1))
@@ -73,15 +82,19 @@ pkgs.stdenv.mkDerivation {
       exit 1
     fi
 
-    timestamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+    # Honour SOURCE_DATE_EPOCH so the manifest sidecar stays
+    # bit-reproducible when the .so it describes is reproducible.
+    timestamp=$(date -u -d "@''${SOURCE_DATE_EPOCH:-$(date -u +%s)}" \
+                +"%Y-%m-%dT%H:%M:%SZ")
 
-    for libfile in $out/lib/*.so; do
+    shopt -s nullglob
+    for libfile in "$out"/lib/*.so; do
       hash=$(sha256sum "$libfile" | cut -d' ' -f1)
       jq -n \
-        --arg name        '${name}' \
-        --arg type        '${type}' \
-        --arg version     '${version}' \
-        --arg description '${description}' \
+        --arg name        "$pluginName" \
+        --arg type        "$pluginType" \
+        --arg version     "$pluginVersion" \
+        --arg description "$pluginDescription" \
         --arg timestamp   "$timestamp" \
         --arg hash        "$hash" \
         '{
@@ -98,6 +111,7 @@ pkgs.stdenv.mkDerivation {
           }
         }' > "$libfile.json"
     done
+    shopt -u nullglob
   '';
 
   meta = with lib; {

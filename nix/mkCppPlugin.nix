@@ -66,13 +66,11 @@ let
     installPhase = ''
       set -euo pipefail
       mkdir -p $out/lib
-      shopt -s nullglob
       so_count=0
-      for sofile in $(find . -name "lib*.so" -type f); do
-        cp "$sofile" $out/lib/
+      while IFS= read -r -d "" sofile; do
+        cp "$sofile" "$out/lib/"
         so_count=$((so_count + 1))
-      done
-      shopt -u nullglob
+      done < <(find . -name 'lib*.so' -type f -print0)
       if [ "$so_count" -eq 0 ]; then
         echo "mkCppPlugin: cmake build produced no lib*.so under $PWD" >&2
         exit 1
