@@ -1,5 +1,5 @@
 {
-  description = "GoodNet — network kernel and SDK (the platform). Plugins are independent derivations that depend on the installed SDK.";
+  description = "GoodNet kernel + SDK with bundled baseline plugins.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
