@@ -35,3 +35,8 @@ set_target_properties(goodnet PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
     OUTPUT_NAME "goodnet"
 )
+
+# `nix build .#goodnet-core` lands the binary under `result/bin/`
+# so composed deployments resolve `${goodnet-core}/bin/goodnet`
+# through CMake's install layout.
+install(TARGETS goodnet RUNTIME DESTINATION bin)

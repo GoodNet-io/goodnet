@@ -9,8 +9,88 @@
         nixpkgs.lib.genAttrs
           [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ]
           (system: f system (import nixpkgs { inherit system; }));
+
+      # `goodnet.lib.compose` — operator-facing constructor.
+      # Bundles the kernel binary + a chosen plugin set + an
+      # optional config + identity into a single derivation. The
+      # output layout matches what `goodnet run` expects out of
+      # `/etc/goodnet`, so the wrapper script in `bin/goodnet-node`
+      # invokes the real binary against the bundled paths without
+      # any additional plumbing on the operator side.
+      #
+      # An operator's flake takes `goodnet` as a flake input and
+      # writes:
+      #
+      #     goodnet.lib.compose pkgs {
+      #       kernel  = goodnet.packages.${system}.goodnet-core;
+      #       plugins = with goodnet.packages.${system}; [
+      #         goodnet-link-tcp
+      #         goodnet-security-noise
+      #         goodnet-handler-heartbeat
+      #       ];
+      #       config   = ./node.json;     # optional
+      #       identity = ./identity.bin;  # optional
+      #     }
+      composeNode = pkgs:
+        { kernel
+        , plugins ? [ ]
+        , config ? null
+        , identity ? null
+        , pname ? "goodnet-node"
+        , version ? "0.1.0"
+        }:
+        pkgs.stdenv.mkDerivation {
+          inherit pname version;
+          dontUnpack = true;
+          nativeBuildInputs = [ pkgs.makeWrapper ];
+
+          buildPhase = ''
+            mkdir -p plugins
+            for p in ${pkgs.lib.concatStringsSep " " plugins}; do
+              for so in $p/lib/goodnet/plugins/lib*.so; do
+                cp -L "$so" plugins/
+              done
+            done
+            ${kernel}/bin/goodnet manifest gen plugins/lib*.so > manifest.json
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin $out/lib/goodnet/plugins $out/etc/goodnet
+            cp ${kernel}/bin/goodnet $out/bin/goodnet
+            cp plugins/lib*.so $out/lib/goodnet/plugins/
+            sed "s|plugins/|$out/lib/goodnet/plugins/|g" \
+                manifest.json > $out/etc/goodnet/manifest.json
+            ${if config != null then ''
+              cp ${config} $out/etc/goodnet/node.json
+            '' else ''
+              echo '{}' > $out/etc/goodnet/node.json
+            ''}
+            ${pkgs.lib.optionalString (identity != null) ''
+              install -m 0600 ${identity} $out/etc/goodnet/identity.bin
+            ''}
+
+            makeWrapper $out/bin/goodnet $out/bin/goodnet-node \
+              --add-flags "run" \
+              --add-flags "--config $out/etc/goodnet/node.json" \
+              --add-flags "--manifest $out/etc/goodnet/manifest.json" \
+              ${pkgs.lib.optionalString (identity != null)
+                "--add-flags \"--identity $out/etc/goodnet/identity.bin\""}
+          '';
+
+          meta = {
+            description = "Composed GoodNet node — kernel + selected plugins.";
+            mainProgram  = "goodnet-node";
+            platforms    = pkgs.lib.platforms.linux;
+          };
+        };
     in
     {
+      lib = {
+        # Operator entry point: `goodnet.lib.compose pkgs { ... }`.
+        compose = composeNode;
+      };
+
+
       packages = forAllSystems (system: pkgs:
         let
           stdenv = pkgs.gcc15Stdenv;
@@ -20,13 +100,12 @@
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
 
-          # Kernel-only build. `-DGOODNET_BUILD_BUNDLED_PLUGINS=OFF`
-          # skips iterating `plugins/` so this derivation produces just
-          # `goodnet_kernel` + SDK + GNET (mandatory mesh framing) +
-          # `GoodNet::ctx_accessors` + the operator CLI. Per-plugin
-          # derivations consume this through `goodnet-core` and pull
-          # the SDK/AddPlugin.cmake helper through CMake's
-          # `find_package(GoodNet)`.
+          # Kernel-only build. Skips iterating `plugins/` so this
+          # derivation produces just `goodnet_kernel` + SDK + GNET
+          # (mandatory mesh framing) + `GoodNet::ctx_accessors` + the
+          # operator CLI. Per-plugin derivations consume this through
+          # `goodnet-core` and pull the SDK / AddPlugin.cmake helper
+          # through `find_package(GoodNet)` at configure time.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
             version = "0.1.0";
@@ -50,13 +129,14 @@
           callPlugin = name: kind: pkgs.callPackage
             (./plugins + "/${kind}/${name}/default.nix")
             { inherit goodnet-core; };
-        in
-        {
-          # `default` builds everything in-tree (kernel + bundled plugins
-          # + tests). This is what `nix run .#test` consumes; per-plugin
-          # spinoff repos build through `goodnet-core` instead.
-          default = stdenv.mkDerivation {
-            pname   = "goodnet";
+
+          # Full in-tree build: kernel + every bundled plugin + tests.
+          # Used by CI sanitisers and the dev-shell quickstart; not
+          # the operator-facing artefact (operators compose through
+          # `goodnet.lib.compose` from `goodnet-core` + selected
+          # plugin derivations).
+          everything = stdenv.mkDerivation {
+            pname   = "goodnet-everything";
             version = "0.1.0";
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
@@ -73,8 +153,14 @@
             ];
             doCheck = false;
           };
+        in
+        {
+          # Operator default: kernel only. The Linux-model analogue is
+          # `linux-headers` + selected drivers, not a kitchen-sink
+          # `linux-all`. Per-plugin packages follow below.
+          default = goodnet-core;
 
-          inherit goodnet-core;
+          inherit goodnet-core everything;
 
           goodnet-handler-heartbeat = callPlugin "heartbeat" "handlers";
           goodnet-link-tcp          = callPlugin "tcp"       "links";
@@ -226,15 +312,17 @@
       devShells = forAllSystems (system: pkgs:
         let
           stdenv = pkgs.gcc15Stdenv;
-          # `inputsFrom = [ goodnet-core ]` in a `mkShell` pulls every
-          # build / native / propagated input the package needs into
-          # the shell, so the dev environment matches the Nix build
-          # exactly without re-listing dependencies here.
-          goodnet-core = self.packages.${pkgs.stdenv.hostPlatform.system}.default;
+          # `inputsFrom = [ goodnet-everything ]` brings the full
+          # toolchain — kernel deps plus gtest / rapidcheck — into the
+          # shell so `cmake --build && ctest` works out of the box.
+          # The `default` package is the operator-facing kernel-only
+          # build; the dev shell needs the test framework on top.
+          goodnet-everything =
+            self.packages.${pkgs.stdenv.hostPlatform.system}.everything;
         in
         {
           default = (pkgs.mkShell.override { inherit stdenv; }) {
-            inputsFrom = [ goodnet-core ];
+            inputsFrom = [ goodnet-everything ];
             packages = with pkgs; [
               clang-tools ccache cmake-format jq
               gdb valgrind
