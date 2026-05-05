@@ -214,3 +214,78 @@ TEST(AppsGoodnet, IdentityGenWithoutOutFlagRejected) {
     EXPECT_NE(r.stdout_bytes.find("--out <file> is required"),
               std::string::npos);
 }
+
+TEST(AppsGoodnet, RunRequiresAllThreeFlags) {
+    /// Missing any of --config / --manifest / --identity → exit 2
+    /// with a usage-error message. Each of the three has no default;
+    /// a runner that started without an identity would crash on the
+    /// first conn the security pipeline tries to handshake.
+    const auto r = run_cmd(bin() + " run");
+    EXPECT_EQ(r.exit_code, 2);
+    EXPECT_NE(r.stdout_bytes.find("requires --config"), std::string::npos);
+}
+
+TEST(AppsGoodnet, RunMissingIdentityFileFailsCleanly) {
+    /// `run` opens the identity file before touching the kernel; a
+    /// missing path surfaces the load failure, not a half-built
+    /// kernel that crashes mid-handshake.
+    const auto r = run_cmd(bin() +
+        " run --config /tmp/x.json --manifest /tmp/y.json"
+        " --identity /no/such/path");
+    EXPECT_EQ(r.exit_code, 1);
+    EXPECT_NE(r.stdout_bytes.find("identity"), std::string::npos);
+    EXPECT_NE(r.stdout_bytes.find("cannot open"), std::string::npos);
+}
+
+TEST(AppsGoodnet, RunFullCycleClosesOnSigterm) {
+    /// End-to-end: generate identity, write minimal config, generate
+    /// manifest of one plugin (heartbeat — pure host-API consumer,
+    /// no transport setup needed), invoke `run` with a 2s timeout,
+    /// expect clean exit with the «signal received, draining» line.
+    const auto tmp = std::filesystem::temp_directory_path();
+    const auto id_path  = tmp / "goodnet_test_run_id.bin";
+    const auto cfg_path = tmp / "goodnet_test_run_cfg.json";
+    const auto man_path = tmp / "goodnet_test_run_man.json";
+    std::filesystem::remove(id_path);
+    std::filesystem::remove(cfg_path);
+    std::filesystem::remove(man_path);
+
+    /// Identity.
+    const auto gen = run_cmd(bin() + " identity gen --out " +
+                              id_path.string() + " --expiry 9999999999");
+    ASSERT_EQ(gen.exit_code, 0) << gen.stdout_bytes;
+
+    /// Empty config — every default fires from the active profile.
+    std::ofstream(cfg_path) << "{}\n";
+
+    /// Manifest of one plugin. Heartbeat is the smallest in-tree
+    /// loadable plugin and exercises the full PluginManager dlopen
+    /// path without any transport setup.
+    const std::string heartbeat_so =
+        std::string{GOODNET_HEARTBEAT_PLUGIN_PATH};
+    const auto man = run_cmd(bin() + " manifest gen " + heartbeat_so);
+    ASSERT_EQ(man.exit_code, 0) << man.stdout_bytes;
+    std::ofstream(man_path) << man.stdout_bytes;
+
+    /// Spawn the binary in a backgrounded subshell, hold its PID,
+    /// sleep briefly, send SIGTERM, wait, capture the binary's own
+    /// exit code. Using `timeout(1)` here races: the binary's
+    /// PluginManager.shutdown() takes a fraction longer than
+    /// `timeout`'s deadline so the wrapper returns 124 even though
+    /// the child printed «clean exit». Manual signal control gives
+    /// us the binary's actual exit status.
+    const std::string cmd =
+        bin() + " run --config "   + cfg_path.string() +
+                " --manifest " + man_path.string() +
+                " --identity " + id_path.string() +
+        " & PID=$!; sleep 0.3; kill -TERM $PID; wait $PID";
+    const auto r = run_cmd(cmd);
+    EXPECT_EQ(r.exit_code, 0) << r.stdout_bytes;
+    EXPECT_NE(r.stdout_bytes.find("kernel up"),     std::string::npos);
+    EXPECT_NE(r.stdout_bytes.find("signal "),        std::string::npos);
+    EXPECT_NE(r.stdout_bytes.find("clean exit"),    std::string::npos);
+
+    std::filesystem::remove(id_path);
+    std::filesystem::remove(cfg_path);
+    std::filesystem::remove(man_path);
+}

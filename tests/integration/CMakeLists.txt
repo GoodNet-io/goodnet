@@ -56,6 +56,14 @@ if(TARGET goodnet)
     )
 endif()
 
+if(TARGET goodnet_handler_heartbeat)
+    add_dependencies(goodnet_integration_tests goodnet_handler_heartbeat)
+    target_compile_definitions(goodnet_integration_tests
+        PRIVATE
+            "GOODNET_HEARTBEAT_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_handler_heartbeat>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_integration_tests
     PROPERTIES LABELS integration
 )
