@@ -20,6 +20,7 @@ using gn::core::SecurityEntry;
 using gn::core::SecuritySession;
 using gn::core::SecurityPhase;
 using gn::core::SessionRegistry;
+using gn::core::kFramePrefixBytes;
 
 /// Inline pass-through provider — handshake is a single no-op step,
 /// encrypt/decrypt copy plaintext to a fresh allocation paired with
@@ -210,15 +211,30 @@ TEST(SecuritySession, EncryptDecryptRoundTripInTransportPhase) {
     std::vector<std::uint8_t> tmp;
     ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
 
+    /// FakeProvider exports zeroed cipher keys, so the session's
+    /// inline-crypto seed declines and the encrypt/decrypt path
+    /// falls back to the vtable. The wire bytes carry the 2-byte
+    /// big-endian length prefix per `plugins/security/noise/docs/handshake.md`
+    /// §7 — `encrypt_transport` prepends, `decrypt_transport_stream`
+    /// strips.
     const std::vector<std::uint8_t> plain{1, 2, 3, 4, 5};
-    std::vector<std::uint8_t> cipher;
-    EXPECT_EQ(session.encrypt_transport(plain, cipher), GN_OK);
-    EXPECT_EQ(cipher, plain);  /// pass-through provider copies bytes
+    std::vector<std::uint8_t> wire;
+    EXPECT_EQ(session.encrypt_transport(plain, wire), GN_OK);
+    ASSERT_EQ(wire.size(), kFramePrefixBytes + plain.size());
+    EXPECT_EQ((static_cast<std::uint16_t>(wire[0]) << 8) |
+               static_cast<std::uint16_t>(wire[1]),
+              plain.size());
+    EXPECT_EQ(std::vector<std::uint8_t>(
+                  wire.begin() + kFramePrefixBytes, wire.end()),
+              plain);
     EXPECT_EQ(prov.encrypt_calls, 1);
 
-    std::vector<std::uint8_t> back;
-    EXPECT_EQ(session.decrypt_transport(cipher, back), GN_OK);
-    EXPECT_EQ(back, plain);
+    /// Stream decrypt strips the prefix, slices the cipher, and
+    /// returns one plaintext per complete frame.
+    std::vector<std::vector<std::uint8_t>> back;
+    EXPECT_EQ(session.decrypt_transport_stream(wire, back), GN_OK);
+    ASSERT_EQ(back.size(), 1u);
+    EXPECT_EQ(back[0], plain);
     EXPECT_EQ(prov.decrypt_calls, 1);
 }
 

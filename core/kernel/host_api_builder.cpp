@@ -1299,8 +1299,13 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     /// null-security stacks per security-trust.md §4) skip both
     /// branches and fall through to the bare protocol layer.
     auto session = pc->kernel->sessions().find(conn);
-    std::vector<std::uint8_t> plaintext;
     std::span<const std::uint8_t> wire_bytes{bytes, size};
+
+    /// Frames the protocol layer should deframe + dispatch. Filled by
+    /// the security branch (one entry per decrypted frame on
+    /// stream-class transports) or by the no-session fall-through
+    /// path (one entry that aliases `wire_bytes`).
+    std::vector<std::vector<std::uint8_t>> plaintexts;
 
     if (session != nullptr) {
         if (session->phase() == SecurityPhase::Handshake) {
@@ -1333,10 +1338,22 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
             return GN_OK;
         }
         if (session->phase() == SecurityPhase::Transport) {
-            const gn_result_t rc = session->decrypt_transport(wire_bytes, plaintext);
+            /// Stream-class transports deliver any chunk size; the
+            /// session buffers partial bytes per `backpressure.md`
+            /// §9 and emits one plaintext per complete security
+            /// frame. Calls with no complete frame return GN_OK
+            /// with an empty `plaintexts` — the loop below skips and
+            /// the link plugin re-feeds with the next chunk.
+            const gn_result_t rc = session->decrypt_transport_stream(
+                wire_bytes, plaintexts);
             if (rc != GN_OK) return rc;
-            wire_bytes = std::span<const std::uint8_t>(plaintext);
+            if (plaintexts.empty()) return GN_OK;
         }
+    } else {
+        /// No session — loopback / null-security stack per
+        /// `security-trust.md` §4. Bytes pass through to the
+        /// protocol layer verbatim as a single "frame".
+        plaintexts.emplace_back(wire_bytes.begin(), wire_bytes.end());
     }
 
     gn_connection_context_t ctx{};
@@ -1351,57 +1368,60 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
     auto layer = pc->kernel->protocol_layer();
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    auto deframed = layer->deframe(ctx, wire_bytes);
-    if (!deframed.has_value()) {
-        /// Map deframe error codes to the operator-facing drop
-        /// metric so a hostile-peer signal stays distinguishable
-        /// from a generic corruption. The error code propagates
-        /// back unchanged for the caller's local handling.
-        const auto err = deframed.error().code;
-        const char* drop_metric =
-            (err == GN_ERR_FRAME_TOO_LARGE) ? "drop.frame_too_large"
-          : (err == GN_ERR_DEFRAME_CORRUPT) ? "drop.deframe_corrupt"
-                                             : nullptr;
-        if (drop_metric != nullptr) {
-            pc->kernel->metrics().increment(drop_metric);
-        }
-        return err;
-    }
-
-    for (const auto& env : deframed->messages) {
-        /// Stamp ABI metadata + receiving connection id onto every
-        /// envelope before dispatch. `api_size = sizeof(gn_message_t)`
-        /// advertises the full v1 layout so size-prefix-gated reads
-        /// from handlers compiled against later v1.x SDKs see the
-        /// kernel-stamped fields. `conn_id` names the inbound edge —
-        /// handlers consult `env.conn_id` instead of resolving
-        /// `sender_pk` through `find_conn_by_pk`, which is wrong on
-        /// relay paths where `sender_pk` is the originating peer
-        /// (set via EXPLICIT_SENDER) but the receiving connection
-        /// belongs to the relay. Per `gn_message_t::conn_id`
-        /// documentation in `sdk/types.h`.
-        gn_message_t stamped = env;
-        stamped.api_size     = sizeof(gn_message_t);
-        stamped.conn_id      = conn;
-
-        /// Reserved system msg_ids are intercepted before the
-        /// regular dispatch chain. `0x11` (attestation) per
-        /// `attestation.md` §3 routes to the kernel-internal
-        /// dispatcher; the envelope never reaches plugin
-        /// handlers regardless of any registration.
-        if (stamped.msg_id == kAttestationMsgId) {
-            std::shared_ptr<SecuritySession> session_for_inbound =
-                pc->kernel->sessions().find(conn);
-            if (session_for_inbound != nullptr) {
-                std::span<const std::uint8_t> payload_span{
-                    stamped.payload, stamped.payload_size};
-                (void)pc->kernel->attestation_dispatcher().on_inbound(
-                    *pc->kernel, conn, *session_for_inbound,
-                    payload_span);
+    /// Loop over every plaintext the security session emitted, run
+    /// the protocol-layer deframer on each, then dispatch each
+    /// envelope. A plaintext may carry multiple GNET envelopes if
+    /// a sender batches; deframe handles that locally.
+    for (const auto& pt : plaintexts) {
+        auto deframed = layer->deframe(
+            ctx, std::span<const std::uint8_t>(pt));
+        if (!deframed.has_value()) {
+            const auto err = deframed.error().code;
+            const char* drop_metric =
+                (err == GN_ERR_FRAME_TOO_LARGE) ? "drop.frame_too_large"
+              : (err == GN_ERR_DEFRAME_CORRUPT) ? "drop.deframe_corrupt"
+                                                 : nullptr;
+            if (drop_metric != nullptr) {
+                pc->kernel->metrics().increment(drop_metric);
             }
-            continue;
+            return err;
         }
-        route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
+
+        for (const auto& env : deframed->messages) {
+            /// Stamp ABI metadata + receiving connection id onto every
+            /// envelope before dispatch. `api_size = sizeof(gn_message_t)`
+            /// advertises the full v1 layout so size-prefix-gated reads
+            /// from handlers compiled against later v1.x SDKs see the
+            /// kernel-stamped fields. `conn_id` names the inbound edge —
+            /// handlers consult `env.conn_id` instead of resolving
+            /// `sender_pk` through `find_conn_by_pk`, which is wrong on
+            /// relay paths where `sender_pk` is the originating peer
+            /// (set via EXPLICIT_SENDER) but the receiving connection
+            /// belongs to the relay. Per `gn_message_t::conn_id`
+            /// documentation in `sdk/types.h`.
+            gn_message_t stamped = env;
+            stamped.api_size     = sizeof(gn_message_t);
+            stamped.conn_id      = conn;
+
+            /// Reserved system msg_ids are intercepted before the
+            /// regular dispatch chain. `0x11` (attestation) per
+            /// `attestation.md` §3 routes to the kernel-internal
+            /// dispatcher; the envelope never reaches plugin
+            /// handlers regardless of any registration.
+            if (stamped.msg_id == kAttestationMsgId) {
+                std::shared_ptr<SecuritySession> session_for_inbound =
+                    pc->kernel->sessions().find(conn);
+                if (session_for_inbound != nullptr) {
+                    std::span<const std::uint8_t> payload_span{
+                        stamped.payload, stamped.payload_size};
+                    (void)pc->kernel->attestation_dispatcher().on_inbound(
+                        *pc->kernel, conn, *session_for_inbound,
+                        payload_span);
+                }
+                continue;
+            }
+            route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
+        }
     }
     return GN_OK;
 }

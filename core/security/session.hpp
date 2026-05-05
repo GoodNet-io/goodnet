@@ -26,6 +26,7 @@
 #include <vector>
 
 #include <core/registry/security.hpp>
+#include <core/security/inline_crypto.hpp>
 #include <sdk/security.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -110,12 +111,37 @@ public:
         std::span<const std::uint8_t> incoming,
         std::vector<std::uint8_t>& out_msg);
 
-    /// Encrypt a transport-phase plaintext frame.
+    /// Encrypt a transport-phase plaintext frame. The result carries
+    /// the wire framing — a 2-byte big-endian length prefix per
+    /// `plugins/security/noise/docs/handshake.md` §7 — so the link
+    /// plugin sends `out_cipher` verbatim without any further
+    /// per-frame markers. The session uses the kernel-side
+    /// `InlineCrypto` when the active provider exported transport
+    /// keys, otherwise falls back to the provider's vtable encrypt.
     [[nodiscard]] gn_result_t encrypt_transport(
         std::span<const std::uint8_t> plaintext,
         std::vector<std::uint8_t>& out_cipher);
 
-    /// Decrypt a transport-phase ciphertext frame.
+    /// Drain zero or more complete transport-phase frames from the
+    /// per-conn inbound buffer. The kernel feeds raw transport bytes
+    /// (a single TCP read may carry partial, exact, or coalesced
+    /// frames per `link.md` §4); the session accumulates them in
+    /// `recv_buffer_`, slices each `length`-byte ciphertext range
+    /// off the head per the noise §7 wire format, decrypts it
+    /// (InlineCrypto fast path or vtable fallback), and pushes one
+    /// plaintext per frame onto @p out_plaintexts. The buffer is
+    /// bounded per `backpressure.md` §9; the call returns
+    /// `GN_ERR_LIMIT_REACHED` if growth would exceed the cap and the
+    /// link plugin's failure threshold tears the conn down.
+    [[nodiscard]] gn_result_t decrypt_transport_stream(
+        std::span<const std::uint8_t> wire_bytes,
+        std::vector<std::vector<std::uint8_t>>& out_plaintexts);
+
+    /// Single-frame decrypt — kept for tests and the rare callers
+    /// that already split on the security boundary. Production
+    /// inbound flows through `decrypt_transport_stream` so the
+    /// wire-side prefix and partial-frame buffering live in one
+    /// place.
     [[nodiscard]] gn_result_t decrypt_transport(
         std::span<const std::uint8_t> ciphertext,
         std::vector<std::uint8_t>& out_plaintext);
@@ -187,7 +213,33 @@ private:
     mutable std::mutex pending_mu_;
     std::vector<std::vector<std::uint8_t>> pending_;
     std::atomic<std::uint64_t>             pending_bytes_{0};
+
+    /// Per-conn inbound partial-frame buffer per `backpressure.md`
+    /// §9. Stream-class transports deliver any chunk size; the
+    /// buffer accumulates bytes that don't yet form a complete
+    /// frame and shrinks as `decrypt_transport_stream` slices
+    /// length-prefixed frames off the head. The mutex is separate
+    /// from `pending_mu_` so a concurrent send-path drain on the
+    /// handshake queue doesn't contend with an inbound read.
+    mutable std::mutex                       recv_mu_;
+    std::vector<std::uint8_t>                recv_buffer_;
+
+    /// Transport-phase fast path. Seeded inside `advance_handshake`
+    /// at the moment the provider exports transport keys; if the
+    /// provider returns zeroed keys (null security) the inline path
+    /// stays unseeded and the session falls back to the vtable
+    /// encrypt/decrypt slots.
+    InlineCrypto                             inline_crypto_;
 };
+
+/// Wire-side framing constants used by `SecuritySession` and the
+/// kernel inbound thunk. The prefix is one big-endian uint16; the
+/// per-conn inbound buffer cap follows `backpressure.md` §9.
+inline constexpr std::size_t kFramePrefixBytes = 2;
+inline constexpr std::size_t kRecvBufferCapBytes =
+    /* two full frames + one prefix headroom */
+    2 * (std::size_t{65535} + kFramePrefixBytes);
+inline constexpr std::uint16_t kFrameCipherMaxBytes = 65535;
 
 
 /// Per-connection security session map. The kernel keeps one

@@ -282,32 +282,39 @@ TEST_F(NoisePluginTest, XxHandshakeReachesTransportPhase) {
     EXPECT_EQ(std::memcmp(alice_keys.handshake_hash, bob_keys.handshake_hash,
                            GN_HASH_BYTES), 0);
 
-    /// Application-phase round-trip — alice encrypts, bob decrypts.
+    /// Sanity: the exported cipher keys are non-zero. Pre-fix the
+    /// noise provider zeroed the slot; post-fix the kernel-side
+    /// InlineCrypto seeds from these bytes per
+    /// `plugins/security/noise/docs/handshake.md` §6.
+    std::uint8_t key_acc = 0;
+    for (std::size_t i = 0; i < GN_CIPHER_KEY_BYTES; ++i) {
+        key_acc |= alice_keys.send_cipher_key[i];
+        key_acc |= alice_keys.recv_cipher_key[i];
+    }
+    EXPECT_NE(key_acc, 0);
+    /// Alice's send key matches bob's recv key — the two CipherStates
+    /// post-Split are paired across peers per Noise §5.2.
+    EXPECT_EQ(std::memcmp(alice_keys.send_cipher_key,
+                           bob_keys.recv_cipher_key,
+                           GN_CIPHER_KEY_BYTES), 0);
+    EXPECT_EQ(std::memcmp(alice_keys.recv_cipher_key,
+                           bob_keys.send_cipher_key,
+                           GN_CIPHER_KEY_BYTES), 0);
+
+    /// Post-export contract per `plugins/security/noise/docs/handshake.md` §5:
+    /// the source session's transport-phase entries refuse all calls.
+    /// The kernel runs the inline-crypto path on the exported keys;
+    /// the application-phase round-trip lives in
+    /// `core/security/inline_crypto` unit tests and the
+    /// `NoiseTcpE2E.HighRateApplicationFramesSurviveCoalescing`
+    /// integration test.
     const std::uint8_t plain[] = {'p','i','n','g'};
     gn_secure_buffer_t enc{};
-    EXPECT_EQ(vtable_->encrypt(plugin_self_, alice, plain, sizeof(plain), &enc), GN_OK);
-    ASSERT_NE(enc.bytes, nullptr);
-    ASSERT_GT(enc.size, sizeof(plain));            /// cipher carries 16-byte tag
-
-    gn_secure_buffer_t dec{};
-    EXPECT_EQ(vtable_->decrypt(plugin_self_, bob, enc.bytes, enc.size, &dec), GN_OK);
-    ASSERT_NE(dec.bytes, nullptr);
-    EXPECT_EQ(dec.size, sizeof(plain));
-    EXPECT_EQ(std::memcmp(dec.bytes, plain, sizeof(plain)), 0);
-
-    if (enc.free_fn) enc.free_fn(enc.free_user_data, enc.bytes);
-    if (dec.free_fn) dec.free_fn(dec.free_user_data, dec.bytes);
-
-    /// Reverse direction works too.
-    const std::uint8_t plain2[] = {'p','o','n','g'};
-    gn_secure_buffer_t enc2{}, dec2{};
-    EXPECT_EQ(vtable_->encrypt(plugin_self_, bob, plain2, sizeof(plain2), &enc2), GN_OK);
-    EXPECT_EQ(vtable_->decrypt(plugin_self_, alice, enc2.bytes, enc2.size, &dec2), GN_OK);
-    ASSERT_NE(dec2.bytes, nullptr);
-    EXPECT_EQ(dec2.size, sizeof(plain2));
-    EXPECT_EQ(std::memcmp(dec2.bytes, plain2, sizeof(plain2)), 0);
-    if (enc2.free_fn) enc2.free_fn(enc2.free_user_data, enc2.bytes);
-    if (dec2.free_fn) dec2.free_fn(dec2.free_user_data, dec2.bytes);
+    EXPECT_EQ(vtable_->encrypt(plugin_self_, alice, plain, sizeof(plain), &enc),
+              GN_ERR_INVALID_STATE);
+    EXPECT_EQ(vtable_->decrypt(plugin_self_, bob,   plain, sizeof(plain), &enc),
+              GN_ERR_INVALID_STATE);
+    EXPECT_EQ(vtable_->rekey(plugin_self_, alice), GN_ERR_INVALID_STATE);
 
     vtable_->handshake_close(plugin_self_, alice);
     vtable_->handshake_close(plugin_self_, bob);
