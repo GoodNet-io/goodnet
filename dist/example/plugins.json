@@ -1,0 +1,21 @@
+{
+  "_comment_purpose": [
+    "Reference plugin manifest. Drop into /etc/goodnet/plugins.json,",
+    "regenerate the sha256 fields for your installed .so paths via:",
+    "    goodnet manifest gen /usr/lib/goodnet/lib*.so > plugins.json",
+    "Each entry pins one shared object the kernel may dlopen at run.",
+    "PluginManager refuses any path not present in the manifest with",
+    "GN_ERR_INTEGRITY_FAILED — the manifest is the trust root."
+  ],
+
+  "plugins": [
+    { "path": "/usr/lib/goodnet/libgoodnet_transport_tcp.so",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "/usr/lib/goodnet/libgoodnet_transport_udp.so",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "/usr/lib/goodnet/libgoodnet_transport_ipc.so",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    { "path": "/usr/lib/goodnet/libgoodnet_security_noise.so",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  ]
+}
