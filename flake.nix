@@ -5,9 +5,19 @@
 
   outputs = { self, nixpkgs }:
     let
+      # Linux-only honestly: every strategic plugin (heartbeat, tcp,
+      # udp, ws, ipc, gnet) binds tightly to epoll / capability-style
+      # sandboxing primitives that have no portable Darwin/BSD analogue.
+      # Listing Darwin systems here used to make `nix flake check
+      # --all-systems` fail with "Refusing to evaluate" the moment any
+      # Linux-only plugin met the Darwin platform check. macOS support
+      # can land later as a real port — adding "x86_64-darwin" /
+      # "aarch64-darwin" back here without porting the platform-bound
+      # plugins is the kind of cross-platform theatre this repo has
+      # explicitly chosen to avoid.
       forAllSystems = f:
         nixpkgs.lib.genAttrs
-          [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin" ]
+          [ "x86_64-linux" "aarch64-linux" ]
           (system: f system (import nixpkgs { inherit system; }));
 
       # `goodnet.lib.compose` — operator-facing constructor.
