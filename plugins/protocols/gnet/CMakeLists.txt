@@ -17,6 +17,7 @@ target_include_directories(goodnet_protocol_gnet PUBLIC
 target_link_libraries(goodnet_protocol_gnet
     PUBLIC
         GoodNet::sdk
+        GoodNet::ctx_accessors
     PRIVATE
         GoodNet::kernel
 )

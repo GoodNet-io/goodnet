@@ -20,7 +20,6 @@ set(_goodnet_kernel_sources
     security/session.cpp
     kernel/router.cpp
     kernel/kernel.cpp
-    kernel/connection_context.cpp
     kernel/core_c.cpp
     kernel/host_api_builder.cpp
     kernel/service_resolver.cpp
@@ -32,6 +31,23 @@ set(_goodnet_kernel_sources
     util/log.cpp
     util/log_config.cpp
 )
+
+# C ABI accessors for `gn_connection_context_t`. Lives separately so
+# protocol-layer plugins (gnet, raw, future custom layers) link the
+# accessors without dragging the entire kernel; `find_package(GoodNet)`
+# exports `GoodNet::ctx_accessors` for out-of-tree consumers.
+add_library(goodnet_ctx_accessors STATIC kernel/connection_context.cpp)
+target_link_libraries(goodnet_ctx_accessors PUBLIC GoodNet::sdk)
+target_include_directories(goodnet_ctx_accessors PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+    "$<INSTALL_INTERFACE:include/goodnet>"
+)
+set_target_properties(goodnet_ctx_accessors PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME ctx_accessors
+)
+add_library(GoodNet::ctx_accessors ALIAS goodnet_ctx_accessors)
+goodnet_apply_pch(goodnet_ctx_accessors)
 
 add_library(goodnet_kernel_objects OBJECT ${_goodnet_kernel_sources})
 set_target_properties(goodnet_kernel_objects PROPERTIES
@@ -46,6 +62,7 @@ target_include_directories(goodnet_kernel_objects PUBLIC
 target_link_libraries(goodnet_kernel_objects
     PUBLIC
         GoodNet::sdk
+        GoodNet::ctx_accessors
         Threads::Threads
         asio::asio
         spdlog::spdlog
@@ -85,6 +102,7 @@ set_target_properties(goodnet_kernel_shared PROPERTIES
 add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
 
 install(TARGETS goodnet_kernel goodnet_kernel_shared goodnet_kernel_objects
+                goodnet_ctx_accessors
     EXPORT GoodNetTargets
     ARCHIVE
     LIBRARY

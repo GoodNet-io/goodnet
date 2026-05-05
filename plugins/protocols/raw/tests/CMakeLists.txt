@@ -1,11 +1,11 @@
 # Raw protocol layer unit tests — Apache 2.0.
 include(GoogleTest)
 
-# Same `gn_ctx_*` link as the gnet test binary — raw exercises the
-# accessors on a `gn_connection_context_s` constructed inline.
+# Raw exercises `gn_ctx_*` accessors on a `gn_connection_context_s`
+# constructed inline. `GoodNet::ctx_accessors` (linked transitively
+# through `GoodNet::protocol_raw`) carries the C ABI bridge symbols.
 add_executable(test_protocol_raw
-    test_raw.cpp
-    ${PROJECT_SOURCE_DIR}/core/kernel/connection_context.cpp)
+    test_raw.cpp)
 target_link_libraries(test_protocol_raw PRIVATE
     GoodNet::sdk
     GoodNet::protocol_raw
