@@ -19,8 +19,42 @@
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
+
+          # Kernel-only build. `-DGOODNET_BUILD_BUNDLED_PLUGINS=OFF`
+          # skips iterating `plugins/` so this derivation produces just
+          # `goodnet_kernel` + SDK + GNET (mandatory mesh framing) +
+          # `GoodNet::ctx_accessors` + the operator CLI. Per-plugin
+          # derivations consume this through `goodnet-core` and pull
+          # the SDK/AddPlugin.cmake helper through CMake's
+          # `find_package(GoodNet)`.
+          goodnet-core = stdenv.mkDerivation {
+            pname   = "goodnet-core";
+            version = "0.1.0";
+            src     = pkgs.lib.cleanSourceWith {
+              src    = ./.;
+              filter = path: type:
+                let b = builtins.baseNameOf path; in
+                !(b == "build" || b == "result" || b == ".direnv");
+            };
+            nativeBuildInputs = coreNative;
+            buildInputs       = coreBuildInputs;
+            propagatedBuildInputs = coreBuildInputs;
+            cmakeFlags = [
+              "-DCMAKE_BUILD_TYPE=Release"
+              "-DGOODNET_BUILD_TESTS=OFF"
+              "-DGOODNET_BUILD_BUNDLED_PLUGINS=OFF"
+            ];
+            doCheck = false;
+          };
+
+          callPlugin = name: kind: pkgs.callPackage
+            (./plugins + "/${kind}/${name}/default.nix")
+            { inherit goodnet-core; };
         in
         {
+          # `default` builds everything in-tree (kernel + bundled plugins
+          # + tests). This is what `nix run .#test` consumes; per-plugin
+          # spinoff repos build through `goodnet-core` instead.
           default = stdenv.mkDerivation {
             pname   = "goodnet";
             version = "0.1.0";
@@ -39,6 +73,19 @@
             ];
             doCheck = false;
           };
+
+          inherit goodnet-core;
+
+          goodnet-handler-heartbeat = callPlugin "heartbeat" "handlers";
+          goodnet-link-tcp          = callPlugin "tcp"       "links";
+          goodnet-link-udp          = callPlugin "udp"       "links";
+          goodnet-link-ws           = callPlugin "ws"        "links";
+          goodnet-link-ipc          = callPlugin "ipc"       "links";
+          goodnet-link-tls          = callPlugin "tls"       "links";
+          goodnet-security-noise    = callPlugin "noise"     "security";
+          goodnet-security-null     = callPlugin "null"      "security";
+          goodnet-protocol-gnet     = callPlugin "gnet"      "protocols";
+          goodnet-protocol-raw      = callPlugin "raw"       "protocols";
         });
 
       apps = forAllSystems (system: pkgs:

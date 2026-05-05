@@ -24,9 +24,14 @@ if(NOT DEFINED _GOODNET_ADD_PLUGIN_INCLUDED)
     set(_GOODNET_ADD_PLUGIN_INCLUDED TRUE)
 endif()
 
-# In-tree build flag — set by the root CMakeLists so the visibility
-# carve-out for tests works without callers having to know.
-set(_GOODNET_IN_TREE TRUE CACHE INTERNAL "Building plugins in-tree alongside the kernel")
+# In-tree build flag — the root CMakeLists.txt sets it TRUE before
+# including this helper. Out-of-tree plugin builds load this file
+# through `find_package(GoodNet)` and inherit FALSE; the visibility
+# carve-out for in-tree tests then does not apply.
+if(NOT DEFINED _GOODNET_IN_TREE)
+    set(_GOODNET_IN_TREE FALSE CACHE INTERNAL
+        "Building plugins in-tree alongside the kernel")
+endif()
 
 option(GOODNET_STATIC_PLUGINS
     "Compile plugins as OBJECT libraries linked statically into the kernel"

@@ -1,3 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+
+if(NOT TARGET GoodNet::sdk)
+    project(goodnet_link_ipc
+        VERSION   0.1.0
+        LANGUAGES CXX)
+    find_package(GoodNet REQUIRED)
+    include(CTest)
+    if(BUILD_TESTING)
+        find_package(GTest      REQUIRED)
+        find_package(rapidcheck QUIET)
+        set(GOODNET_BUILD_TESTS ON)
+    endif()
+endif()
+
 # IPC transport plugin — MIT (common transports per LICENSE convention).
 # OBJECT lib for in-tree tests + SHARED plugin entry.
 

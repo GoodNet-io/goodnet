@@ -43,6 +43,11 @@ else()
 endif()
 
 # Plugin-author build helper. Defines `add_plugin(NAME sources...)`.
+# In-tree iteration: visibility stays open so unit tests link plugin
+# objects directly. The flag flips to FALSE for out-of-tree consumers
+# loading the helper through `find_package(GoodNet)`.
+set(_GOODNET_IN_TREE TRUE CACHE INTERNAL
+    "Building plugins in-tree alongside the kernel")
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake")
 # Precompiled-header umbrella. Defines `goodnet_apply_pch(target)`.
 include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pch.cmake")

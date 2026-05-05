@@ -1,3 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+
+if(NOT TARGET GoodNet::sdk)
+    project(goodnet_security_noise
+        VERSION   0.1.0
+        LANGUAGES CXX)
+    find_package(GoodNet REQUIRED)
+    include(CTest)
+    if(BUILD_TESTING)
+        find_package(GTest      REQUIRED)
+        find_package(rapidcheck QUIET)
+        set(GOODNET_BUILD_TESTS ON)
+    endif()
+endif()
+
 # Noise security provider — Apache-2.0. Implements the
 # Noise_XX_25519_ChaChaPoly_BLAKE2b pattern from
 # `plugins/security/noise/docs/handshake.md` on libsodium primitives.
