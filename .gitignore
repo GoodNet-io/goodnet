@@ -70,6 +70,8 @@ result-*
 !plugins/**/*.json
 !plugins/**/CMakeLists.txt
 !plugins/**/default.nix
+!plugins/**/flake.nix
+!plugins/**/flake.lock
 !plugins/**/LICENSE
 !plugins/**/README.md
 
