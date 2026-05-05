@@ -358,6 +358,14 @@
           '';
 
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
+
+          # `nix run .#new-plugin -- <kind> <name>` — scaffold a fresh
+          # plugin under `plugins/<kind>/<name>/` with the standalone
+          # CMakeLists branch, default.nix, standalone flake, source
+          # skeleton, placeholder gtest, README, and a TODO LICENSE.
+          # `auto-discover.nix` picks up the new directory the next
+          # time the kernel flake is evaluated.
+          gn-new-plugin = import ./nix/new-plugin.nix { inherit pkgs; };
         in
         {
           default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
@@ -370,6 +378,7 @@
           demo          = { type = "app"; program = "${gn-demo}/bin/gn-demo"; };
           goodnet       = { type = "app"; program = "${gn-goodnet}/bin/gn-goodnet"; };
           node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
+          new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
         });
 
       devShells = forAllSystems (system: pkgs:
