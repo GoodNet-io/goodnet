@@ -14,6 +14,7 @@ add_executable(goodnet
     subcommands/config_validate.cpp
     subcommands/plugin_hash.cpp
     subcommands/manifest_gen.cpp
+    subcommands/identity.cpp
 )
 
 target_link_libraries(goodnet
