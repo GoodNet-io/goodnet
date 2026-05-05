@@ -81,7 +81,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         /// other than its own. Without the gate, every authenticated
         /// peer could spoof `sender_pk` on any inbound frame and
         /// compromise handlers that authenticate by sender_pk.
-        /// `gnet-protocol.md` §5 pins the contract — only relay-capable
+        /// `plugins/protocols/gnet/docs/wire-format.md` §5 pins the contract — only relay-capable
         /// connections are permitted to carry EXPLICIT_SENDER /
         /// EXPLICIT_RECEIVER flags.
         if (hdr.has_explicit_sender()) {
@@ -107,7 +107,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         /// receiver_pk — wire-explicit when EXPLICIT_RECEIVER set,
         /// ZERO when BROADCAST flag set, otherwise the local node pk.
         ///
-        /// Same relay-capability gate (`gnet-protocol.md` §5):
+        /// Same relay-capability gate (`plugins/protocols/gnet/docs/wire-format.md` §5):
         /// EXPLICIT_RECEIVER lets the peer redirect a frame to a
         /// wire-supplied receiver_pk. On a non-relay connection that
         /// is a direct routing-mismatch attack — the peer claims to

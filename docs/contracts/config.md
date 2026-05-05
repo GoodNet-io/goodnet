@@ -101,7 +101,7 @@ parser.
         "pending_queue_bytes_hard":  4194304,   //  4 MiB
         "pending_handshake_bytes":    262144,   //  256 KiB
 
-        // Framing (gnet-protocol.md §2)
+        // Framing (plugins/protocols/gnet/docs/wire-format.md §2)
         "max_payload_bytes":            65522,
         "max_frame_bytes":              65536,
 

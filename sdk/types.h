@@ -294,7 +294,7 @@ typedef enum gn_result_e {
                                        *   end, etc. */
     GN_ERR_FRAME_TOO_LARGE    = -16  /**< wire frame length exceeds the
                                        *   contract's per-frame ceiling
-                                       *   (`gnet-protocol.md` §2.4
+                                       *   (`plugins/protocols/gnet/docs/wire-format.md` §2.4
                                        *   `kMaxFrameBytes`). Distinct from
                                        *   `GN_ERR_DEFRAME_CORRUPT` so the
                                        *   operator metric distinguishes a

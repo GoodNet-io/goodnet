@@ -272,7 +272,7 @@ TEST(TlsLink_VerifyDefault, ConfigUnboundEnforcesDefault) {
 }
 
 TEST(TlsLink_KeyHygiene, ListenZeroisesOverrideKey) {
-    /// `noise-handshake.md` §5b: once OpenSSL has copied the key
+    /// `plugins/security/noise/docs/handshake.md` §5b: once OpenSSL has copied the key
     /// bytes into its own context, the override buffer has no
     /// remaining purpose and is wiped eagerly. The observable
     /// flips from non-zero to zero across the listen call.

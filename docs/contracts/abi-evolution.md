@@ -161,7 +161,7 @@ removal or rename of a host-API slot is a major-version bump.
 
 The pre-RC reshape window does not weaken any other invariant —
 TrustClass policy (`security-trust.md`), envelope shape
-(`protocol-layer.md`), wire framing (`gnet-protocol.md`) and the
+(`protocol-layer.md`), wire framing (`plugins/protocols/gnet/docs/wire-format.md`) and the
 manifest pinning (`plugin-manifest.md`) hold throughout.
 
 ---

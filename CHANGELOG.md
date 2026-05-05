@@ -500,7 +500,7 @@ typed extension API.
   re-entrant call observes the record gone and emits no second
   event. The `reason` parameter is reserved at v1.
 - **Noise handshake: Ed25519↔X25519 conversion explicit
-  (`noise-handshake.md` §8).** §8 now states that the address is
+  (`plugins/security/noise/docs/handshake.md` §8).** §8 now states that the address is
   an Ed25519 public key and the Noise suite's `25519` denotes
   X25519 for Diffie-Hellman; each side's static key crosses
   curves at session initialisation through the standard
@@ -556,7 +556,7 @@ typed extension API.
   from the registry's `upgrade_trust` policy gate — concurrent
   callers race through the gate and the loser exits silently.
 - **TLS transport wipes the override server private key per
-  `noise-handshake.md` §5b.** The override storage migrates from
+  `plugins/security/noise/docs/handshake.md` §5b.** The override storage migrates from
   `std::string` to a byte vector that the destructor and the
   reassignment path zeroise explicitly. The bytes are also wiped
   immediately after `OpenSSL` copies them into the SSL context
@@ -577,7 +577,7 @@ typed extension API.
   closure. The regression suite simulates a 64-ping flood under a
   256-byte cap and asserts the server publishes `notify_disconnect`.
 - **Noise handshake clears every secret buffer on Split
-  (`noise-handshake.md` §5 clause 4).** The handshake state's
+  (`plugins/security/noise/docs/handshake.md` §5 clause 4).** The handshake state's
   `Split` step zeroises the long-term static private key, the
   ephemeral key pair, the peer ephemeral key, and the symmetric
   chaining key in the moment the transport ciphers are produced.

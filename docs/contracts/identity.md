@@ -193,6 +193,6 @@ sandbox; v1 keeps the surface narrow.
 ## 7. Cross-references
 
 - TrustClass policy that gates attestation use: `security-trust.md`.
-- Curve conversion (Ed25519 → X25519) for Noise DH: `noise-handshake.md` §8.
+- Curve conversion (Ed25519 → X25519) for Noise DH: `plugins/security/noise/docs/handshake.md` §8.
 - Connection accessors that return 32-byte public keys:
   `protocol-layer.md` §3.1.

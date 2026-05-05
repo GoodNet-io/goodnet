@@ -41,7 +41,7 @@ void SecuritySession::close() noexcept {
     pending_bytes_.store(0, std::memory_order_release);
     /// Keys remain available to callers that need the channel-binding
     /// hash after close; they are zeroised by the provider's
-    /// handshake_close per `noise-handshake.md` §5, but the SDK copy
+    /// handshake_close per `plugins/security/noise/docs/handshake.md` §5, but the SDK copy
     /// in `keys_` belongs to this struct's storage.
 }
 

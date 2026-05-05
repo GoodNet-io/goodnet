@@ -88,7 +88,7 @@ SymmetricState::decrypt_and_hash(std::span<const std::uint8_t> ciphertext) {
 }
 
 SymmetricState::SplitPair SymmetricState::split() {
-    /// Per noise-handshake.md §5 clause 4: the chaining key has no
+    /// Per plugins/security/noise/docs/handshake.md §5 clause 4: the chaining key has no
     /// remaining cryptographic purpose once Split has produced the
     /// transport ciphers, and the wipe runs on the failure path too
     /// — if the HKDF primitive throws, ck_ is still cleared before

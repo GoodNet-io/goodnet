@@ -12,7 +12,7 @@
 ///
 /// The dispatcher is provider-agnostic: any security session that
 /// exports a `gn_handshake_keys_t::handshake_hash` (per
-/// `noise-handshake.md` §2) carries the flow.
+/// `plugins/security/noise/docs/handshake.md` §2) carries the flow.
 
 #pragma once
 

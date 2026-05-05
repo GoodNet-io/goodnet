@@ -27,7 +27,7 @@ extensions are wire-additive, no version bump required.
 The blob is exchanged in-band over the secured GNET channel
 once the handshake completes — it rides as the payload of an
 application message, not a distinct frame format
-(`gnet-protocol.md` §6 notes the same intent). The kernel
+(`plugins/protocols/gnet/docs/wire-format.md` §6 notes the same intent). The kernel
 itself does not encode or decode the blob — it surfaces the
 bytes through `host_api->send_capability_blob` /
 `host_api->set_capability_handler` hooks (reserved for v1.1) so
@@ -120,7 +120,7 @@ protocol / security combination both sides speak natively).
 ## 5. No size cap on the blob
 
 The TLV blob is bounded only by the GNET frame ceiling
-(`gnet-protocol.md` §3). A blob that crosses that ceiling needs
+(`plugins/protocols/gnet/docs/wire-format.md` §3). A blob that crosses that ceiling needs
 fragmentation, which the post-Noise handshake handler is welcome
 to implement; the contract here scopes only the one-frame case.
 
@@ -128,7 +128,7 @@ to implement; the contract here scopes only the one-frame case.
 
 ## 6. Cross-references
 
-- Frame layer that wraps the blob: `gnet-protocol.md`.
+- Frame layer that wraps the blob: `plugins/protocols/gnet/docs/wire-format.md`.
 - Transport capability flags referenced by `transport-set`:
   `sdk/extensions/link.h` (`GN_LINK_CAP_*`).
 - Limits the value size honours: `limits.md` §2

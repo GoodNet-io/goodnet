@@ -167,5 +167,5 @@ stay libsodium-free.
 
 - Transport endpoints declared on `notify_connect`: `link.md` §3.
 - Connection-record URI key as registry index: `registry.md` §6.
-- Noise handshake's optional preset peer pk: `noise-handshake.md` §1
+- Noise handshake's optional preset peer pk: `plugins/security/noise/docs/handshake.md` §1
   (IK pattern).

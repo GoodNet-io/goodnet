@@ -318,7 +318,7 @@ TlsLink::~TlsLink() {
             gn_log_warn(api_, "tls: shutdown threw non-std exception");
         }
     }
-    /// Per noise-handshake.md §5b: the override server private key
+    /// Per plugins/security/noise/docs/handshake.md §5b: the override server private key
     /// has no remaining purpose once the transport tears down.
     /// Wipe the buffer before the vector frees its storage so the
     /// freed allocation does not carry the secret into the
@@ -377,7 +377,7 @@ void TlsLink::set_host_api(const host_api_t* api) noexcept {
 void TlsLink::set_server_credentials(std::string_view cert_pem,
                                            std::string_view key_pem) {
     override_cert_pem_.assign(cert_pem.begin(), cert_pem.end());
-    /// Per noise-handshake.md §5b: zeroise the previous key bytes
+    /// Per plugins/security/noise/docs/handshake.md §5b: zeroise the previous key bytes
     /// before the new bytes overwrite them. A shorter replacement
     /// would otherwise leave a tail of the old secret in process
     /// memory.
@@ -466,7 +466,7 @@ bool TlsLink::load_server_credentials() {
                 asio::buffer(override_key_pem_.data(),
                               override_key_pem_.size()),
                 asio::ssl::context::pem);
-            /// Per noise-handshake.md §5b: OpenSSL has copied the
+            /// Per plugins/security/noise/docs/handshake.md §5b: OpenSSL has copied the
             /// key bytes into its own context; the override buffer
             /// has no remaining purpose. Wipe it eagerly so the
             /// secret does not outlive its purpose. The buffer

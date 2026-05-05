@@ -3,7 +3,7 @@
 ///
 /// Pins the IProtocolLayer envelope semantics from
 /// `docs/contracts/protocol-layer.md` against the GNET wire-format from
-/// `docs/contracts/gnet-protocol.md`:
+/// `plugins/protocols/gnet/docs/wire-format.md`:
 ///
 ///   §3.1 / §5  — direct mode: no PK on wire, identity sourced from ctx
 ///   §3.2 / §5  — broadcast: sender on wire, receiver_pk == ZERO
@@ -161,7 +161,7 @@ TEST(GnetProtocolRoundTrip, BroadcastFrameSenderOnWireReceiverZero) {
     /// 14 + 32 + payload. Bob's deframe surfaces sender=Alice (from
     /// wire) and receiver=ZERO. Broadcast carries `EXPLICIT_SENDER`,
     /// so the receiving context must declare `allows_relay` per
-    /// `gnet-protocol.md` §5 — broadcast frames inherently come from
+    /// `plugins/protocols/gnet/docs/wire-format.md` §5 — broadcast frames inherently come from
     /// a relay-shaped path.
     auto mc = make_mirrored_contexts();
     mc.bob.allows_relay = true;
@@ -318,7 +318,7 @@ TEST(GnetProtocolRoundTrip, ExplicitReceiverRejectedOnNonRelayContext) {
 }
 
 TEST(GnetProtocolRoundTrip, ExplicitSenderRejectedOnNonRelayContext) {
-    /// `gnet-protocol.md` §5: a peer that has not been granted relay
+    /// `plugins/protocols/gnet/docs/wire-format.md` §5: a peer that has not been granted relay
     /// capability must not be permitted to claim a sender_pk other
     /// than the connection's authenticated remote pk. Without the
     /// gate, every authenticated peer could spoof `sender_pk` on

@@ -55,7 +55,7 @@ peer's static private key. `null` security plugin (loopback /
 `IntraNode`-only per `security-trust.md` §4) is the explicit opt-out
 for trusted-domain links.
 
-Reference: `noise-handshake.md`, `security-trust.md` §3.
+Reference: `plugins/security/noise/docs/handshake.md`, `security-trust.md` §3.
 
 ### 2.2 Replay window
 
@@ -110,7 +110,7 @@ neutralised at the kernel level.
 ### 2.8 Memory-zero on key teardown
 
 Static and ephemeral Noise secrets are zeroised at handshake split
-(`noise-handshake.md` §5 clause 4); TLS plugin's PEM override
+(`plugins/security/noise/docs/handshake.md` §5 clause 4); TLS plugin's PEM override
 buffers are zeroised before reassignment and at destructor; the
 `NodeIdentity` keypair runs `wipe()` at last shared-ref drop.
 

@@ -49,7 +49,7 @@ public:
     ///
     /// Decides the wire mode (direct, broadcast, relay-transit) from
     /// envelope content and connection context per the rules in
-    /// `gnet-protocol.md` §3.
+    /// `plugins/protocols/gnet/docs/wire-format.md` §3.
     [[nodiscard]] ::gn::Result<std::vector<std::uint8_t>> frame(
         ::gn::ConnectionContext& ctx,
         const gn_message_t& msg) override;

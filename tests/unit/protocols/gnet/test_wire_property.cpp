@@ -2,7 +2,7 @@
 /// @brief  RapidCheck property tests for the GNET v1 wire layer.
 ///
 /// Quantifies the encode/decode contract from
-/// `docs/contracts/gnet-protocol.md`:
+/// `plugins/protocols/gnet/docs/wire-format.md`:
 ///
 ///   ∀ legal `(flags, msg_id, payload_size)`:
 ///       parse_header(encode_header(...)) === input              (round-trip)
