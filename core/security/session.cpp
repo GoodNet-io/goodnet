@@ -62,13 +62,17 @@ gn_result_t SecuritySession::open(
     gn_handshake_role_t role,
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
     std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
-    std::span<const std::uint8_t> remote_static_pk_or_empty) {
+    std::span<const std::uint8_t> remote_static_pk_or_empty,
+    std::size_t recv_buffer_cap_bytes) {
     if (!entry.vtable || !entry.vtable->handshake_open) return GN_ERR_NULL_ARG;
 
     vtable_           = entry.vtable;
     provider_self_    = entry.self;
     security_anchor_  = entry.lifetime_anchor;
     conn_id_          = conn;
+    recv_buffer_cap_bytes_ = recv_buffer_cap_bytes != 0
+        ? recv_buffer_cap_bytes
+        : kRecvBufferCapDefaultBytes;
 
     const std::uint8_t* remote_pk_ptr = nullptr;
     if (!remote_static_pk_or_empty.empty()) {
@@ -287,7 +291,7 @@ gn_result_t SecuritySession::decrypt_transport_stream(
     /// memory unboundedly. The link plugin's failure threshold
     /// (`link.md` §3) catches the tear-down — defence-in-depth with
     /// the per-call cap here.
-    if (recv_buffer_.size() + wire_bytes.size() > kRecvBufferCapBytes) {
+    if (recv_buffer_.size() + wire_bytes.size() > recv_buffer_cap_bytes_) {
         return GN_ERR_LIMIT_REACHED;
     }
     recv_buffer_.insert(recv_buffer_.end(),
@@ -397,7 +401,8 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
     std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
     std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
     std::span<const std::uint8_t> remote_static_pk_or_empty,
-    gn_result_t& out_result) {
+    gn_result_t& out_result,
+    std::size_t recv_buffer_cap_bytes) {
     /// Stack-policy gate per `security-trust.md` §4: the provider
     /// declares which trust classes it may serve through
     /// `allowed_trust_mask`; the kernel rejects any mismatch before
@@ -443,7 +448,8 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
 
     out_result = session->open(entry, conn, trust, role,
                                 local_static_sk, local_static_pk,
-                                remote_static_pk_or_empty);
+                                remote_static_pk_or_empty,
+                                recv_buffer_cap_bytes);
     if (out_result != GN_OK) {
         std::unique_lock lock(mu_);
         map_.erase(conn);

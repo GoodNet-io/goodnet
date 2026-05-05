@@ -1165,6 +1165,18 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         }
 
         gn_result_t session_rc = GN_OK;
+        /// Per-session inbound buffer cap follows the operator's
+        /// `max_frame_bytes` so a deployment that tunes frame size
+        /// for memory footprint sees the SecuritySession's recv
+        /// cap shrink with it (default = 2 * max_frame_bytes +
+        /// kFramePrefixBytes per `backpressure.md` §9). A
+        /// zero-or-unset `max_frame_bytes` falls back to the
+        /// wire-format ceiling inside `SecuritySession::open`.
+        const auto& limits   = pc->kernel->limits();
+        const auto recv_cap  = limits.max_frame_bytes != 0
+            ? 2 * static_cast<std::size_t>(limits.max_frame_bytes)
+                + ::gn::core::kFramePrefixBytes
+            : 0;
         (void)pc->kernel->sessions().create(
             new_id,
             entry,
@@ -1173,7 +1185,8 @@ gn_result_t thunk_notify_connect(void* host_ctx,
             device.secret_key_view(),
             std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(device.public_key()),
             rs_span,
-            session_rc);
+            session_rc,
+            recv_cap);
         if (session_rc != GN_OK) {
             /// Mirror the protocol-layer mask gate above: a security-mask
             /// rejection bumps the same `drop.trust_class_mismatch`

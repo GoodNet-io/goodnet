@@ -634,9 +634,39 @@ TEST(SecuritySessionStream, BoundedByRecvBufferCap) {
 
     /// Feed one chunk over the cap: returns LIMIT_REACHED before
     /// the buffer mutates so the next call starts clean.
-    std::vector<std::uint8_t> garbage(gn::core::kRecvBufferCapBytes + 1, 0xAA);
+    /// Default cap is the wire-format ceiling per
+    /// `kRecvBufferCapDefaultBytes`; FakeProvider doesn't tune,
+    /// so the test exercises the default path.
+    std::vector<std::uint8_t> garbage(
+        gn::core::kRecvBufferCapDefaultBytes + 1, 0xAA);
     std::vector<std::vector<std::uint8_t>> out;
     EXPECT_EQ(session.decrypt_transport_stream(garbage, out),
+              GN_ERR_LIMIT_REACHED);
+}
+
+TEST(SecuritySessionStream, RecvBufferCapHonoursOpenParameter) {
+    /// Open with an explicit small cap (4 KiB total) — the
+    /// default ceiling is ~128 KiB, so a 4097-byte chunk under
+    /// this cap returns LIMIT_REACHED while the same chunk under
+    /// the default would not. The cap follows operator-tuned
+    /// `gn_limits_t::max_frame_bytes` per `backpressure.md` §9.
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    constexpr std::size_t kSmallCap = 4096;
+    ASSERT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{},
+                            kSmallCap),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+
+    std::vector<std::uint8_t> oversized(kSmallCap + 1, 0xCD);
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(oversized, out),
               GN_ERR_LIMIT_REACHED);
 }
 

@@ -87,6 +87,25 @@ public:
     /// @param local_static_pk local Ed25519 public key
     /// @param remote_static_pk peer Ed25519 pk if known up-front (IK
     ///                         initiator); pass empty span otherwise
+    /// @param recv_buffer_cap_bytes ceiling on the per-conn inbound
+    ///                              partial-frame buffer per
+    ///                              `backpressure.md` §9. The caller
+    ///                              passes
+    ///                              `2 * gn_limits_t::max_frame_bytes
+    ///                              + kFramePrefixBytes` so an
+    ///                              operator that tunes
+    ///                              `max_frame_bytes` for memory
+    ///                              footprint sees the buffer follow
+    ///                              proportionally — a deployment
+    ///                              with thousands of idle conns and
+    ///                              `max_frame_bytes = 4096` ends up
+    ///                              with 8 KiB caps instead of the
+    ///                              default 128 KiB. A zero value
+    ///                              defaults to the wire ceiling
+    ///                              (`2 * kFrameCipherMaxBytes +
+    ///                              kFramePrefixBytes`) so callers
+    ///                              that have no limits handy still
+    ///                              get a defined upper bound.
     [[nodiscard]] gn_result_t open(
         const SecurityEntry& entry,
         gn_conn_id_t conn,
@@ -94,7 +113,8 @@ public:
         gn_handshake_role_t role,
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
-        std::span<const std::uint8_t> remote_static_pk_or_empty);
+        std::span<const std::uint8_t> remote_static_pk_or_empty,
+        std::size_t recv_buffer_cap_bytes = 0);
 
     /// Drive one handshake step.
     ///
@@ -223,6 +243,9 @@ private:
     /// handshake queue doesn't contend with an inbound read.
     mutable std::mutex                       recv_mu_;
     std::vector<std::uint8_t>                recv_buffer_;
+    /// Cap on `recv_buffer_` size — set at `open()` from the
+    /// kernel's limits; defaults to the wire-format ceiling.
+    std::size_t                              recv_buffer_cap_bytes_ = 0;
 
     /// Transport-phase fast path. Seeded inside `advance_handshake`
     /// at the moment the provider exports transport keys; if the
@@ -234,12 +257,15 @@ private:
 
 /// Wire-side framing constants used by `SecuritySession` and the
 /// kernel inbound thunk. The prefix is one big-endian uint16; the
-/// per-conn inbound buffer cap follows `backpressure.md` §9.
-inline constexpr std::size_t kFramePrefixBytes = 2;
-inline constexpr std::size_t kRecvBufferCapBytes =
-    /* two full frames + one prefix headroom */
-    2 * (std::size_t{65535} + kFramePrefixBytes);
+/// per-session inbound buffer cap is computed at `open()` time
+/// from the kernel's `gn_limits_t::max_frame_bytes` per
+/// `backpressure.md` §9. The default ceiling here is the absolute
+/// wire-format limit and serves as the open() default when no
+/// caller-supplied value is provided.
+inline constexpr std::size_t   kFramePrefixBytes    = 2;
 inline constexpr std::uint16_t kFrameCipherMaxBytes = 65535;
+inline constexpr std::size_t   kRecvBufferCapDefaultBytes =
+    2 * (static_cast<std::size_t>(kFrameCipherMaxBytes) + kFramePrefixBytes);
 
 
 /// Per-connection security session map. The kernel keeps one
@@ -268,7 +294,8 @@ public:
         std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES> local_static_sk,
         std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>  local_static_pk,
         std::span<const std::uint8_t> remote_static_pk_or_empty,
-        gn_result_t& out_result);
+        gn_result_t& out_result,
+        std::size_t recv_buffer_cap_bytes = 0);
 
     /// Look up the session for @p conn; empty handle if none.
     [[nodiscard]] std::shared_ptr<SecuritySession> find(
