@@ -51,6 +51,11 @@ struct NoiseSession {
     TransportState                transport;
     gn_handshake_role_t           role        = GN_ROLE_INITIATOR;
     bool                          split_done  = false;
+    /// Set in `noise_export_transport_keys`. Once true, the provider
+    /// vtable's encrypt/decrypt slots refuse further work — the
+    /// kernel runs the inline-crypto path on the exported keys per
+    /// `plugins/security/noise/docs/handshake.md` §5+§6.
+    bool                          keys_exported = false;
     PublicKey                     local_pk{};        ///< X25519 form
     bool                          peer_pk_present = false;
     PublicKey                     peer_x25519_pk{}; ///< filled at split
@@ -200,13 +205,36 @@ gn_result_t noise_export_transport_keys(void* /*self*/,
     if (s->split_done) return GN_ERR_INVALID_STATE;
 
     auto pair = s->handshake.split();
-    s->transport = TransportState(std::move(pair.send), std::move(pair.recv));
-    s->split_done = true;
 
-    /// Copy SDK-visible material. Cipher keys are zero here — the
-    /// session keeps the live cipher state internally; the export is
-    /// for channel-binding and peer-pk surfacing only.
+    /// Hand the cipher keys out to the kernel's inline-crypto path
+    /// per `plugins/security/noise/docs/handshake.md` §6. The local
+    /// CipherKey copies are zeroised after the memcpy so the keys
+    /// live exclusively in the kernel's `InlineCrypto` after this
+    /// call. The TransportState would otherwise stash the same
+    /// material; v1 discards the pair so the keys never sit in two
+    /// places at once. The session also flips `keys_exported` so the
+    /// provider's encrypt/decrypt slots refuse any further call —
+    /// per §5 the source session's transport-phase entries become
+    /// invalid the moment export succeeds.
     std::memset(out_keys, 0, sizeof(*out_keys));
+    out_keys->api_size = sizeof(*out_keys);
+    {
+        ::gn::noise::CipherKey send_k = pair.send.key_for_export();
+        ::gn::noise::CipherKey recv_k = pair.recv.key_for_export();
+        std::memcpy(out_keys->send_cipher_key, send_k.data(),
+                    GN_CIPHER_KEY_BYTES);
+        std::memcpy(out_keys->recv_cipher_key, recv_k.data(),
+                    GN_CIPHER_KEY_BYTES);
+        sodium_memzero(send_k.data(), send_k.size());
+        sodium_memzero(recv_k.data(), recv_k.size());
+    }
+    /// Both Noise CipherStates start with a zero counter post-Split
+    /// per `plugins/security/noise/cipher.hpp`. The inline-crypto
+    /// state mirrors the same counter so a future fallback through
+    /// the vtable path resumes on the same nonce schedule.
+    out_keys->initial_send_nonce = 0;
+    out_keys->initial_recv_nonce = 0;
+
     /// peer X25519 pk (Noise static), surfaced for the kernel.
     s->peer_x25519_pk = s->handshake.peer_static_public_key();
     std::memcpy(out_keys->peer_static_pk, s->peer_x25519_pk.data(),
@@ -215,6 +243,12 @@ gn_result_t noise_export_transport_keys(void* /*self*/,
     /// handshake hash — see plugins/security/noise/docs/handshake.md §2.
     auto h = s->handshake.handshake_hash();
     std::memcpy(out_keys->handshake_hash, h.data(), GN_HASH_BYTES);
+
+    /// `pair` goes out of scope here — both CipherStates' destructors
+    /// re-zeroise the key buffers as a defence-in-depth backstop on
+    /// the local copies the export already wiped above.
+    s->split_done    = true;
+    s->keys_exported = true;
     return GN_OK;
 }
 
@@ -226,6 +260,12 @@ gn_result_t noise_encrypt(void* /*self*/,
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
     if (!s->split_done) return GN_ERR_INVALID_STATE;
+    /// Source session's encrypt entry is invalid once the kernel has
+    /// taken ownership of the transport keys per §5+§6 — the inline
+    /// path does the work. A fallback caller that wants to drive the
+    /// vtable encrypt directly never reaches here because the kernel
+    /// session steers through `InlineCrypto` once `seeded()`.
+    if (s->keys_exported) return GN_ERR_INVALID_STATE;
 
     auto cipher = s->transport.encrypt(
         std::span<const std::uint8_t>(plaintext, plaintext_size));
@@ -249,6 +289,7 @@ gn_result_t noise_decrypt(void* /*self*/,
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
     if (!s->split_done) return GN_ERR_INVALID_STATE;
+    if (s->keys_exported) return GN_ERR_INVALID_STATE;
 
     auto plain = s->transport.decrypt(
         std::span<const std::uint8_t>(ciphertext, ciphertext_size));
@@ -263,6 +304,10 @@ gn_result_t noise_rekey(void* /*self*/, void* state) {
     if (!state) return GN_ERR_NULL_ARG;
     auto* s = static_cast<NoiseSession*>(state);
     if (!s->split_done) return GN_ERR_INVALID_STATE;
+    /// Post-export the kernel-side InlineCrypto owns the cipher
+    /// schedule; rekey on a discarded TransportState would be a
+    /// no-op surfaced as success and leak the contract intent.
+    if (s->keys_exported) return GN_ERR_INVALID_STATE;
     s->transport.rekey();
     return GN_OK;
 }

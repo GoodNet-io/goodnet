@@ -5,6 +5,7 @@
 #include "session.hpp"
 
 #include <cstring>
+#include <utility>
 
 #include <core/kernel/safe_invoke.hpp>
 
@@ -39,6 +40,15 @@ void SecuritySession::close() noexcept {
         pending_.clear();
     }
     pending_bytes_.store(0, std::memory_order_release);
+    /// Drop the inbound partial-frame buffer per `backpressure.md`
+    /// §9 "Drop on close". A connection closing with bytes mid-frame
+    /// loses those bytes; the producer observes the loss through
+    /// `GN_CONN_EVENT_DISCONNECTED`.
+    {
+        std::lock_guard lock(recv_mu_);
+        recv_buffer_.clear();
+        recv_buffer_.shrink_to_fit();
+    }
     /// Keys remain available to callers that need the channel-binding
     /// hash after close; they are zeroised by the provider's
     /// handshake_close per `plugins/security/noise/docs/handshake.md` §5, but the SDK copy
@@ -120,11 +130,19 @@ gn_result_t SecuritySession::advance_handshake(
             vtable_->handshake_complete, provider_self_, state_);
         if (complete_opt.value_or(0) != 0) {
             if (vtable_->export_transport_keys) {
+                keys_.api_size = sizeof(keys_);
                 const gn_result_t er = safe_call_result(
                     "security.export_transport_keys",
                     vtable_->export_transport_keys,
                     provider_self_, state_, &keys_);
                 if (er != GN_OK) return er;
+                /// Seed the inline-crypto fast path with the keys
+                /// the provider just exported. A provider that opts
+                /// out of inline crypto (null security) hands back
+                /// a zeroed struct and `seed` returns false; the
+                /// session falls back to the vtable encrypt/decrypt
+                /// for that connection's lifetime.
+                (void)inline_crypto_.seed(keys_);
             }
             phase_.store(SecurityPhase::Transport, std::memory_order_release);
         }
@@ -137,26 +155,52 @@ gn_result_t SecuritySession::encrypt_transport(
     std::vector<std::uint8_t>& out_cipher) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
-    if (!vtable_ || !vtable_->encrypt) return GN_ERR_NOT_IMPLEMENTED;
 
-    gn_secure_buffer_t enc_out{};
-    const gn_result_t rc = safe_call_result(
-        "security.encrypt",
-        vtable_->encrypt,
-        provider_self_, state_,
-        plaintext.data(), plaintext.size(),
-        &enc_out);
-    if (rc != GN_OK) return rc;
+    /// Encrypt into a scratch buffer first; the wire bytes get the
+    /// 2-byte big-endian length prefix prepended afterwards so the
+    /// frame on the wire is `[u16 BE len][cipher+tag]` per
+    /// `plugins/security/noise/docs/handshake.md` §7.
+    std::vector<std::uint8_t> cipher;
 
-    if (enc_out.bytes && enc_out.size > 0) {
-        out_cipher.assign(enc_out.bytes, enc_out.bytes + enc_out.size);
+    if (inline_crypto_.seeded()) {
+        const gn_result_t rc = inline_crypto_.encrypt(plaintext, cipher);
+        if (rc != GN_OK) return rc;
     } else {
-        out_cipher.clear();
+        if (!vtable_ || !vtable_->encrypt) return GN_ERR_NOT_IMPLEMENTED;
+        gn_secure_buffer_t enc_out{};
+        const gn_result_t rc = safe_call_result(
+            "security.encrypt",
+            vtable_->encrypt,
+            provider_self_, state_,
+            plaintext.data(), plaintext.size(),
+            &enc_out);
+        if (rc != GN_OK) return rc;
+        if (enc_out.bytes && enc_out.size > 0) {
+            cipher.assign(enc_out.bytes, enc_out.bytes + enc_out.size);
+        }
+        if (enc_out.free_fn && enc_out.bytes) {
+            safe_call_void("security.encrypt.free_fn",
+                enc_out.free_fn, enc_out.free_user_data, enc_out.bytes);
+        }
     }
-    if (enc_out.free_fn && enc_out.bytes) {
-        safe_call_void("security.encrypt.free_fn",
-            enc_out.free_fn, enc_out.free_user_data, enc_out.bytes);
+
+    /// Bound the per-frame ciphertext length at the wire-side u16
+    /// ceiling. Producers oversized past `max_frame_bytes` are
+    /// already rejected on send by `gn_limits_t::max_frame_bytes`
+    /// (`thunk_send` chain) and on inbound by
+    /// `thunk_notify_inbound_bytes`; the cap here guards against an
+    /// uncoordinated provider whose AEAD overhead pushes the wire
+    /// frame past 65535 bytes.
+    if (cipher.size() > kFrameCipherMaxBytes) {
+        return GN_ERR_PAYLOAD_TOO_LARGE;
     }
+
+    out_cipher.resize(kFramePrefixBytes + cipher.size());
+    const std::uint16_t len_be = static_cast<std::uint16_t>(cipher.size());
+    out_cipher[0] = static_cast<std::uint8_t>((len_be >> 8) & 0xFF);
+    out_cipher[1] = static_cast<std::uint8_t>(len_be        & 0xFF);
+    std::memcpy(out_cipher.data() + kFramePrefixBytes,
+                cipher.data(), cipher.size());
     return GN_OK;
 }
 
@@ -202,8 +246,12 @@ gn_result_t SecuritySession::decrypt_transport(
     std::vector<std::uint8_t>& out_plaintext) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
-    if (!vtable_ || !vtable_->decrypt) return GN_ERR_NOT_IMPLEMENTED;
 
+    if (inline_crypto_.seeded()) {
+        return inline_crypto_.decrypt(ciphertext, out_plaintext);
+    }
+
+    if (!vtable_ || !vtable_->decrypt) return GN_ERR_NOT_IMPLEMENTED;
     gn_secure_buffer_t dec_out{};
     const gn_result_t rc = safe_call_result(
         "security.decrypt",
@@ -221,6 +269,96 @@ gn_result_t SecuritySession::decrypt_transport(
     if (dec_out.free_fn && dec_out.bytes) {
         safe_call_void("security.decrypt.free_fn",
             dec_out.free_fn, dec_out.free_user_data, dec_out.bytes);
+    }
+    return GN_OK;
+}
+
+gn_result_t SecuritySession::decrypt_transport_stream(
+    std::span<const std::uint8_t> wire_bytes,
+    std::vector<std::vector<std::uint8_t>>& out_plaintexts) {
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
+        return GN_ERR_INVALID_ENVELOPE;
+
+    std::lock_guard lock(recv_mu_);
+
+    /// Reject growth past the cap before mutating the buffer so a
+    /// peer feeding garbage that never resolves to a frame boundary
+    /// (adversarial or broken) can't grow the kernel's per-conn
+    /// memory unboundedly. The link plugin's failure threshold
+    /// (`link.md` §3) catches the tear-down — defence-in-depth with
+    /// the per-call cap here.
+    if (recv_buffer_.size() + wire_bytes.size() > kRecvBufferCapBytes) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    recv_buffer_.insert(recv_buffer_.end(),
+                         wire_bytes.begin(), wire_bytes.end());
+
+    /// Drain every complete frame at the buffer head. A frame is
+    /// `[u16 BE len][len bytes of cipher+tag]`; partial bytes
+    /// remain at the head for the next call. The loop returns OK
+    /// even when no complete frame surfaced this call — that is
+    /// the legitimate "need more bytes" path on every chunk that
+    /// straddles a boundary.
+    std::size_t cursor = 0;
+    while (cursor + kFramePrefixBytes <= recv_buffer_.size()) {
+        const std::uint16_t len = static_cast<std::uint16_t>(
+            (static_cast<std::uint16_t>(recv_buffer_[cursor]) << 8) |
+            static_cast<std::uint16_t>(recv_buffer_[cursor + 1]));
+        if (len == 0) {
+            /// A zero-length frame is malformed: the AEAD always
+            /// produces a 16-byte tag, so a payload-free frame
+            /// would still occupy 16 wire bytes.
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        if (len > kFrameCipherMaxBytes) {
+            /// u16 caps at 65535 — covered above by the type — so
+            /// this branch is defensive.
+            return GN_ERR_FRAME_TOO_LARGE;
+        }
+        const std::size_t total = kFramePrefixBytes + len;
+        if (cursor + total > recv_buffer_.size()) break;  // partial body
+
+        std::span<const std::uint8_t> cipher{
+            recv_buffer_.data() + cursor + kFramePrefixBytes, len};
+
+        std::vector<std::uint8_t> plaintext;
+        gn_result_t rc;
+        if (inline_crypto_.seeded()) {
+            rc = inline_crypto_.decrypt(cipher, plaintext);
+        } else if (vtable_ && vtable_->decrypt) {
+            gn_secure_buffer_t dec_out{};
+            rc = safe_call_result(
+                "security.decrypt",
+                vtable_->decrypt,
+                provider_self_, state_,
+                cipher.data(), cipher.size(),
+                &dec_out);
+            if (rc == GN_OK) {
+                if (dec_out.bytes && dec_out.size > 0) {
+                    plaintext.assign(dec_out.bytes,
+                                      dec_out.bytes + dec_out.size);
+                }
+                if (dec_out.free_fn && dec_out.bytes) {
+                    safe_call_void("security.decrypt.free_fn",
+                        dec_out.free_fn, dec_out.free_user_data,
+                        dec_out.bytes);
+                }
+            }
+        } else {
+            return GN_ERR_NOT_IMPLEMENTED;
+        }
+        if (rc != GN_OK) return rc;
+
+        out_plaintexts.push_back(std::move(plaintext));
+        cursor += total;
+    }
+
+    /// Erase the consumed prefix in one shot; the trailing partial
+    /// bytes shift to the front of the buffer in O(N partial).
+    if (cursor > 0) {
+        using diff_t = std::vector<std::uint8_t>::difference_type;
+        recv_buffer_.erase(recv_buffer_.begin(),
+                            recv_buffer_.begin() + static_cast<diff_t>(cursor));
     }
     return GN_OK;
 }

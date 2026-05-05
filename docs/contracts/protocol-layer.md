@@ -240,23 +240,39 @@ ambiguity at peer-to-peer handshake. One node, one mesh-format.
 Kernel routing logic — protocol-agnostic:
 
 ```
-on inbound envelope:
-    if envelope.receiver_pk == ZERO:
-        dispatch_broadcast(envelope.msg_id, envelope)
-    elif envelope.receiver_pk in local_identities:
-        dispatch_local(envelope.receiver_pk, envelope.msg_id, envelope)
-    else:
-        relay_or_drop(envelope)   # delegated to relay-extension if loaded
+on inbound bytes from transport:
+    plaintexts = security.decrypt_stream(ctx, bytes)   # 0..N frames per call
+    for plaintext in plaintexts:
+        envelopes = plugin.deframe(ctx, plaintext)
+        for envelope in envelopes:
+            if envelope.receiver_pk == ZERO:
+                dispatch_broadcast(envelope.msg_id, envelope)
+            elif envelope.receiver_pk in local_identities:
+                dispatch_local(envelope.receiver_pk, envelope.msg_id, envelope)
+            else:
+                relay_or_drop(envelope)   # delegated to relay-extension if loaded
 
 on outbound from handler:
     plugin = registry.active_protocol_layer
     bytes  = plugin.frame(ctx, envelope)
-    encrypted = security.encrypt(ctx, bytes)
-    transport.send(ctx, encrypted)
+    framed = security.encrypt(ctx, bytes)              # [u16 BE len][cipher+tag]
+    transport.send(ctx, framed)
 ```
 
 `local_identities` is the multi-tenant set: a kernel may host N node
 identities sharing one process. Single-identity case = vector of size 1.
+
+The security session owns the per-connection partial-frame buffer
+that backs `decrypt_stream`. A transport may deliver any chunk size
+to `notify_inbound_bytes` — the chunk crosses zero or more frame
+boundaries — and the security session emits one plaintext per
+complete frame. Partial bytes accumulate across calls; the buffer
+is bounded per `backpressure.md` §9. The 2-byte length prefix on
+the wire is set by the security session before handing bytes to
+the transport, and consumed by the security session before handing
+plaintext to the protocol layer; the transport sees opaque bytes
+and the protocol layer sees opaque plaintext envelopes — neither
+parses the prefix.
 
 ---
 

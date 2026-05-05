@@ -115,6 +115,12 @@ typedef struct host_api_s {
                                   gn_handshake_role_t role,
                                   gn_conn_id_t* out_conn);
 
+    /* Stream-class transports (TCP, IPC, TLS-over-TCP) deliver any   */
+    /* chunk size — a single call may cross zero, one, or many        */
+    /* security-frame boundaries. The kernel buffers partial bytes on */
+    /* the per-conn security session (`backpressure.md` §9) and fires */
+    /* the protocol layer once per complete frame; the transport      */
+    /* keeps no per-call assumption about byte-to-frame correspondence. */
     gn_result_t (*notify_inbound_bytes)(void* host_ctx, gn_conn_id_t conn,
                                         const uint8_t* bytes, size_t size);
 

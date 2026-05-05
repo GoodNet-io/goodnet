@@ -18,6 +18,7 @@ set(_goodnet_kernel_sources
     registry/security.cpp
     registry/link.cpp
     security/session.cpp
+    security/inline_crypto.cpp
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/core_c.cpp
