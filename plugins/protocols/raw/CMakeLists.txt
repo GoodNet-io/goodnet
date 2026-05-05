@@ -1,3 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+
+if(NOT TARGET GoodNet::sdk)
+    project(goodnet_protocol_raw
+        VERSION   0.1.0
+        LANGUAGES CXX)
+    find_package(GoodNet REQUIRED)
+    include(CTest)
+    if(BUILD_TESTING)
+        find_package(GTest      REQUIRED)
+        find_package(rapidcheck QUIET)
+        set(GOODNET_BUILD_TESTS ON)
+    endif()
+endif()
+
 # Raw protocol — opaque-payload protocol layer.
 # Build-time alternative to `gnet-v1` for simulation harnesses,
 # PCAP replay, and foreign-protocol passthrough scenarios. STATIC

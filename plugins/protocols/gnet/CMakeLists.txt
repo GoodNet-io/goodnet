@@ -1,3 +1,18 @@
+cmake_minimum_required(VERSION 3.22)
+
+if(NOT TARGET GoodNet::sdk)
+    project(goodnet_protocol_gnet
+        VERSION   0.1.0
+        LANGUAGES CXX)
+    find_package(GoodNet REQUIRED)
+    include(CTest)
+    if(BUILD_TESTING)
+        find_package(GTest      REQUIRED)
+        find_package(rapidcheck QUIET)
+        set(GOODNET_BUILD_TESTS ON)
+    endif()
+endif()
+
 # GNET — canonical mesh-framing implementation. Statically linked
 # into the kernel binary; the source still lives here under plugins/
 # so the kernel/plugin separation is structural, not implementation-
