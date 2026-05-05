@@ -16,6 +16,7 @@ target_include_directories(goodnet_protocol_raw PUBLIC
 target_link_libraries(goodnet_protocol_raw
     PUBLIC
         GoodNet::sdk
+        GoodNet::ctx_accessors
 )
 
 target_compile_features(goodnet_protocol_raw PUBLIC cxx_std_23)
