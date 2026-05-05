@@ -91,6 +91,13 @@ enum class SourceDetail : int {
 struct LogConfig {
     std::string  level            = "info";
 
+    /// Console-sink minimum level. Empty string keeps the build-aware
+    /// default — Release pins WARN as a noise filter for long-running
+    /// daemons; Debug carries everything the logger itself accepts.
+    /// Operators who want the kernel's INFO startup markers visible
+    /// on a Release deployment set this to `"info"` in their config.
+    std::string  console_level;
+
     /// Path to the rotating log file, or empty to skip the file
     /// sink and keep the destination console-only.
     std::string  log_file;

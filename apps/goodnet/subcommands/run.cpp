@@ -182,16 +182,24 @@ int cmd_run(std::span<const std::string_view> args) {
     using gn::core::build_host_api;
     using gn::plugins::gnet::GnetProtocol;
 
+    /// Apply the operator's log shape from the loaded config keys
+    /// before constructing the kernel — the kernel's ctor already
+    /// emits its own INFO marker, and a Release default lands at the
+    /// WARN console floor unless we lift it here. `goodnet run` is
+    /// operator-facing; default `log.console_level = "info"` so
+    /// kernel startup surfaces on `systemctl status` instead of
+    /// being filtered by the build-aware default.
+    auto lc = gn::core::util::load_log_config(cfg);
+    if (lc.console_level.empty()) {
+        lc.console_level = "info";
+    }
+    (void)gn::log::init_with(lc);
+
     Kernel kernel;
     kernel.set_limits(cfg.limits());
     kernel.set_protocol_layer(std::make_shared<GnetProtocol>());
     kernel.identities().add(identity->device().public_key());
     kernel.set_node_identity(std::move(*identity));
-    /// `Kernel::apply_log_config` is private (only `reload_config`
-    /// calls it from inside the kernel); apply the same shape from
-    /// the runner side via the public `gn::log::init_with` +
-    /// `load_log_config(cfg)` helper.
-    (void)gn::log::init_with(gn::core::util::load_log_config(cfg));
 
     /// Host context for the runner itself — no plugin anchor (the
     /// runner is not a loaded plugin), `kind = LINK` so the runner
@@ -233,9 +241,13 @@ int cmd_run(std::span<const std::string_view> args) {
     (void)std::signal(SIGINT,  &run_signal_handler);
     (void)std::signal(SIGTERM, &run_signal_handler);
 
-    (void)std::fprintf(stdout,
-        "goodnet run: kernel up — %zu plugins loaded, awaiting signal\n",
-        plugin_paths.size());
+    /// Operator-facing startup marker. Routed through the kernel
+    /// logger so `log.level` / `log.console_level` / `log.file`
+    /// shape it the same way as kernel and plugin lines. systemd
+    /// users set `log.console_level = "info"` to keep this line
+    /// visible on a Release deployment that otherwise pins WARN.
+    GN_LOG_INFO("goodnet run: kernel up, {} plugins loaded, awaiting signal",
+                plugin_paths.size());
 
     /// Main loop: poll the quit flag every 100ms. Active work runs
     /// on plugin worker threads (asio io_context per transport,
@@ -245,16 +257,15 @@ int cmd_run(std::span<const std::string_view> args) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    (void)std::fprintf(stdout,
-        "goodnet run: signal %d received, draining plugins\n",
-        g_quit_signal.load());
+    GN_LOG_INFO("goodnet run: signal {} received, draining plugins",
+                g_quit_signal.load());
 
     /// Ordered teardown: PluginManager.shutdown() walks every loaded
     /// plugin's `gn_plugin_unregister` + `gn_plugin_shutdown` and
     /// waits on each anchor's weak_ptr to drop before `dlclose`.
     plugins.shutdown();
 
-    (void)std::fprintf(stdout, "goodnet run: clean exit\n");
+    GN_LOG_INFO("goodnet run: clean exit");
     return 0;
 }
 

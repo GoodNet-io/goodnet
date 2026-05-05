@@ -13,11 +13,16 @@
   // snaps to the new baseline.
   "profile": "server",
 
-  // Logging — json|console output, level filter. Absent block keeps
-  // the lazy-startup shape (stderr-only console at info level).
+  // Logging. `log.level` filters the kernel logger overall;
+  // `log.console_level` filters the colored stdout sink only and
+  // overrides the build-aware default (Release pins WARN as a noise
+  // filter, Debug carries everything). Set both to "info" on a
+  // production Release deployment to see kernel startup markers.
+  // Add `log.file` for a rotating-file sink alongside the console.
+  // See `core/util/log_config.cpp` for the full key set.
   "log": {
-    "format": "json",
-    "level":  "info"
+    "level":         "info",
+    "console_level": "info"
   },
 
   // Limits override block. Most operators run with profile defaults;

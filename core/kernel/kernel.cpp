@@ -20,7 +20,19 @@ Kernel::Kernel() noexcept {
     /// runs against a sensible baseline rather than zero ceilings
     /// that would reject every operation.
     limits_ = config_.limits();
-    apply_log_config();
+
+    /// The logger shape is owned by the operator: either through the
+    /// lazy `gn::log::kernel()` default (build-aware level + console
+    /// pattern) or through an explicit `gn::log::init_with(...)` set
+    /// up before construction. The first `reload_config()` call
+    /// re-applies the shape from the loaded `log.*` keys; the ctor
+    /// itself stays out of the way so a host that already configured
+    /// the logger does not get its sink list rebuilt out from under
+    /// it. The single INFO marker below tells an operator with the
+    /// console floor at info that the kernel reached construction.
+    GN_LOG_INFO("kernel constructed "
+                "(max_connections={}, max_extensions={})",
+                limits_.max_connections, limits_.max_extensions);
 }
 
 /// Joins the timer executor before the default member sequence
