@@ -3,3 +3,4 @@
 # build it kicks.
 
 add_subdirectory(two_node)
+add_subdirectory(bench)
