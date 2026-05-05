@@ -51,6 +51,7 @@ class Kernel;
 struct PluginInstance {
     std::string                       path;        ///< absolute .so path
     void*                             so_handle{nullptr};   ///< dlopen result; opaque to plugin
+    int                               integrity_fd{-1};     ///< /proc/self/fd path source — kept open until shutdown so glibc dlopen does not reuse the path string across plugins
     std::unique_ptr<PluginContext>    ctx;         ///< handed via api->host_ctx
     host_api_t                        api{};       ///< per-plugin instance of the public table
     void*                             self{nullptr};        ///< returned from gn_plugin_init
