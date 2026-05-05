@@ -147,6 +147,12 @@ if(GOODNET_BUILD_BUNDLED_PLUGINS)
     add_subdirectory(plugins)
 endif()
 
+# ── Operator-facing apps ─────────────────────────────────────────────────────
+option(GOODNET_BUILD_APPS "Build operator-facing CLI binaries (apps/)" ON)
+if(GOODNET_BUILD_APPS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/CMakeLists.txt")
+    add_subdirectory(apps)
+endif()
+
 # ── Examples & tests ─────────────────────────────────────────────────────────
 if(GOODNET_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
     add_subdirectory(examples)
