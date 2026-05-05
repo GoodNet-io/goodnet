@@ -496,3 +496,162 @@ TEST(SessionRegistry, CreateAcceptsTrustClassInProviderMask) {
     ASSERT_NE(sess, nullptr);
     EXPECT_EQ(prov.handshake_open_calls, 1);
 }
+
+// ── Stream framing (backpressure.md §9 + handshake.md §7) ────────────────
+
+namespace {
+
+/// Build a wire frame `[u16 BE len][bytes]` for use with the
+/// pass-through FakeProvider (no encryption — the bytes _are_ the
+/// "ciphertext" the provider's `decrypt` will copy through).
+std::vector<std::uint8_t> wire_frame(std::span<const std::uint8_t> bytes) {
+    const auto len = static_cast<std::uint16_t>(bytes.size());
+    std::vector<std::uint8_t> frame(kFramePrefixBytes + bytes.size());
+    frame[0] = static_cast<std::uint8_t>((len >> 8) & 0xFF);
+    frame[1] = static_cast<std::uint8_t>(len        & 0xFF);
+    std::memcpy(frame.data() + kFramePrefixBytes, bytes.data(), bytes.size());
+    return frame;
+}
+
+void open_transport_session(SecuritySession& session,
+                             FakeProvider& prov,
+                             const gn_security_provider_vtable_t& vt) {
+    ASSERT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+}
+
+}  // namespace
+
+TEST(SecuritySessionStream, SplitsCoalescedFramesInOneCall) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// Three frames concatenated as one inbound chunk — the shape a
+    /// stream-class transport delivers when reads coalesce.
+    const std::vector<std::uint8_t> a{1, 2, 3};
+    const std::vector<std::uint8_t> b{4, 5, 6, 7};
+    const std::vector<std::uint8_t> c{8};
+    auto fa = wire_frame(a);
+    auto fb = wire_frame(b);
+    auto fc = wire_frame(c);
+
+    std::vector<std::uint8_t> chunk;
+    chunk.insert(chunk.end(), fa.begin(), fa.end());
+    chunk.insert(chunk.end(), fb.begin(), fb.end());
+    chunk.insert(chunk.end(), fc.begin(), fc.end());
+
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(chunk, out), GN_OK);
+    ASSERT_EQ(out.size(), 3u);
+    EXPECT_EQ(out[0], a);
+    EXPECT_EQ(out[1], b);
+    EXPECT_EQ(out[2], c);
+    EXPECT_EQ(prov.decrypt_calls, 3);
+}
+
+TEST(SecuritySessionStream, HandlesPartialLengthPrefix) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> body{0x10, 0x20, 0x30};
+    auto frame = wire_frame(body);
+
+    /// Feed one prefix byte; nothing decodes yet.
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data(), 1), out),
+              GN_OK);
+    EXPECT_TRUE(out.empty());
+    EXPECT_EQ(prov.decrypt_calls, 0);
+
+    /// Feed the rest of the frame; one plaintext drops out.
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data() + 1,
+                                                  frame.size() - 1),
+                  out),
+              GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], body);
+    EXPECT_EQ(prov.decrypt_calls, 1);
+}
+
+TEST(SecuritySessionStream, HandlesPartialBody) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> body(64, 0xAB);
+    auto frame = wire_frame(body);
+
+    /// Prefix + half body — partial, no plaintext.
+    const std::size_t half = kFramePrefixBytes + body.size() / 2;
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data(), half), out),
+              GN_OK);
+    EXPECT_TRUE(out.empty());
+
+    /// Tail completes one frame.
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data() + half,
+                                                  frame.size() - half),
+                  out),
+              GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], body);
+}
+
+TEST(SecuritySessionStream, RejectsZeroLengthFrame) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// `[0x00 0x00]` — claims a zero-byte ciphertext, malformed
+    /// because the AEAD always carries a 16-byte tag.
+    const std::vector<std::uint8_t> bad{0x00, 0x00};
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(bad, out),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(SecuritySessionStream, BoundedByRecvBufferCap) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// Feed one chunk over the cap: returns LIMIT_REACHED before
+    /// the buffer mutates so the next call starts clean.
+    std::vector<std::uint8_t> garbage(gn::core::kRecvBufferCapBytes + 1, 0xAA);
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(garbage, out),
+              GN_ERR_LIMIT_REACHED);
+}
+
+TEST(SecuritySessionStream, EncryptThenDecryptStreamRoundTrip) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> plain{'h','e','l','l','o'};
+    std::vector<std::uint8_t> wire;
+    EXPECT_EQ(session.encrypt_transport(plain, wire), GN_OK);
+
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(wire, out), GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], plain);
+}
