@@ -9,27 +9,13 @@ if(NOT TARGET GoodNet::sdk)
     if(BUILD_TESTING)
         find_package(GTest      REQUIRED)
         find_package(rapidcheck QUIET)
-        # `rapidcheck`'s CMake config in nixpkgs sets
-        # INTERFACE_INCLUDE_DIRECTORIES to `${_IMPORT_PREFIX}/include`
-        # — but the headers live in the multi-output `dev` slot, not
-        # the `out` slot the config file is loaded from, so the path
-        # is non-existent at the moment a downstream target tries to
-        # link `rapidcheck`. The kernel monorepo patches this in
-        # `tests/unit/CMakeLists.txt`; standalone plugin builds need
-        # to repeat the workaround here until it lifts into
-        # `GoodNetConfig.cmake`.
-        find_package(PkgConfig QUIET)
-        if(PkgConfig_FOUND AND TARGET rapidcheck)
-            pkg_check_modules(GN_RAPIDCHECK_PC QUIET rapidcheck)
-            if(GN_RAPIDCHECK_PC_FOUND)
-                set_target_properties(rapidcheck PROPERTIES
-                    INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
-                if(TARGET rapidcheck_gtest)
-                    set_target_properties(rapidcheck_gtest PROPERTIES
-                        INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
-                endif()
-            endif()
-        endif()
+        # `goodnet_patch_rapidcheck_targets` is exported by
+        # `GoodNetConfig.cmake` and patches rapidcheck's imported
+        # targets to use the include path pkg-config reports —
+        # nixpkgs ships the rapidcheck CMake config in the `out`
+        # slot but the headers in `dev`, so the imported target's
+        # INTERFACE_INCLUDE_DIRECTORIES is otherwise broken.
+        goodnet_patch_rapidcheck_targets()
         set(GOODNET_BUILD_TESTS ON)
     endif()
 endif()

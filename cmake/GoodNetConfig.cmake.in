@@ -39,5 +39,6 @@ endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/GoodNetTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/AddPlugin.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/GoodNetTesting.cmake")
 
 check_required_components(GoodNet)

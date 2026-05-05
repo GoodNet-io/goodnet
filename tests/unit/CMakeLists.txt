@@ -8,19 +8,11 @@
 
 include(GoogleTest)
 
-# RapidCheck on Nix: the cmake-config from the runtime output points
-# `INTERFACE_INCLUDE_DIRECTORIES` at `${runtime}/include` which only
-# exists in the `-dev` output. Patch the imported targets so the
-# include path resolves to the path pkg-config reports.
-pkg_check_modules(GN_RAPIDCHECK_PC IMPORTED_TARGET rapidcheck)
-if(GN_RAPIDCHECK_PC_FOUND)
-    set_target_properties(rapidcheck PROPERTIES
-        INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
-    if(TARGET rapidcheck_gtest)
-        set_target_properties(rapidcheck_gtest PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${GN_RAPIDCHECK_PC_INCLUDE_DIRS}")
-    endif()
-endif()
+# RapidCheck targets get patched once for the whole build by
+# `goodnet_patch_rapidcheck_targets()` in the top-level CMakeLists
+# (also re-exported through `GoodNetConfig.cmake` for out-of-tree
+# plugin builds). The patch is idempotent so callers do not need
+# to coordinate ordering.
 
 file(GLOB_RECURSE goodnet_unit_test_sources
     CONFIGURE_DEPENDS
