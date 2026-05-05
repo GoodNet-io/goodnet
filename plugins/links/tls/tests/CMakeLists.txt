@@ -13,7 +13,9 @@ target_link_libraries(test_tls PRIVATE
     GTest::gtest
     GTest::gtest_main)
 target_compile_features(test_tls PRIVATE cxx_std_23)
-goodnet_apply_pch(test_tls)
+if(COMMAND goodnet_apply_pch)
+    goodnet_apply_pch(test_tls)
+endif()
 gtest_discover_tests(test_tls
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60)

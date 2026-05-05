@@ -19,7 +19,9 @@ target_link_libraries(test_protocol_gnet PRIVATE
     rapidcheck
     rapidcheck_gtest)
 target_compile_features(test_protocol_gnet PRIVATE cxx_std_23)
-goodnet_apply_pch(test_protocol_gnet)
+if(COMMAND goodnet_apply_pch)
+    goodnet_apply_pch(test_protocol_gnet)
+endif()
 gtest_discover_tests(test_protocol_gnet
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60)

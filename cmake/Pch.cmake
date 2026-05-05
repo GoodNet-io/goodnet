@@ -43,4 +43,13 @@ function(goodnet_apply_pch target)
         <unordered_map>
         <vector>
     )
+    # PCH pulls non-inline fmt symbols in lower-optimisation builds
+    # (ASan/TSan compile at -O1, where fmt::vformat does not inline);
+    # link the runtime libraries alongside the headers so every PCH
+    # consumer has the symbols it ends up referencing.
+    target_link_libraries(${target} PRIVATE
+        asio::asio
+        spdlog::spdlog
+        fmt::fmt
+    )
 endfunction()

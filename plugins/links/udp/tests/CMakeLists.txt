@@ -10,7 +10,9 @@ target_link_libraries(test_udp PRIVATE
     GTest::gtest
     GTest::gtest_main)
 target_compile_features(test_udp PRIVATE cxx_std_23)
-goodnet_apply_pch(test_udp)
+if(COMMAND goodnet_apply_pch)
+    goodnet_apply_pch(test_udp)
+endif()
 gtest_discover_tests(test_udp
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60)

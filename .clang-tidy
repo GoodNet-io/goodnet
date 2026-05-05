@@ -25,7 +25,6 @@ Checks: >
   -misc-no-recursion,
   -misc-non-private-member-variables-in-classes,
   -misc-use-anonymous-namespace,
-  -misc-use-internal-linkage,
   -clang-diagnostic-deprecated-declarations,
   -clang-diagnostic-ignored-gch
 WarningsAsErrors: '*'
