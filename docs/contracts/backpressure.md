@@ -278,3 +278,46 @@ wrong layer (the transport must remain crypto-agnostic per
 `link.md` §1). The pending queue lives on the security
 session because it is the only kernel object that observes both
 phase transitions and the encryption primitives.
+
+---
+
+## 9. Inbound partial-frame buffer
+
+Stream-class transports (TCP, IPC, TLS-over-TCP) deliver bytes
+that do not align with security-frame boundaries: one
+`notify_inbound_bytes` call may cross zero, one, or many frames.
+The security session accumulates partial bytes in a per-connection
+buffer and emits one plaintext per complete frame to the protocol
+layer (`protocol-layer.md` §6).
+
+### Cap
+
+The per-session inbound buffer is bounded at
+`2 * gn_limits_t::max_frame_bytes + GN_FRAME_PREFIX_BYTES` (one
+full frame plus one in-progress frame plus the 2-byte length
+prefix). A peer that streams bytes which never resolve to a frame
+boundary — adversarial or broken — eventually crosses the cap.
+Crossing returns `GN_ERR_INVALID_ENVELOPE` to the link plugin,
+which trips the existing per-session failure threshold
+(`link.md` §3 — 16 consecutive `notify_inbound_bytes` failures
+disconnect the connection). Defence-in-depth: two independent
+guards, the buffer cap and the failure threshold, both terminate
+the conn.
+
+### Drain
+
+The buffer is consumed in-place: every complete frame at the
+buffer head is decrypted, its plaintext is dispatched, and the
+consumed bytes are erased from the buffer head. Trailing partial
+bytes remain for the next inbound call. Per-frame failure
+(decrypt error) returns the error code to the link plugin and
+leaves the buffer state intact — the link's failure threshold
+catches the corruption.
+
+### Drop on close
+
+`SecuritySession::close()` clears the inbound buffer alongside the
+handshake pending queue (§8). A connection that disconnects
+mid-frame drops the partial bytes; the producer observes the loss
+through `GN_CONN_EVENT_DISCONNECTED`. No retry semantics — the
+peer reconnects with a fresh handshake.

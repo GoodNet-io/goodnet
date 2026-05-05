@@ -292,6 +292,27 @@ ciphertext. A future v2 may introduce associated data for forward-
 error-correction support; a `ver` bump in GNET (not Noise) signals
 that.
 
+### 7a. Length-prefix ownership
+
+The 2-byte length prefix is emitted and consumed by the kernel-side
+`SecuritySession` wrapper, not by the provider's encrypt/decrypt
+vtable slots. Provider implementations operate on bare ciphertext:
+`encrypt(plaintext) → cipher+tag`, `decrypt(cipher+tag) → plaintext`.
+The session prepends the length on outbound and slices each
+`length`-byte ciphertext range off the per-conn inbound buffer
+before invoking the provider's `decrypt`. This split keeps the
+provider vtable narrow (single AEAD primitive, no framing state)
+while letting one kernel-side framer work for every provider —
+noise, null, future post-quantum.
+
+The kernel-side fast path additionally bypasses the vtable: when
+`export_transport_keys` returns non-zero cipher keys, the session
+seeds an inline-crypto state per §6 and runs ChaCha20-Poly1305
+directly on the keys. The provider's transport-phase encrypt /
+decrypt vtable slots remain populated for fallback when a provider
+declines to export keys (returns `GN_ERR_NOT_IMPLEMENTED`); they
+are not called on the noise hot path.
+
 ---
 
 ## 7a. Transport invariants required by this provider
