@@ -25,10 +25,21 @@ typed extension API.
 ### Workflow
 
 Loadable plugins live in their own gits; the kernel monorepo
-ignores their slots entirely. Two new Nix apps (`init-mirrors`
-and `install-plugins`) plus an auto-pull `shellHook` close the
-loop so a fresh clone of the kernel becomes a fully-wired
-workspace as soon as the operator enters the dev shell.
+ignores their slots entirely. The kernel's flake exposes seven
+`nix run .#…` apps that cover the full lifecycle, plus an
+auto-pull `shellHook` that wires a fresh checkout on first
+`nix develop`. The Make wrapper exposes the same surface for
+operators who prefer `make setup && make test`.
+
+```
+nix run .#                           # default = debug build
+nix run .#setup                      # mirrors + plugins + hooks
+nix run .#update                     # nix flake update + plugin pulls
+nix run .#build  [-- release|debug]
+nix run .#test   [-- asan|tsan|all]
+nix run .#run    -- <demo|node|goodnet> [args]
+nix run .#plugin -- <new|pull|install|update> [args]
+```
 
 Verified end-to-end on the latest dev tree:
 
@@ -38,7 +49,7 @@ cd /tmp/gn-final-verify
 rm -rf plugins/handlers plugins/links plugins/security/{noise,null}
 # eight plugin slots empty — only protocols/{gnet,raw} remain
 nix develop --command make test
-# shellHook auto-runs install-plugins → 8 plugins pulled from
+# shellHook auto-runs setup → 8 plugins pulled from
 # ~/.local/share/goodnet-mirrors/<repo>.git
 # CMake reconfigures, builds, runs ctest
 # → 856/856 tests pass (116 integration + remainder)
