@@ -185,8 +185,15 @@ TEST(PluginAnchor, TimerHoldsInFlightForDurationOfDispatch) {
         return probe.observed.load(std::memory_order_relaxed) == 1u;
     }))
         << "in_flight must read 1 from inside the dispatched callback";
-    /// Counter drops back after the dispatch returns.
-    EXPECT_EQ(anchor->in_flight.load(), 0u);
+    /// `observed` flips inside the callback, before the GateGuard's
+    /// destructor runs — the in_flight decrement happens after the
+    /// safe_call_void returns. Wait for the counter to drop instead
+    /// of reading it immediately, so a worker that has not yet
+    /// unwound its dispatch frame does not look like a leak.
+    EXPECT_TRUE(wait_for([&] {
+        return anchor->in_flight.load(std::memory_order_acquire) == 0u;
+    }))
+        << "in_flight must drop back to 0 after the dispatch returns";
 }
 
 // ── §10 latch persistence ────────────────────────────────────────────────
