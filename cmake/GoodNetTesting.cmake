@@ -25,21 +25,6 @@ if(COMMAND goodnet_patch_rapidcheck_targets)
     return()
 endif()
 
-# `goodnet_standalone_plugin_includes` — prepend the monorepo root
-# (three directories above the plugin) to the include path. Plugin
-# tests use `<plugins/<kind>/<name>/header.hpp>` style includes that
-# resolve from the monorepo root in aggregate builds; standalone
-# plugin builds need the equivalent path on `-I` so the same
-# headers are findable. Macro (not function) so `include_directories`
-# affects the caller's scope. No-op when the in-tree aggregate
-# build has already added the monorepo root.
-macro(goodnet_standalone_plugin_includes)
-    get_filename_component(_GN_STANDALONE_ROOT
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-    include_directories(BEFORE "${_GN_STANDALONE_ROOT}")
-    unset(_GN_STANDALONE_ROOT)
-endmacro()
-
 function(goodnet_patch_rapidcheck_targets)
     find_package(PkgConfig QUIET)
     if(NOT PkgConfig_FOUND)
