@@ -206,36 +206,21 @@
             ];
             doCheck = false;
           };
-          # Discover every plugin under `plugins/<kind>/<name>/` instead
-          # of hard-coding the list — adding a plugin (or pulling an
-          # extracted one back into the tree via the eventual
-          # `pull-plugin` workflow) lands automatically without
-          # editing this file. A directory without a `default.nix`
-          # is reported through `discovered.missing` and aborts
-          # evaluation loudly rather than silently disappearing.
-          discovered = import ./nix/auto-discover.nix {
-            pluginsDir = ./plugins;
-          };
-          discoveredPlugins = pkgs.lib.foldl'
-            (acc: p: acc // { ${p.attr} = callPlugin p.name p.kind; })
-            { }
-            discovered.plugins;
-          missingDefaultNix =
-            if discovered.missing == [ ] then null else
-            throw ("auto-discover: plugin directories without default.nix: "
-                   + pkgs.lib.concatStringsSep ", "
-                       (map (p: "${p.kind}/${p.name}") discovered.missing));
         in
-        # Force the missing-plugin guard before merging.
-        builtins.seq missingDefaultNix
-        ({
-          # Operator default: kernel only. The Linux-model analogue is
-          # `linux-headers` + selected drivers, not a kitchen-sink
-          # `linux-all`. Per-plugin packages follow below.
+        {
+          # The root flake exposes only the kernel + the `everything`
+          # CI aggregate. Loadable plugins live in their own flakes
+          # under `plugins/<kind>/<name>/` and consume the kernel
+          # through `nix/kernel-only/`. Operators that want a
+          # composed node pull plugins from those flakes directly
+          # via `goodnet.lib.compose` (the same library function
+          # the kernel-only flake exposes), not from this output —
+          # so the root flake has no plugin packages to enumerate
+          # and no auto-discover step to keep in sync.
           default = goodnet-core;
 
           inherit goodnet-core everything;
-        } // discoveredPlugins));
+        });
 
       apps = forAllSystems (system: pkgs:
         let
