@@ -77,7 +77,11 @@ result-*
 !plugins/**/CMakeLists.txt
 !plugins/**/default.nix
 !plugins/**/flake.nix
-!plugins/**/flake.lock
+# `flake.lock` is the plugin's own git's concern — including it
+# in the monorepo's index makes every per-plugin re-lock dirty
+# the monorepo's working tree, which in turn dirties the kernel
+# input the next plugin tries to lock against. Leave it to the
+# nested git.
 !plugins/**/LICENSE
 !plugins/**/README.md
 
