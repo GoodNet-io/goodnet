@@ -301,6 +301,16 @@
           # /<name>/`. Already-present plugins are skipped silently.
           gn-install-plugins =
             import ./nix/install-plugins.nix { inherit pkgs; };
+
+          # `nix run .#init-mirrors` — bare-clone each plugin's
+          # nested working git into `${MIRROR_DIR}/<repo>.git` and
+          # wire `origin` in the working clone so subsequent
+          # `git push` / `git pull` flow against the mirror.
+          # Single-call setup that turns each in-tree plugin into
+          # something `install-plugins` can re-clone for a fresh
+          # checkout.
+          gn-init-mirrors =
+            import ./nix/init-mirrors.nix { inherit pkgs; };
         in
         {
           default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
@@ -316,6 +326,7 @@
           new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
           pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
           install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
+          init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
         });
 
       devShells = forAllSystems (system: pkgs:
