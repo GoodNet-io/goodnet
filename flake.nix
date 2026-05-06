@@ -431,6 +431,31 @@
             install-plugins = gn-install-plugins;
           };
 
+          # `nix run .#update` — refresh both halves of the workspace
+          # at once: \`nix flake update\` on the kernel pulls fresh
+          # nixpkgs / kernel-only inputs, then \`plugin -- update\`
+          # fast-forwards every loadable plugin against its
+          # \`origin\`. Single command for "give me everything
+          # current".
+          gn-update = pkgs.writeShellApplication {
+            name = "goodnet-update";
+            runtimeInputs = [ pkgs.nix ];
+            text = ''
+              set -euo pipefail
+              if [ ! -f flake.nix ]; then
+                echo "update: run from the kernel monorepo root" >&2
+                exit 1
+              fi
+              echo ">>> update: nix flake update (kernel inputs)"
+              nix flake update
+              echo ""
+              echo ">>> update: plugin -- update (loadable plugins)"
+              ${gn-plugin}/bin/goodnet-plugin update
+              echo ""
+              echo "update: done."
+            '';
+          };
+
           # `nix run .#init-mirrors` — bare-clone each plugin's
           # nested working git into `${MIRROR_DIR}/<repo>.git` and
           # wire `origin` in the working clone so subsequent
@@ -459,6 +484,7 @@
           init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
           setup           = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
           plugin          = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
+          update          = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
         });
 
       devShells = forAllSystems (system: pkgs:
