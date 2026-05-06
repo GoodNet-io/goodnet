@@ -163,6 +163,8 @@ gn_result_t _gn_link_send(void* self, gn_conn_id_t conn,
   std::expected, перенос ошибок через C ABI.
 - [memory-management](./memory-management.md) — owned/borrowed,
   out_user_data + out_free, vtable lifetime.
+- [concurrency](./concurrency.md) — teardown protocol, координация
+  worker callback'ов и shutdown'а на caller thread.
 - [clock](./clock.md) — инъекция времени для тестируемости.
 - [cmake-integration](./cmake-integration.md) —
   `find_package(GoodNet)`, `add_plugin()`.
