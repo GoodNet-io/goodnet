@@ -284,9 +284,15 @@
           # plugin under `plugins/<kind>/<name>/` with the standalone
           # CMakeLists branch, default.nix, standalone flake, source
           # skeleton, placeholder gtest, README, and a TODO LICENSE.
-          # `auto-discover.nix` picks up the new directory the next
-          # time the kernel flake is evaluated.
           gn-new-plugin = import ./nix/new-plugin.nix { inherit pkgs; };
+
+          # `nix run .#pull-plugin -- <repo-name>` — clone a loadable
+          # plugin's git into `plugins/<kind>/<name>/` so the kernel
+          # build picks it up. Defaults to a local mirror under
+          # `~/Desktop/projects/GoodNet-io/` pre-rc1 and falls back
+          # to `github:goodnet-io/<repo-name>` once the org repos
+          # are public.
+          gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
         in
         {
           default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
@@ -300,6 +306,7 @@
           goodnet       = { type = "app"; program = "${gn-goodnet}/bin/gn-goodnet"; };
           node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
           new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
+          pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
         });
 
       devShells = forAllSystems (system: pkgs:
