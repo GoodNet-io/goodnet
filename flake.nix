@@ -293,6 +293,14 @@
           # to `github:goodnet-io/<repo-name>` once the org repos
           # are public.
           gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
+
+          # `nix run .#install-plugins` — pull every canonical
+          # loadable plugin in one shot. The single command a new
+          # contributor (or a CI runner) runs after `git clone` to
+          # materialise the full loadable set under `plugins/<kind>
+          # /<name>/`. Already-present plugins are skipped silently.
+          gn-install-plugins =
+            import ./nix/install-plugins.nix { inherit pkgs; };
         in
         {
           default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
@@ -307,6 +315,7 @@
           node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
           new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
           pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
+          install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
         });
 
       devShells = forAllSystems (system: pkgs:
