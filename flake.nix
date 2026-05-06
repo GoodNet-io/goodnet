@@ -344,6 +344,12 @@
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
+
+          # Re-import the install-plugins app here so the dev shell's
+          # `shellHook` can dispatch to it without sharing scope with
+          # the `apps` let-binding.
+          gn-install-plugins =
+            import ./nix/install-plugins.nix { inherit pkgs; };
         in
         {
           default = (pkgs.mkShell.override { inherit stdenv; }) {
@@ -359,10 +365,44 @@
             # never need to remember a CMake invocation by hand.
             # ccache is wired through so repeat builds do not pay the
             # full compile cost.
+            #
+            # Auto-pull missing loadable plugins. Each shell entry
+            # (interactive `nix develop` and the `--command` apps
+            # the operator-facing scripts re-enter) runs a fast
+            # idempotent check; if any of the eight loadable
+            # plugin slots is empty, dispatch to `install-plugins`
+            # so a fresh kernel checkout becomes a fully-wired
+            # workspace without a separate manual setup step.
+            # `|| true` keeps shell entry usable when no mirror /
+            # remote is reachable — the operator sees the warning
+            # `install-plugins` printed and can act on it.
             shellHook = ''
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
               export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+              _gn_plugin_slots="\
+                plugins/handlers/heartbeat \
+                plugins/links/tcp \
+                plugins/links/udp \
+                plugins/links/ws \
+                plugins/links/ipc \
+                plugins/links/tls \
+                plugins/security/noise \
+                plugins/security/null"
+              _gn_missing=0
+              for _gn_slot in $_gn_plugin_slots; do
+                if [ ! -d "$_gn_slot/.git" ]; then
+                  _gn_missing=1
+                  break
+                fi
+              done
+              if [ "$_gn_missing" = 1 ]; then
+                echo ">>> goodnet: loadable plugins missing — running install-plugins"
+                ${gn-install-plugins}/bin/goodnet-install-plugins || true
+                echo ""
+              fi
+              unset _gn_plugin_slots _gn_missing _gn_slot
 
               cat <<'EOF'
 
@@ -376,6 +416,8 @@ GoodNet devShell  (gcc15, C++23)
   nix run .#goodnet -- ... — operator CLI (version, config validate, ...)
   nix run .#node    -- ... — operator CLI alias for `goodnet run`
   nix run .#install-hooks  — wire .githooks/ into this clone
+  nix run .#install-plugins — pull every loadable plugin (auto-runs)
+  nix run .#init-mirrors    — bare-mirror plugin gits + wire origin
 
 EOF
             '';
