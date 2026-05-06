@@ -203,17 +203,66 @@
             ' _ "$@"
           '';
 
+          # `nix run .#test [-- asan|tsan|all]` — single test app
+          # with subarg-driven sanitizer select. Default vanilla
+          # debug (no instrumentation). \`asan\` and \`tsan\` build
+          # in dedicated \`build-asan\` / \`build-tsan\` trees with
+          # the appropriate flags + runtime env; \`all\` runs the
+          # vanilla, asan, and tsan suites in sequence and bails on
+          # the first failure. Trailing args after the variant are
+          # forwarded to ctest (e.g. \`test -- asan -R Noise\`).
           gn-test = pkgs.writeShellScriptBin "gn-test" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring Debug build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Debug \
-                  -DGOODNET_BUILD_TESTS=ON
+              variant="''${1:-vanilla}"
+              shift || true
+              run_one() {
+                local v="$1"; shift
+                local build_dir flags runtime_env=""
+                case "$v" in
+                  vanilla)
+                    build_dir=build flags=""
+                    ;;
+                  asan)
+                    build_dir=build-asan
+                    flags="-fsanitize=address,undefined -fno-sanitize-recover=all -O1 -g -fno-omit-frame-pointer"
+                    runtime_env="ASAN_OPTIONS=abort_on_error=1:detect_leaks=1:halt_on_error=1:symbolize=1:strict_string_checks=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1"
+                    ;;
+                  tsan)
+                    build_dir=build-tsan
+                    flags="-fsanitize=thread -O1 -g -fno-omit-frame-pointer"
+                    runtime_env="TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:history_size=4"
+                    ;;
+                  *)
+                    echo "test: unknown variant $v (vanilla|asan|tsan|all)" >&2
+                    return 1
+                    ;;
+                esac
+                echo ">>> test: $v in $build_dir"
+                if [ -n "$flags" ]; then
+                  export NIX_HARDENING_ENABLE=""
+                  export CFLAGS="$flags"
+                  export CXXFLAGS="$flags"
+                  export LDFLAGS="$flags"
+                fi
+                if [ ! -f "$build_dir/CMakeCache.txt" ]; then
+                  cmake -B "$build_dir" -G Ninja \
+                    -DCMAKE_BUILD_TYPE=Debug \
+                    -DGOODNET_BUILD_TESTS=ON
+                fi
+                cmake --build "$build_dir" -j"$(nproc)"
+                if [ -n "$runtime_env" ]; then
+                  env $runtime_env \
+                    LD_LIBRARY_PATH="$build_dir:$build_dir/plugins''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+                    ctest --test-dir "$build_dir" --output-on-failure "$@"
+                else
+                  ctest --test-dir "$build_dir" --output-on-failure "$@"
+                fi
+              }
+              if [ "$variant" = "all" ]; then
+                run_one vanilla "$@" && run_one asan "$@" && run_one tsan "$@"
+              else
+                run_one "$variant" "$@"
               fi
-              cmake --build "$BUILD_DIR" -j"$(nproc)"
-              ctest --test-dir "$BUILD_DIR" --output-on-failure "$@"
             ' _ "$@"
           '';
 
