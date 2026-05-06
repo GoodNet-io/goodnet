@@ -260,20 +260,33 @@ when the executor stops, so any cleanup that relied on a pending
 strand-bound continuation (the read-completion path, idle timers,
 reconnect timers) never runs once the io_context is stopped.
 
+The set of ids on which shutdown emits is the set of all ids the
+link ever published through `notify_connect`, not the set still
+live in the link's session map. A worker callback that observed
+EOF before shutdown started has already fired its own
+`notify_disconnect` on the worker thread; the kernel resolves the
+second emit through `GN_ERR_NOT_FOUND` without re-firing
+`DISCONNECTED`, so the caller-thread emit on shutdown is benign
+for already-disconnected sessions and required for those still
+live.
+
 The canonical sequence inside a baseline link's `shutdown`:
 
 1. Close the acceptor.
-2. Snapshot the live `gn_conn_id_t` set under the sessions lock.
-   Close each session's socket — either synchronously or via a
-   strand-posted task. The snapshot taken in this step, not the
-   close itself, carries the kernel-observable release; a
-   strand-posted close that the executor never gets to drain is
-   acceptable because step 3 already cleared the kernel-side
-   record.
-3. Walk the snapshot and call `host_api->notify_disconnect(host_ctx,
-   id, GN_OK)` for every id while still on the shutdown caller's
-   thread.
+2. Take the sessions lock and atomically: latch the shutdown
+   flag, drain the append-only published-ids list, close every
+   live session's socket, clear the live session map. The
+   ordering inside one critical section blocks worker callbacks
+   from racing past the flag check, and draining the published
+   ids preserves the kernel-observable release for sessions a
+   worker callback already removed from the live map.
+3. Walk the drained ids and call `host_api->notify_disconnect(
+   host_ctx, id, GN_OK)` for every id while still on the
+   shutdown caller's thread.
 4. Stop the executor and join the worker thread.
+
+Implementation pattern lives in
+[`docs/impl/cpp/concurrency.md`](../impl/cpp/concurrency.md).
 
 Without step 3 the kernel-side `ConnectionRegistry` keeps the
 records past link shutdown. Per `plugin-lifetime.md` §4 those
