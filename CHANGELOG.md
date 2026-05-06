@@ -22,6 +22,28 @@ typed extension API.
   input becomes `github:goodnet-io/<repo>` with no relativity to
   warn about.
 
+### Workflow
+
+Loadable plugins live in their own gits; the kernel monorepo
+ignores their slots entirely. Two new Nix apps (`init-mirrors`
+and `install-plugins`) plus an auto-pull `shellHook` close the
+loop so a fresh clone of the kernel becomes a fully-wired
+workspace as soon as the operator enters the dev shell.
+
+Verified end-to-end on the latest dev tree:
+
+```
+cp -a GoodNet/ /tmp/gn-final-verify/
+cd /tmp/gn-final-verify
+rm -rf plugins/handlers plugins/links plugins/security/{noise,null}
+# eight plugin slots empty — only protocols/{gnet,raw} remain
+nix develop --command make test
+# shellHook auto-runs install-plugins → 8 plugins pulled from
+# ~/.local/share/goodnet-mirrors/<repo>.git
+# CMake reconfigures, builds, runs ctest
+# → 856/856 tests pass (116 integration + remainder)
+```
+
 ### Added
 
 - **Plugin logging vtable** — `host_api_t::log` is a size-prefixed
