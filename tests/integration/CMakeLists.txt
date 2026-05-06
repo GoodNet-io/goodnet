@@ -16,6 +16,29 @@ if(NOT goodnet_integration_test_sources)
     return()
 endif()
 
+# The integration suite link-edges every loadable transport plugin
+# directly so each scenario can drive `tcp_objects` / `udp_objects`
+# / etc. without going through dlopen. Loadable plugins live in
+# their own repos and are pulled in on demand; if any of them is
+# missing from this checkout, skip the whole suite rather than
+# letting CMake fail on a missing target.
+set(_GN_INTEGRATION_TARGETS
+    goodnet_tcp_objects
+    goodnet_udp_objects
+    goodnet_ws_objects
+    goodnet_ipc_objects
+    goodnet_tls_objects
+)
+foreach(_t IN LISTS _GN_INTEGRATION_TARGETS)
+    if(NOT TARGET ${_t})
+        message(STATUS
+            "tests/integration: skipping (loadable plugin target "
+            "${_t} not present — pull the plugin's repo into "
+            "plugins/<kind>/<name>/ to enable this suite)")
+        return()
+    endif()
+endforeach()
+
 add_executable(goodnet_integration_tests ${goodnet_integration_test_sources})
 
 target_link_libraries(goodnet_integration_tests
@@ -23,11 +46,7 @@ target_link_libraries(goodnet_integration_tests
         GoodNet::kernel
         GoodNet::protocol_gnet
         GoodNet::sdk
-        goodnet_tcp_objects
-        goodnet_udp_objects
-        goodnet_ws_objects
-        goodnet_ipc_objects
-        goodnet_tls_objects
+        ${_GN_INTEGRATION_TARGETS}
         GTest::gtest
         GTest::gtest_main
         ${CMAKE_DL_LIBS}

@@ -20,6 +20,18 @@ file(GLOB_RECURSE goodnet_unit_test_sources
     "${CMAKE_CURRENT_SOURCE_DIR}/*/test_*.cpp"
 )
 
+# `test_plugin_manager.cpp` dlopens the null security provider's .so
+# at runtime and therefore needs the `GOODNET_NULL_PLUGIN_PATH`
+# compile-time define which is only set when the plugin's CMake
+# target is in the build. Loadable plugins live in their own
+# repos and are pulled in on demand; if the operator did not pull
+# `security-null`, drop the test from the unit suite rather than
+# letting the source's `#error` guard fail the build.
+if(NOT TARGET goodnet_security_null)
+    list(FILTER goodnet_unit_test_sources
+         EXCLUDE REGEX "test_plugin_manager\\.cpp$")
+endif()
+
 if(NOT goodnet_unit_test_sources)
     message(STATUS "tests/unit: no test_*.cpp sources found; skipping")
     return()
