@@ -179,16 +179,27 @@
             ' _ "$@"
           '';
 
+          # `nix run .#build [-- release|debug]` — single build app
+          # with subarg-driven variant select. Default debug. Each
+          # variant lives in its own \`build-<variant>/\` so debug
+          # and release coexist without pin-ponging the cache.
           gn-build = pkgs.writeShellScriptBin "gn-build" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build-release"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring Release build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Release \
+              variant="''${1:-debug}"
+              shift || true
+              case "$variant" in
+                debug)   build_type=Debug   ; build_dir=build       ;;
+                release) build_type=Release ; build_dir=build-release ;;
+                *) echo "build: unknown variant $variant (debug|release)" >&2
+                   exit 1 ;;
+              esac
+              if [ ! -f "$build_dir/CMakeCache.txt" ]; then
+                echo ">>> Configuring $build_type build in $build_dir..."
+                cmake -B "$build_dir" -G Ninja \
+                  -DCMAKE_BUILD_TYPE=$build_type \
                   -DGOODNET_BUILD_TESTS=ON
               fi
-              cmake --build "$BUILD_DIR" -j"$(nproc)" "$@"
+              cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"
           '';
 
