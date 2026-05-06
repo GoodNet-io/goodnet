@@ -85,8 +85,9 @@ public:
     /// @param role            initiator/responder, from `notify_connect`
     /// @param local_static_sk local Ed25519 secret key (libsodium layout)
     /// @param local_static_pk local Ed25519 public key
-    /// @param remote_static_pk peer Ed25519 pk if known up-front (IK
-    ///                         initiator); pass empty span otherwise
+    /// @param remote_static_pk_or_empty peer Ed25519 pk if known
+    ///                         up-front (IK initiator); pass empty
+    ///                         span otherwise
     /// @param recv_buffer_cap_bytes ceiling on the per-conn inbound
     ///                              partial-frame buffer per
     ///                              `backpressure.md` §9. The caller

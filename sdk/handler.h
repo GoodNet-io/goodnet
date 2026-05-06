@@ -33,7 +33,7 @@ typedef enum gn_propagation_e {
 /**
  * @brief Vtable for an `IHandler` implementation in C.
  *
- * Begins with @ref api_size for size-prefix evolution per
+ * Begins with `api_size` for size-prefix evolution per
  * `abi-evolution.md` §3.
  *
  * @par Per-instance state via `self`

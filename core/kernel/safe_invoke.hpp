@@ -35,6 +35,8 @@ namespace gn::core {
 ///                  which kernel call site caught the exception so
 ///                  the operator can pinpoint the misbehaving
 ///                  plugin without reading kernel internals.
+/// @param fn        callable to invoke.
+/// @param args      arguments forwarded to @p fn.
 template <typename Fn, typename... Args>
 [[nodiscard]] inline gn_result_t
 safe_call_result(const char* site_tag, Fn&& fn, Args&&... args) noexcept {

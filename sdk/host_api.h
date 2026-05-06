@@ -40,11 +40,11 @@ typedef struct gn_security_provider_vtable_s   gn_security_provider_vtable_t;
 /**
  * @brief Public host vtable.
  *
- * Begins with @ref api_size for size-prefix evolution. New entries are
+ * Begins with `api_size` for size-prefix evolution. New entries are
  * appended at the tail; consumers gate access through `GN_API_HAS`
  * (`sdk/abi.h`).
  *
- * The @ref host_ctx field is paired with the function pointers: every
+ * The `host_ctx` field is paired with the function pointers: every
  * vtable entry takes `host_ctx` as its first argument, and the kernel
  * sets the field before handing the table to the plugin. Convenience
  * macros in `sdk/convenience.h` read the field through `(api)->host_ctx`

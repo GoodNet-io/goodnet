@@ -6,7 +6,7 @@
  * (link, security, extensions) builds on top of these types.
  *
  * Stability: stable for v1.0.x. Field additions to gn_message_t require a
- * major ABI bump; @ref _reserved slots permit non-breaking minor evolution.
+ * major ABI bump; `_reserved` slots permit non-breaking minor evolution.
  */
 #ifndef GOODNET_SDK_TYPES_H
 #define GOODNET_SDK_TYPES_H
@@ -172,7 +172,7 @@ typedef enum gn_register_kind_e {
 /**
  * @brief Metadata for `host_api->register`.
  *
- * Begins with @ref api_size for size-prefix evolution per
+ * Begins with `api_size` for size-prefix evolution per
  * `abi-evolution.md` §3. New fields land before `_reserved`.
  *
  * **Zero-initialisation contract** (`abi-evolution.md` §4): the

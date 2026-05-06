@@ -390,6 +390,13 @@
           # checkout.
           gn-init-mirrors =
             import ./nix/init-mirrors.nix { inherit pkgs; };
+
+          # `nix run .#docs` — generate Doxygen API reference,
+          # SVG diagrams, and the architecture canvas. Wraps the
+          # python diagram scripts so the toolchain (graphviz +
+          # python `graphviz` package + doxygen) is sealed from
+          # the host environment.
+          gn-docs = import ./nix/docs.nix { inherit pkgs; };
         in
         {
           default = { type = "app"; program = "${gn-build}/bin/gn-build"; };
@@ -399,6 +406,7 @@
           test    = { type = "app"; program = "${gn-test}/bin/gn-test"; };
           run     = { type = "app"; program = "${gn-run}/bin/gn-run"; };
           plugin  = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
+          docs    = { type = "app"; program = "${gn-docs}/bin/goodnet-docs"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -445,6 +453,7 @@
               gdb
               gnumake
               doxygen graphviz
+              (python3.withPackages (ps: [ ps.graphviz ]))
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 
             # Welcome message points at the `nix run` apps so callers

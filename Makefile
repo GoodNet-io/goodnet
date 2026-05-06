@@ -13,6 +13,7 @@
         test test-asan test-tsan test-all \
         run demo goodnet node \
         plugin-new plugin-pull plugin-install plugin-update \
+        docs \
         clean
 
 help:
@@ -43,6 +44,9 @@ help:
 	@echo "  make plugin-pull REPO=…         clone a single plugin"
 	@echo "  make plugin-install             pull every loadable plugin"
 	@echo "  make plugin-update              git pull --ff-only each"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  make docs             Doxygen API ref + diagrams + canvas"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean            remove build*/ and result/ symlinks"
@@ -102,6 +106,10 @@ plugin-install:
 
 plugin-update:
 	nix run .#plugin -- update
+
+# Documentation
+docs:
+	nix run .#docs
 
 # Maintenance
 clean:

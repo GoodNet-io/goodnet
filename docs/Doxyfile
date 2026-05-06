@@ -1,0 +1,104 @@
+# Doxygen configuration for GoodNet.
+# Run via `nix run .#docs` or `make docs`.
+# Output: build/doxygen/html/index.html.
+
+PROJECT_NAME           = "GoodNet"
+PROJECT_BRIEF          = "Networking platform: agnostic kernel + plugin SDK"
+PROJECT_NUMBER         = 1.0-rc1
+OUTPUT_DIRECTORY       = build/doxygen
+OUTPUT_LANGUAGE        = English
+INPUT_ENCODING         = UTF-8
+
+# ── What to scan ────────────────────────────────────────────────────────────
+# Kernel-side surface only. Loadable plugins live in their own gits
+# under `plugins/handlers/`, `plugins/links/`, `plugins/security/`
+# and ship their own Doxygen runs from those repositories. The
+# kernel's reference covers the public SDK headers, the kernel
+# binary's internals, the operator-facing apps, and the static
+# protocol plugins (`plugins/protocols/`) that link into the
+# kernel binary.
+INPUT                  = sdk core apps plugins/protocols
+RECURSIVE              = YES
+EXCLUDE                = build build-debug build-release build-asan build-tsan build-warnings build-coverage build-demo _build .git
+EXCLUDE_PATTERNS       = */build/* */tests/* */node_modules/* */__pycache__/*
+FILE_PATTERNS          = *.h *.hpp *.cpp *.md
+EXTENSION_MAPPING      = h=C++ hpp=C++ cpp=C++
+
+# ── Extraction ───────────────────────────────────────────────────────────────
+# EXTRACT_ALL=YES surfaces undocumented symbols in the tree as a
+# coverage roadmap. Set EXTRACT_ALL = NO with WARN_IF_UNDOCUMENTED
+# = YES to audit which public symbols still need a Doxygen block.
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+EXTRACT_LOCAL_CLASSES  = YES
+BUILTIN_STL_SUPPORT    = YES
+HIDE_UNDOC_MEMBERS     = NO
+HIDE_UNDOC_CLASSES     = NO
+HIDE_FRIEND_COMPOUNDS  = YES
+INLINE_INHERITED_MEMB  = YES
+INHERIT_DOCS           = YES
+
+# ── Output ──────────────────────────────────────────────────────────────────
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+GENERATE_XML           = NO
+HTML_OUTPUT            = html
+HTML_DYNAMIC_SECTIONS  = YES
+DISABLE_INDEX          = NO
+GENERATE_TREEVIEW      = YES
+SORT_BRIEF_DOCS        = YES
+
+# ── Markdown integration ────────────────────────────────────────────────────
+USE_MDFILE_AS_MAINPAGE =
+MARKDOWN_SUPPORT       = YES
+TOC_INCLUDE_HEADINGS   = 3
+
+# ── Warnings ────────────────────────────────────────────────────────────────
+# Strict mode: every Doxygen-detectable bug fails the build so the
+# generated reference stays trustworthy. WARN_IF_UNDOCUMENTED is
+# OFF so partial coverage does not block the build; switch it ON
+# locally to audit gaps.
+QUIET                  = YES
+WARNINGS               = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+WARN_AS_ERROR          = FAIL_ON_WARNINGS
+WARN_LOGFILE           = build/doxygen/warnings.log
+
+# ── Source browsing ─────────────────────────────────────────────────────────
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = NO
+STRIP_CODE_COMMENTS    = NO
+REFERENCED_BY_RELATION = YES
+REFERENCES_RELATION    = YES
+REFERENCES_LINK_SOURCE = YES
+
+# ── Diagrams ────────────────────────────────────────────────────────────────
+# Architecture-level SVGs are produced by `tools/gen_diagrams.py`
+# under `docs/img/` and embedded in the markdown corpus directly.
+# Doxygen's caller-graph / class-graph dot output is left off.
+HAVE_DOT               = NO
+GENERATE_LEGEND        = NO
+
+# ── Pre-processing ──────────────────────────────────────────────────────────
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = NO
+SEARCH_INCLUDES        = YES
+INCLUDE_PATH           = sdk
+PREDEFINED             = __cplusplus=202302L \
+                         GN_EXPORT= \
+                         GN_INTERNAL=
+
+# ── Misc ────────────────────────────────────────────────────────────────────
+ALPHABETICAL_INDEX     = YES
+TAB_SIZE               = 4
+ALIASES                = "threadsafety=@par Thread safety:^^" \
+                         "invariant=@par Invariant:^^" \
+                         "contract=@par Contract:^^" \
+                         "borrowed=<em>borrowed</em>" \
+                         "owned=<em>owned</em>" \
+                         "in-out=<em>in-out</em>" \
+                         "in=<em>in</em>"

@@ -11,6 +11,21 @@ pipe, and the first handler. The kernel moves encrypted bytes
 between two processes over a real socket and surfaces RTT through a
 typed extension API.
 
+### Documentation corpus
+
+The developer-facing documentation now stands as a complete layered
+stack: 23 canonical contracts in `docs/contracts/`, ten architecture
+deep-dives in `docs/architecture/`, eight task recipes in
+`docs/recipes/`, five C++ implementation guides in
+`docs/impl/cpp/`, and four wire-format references in
+`docs/protocol/`. Architecture diagrams live as 17 SVGs under
+`docs/img/` produced by `tools/gen_diagrams.py`; the bird's-eye
+summary canvas lives at `docs/architecture.canvas`. Doxygen API
+reference is wired through `nix run .#docs` against
+`docs/Doxyfile`. Introduction-level material («how to use this from
+a first-time operator's view») is intentionally out of this corpus
+and grows in its own pass.
+
 ### Known limitations
 
 - **Plugin flake input is a relative `git+file:../../..`** which

@@ -184,6 +184,7 @@ GN_EXPORT int gn_core_is_running(gn_core_t* core);
  * lands in a partially-applied state. Subscribers fire on the
  * `on_config_reload` channel after a successful reload.
  *
+ * @param core     Kernel handle returned by gn_core_create().
  * @param json_str @borrowed; copied internally before return.
  */
 GN_EXPORT gn_result_t gn_core_reload_config_json(gn_core_t* core,
@@ -205,6 +206,7 @@ GN_EXPORT const gn_limits_t* gn_core_limits(gn_core_t* core);
  * `Phase::Ready` are rejected with `GN_ERR_INVALID_STATE`. The
  * kernel copies @p limits; the input pointer is not retained.
  *
+ * @param core   Kernel handle returned by gn_core_create().
  * @param limits @borrowed; must be zero-initialised per
  *               `abi-evolution.md` §4.
  */
@@ -218,6 +220,7 @@ GN_EXPORT gn_result_t gn_core_set_limits(gn_core_t* core,
  *
  * Available after `gn_core_init` returns `GN_OK`.
  *
+ * @param core   Kernel handle returned by gn_core_create().
  * @param out_pk @borrowed caller-allocated 32-byte buffer.
  *
  * @return `GN_OK` on success; `GN_ERR_INVALID_STATE` if the kernel
@@ -239,6 +242,7 @@ GN_EXPORT gn_result_t gn_core_get_pubkey(
  * @p scheme as NULL to derive it from the URI prefix
  * (`tcp://`, `udp://`, `ws://`, `ipc://`).
  *
+ * @param core     Kernel handle returned by gn_core_create().
  * @param uri      @borrowed for the duration of the call.
  * @param scheme   @borrowed; NULL → derive from @p uri prefix.
  * @param out_conn caller-allocated; receives the kernel
@@ -261,7 +265,13 @@ GN_EXPORT gn_result_t gn_core_connect(gn_core_t* core,
  * link plugin's `send`. Equivalent to `host_api->send(...)` from a
  * plugin context.
  *
- * @param payload @borrowed for the duration of the call.
+ * @param core         Kernel handle returned by gn_core_create().
+ * @param conn         Connection id as returned by `gn_core_connect`
+ *                     or via `gn_conn_event_t.conn`.
+ * @param msg_id       Application-level message id matching a
+ *                     subscriber's `gn_core_subscribe` filter.
+ * @param payload      @borrowed for the duration of the call.
+ * @param payload_size Size in bytes of @p payload.
  */
 GN_EXPORT gn_result_t gn_core_send_to(gn_core_t* core,
                                        gn_conn_id_t conn,
@@ -317,8 +327,9 @@ GN_VTABLE_API_SIZE_FIRST(gn_stats_t);
 /**
  * @brief Snapshot the aggregate counters into @p out.
  *
- * @param out @borrowed caller-allocated; must be zero-initialised
- *            on first call.
+ * @param core Kernel handle returned by gn_core_create().
+ * @param out  @borrowed caller-allocated; must be zero-initialised
+ *             on first call.
  */
 GN_EXPORT gn_result_t gn_core_get_stats(gn_core_t* core, gn_stats_t* out);
 
@@ -341,10 +352,10 @@ GN_EXPORT size_t gn_core_link_count(gn_core_t* core);
  * Re-entrancy: callbacks fire on the kernel's dispatch thread; do
  * not block.
  *
- * @param cb        @borrowed function pointer; the kernel keeps
- *                  it alive until `gn_core_unsubscribe` returns.
- * @param user_data @borrowed by the kernel under the same lifetime
- *                  as @p cb; pass-through to every callback.
+ * The callback function pointer is @borrowed; the kernel keeps it
+ * alive until `gn_core_unsubscribe` returns. @p user_data is
+ * @borrowed under the same lifetime and passes through to every
+ * callback.
  *
  * @return non-zero subscription token on success, 0 on failure.
  */
@@ -366,9 +377,9 @@ GN_EXPORT void gn_core_unsubscribe(gn_core_t* core, uint64_t token);
  * @brief Connection-event subscription (CONNECTED / DISCONNECTED /
  *        TRUST_UPGRADED / BACKPRESSURE_*).
  *
- * @param cb        @borrowed function pointer; lifetime as in
- *                  `gn_core_subscribe`.
- * @param user_data @borrowed; pass-through to every callback.
+ * The callback function pointer is @borrowed; lifetime as in
+ * `gn_core_subscribe`. @p user_data is @borrowed and passes through
+ * to every callback.
  *
  * @return non-zero token on success, 0 on failure.
  */
@@ -396,6 +407,7 @@ GN_EXPORT void gn_core_off_conn_state(gn_core_t* core, uint64_t token);
  * `gn_plugin_register`, `gn_plugin_unregister`, `gn_plugin_shutdown`,
  * optional `gn_plugin_descriptor`) per `plugin-lifetime.md` §3.
  *
+ * @param core              Kernel handle returned by gn_core_create().
  * @param so_path           @borrowed exe-relative path to the .so.
  * @param expected_sha256   @borrowed 32-byte SHA-256 digest the
  *                          host computed at manifest time. The
@@ -420,6 +432,7 @@ GN_EXPORT gn_result_t gn_core_load_plugin(
  * `shutdown_requested`, `gn_plugin_unregister`, drain anchor,
  * `gn_plugin_shutdown`, `dlclose`).
  *
+ * @param core Kernel handle returned by gn_core_create().
  * @param name @borrowed plugin name as registered in its
  *             descriptor.
  */
@@ -434,6 +447,7 @@ GN_EXPORT gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name);
  * meta, vtable, self)`. Use when the host wants to inject a custom
  * Noise / null / TLS provider without going through `dlopen`.
  *
+ * @param core   Kernel handle returned by gn_core_create().
  * @param meta   @borrowed metadata (name, api_size). Must be
  *               zero-initialised per `abi-evolution.md` §4.
  * @param vtable @borrowed for the lifetime of the registration.
@@ -453,6 +467,7 @@ GN_EXPORT gn_result_t gn_core_register_security(
  * the layer for hosts that want a custom mesh-framing
  * implementation.
  *
+ * @param core   Kernel handle returned by gn_core_create().
  * @param vtable @borrowed for the lifetime of the registration.
  * @param self   @borrowed plugin instance pointer.
  */
@@ -510,6 +525,8 @@ GN_EXPORT const void* gn_core_query_extension_checked(
  *
  * Equivalent to `host_api->register_extension(name, version, vtable)`.
  *
+ * @param core    Kernel handle returned by gn_core_create().
+ * @param name    @borrowed extension name; copied internally.
  * @param version producer-side version pin; consumers
  *                `query_extension_checked(name, required_version)`
  *                fail when @p version is older or major-different.

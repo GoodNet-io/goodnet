@@ -56,7 +56,7 @@ GN_VTABLE_API_SIZE_FIRST(gn_handshake_keys_t);
 /**
  * @brief Output buffer for variable-length security messages.
  *
- * The plugin allocates `bytes` and pairs it with @ref free_fn so the
+ * The plugin allocates `bytes` and pairs it with `free_fn` so the
  * kernel can release it once the bytes have been handed to the transport.
  */
 typedef struct gn_secure_buffer_s {
@@ -67,7 +67,7 @@ typedef struct gn_secure_buffer_s {
     size_t   size;
     /**
      * Producer-supplied opaque pointer passed back through
-     * @ref free_fn. Captures whatever destruction state the
+     * `free_fn`. Captures whatever destruction state the
      * producer needs — a Rust `Box::into_raw` handle, a Python
      * `Py_INCREF`'d object, an arena id. May be NULL when the
      * producer's free_fn is stateless (`std::free`, etc.).
