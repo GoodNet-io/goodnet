@@ -358,6 +358,7 @@
             packages = with pkgs; [
               clang-tools ccache cmake-format jq
               gdb
+              gnumake
               doxygen graphviz
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 

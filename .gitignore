@@ -10,6 +10,7 @@
 !flake.nix
 !flake.lock
 !CMakeLists.txt
+!Makefile
 !LICENSE
 !README.md
 !README.ru.md
