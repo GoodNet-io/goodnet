@@ -63,27 +63,27 @@ result-*
 !core/**/CMakeLists.txt
 !core/LICENSE
 
-# Plugins (in-tree development convenience). Each plugin also
-# carries its own `.gitignore` (inverted whitelist tuned for the
-# plugin's standalone git repository). The monorepo tracks those
-# `.gitignore` files alongside source so a fresh clone has them
-# without re-running `nix run .#new-plugin`.
-!plugins/**/.gitignore
-!plugins/**/.clang-tidy
-!plugins/**/*.cpp
-!plugins/**/*.hpp
-!plugins/**/*.h
-!plugins/**/*.json
-!plugins/**/CMakeLists.txt
-!plugins/**/default.nix
-!plugins/**/flake.nix
-# `flake.lock` is the plugin's own git's concern — including it
-# in the monorepo's index makes every per-plugin re-lock dirty
-# the monorepo's working tree, which in turn dirties the kernel
-# input the next plugin tries to lock against. Leave it to the
-# nested git.
-!plugins/**/LICENSE
-!plugins/**/README.md
+# Plugins. The monorepo tracks the structural top-level
+# `plugins/CMakeLists.txt` plus everything under
+# `plugins/protocols/` (gnet + raw — both `add_library(... STATIC)`
+# linked into the kernel binary, so the kernel build genuinely
+# depends on their source). Loadable plugins under
+# `plugins/handlers/`, `plugins/links/`, `plugins/security/`
+# live in their own gits (one per plugin directory) and are
+# deliberately not tracked by the monorepo — the explicit
+# directory blocks below stop git from auto-registering each
+# nested `.git/` as a submodule when something runs
+# `git add -A` from the monorepo root.
+!plugins/CMakeLists.txt
+!plugins/protocols/**
+plugins/handlers/heartbeat/
+plugins/links/tcp/
+plugins/links/udp/
+plugins/links/ws/
+plugins/links/ipc/
+plugins/links/tls/
+plugins/security/noise/
+plugins/security/null/
 
 # Tests
 !tests/**/*.c

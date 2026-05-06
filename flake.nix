@@ -116,14 +116,13 @@
             asio spdlog fmt nlohmann_json libsodium openssl
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
-          testInputs = with pkgs; [ gtest rapidcheck ];
 
           # Kernel-only build. Skips iterating `plugins/` so this
           # derivation produces just `goodnet_kernel` + SDK + GNET
           # (mandatory mesh framing) + `GoodNet::ctx_accessors` + the
-          # operator CLI. Per-plugin derivations consume this through
-          # `goodnet-core` and pull the SDK / AddPlugin.cmake helper
-          # through `find_package(GoodNet)` at configure time.
+          # operator CLI. Loadable plugins live in their own flakes;
+          # this derivation does not depend on plugin source being
+          # present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
             version = "0.1.0";
@@ -144,82 +143,19 @@
             doCheck = false;
           };
 
-          # Per-package distribution wrappers per
-          # docs/contracts/plugin-manifest.md §8 +
-          # project_goodnet_subplan_infrastructure §I-A/§I-B.
-          # Per-plugin default.nix may opt into the high-level shape
-          # `{ pkgs, mkCppPlugin, goodnet-core }: mkCppPlugin { … }`
-          # or stay on raw mkDerivation — both shapes accept the
-          # same `goodnet-core` derivation, so the choice is per
-          # plugin author.
-          buildPlugin = import ./nix/buildPlugin.nix {
-            inherit (pkgs) lib;
-            inherit pkgs;
-          };
-          mkCppPlugin = import ./nix/mkCppPlugin.nix {
-            inherit pkgs buildPlugin;
-          };
-
-          # Conditionally inject `mkCppPlugin` based on the plugin's
-          # declared argument set so existing raw-mkDerivation
-          # default.nix files keep building unchanged. A plugin
-          # author opts into the wrapper by adding `mkCppPlugin`
-          # to their function signature; legacy shape is left alone.
-          callPlugin = name: kind:
-            let
-              pluginPath = ./plugins + "/${kind}/${name}/default.nix";
-              pluginExpr = import pluginPath;
-              pluginArgs =
-                if builtins.isFunction pluginExpr
-                then builtins.functionArgs pluginExpr
-                else throw ("callPlugin: plugins/${kind}/${name}/default.nix"
-                            + " must be a function taking { goodnet-core, ...},"
-                            + " got ${builtins.typeOf pluginExpr}");
-              extra = { inherit goodnet-core; }
-                // pkgs.lib.optionalAttrs (pluginArgs ? mkCppPlugin)
-                     { inherit mkCppPlugin; }
-                // pkgs.lib.optionalAttrs (pluginArgs ? buildPlugin)
-                     { inherit buildPlugin; };
-            in
-            pkgs.callPackage pluginPath extra;
-
-          # Full in-tree build: kernel + every bundled plugin + tests.
-          # Used by CI sanitisers and the dev-shell quickstart; not
-          # the operator-facing artefact (operators compose through
-          # `goodnet.lib.compose` from `goodnet-core` + selected
-          # plugin derivations).
-          everything = stdenv.mkDerivation {
-            pname   = "goodnet-everything";
-            version = "0.1.0";
-            src     = pkgs.lib.cleanSourceWith {
-              src    = ./.;
-              filter = path: type:
-                let b = builtins.baseNameOf path; in
-                !(b == "build" || b == "result" || b == ".direnv");
-            };
-            nativeBuildInputs = coreNative ++ testInputs;
-            buildInputs       = coreBuildInputs ++ testInputs;
-            propagatedBuildInputs = coreBuildInputs;
-            cmakeFlags = [
-              "-DCMAKE_BUILD_TYPE=Release"
-              "-DGOODNET_BUILD_TESTS=ON"
-            ];
-            doCheck = false;
-          };
         in
         {
-          # The root flake exposes only the kernel + the `everything`
-          # CI aggregate. Loadable plugins live in their own flakes
-          # under `plugins/<kind>/<name>/` and consume the kernel
-          # through `nix/kernel-only/`. Operators that want a
-          # composed node pull plugins from those flakes directly
-          # via `goodnet.lib.compose` (the same library function
-          # the kernel-only flake exposes), not from this output —
-          # so the root flake has no plugin packages to enumerate
-          # and no auto-discover step to keep in sync.
+          # The root flake exposes only the kernel — loadable plugins
+          # live in their own flakes under `plugins/<kind>/<name>/`
+          # and consume the kernel through `nix/kernel-only/`. There
+          # is no `everything` aggregate any more: the operator
+          # composes a node by listing the plugin flakes they want
+          # and threading their `packages.<system>.default` through
+          # `goodnet.lib.compose`. Aggregate CI testing is the same
+          # operator-side recipe — no kernel-side enumeration of the
+          # plugin set.
           default = goodnet-core;
-
-          inherit goodnet-core everything;
+          inherit goodnet-core;
         });
 
       apps = forAllSystems (system: pkgs:
@@ -369,22 +305,28 @@
       devShells = forAllSystems (system: pkgs:
         let
           stdenv = pkgs.gcc15Stdenv;
-          # `inputsFrom = [ goodnet-everything ]` brings the full
-          # toolchain — kernel deps plus gtest / rapidcheck — into the
-          # shell so `cmake --build && ctest` works out of the box.
-          # The `default` package is the operator-facing kernel-only
-          # build; the dev shell needs the test framework on top.
-          goodnet-everything =
-            self.packages.${pkgs.stdenv.hostPlatform.system}.everything;
+          # Explicit toolchain — kernel build deps plus the test
+          # framework. Loadable plugin source is not in the
+          # monorepo's git tree any more (each lives in its own
+          # standalone git under `plugins/<kind>/<name>/`), so the
+          # shell only needs what kernel + integration tests need;
+          # plugin-side dev work is done in the plugin's own
+          # `nix develop` shell.
+          coreBuildInputs = with pkgs; [
+            asio spdlog fmt nlohmann_json libsodium openssl
+          ];
+          coreNative = with pkgs; [ cmake ninja pkg-config ];
+          testInputs = with pkgs; [ gtest rapidcheck ];
         in
         {
           default = (pkgs.mkShell.override { inherit stdenv; }) {
-            inputsFrom = [ goodnet-everything ];
+            nativeBuildInputs = coreNative;
+            buildInputs       = coreBuildInputs ++ testInputs;
             packages = with pkgs; [
               clang-tools ccache cmake-format jq
-              gdb valgrind
+              gdb
               doxygen graphviz
-            ];
+            ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 
             # Welcome message points at the `nix run` apps so callers
             # never need to remember a CMake invocation by hand.
