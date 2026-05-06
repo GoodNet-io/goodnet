@@ -22,6 +22,49 @@ typed extension API.
   input becomes `github:goodnet-io/<repo>` with no relativity to
   warn about.
 
+### Tests no longer in the kernel
+
+Loadable plugins now own their own conformance tests. The
+`link.md` §9 shutdown contract lives in
+`sdk/test/conformance/link_teardown.hpp` (typed-test fixture
+exported from the SDK); each link plugin's own
+`tests/test_<link>_conformance.cpp` instantiates the suite for
+its type. A regression in IPC's `shutdown()` now fails IPC
+plugin's own `nix run .#test`, not a kernel-side cross-plugin
+runner.
+
+Cross-plugin integration tests (Noise+TCP end-to-end, plugin
+teardown, goodnet binary boot, backpressure across plugins,
+link extension API) move to a new `goodnet-integration-tests`
+sibling repo pulled into the kernel's `tests/integration/`
+slot via `nix run .#plugin -- install`. The slot is gitignored
+in the kernel; `tests/CMakeLists.txt` conditionally
+`add_subdirectory(integration)` only when the overlay is
+present.
+
+11 truly kernel-only tests previously filed under
+`tests/integration/` (backpressure_role, config_reload,
+conn_events, core_c, host_api_chain, inbound_chain,
+inject_api, inject_limits, metrics_thunks, send_loopback,
+trust_class_metric) move to `tests/unit/integration/` and are
+picked up by the kernel unit binary's existing GLOB. Six of
+them reference `gn::plugins::gnet`; the unit binary now links
+the static gnet target the kernel binary already includes.
+
+`tests/support/test_self_signed_cert.hpp` removed from the
+kernel — the only consumers were TLS plugin tests (now in TLS
+plugin's git) and `test_link_teardown_conformance` (now in
+the integration-tests overlay, which carries its own copy).
+
+Open trade-off: `tests/unit/plugin/test_plugin_manager.cpp`
+stays in the kernel because it uses kernel-internal headers
+(`core/kernel/kernel.hpp`, `core/plugin/plugin_manager.hpp`)
+that the SDK does not export. The test gates on
+`GOODNET_NULL_PLUGIN_PATH` so it skips silently when the null
+plugin isn't pulled. A post-rc1 refactor either exposes a
+test-only kernel-internals slice or rewrites the test against
+a built-in mock plugin.
+
 ### Workflow
 
 Loadable plugins live in their own gits; the kernel monorepo
