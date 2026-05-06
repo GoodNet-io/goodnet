@@ -42,6 +42,7 @@ add_executable(goodnet_unit_tests ${goodnet_unit_test_sources})
 target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
+        GoodNet::protocol_gnet
         GTest::gtest
         GTest::gtest_main
         rapidcheck

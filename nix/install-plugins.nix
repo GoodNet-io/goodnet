@@ -57,15 +57,21 @@ pkgs.writeShellApplication {
 
     mirror_dir="''${GOODNET_PLUGIN_MIRROR_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/goodnet-mirrors}"
 
+    # Slot paths are workspace-relative full paths so the
+    # integration-tests pseudo-plugin (which lives at
+    # `tests/integration`, not under `plugins/`) fits the same
+    # map. Future non-plugins/ slots land here without a
+    # second pass through the loop body.
     declare -A slot_to_repo=(
-      [handler-heartbeat]=handlers/heartbeat
-      [link-tcp]=links/tcp
-      [link-udp]=links/udp
-      [link-ws]=links/ws
-      [link-ipc]=links/ipc
-      [link-tls]=links/tls
-      [security-noise]=security/noise
-      [security-null]=security/null
+      [plugins/handlers/heartbeat]=handler-heartbeat
+      [plugins/links/tcp]=link-tcp
+      [plugins/links/udp]=link-udp
+      [plugins/links/ws]=link-ws
+      [plugins/links/ipc]=link-ipc
+      [plugins/links/tls]=link-tls
+      [plugins/security/noise]=security-noise
+      [plugins/security/null]=security-null
+      [tests/integration]=integration-tests
     )
 
     pulled=0
@@ -73,8 +79,8 @@ pkgs.writeShellApplication {
     updated=0
     failed=()
 
-    for repo in "''${!slot_to_repo[@]}"; do
-      slot="plugins/''${slot_to_repo[$repo]}"
+    for slot in "''${!slot_to_repo[@]}"; do
+      repo="''${slot_to_repo[$slot]}"
 
       if [ -d "$slot/.git" ]; then
         if [ "$update" -eq 1 ]; then

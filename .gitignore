@@ -86,6 +86,12 @@ plugins/links/tls/
 plugins/security/noise/
 plugins/security/null/
 
+# tests/integration/ is the slot for the goodnet-integration-tests
+# repo — pulled by `install-plugins`, gitignored from the kernel
+# the same way as plugin slots so the nested .git stays invisible
+# to `git add -A`.
+tests/integration/
+
 # Tests
 !tests/**/*.c
 !tests/**/*.cpp
