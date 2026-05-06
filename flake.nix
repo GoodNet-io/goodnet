@@ -338,6 +338,53 @@
             ' _ "$@"
           '';
 
+          # `nix run .#run -- <demo|node|goodnet> [args]` — single
+          # umbrella over the three runnable artefacts. Builds the
+          # corresponding target into a Release tree and execs it
+          # with the trailing args. \`demo\` self-contained two-node
+          # quickstart; \`node\` = \`goodnet run\` alias; \`goodnet\`
+          # = the operator multicall CLI direct.
+          gn-run = pkgs.writeShellScriptBin "gn-run" ''
+            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
+              if [ $# -lt 1 ]; then
+                echo "run: usage: nix run .#run -- <demo|node|goodnet> [args]" >&2
+                exit 1
+              fi
+              kind="$1"; shift
+              case "$kind" in
+                demo)
+                  build_dir=build-demo
+                  if [ ! -f "$build_dir/CMakeCache.txt" ]; then
+                    cmake -B "$build_dir" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DGOODNET_BUILD_EXAMPLES=ON \
+                      -DGOODNET_BUILD_TESTS=OFF
+                  fi
+                  cmake --build "$build_dir" --target goodnet_demo -j"$(nproc)"
+                  exec "$build_dir/bin/goodnet-demo" "$@"
+                  ;;
+                goodnet|node)
+                  build_dir=build-release
+                  if [ ! -f "$build_dir/CMakeCache.txt" ]; then
+                    cmake -B "$build_dir" -G Ninja \
+                      -DCMAKE_BUILD_TYPE=Release \
+                      -DGOODNET_BUILD_TESTS=OFF
+                  fi
+                  cmake --build "$build_dir" --target goodnet -j"$(nproc)"
+                  if [ "$kind" = "node" ]; then
+                    exec "$build_dir/bin/goodnet" run "$@"
+                  else
+                    exec "$build_dir/bin/goodnet" "$@"
+                  fi
+                  ;;
+                *)
+                  echo "run: unknown kind $kind (demo|node|goodnet)" >&2
+                  exit 1
+                  ;;
+              esac
+            ' _ "$@"
+          '';
+
           sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
 
           # `nix run .#new-plugin -- <kind> <name>` — scaffold a fresh
@@ -395,6 +442,7 @@
           goodnet       = { type = "app"; program = "${gn-goodnet}/bin/gn-goodnet"; };
           node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
           new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
+          run           = { type = "app"; program = "${gn-run}/bin/gn-run"; };
           pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
           install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
           init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
