@@ -33,7 +33,7 @@ typedef struct gn_byte_span_s {
 /**
  * @brief Vtable for an `ILink` implementation.
  *
- * Begins with @ref api_size for size-prefix evolution per
+ * Begins with `api_size` for size-prefix evolution per
  * `abi-evolution.md` §3.
  */
 typedef struct gn_link_vtable_s {

@@ -32,7 +32,7 @@ typedef struct gn_connection_context_s gn_connection_context_t;
 /**
  * @brief Result of a single deframe call.
  *
- * The plugin owns @ref messages storage; envelope payload pointers are
+ * The plugin owns `messages` storage; envelope payload pointers are
  * borrowed from the input byte buffer. Both remain valid for the duration
  * of one dispatch cycle.
  */
@@ -52,7 +52,7 @@ GN_VTABLE_API_SIZE_FIRST(gn_deframe_result_t);
  * @brief Vtable for an `IProtocolLayer` implementation in C.
  *
  * The kernel calls every function with a plugin-supplied `self` pointer
- * obtained at plugin init. Begins with @ref api_size for size-prefix
+ * obtained at plugin init. Begins with `api_size` for size-prefix
  * evolution per `abi-evolution.md` §3.
  */
 typedef struct gn_protocol_layer_vtable_s {

@@ -34,8 +34,7 @@ path and never produce object files from this tree.
 ## Stability
 
 ABI surface is open for reshape until `v1.0.0-rc1`. Post-tag, every
-slot is append-only per
-[`docs/contracts/abi-evolution.md`](../docs/contracts/abi-evolution.md).
+slot is append-only per `docs/contracts/abi-evolution.md`.
 
 ## License
 

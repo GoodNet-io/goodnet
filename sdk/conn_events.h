@@ -31,7 +31,7 @@ typedef enum gn_conn_event_kind_e {
 /**
  * @brief One connection event payload.
  *
- * Begins with @ref api_size for size-prefix evolution per
+ * Begins with `api_size` for size-prefix evolution per
  * `abi-evolution.md` §3. New fields land before `_reserved`.
  */
 typedef struct gn_conn_event_s {
