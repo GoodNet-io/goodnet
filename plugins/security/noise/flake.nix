@@ -15,7 +15,15 @@
   description = "GoodNet Noise XX security provider — standalone plugin flake.";
 
   inputs = {
-    goodnet.url     = "path:../../..";
+    # The plugin reaches the kernel through the slim
+    # `nix/kernel-only/` flake — never the full root flake — so the
+    # input graph stays acyclic the day the root flake starts
+    # registering plugin flakes as inputs of its own. Plugin lives
+    # in its own git, so a bare `path:../../..` would exit the
+    # plugin's git tree and trip pure-eval. `git+file:` references
+    # the monorepo's git instead and `?dir=nix/kernel-only` picks
+    # the kernel sub-flake.
+    goodnet.url     = "git+file:../../..?dir=nix/kernel-only";
     nixpkgs.follows = "goodnet/nixpkgs";
   };
 
