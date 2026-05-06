@@ -26,6 +26,20 @@ reference is wired through `nix run .#docs` against
 a first-time operator's view») is intentionally out of this corpus
 and grows in its own pass.
 
+### Teardown protocol pinned
+
+`link.md` §9 now spells out the full caller-thread emit invariant:
+shutdown latches the flag inside the sessions lock, drains an
+append-only published-ids list rather than the live session map,
+and emits one `notify_disconnect` per id on the caller thread. The
+new `docs/impl/cpp/concurrency.md` carries the matching C++
+pattern (`shutdown_` under the lock, `claim_disconnect` for runtime
+worker emits, `published_ids_` for shutdown completeness). Each of
+the four affected link plugins (TCP, IPC, WS, TLS) landed the fix
+in its own git on `fix/teardown-race`, merged into the plugin's
+`main`. The kernel-side TSan suite ran 30× post-fix without a
+single teardown-race surface.
+
 ### Known limitations
 
 - **Plugin flake input is a relative `git+file:../../..`** which
