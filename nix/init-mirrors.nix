@@ -51,6 +51,7 @@ pkgs.writeShellApplication {
       [plugins/links/tls]=link-tls
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [tests/integration]=integration-tests
     )
 
     mirrored=0
