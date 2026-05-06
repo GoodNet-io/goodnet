@@ -11,6 +11,17 @@ pipe, and the first handler. The kernel moves encrypted bytes
 between two processes over a real socket and surfaces RTT through a
 typed extension API.
 
+### Known limitations
+
+- **Plugin flake input is a relative `git+file:../../..`** which
+  Nix has deprecated in favour of absolute or `github:` URLs (see
+  https://github.com/NixOS/nix/issues/12281). Each plugin's
+  `flake.lock` therefore needs `--allow-dirty-locks` to refresh.
+  Workaround stays in place until each plugin extracts to its
+  `goodnet-io/<repo>` github URL post-rc1, at which point the
+  input becomes `github:goodnet-io/<repo>` with no relativity to
+  warn about.
+
 ### Added
 
 - **Plugin logging vtable** — `host_api_t::log` is a size-prefixed
