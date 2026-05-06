@@ -21,9 +21,9 @@
 #   security-noise    → plugins/security/noise/
 #
 # Source lookup order (first match wins):
-#   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo-name>`   (env override)
-#   2. `${HOME}/Desktop/projects/GoodNet-io/<repo-name>`  (default
-#      sibling layout pre-rc1)
+#   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo-name>.git`   (env override)
+#   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
+#      <repo-name>.git`  (default — matches `init-mirrors` output)
 #   3. `https://github.com/goodnet-io/<repo-name>`  (org repo
 #      post-rc1)
 #
@@ -78,19 +78,26 @@ pkgs.writeShellApplication {
       exit 1
     fi
 
-    mirror_dir="''${GOODNET_PLUGIN_MIRROR_DIR:-$HOME/Desktop/projects/GoodNet-io}"
-    local_mirror="$mirror_dir/$repo_name"
+    mirror_dir="''${GOODNET_PLUGIN_MIRROR_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/goodnet-mirrors}"
+    mirror="$mirror_dir/$repo_name.git"
+    remote_url="https://github.com/goodnet-io/$repo_name"
 
     mkdir -p "$(dirname "$plugin_dir")"
 
-    if [ -d "$local_mirror/.git" ]; then
-      echo "pull-plugin: cloning from local mirror $local_mirror"
-      git clone "$local_mirror" "$plugin_dir"
+    if [ -d "$mirror" ]; then
+      echo "pull-plugin: cloning $repo_name from $mirror"
+      git clone --quiet "$mirror" "$plugin_dir"
+    elif git ls-remote --quiet "$remote_url" >/dev/null 2>&1; then
+      echo "pull-plugin: cloning $repo_name from $remote_url"
+      git clone --quiet "$remote_url" "$plugin_dir"
     else
-      remote_url="https://github.com/goodnet-io/$repo_name"
-      echo "pull-plugin: local mirror $local_mirror not found"
-      echo "pull-plugin: cloning from $remote_url"
-      git clone "$remote_url" "$plugin_dir"
+      echo "pull-plugin: $repo_name not available at" >&2
+      echo "  - $mirror" >&2
+      echo "  - $remote_url" >&2
+      echo "  Run \`nix run .#init-mirrors\` from a checkout that" >&2
+      echo "  already has the plugin gits, or wait until the org" >&2
+      echo "  repo at $remote_url is published." >&2
+      exit 1
     fi
 
     echo ""
