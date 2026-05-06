@@ -420,6 +420,17 @@
             install-hooks   = gn-install-hooks;
           };
 
+          # `nix run .#plugin -- <new|pull|install|update> [args]`
+          # — single dispatch over the plugin lifecycle. Replaces
+          # the flat new-plugin / pull-plugin / install-plugins
+          # triplet (those stay exposed for compat until cleanup).
+          gn-plugin = import ./nix/plugin.nix {
+            inherit pkgs;
+            new-plugin      = gn-new-plugin;
+            pull-plugin     = gn-pull-plugin;
+            install-plugins = gn-install-plugins;
+          };
+
           # `nix run .#init-mirrors` — bare-clone each plugin's
           # nested working git into `${MIRROR_DIR}/<repo>.git` and
           # wire `origin` in the working clone so subsequent
@@ -447,6 +458,7 @@
           install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
           init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
           setup           = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
+          plugin          = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
         });
 
       devShells = forAllSystems (system: pkgs:
