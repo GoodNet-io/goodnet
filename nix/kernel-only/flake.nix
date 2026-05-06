@@ -2,12 +2,16 @@
 #
 # Plugin standalone flakes consume the kernel through this slim
 # flake instead of the full monorepo so the input graph stays
-# acyclic. The full root flake imports the same nixpkgs plus
-# every plugin's flake; if a plugin asked for the root flake as
-# its `goodnet` input, evaluation would loop through the plugin's
-# own flake input on the way back up. Pointing the plugin at
-# `nix/kernel-only/` instead breaks the cycle: this flake never
-# touches `plugins/` and never imports a plugin flake.
+# acyclic. Today the root flake exposes no plugin packages, so
+# the cycle is latent rather than active — but the moment an
+# aggregate-test job lands that imports plugin flakes as inputs
+# of its own, a plugin's `goodnet` pointing at the root flake
+# would loop. Keeping plugins on this slim subflake costs ~80
+# lines of duplication and prevents the eventual cycle without
+# anyone having to remember to refactor plugin inputs first.
+# Pointing the plugin at `nix/kernel-only/` also keeps the
+# plugin's eval surface focused: this flake never touches
+# `plugins/` and never imports a plugin flake.
 #
 # Outputs surface only what plugins actually need to build:
 #   packages.<system>.goodnet-core   the kernel + SDK + AddPlugin
