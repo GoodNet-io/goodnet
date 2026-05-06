@@ -63,7 +63,13 @@ result-*
 !core/**/CMakeLists.txt
 !core/LICENSE
 
-# Plugins (in-tree development convenience)
+# Plugins (in-tree development convenience). Each plugin also
+# carries its own `.gitignore` (inverted whitelist tuned for the
+# plugin's standalone git repository). The monorepo tracks those
+# `.gitignore` files alongside source so a fresh clone has them
+# without re-running `nix run .#new-plugin`.
+!plugins/**/.gitignore
+!plugins/**/.clang-tidy
 !plugins/**/*.cpp
 !plugins/**/*.hpp
 !plugins/**/*.h
