@@ -166,19 +166,6 @@
           # the full `CMAKE_PREFIX_PATH` / `PKG_CONFIG_PATH` that the
           # dev shell wires from `inputsFrom = [ goodnet-core ]`.
 
-          gn-dev = pkgs.writeShellScriptBin "gn-dev" ''
-            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring Debug build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Debug \
-                  -DGOODNET_BUILD_TESTS=ON
-              fi
-              cmake --build "$BUILD_DIR" -j"$(nproc)" "$@"
-            ' _ "$@"
-          '';
-
           # `nix run .#build [-- release|debug]` — single build app
           # with subarg-driven variant select. Default debug. Each
           # variant lives in its own \`build-<variant>/\` so debug
@@ -278,66 +265,6 @@
             echo "    bypass any single commit with: git commit --no-verify"
           '';
 
-          # `nix run .#demo` — the shortest path from `git clone` to
-          # "two endpoints exchanged a frame over a Noise-secured TCP
-          # channel". The build flips `GOODNET_BUILD_EXAMPLES=ON` and
-          # produces a single `goodnet-demo` binary that owns both
-          # ends of the conversation, so the user does not need a
-          # peer to run.
-          gn-demo = pkgs.writeShellScriptBin "gn-demo" ''
-            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build-demo"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring demo build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -DGOODNET_BUILD_EXAMPLES=ON \
-                  -DGOODNET_BUILD_TESTS=OFF
-              fi
-              cmake --build "$BUILD_DIR" --target goodnet_demo -j"$(nproc)"
-              "$BUILD_DIR/bin/goodnet-demo"
-            ' _ "$@"
-          '';
-
-          # `nix run .#goodnet -- <subcommand> [args]` — operator-facing
-          # multicall CLI. Builds Release if needed, then runs the
-          # in-tree binary with the passed args. Same shell-app pattern
-          # as `gn-demo` so the dev shell's CMAKE_PREFIX_PATH /
-          # PKG_CONFIG_PATH are available for `find_package`.
-          gn-goodnet = pkgs.writeShellScriptBin "gn-goodnet" ''
-            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build-release"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring Release build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -DGOODNET_BUILD_TESTS=OFF
-              fi
-              cmake --build "$BUILD_DIR" --target goodnet -j"$(nproc)"
-              "$BUILD_DIR/bin/goodnet" "$@"
-            ' _ "$@"
-          '';
-
-          # `nix run .#node -- --config X --manifest Y` — alias for the
-          # `goodnet run` subcommand. v1 ships the alias even though
-          # `run` itself lands in Wave 8.1.b: when the subcommand
-          # ships, the alias starts working without a flake bump. For
-          # now it forwards to `goodnet run` and exits with the
-          # «not yet implemented» message.
-          gn-node = pkgs.writeShellScriptBin "gn-node" ''
-            exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
-              BUILD_DIR="build-release"
-              if [ ! -f "$BUILD_DIR/CMakeCache.txt" ]; then
-                echo ">>> Configuring Release build..."
-                cmake -B "$BUILD_DIR" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=Release \
-                  -DGOODNET_BUILD_TESTS=OFF
-              fi
-              cmake --build "$BUILD_DIR" --target goodnet -j"$(nproc)"
-              "$BUILD_DIR/bin/goodnet" run "$@"
-            ' _ "$@"
-          '';
-
           # `nix run .#run -- <demo|node|goodnet> [args]` — single
           # umbrella over the three runnable artefacts. Builds the
           # corresponding target into a Release tree and execs it
@@ -384,8 +311,6 @@
               esac
             ' _ "$@"
           '';
-
-          sanitizerApps = import ./nix/sanitize.nix { inherit pkgs; };
 
           # `nix run .#new-plugin -- <kind> <name>` — scaffold a fresh
           # plugin under `plugins/<kind>/<name>/` with the standalone
@@ -467,24 +392,13 @@
             import ./nix/init-mirrors.nix { inherit pkgs; };
         in
         {
-          default       = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
-          dev           = { type = "app"; program = "${gn-dev}/bin/gn-dev"; };
-          build         = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          test          = { type = "app"; program = "${gn-test}/bin/gn-test"; };
-          test-asan     = { type = "app"; program = "${sanitizerApps.test-asan}/bin/gn-test-asan"; };
-          test-tsan     = { type = "app"; program = "${sanitizerApps.test-tsan}/bin/gn-test-tsan"; };
-          install-hooks = { type = "app"; program = "${gn-install-hooks}/bin/gn-install-hooks"; };
-          demo          = { type = "app"; program = "${gn-demo}/bin/gn-demo"; };
-          goodnet       = { type = "app"; program = "${gn-goodnet}/bin/gn-goodnet"; };
-          node          = { type = "app"; program = "${gn-node}/bin/gn-node"; };
-          new-plugin    = { type = "app"; program = "${gn-new-plugin}/bin/goodnet-new-plugin"; };
-          run           = { type = "app"; program = "${gn-run}/bin/gn-run"; };
-          pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
-          install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
-          init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
-          setup           = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
-          plugin          = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
-          update          = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
+          default = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          setup   = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
+          update  = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
+          build   = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          test    = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          run     = { type = "app"; program = "${gn-run}/bin/gn-run"; };
+          plugin  = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -503,11 +417,24 @@
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
 
-          # Re-import the install-plugins app here so the dev shell's
-          # `shellHook` can dispatch to it without sharing scope with
-          # the `apps` let-binding.
+          # Re-import setup here so the dev shell's `shellHook` can
+          # dispatch to it without sharing scope with the `apps`
+          # let-binding. Setup itself wires init-mirrors,
+          # install-plugins, and install-hooks.
+          gn-init-mirrors =
+            import ./nix/init-mirrors.nix { inherit pkgs; };
           gn-install-plugins =
             import ./nix/install-plugins.nix { inherit pkgs; };
+          gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
+            set -euo pipefail
+            git config core.hooksPath .githooks
+          '';
+          gn-setup = import ./nix/setup.nix {
+            inherit pkgs;
+            init-mirrors    = gn-init-mirrors;
+            install-plugins = gn-install-plugins;
+            install-hooks   = gn-install-hooks;
+          };
         in
         {
           default = (pkgs.mkShell.override { inherit stdenv; }) {
@@ -557,8 +484,8 @@
                 fi
               done
               if [ "$_gn_missing" = 1 ]; then
-                echo ">>> goodnet: loadable plugins missing — running install-plugins"
-                ${gn-install-plugins}/bin/goodnet-install-plugins || true
+                echo ">>> goodnet: loadable plugins missing — running setup"
+                ${gn-setup}/bin/goodnet-setup || true
                 echo ""
               fi
               unset _gn_plugin_slots _gn_missing _gn_slot
@@ -566,17 +493,23 @@
               cat <<'EOF'
 
 GoodNet devShell  (gcc15, C++23)
-  nix run .#               — Debug build (incremental)
-  nix run .#build          — Release build
-  nix run .#test           — Debug build + ctest
-  nix run .#test-asan
-  nix run .#test-tsan
-  nix run .#demo           — two-node Noise-over-TCP quickstart
-  nix run .#goodnet -- ... — operator CLI (version, config validate, ...)
-  nix run .#node    -- ... — operator CLI alias for `goodnet run`
-  nix run .#install-hooks  — wire .githooks/ into this clone
-  nix run .#install-plugins — pull every loadable plugin (auto-runs)
-  nix run .#init-mirrors    — bare-mirror plugin gits + wire origin
+
+  Setup / refresh:
+    nix run .#setup            mirrors + plugins + hooks (one-shot)
+    nix run .#update           refresh kernel inputs + plugins
+
+  Build / test:
+    nix run .# [-- release|debug]            default debug
+    nix run .#build [-- release|debug]
+    nix run .#test  [-- asan|tsan|all]       default vanilla
+
+  Run artefacts:
+    nix run .#run -- <demo|node|goodnet> [args]
+
+  Plugin lifecycle:
+    nix run .#plugin -- <new|pull|install|update> [args]
+
+  Make wrapper for the same commands: make help
 
 EOF
             '';
