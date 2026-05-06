@@ -2,64 +2,107 @@
 #
 # Linux only. The Nix flake is the source of truth for every build
 # action; this Makefile exists so `make setup && make test` is the
-# common ergonomic surface for operators and contributors who do
-# not want to memorise Nix incantations. Every recipe shells out
-# to a `nix run` invocation rather than re-implementing the build
-# steps; nothing here is a checked-in shell script.
+# common ergonomic surface. Every recipe shells out to a single
+# `nix run` call rather than re-implementing the build steps;
+# nothing here is a checked-in shell script.
 
 .DEFAULT_GOAL := help
 
-.PHONY: help setup mirrors install-plugins update-plugins \
-        dev build test test-asan test-tsan demo clean
+.PHONY: help setup update dev \
+        build build-release \
+        test test-asan test-tsan test-all \
+        run demo goodnet node \
+        plugin-new plugin-pull plugin-install plugin-update \
+        clean
 
 help:
 	@echo "GoodNet — Make wrapper over the Nix flake"
 	@echo ""
-	@echo "Setup:"
-	@echo "  make mirrors          init bare mirrors for in-tree plugin gits"
-	@echo "  make install-plugins  pull each loadable plugin into its slot"
-	@echo "  make setup            mirrors + install-plugins (one-shot)"
-	@echo "  make update-plugins   git pull --ff-only for each plugin"
+	@echo "Setup / refresh:"
+	@echo "  make setup            init mirrors + install plugins + hooks"
+	@echo "  make update           refresh kernel inputs + plugin pulls"
 	@echo ""
-	@echo "Build / test:"
-	@echo "  make dev              enter the development shell"
-	@echo "  make build            Release build of the kernel"
-	@echo "  make test             Debug build + ctest (full suite)"
+	@echo "Dev / build:"
+	@echo "  make dev              enter dev shell (nix develop)"
+	@echo "  make build            Debug build (incremental)"
+	@echo "  make build-release    Release build"
+	@echo ""
+	@echo "Test:"
+	@echo "  make test             vanilla ctest (full suite)"
 	@echo "  make test-asan        ASan + UBSan ctest"
 	@echo "  make test-tsan        TSan ctest"
+	@echo "  make test-all         vanilla + asan + tsan in sequence"
+	@echo ""
+	@echo "Run artefacts:"
 	@echo "  make demo             two-node Noise-over-TCP quickstart"
+	@echo "  make goodnet ARGS=…   operator multicall CLI"
+	@echo "  make node ARGS=…      goodnet run alias"
+	@echo ""
+	@echo "Plugin lifecycle:"
+	@echo "  make plugin-new KIND=… NAME=…   scaffold a fresh plugin"
+	@echo "  make plugin-pull REPO=…         clone a single plugin"
+	@echo "  make plugin-install             pull every loadable plugin"
+	@echo "  make plugin-update              git pull --ff-only each"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean            remove build*/ and result/ symlinks"
 
-mirrors:
-	nix run .#init-mirrors
+# Setup / refresh
+setup:
+	nix run .#setup
 
-install-plugins:
-	nix run .#install-plugins
+update:
+	nix run .#update
 
-update-plugins:
-	nix run .#install-plugins -- --update
-
-setup: mirrors install-plugins
-
+# Dev / build
 dev:
 	nix develop
 
 build:
 	nix run .#build
 
+build-release:
+	nix run .#build -- release
+
+# Test
 test:
 	nix run .#test
 
 test-asan:
-	nix run .#test-asan
+	nix run .#test -- asan
 
 test-tsan:
-	nix run .#test-tsan
+	nix run .#test -- tsan
+
+test-all:
+	nix run .#test -- all
+
+# Run artefacts (ARGS forwarded after --)
+run:
+	nix run .#run -- $(ARGS)
 
 demo:
-	nix run .#demo
+	nix run .#run -- demo
 
+goodnet:
+	nix run .#run -- goodnet $(ARGS)
+
+node:
+	nix run .#run -- node $(ARGS)
+
+# Plugin lifecycle
+plugin-new:
+	nix run .#plugin -- new $(KIND) $(NAME)
+
+plugin-pull:
+	nix run .#plugin -- pull $(REPO)
+
+plugin-install:
+	nix run .#plugin -- install
+
+plugin-update:
+	nix run .#plugin -- update
+
+# Maintenance
 clean:
 	rm -rf build build-* result result-*
