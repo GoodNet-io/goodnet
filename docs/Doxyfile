@@ -97,4 +97,8 @@ ALPHABETICAL_INDEX     = YES
 TAB_SIZE               = 4
 ALIASES                = "threadsafety=@par Thread safety:^^" \
                          "invariant=@par Invariant:^^" \
-                         "contract=@par Contract:^^"
+                         "contract=@par Contract:^^" \
+                         "borrowed=<em>borrowed</em>" \
+                         "owned=<em>owned</em>" \
+                         "in-out=<em>in-out</em>" \
+                         "in=<em>in</em>"
