@@ -45,6 +45,13 @@ result-*
 # Docs
 !docs/**/*.md
 !docs/Doxyfile
+!docs/img/*.svg
+!docs/architecture.canvas
+
+# Diagram + math generators
+!tools/*.py
+!tools/math/*.py
+__pycache__/
 
 # CI
 !.github/**/*.yml
