@@ -302,6 +302,17 @@
           gn-install-plugins =
             import ./nix/install-plugins.nix { inherit pkgs; };
 
+          # `nix run .#setup` — one-shot bootstrap composing
+          # init-mirrors + install-plugins + install-hooks for a
+          # fresh kernel checkout. Replaces the previous flat
+          # triplet with a single entry point.
+          gn-setup = import ./nix/setup.nix {
+            inherit pkgs;
+            init-mirrors    = gn-init-mirrors;
+            install-plugins = gn-install-plugins;
+            install-hooks   = gn-install-hooks;
+          };
+
           # `nix run .#init-mirrors` — bare-clone each plugin's
           # nested working git into `${MIRROR_DIR}/<repo>.git` and
           # wire `origin` in the working clone so subsequent
@@ -327,6 +338,7 @@
           pull-plugin   = { type = "app"; program = "${gn-pull-plugin}/bin/goodnet-pull-plugin"; };
           install-plugins = { type = "app"; program = "${gn-install-plugins}/bin/goodnet-install-plugins"; };
           init-mirrors    = { type = "app"; program = "${gn-init-mirrors}/bin/goodnet-init-mirrors"; };
+          setup           = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
         });
 
       devShells = forAllSystems (system: pkgs:
