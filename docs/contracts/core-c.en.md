@@ -399,9 +399,11 @@ These entries inject an in-process vtable without going through
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Reserved for runtime protocol-layer hot-swap. |
-| Returns | `GN_ERR_NULL_ARG` on either NULL; otherwise `GN_ERR_NOT_IMPLEMENTED`. The kernel statically links a single protocol layer (`gnet-v1` after `gn_core_init`); hosts that need a non-default layer register it through the C++ side before init. |
-| Concurrency | safe from any thread. |
+| Effect | Registers an in-process protocol-layer vtable, overriding the default `gnet-v1` layer the kernel statically links during `gn_core_init`. Equivalent to assigning `kernel->set_protocol_layer(...)` from the C++ side. |
+| Parameters | `vtable` — `@borrowed` for the lifetime of the registration; carries the framer / deframer entries per `protocol-layer.md` §2. `self` — `@borrowed` provider-side state. |
+| Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` when either pointer is NULL or the kernel has no embedded protocol-layer slot. |
+| Concurrency | safe from any thread; one provider per kernel — re-registering replaces the incumbent. |
+| Ordering | Call before `gn_core_init` in hosts that need a non-default layer; calling after `init` swaps the layer mid-run, which is supported but breaks any in-flight conn that already framed bytes through the old layer. |
 
 #### `gn_core_register_handler`
 

@@ -83,12 +83,19 @@ typedef struct host_api_s {
     gn_result_t (*unregister_extension)(void* host_ctx, const char* name);
 
     /* ── Configuration ───────────────────────────────────────────────── */
+    /* `out_user_data` and `out_free` form a paired destructor handle  */
+    /* the kernel hands back on STRING reads — out_free is invoked   */
+    /* with `(out_user_data, returned_bytes)` to release the buffer  */
+    /* the kernel allocated. Two pointers because the destructor may */
+    /* need state (e.g. a buffer pool ticket) beyond the bytes alone */
+    /* and FFI bindings cannot carry that state through closures.    */
     gn_result_t (*config_get)(void* host_ctx,
                               const char* key,
                               gn_config_value_type_t type,
                               size_t index,
                               void* out_value,
-                              void (**out_free)(void*));
+                              void** out_user_data,
+                              void (**out_free)(void* user_data, void* bytes));
 
     /* ── Limits ──────────────────────────────────────────────────────── */
     /* Read-only borrow valid for the plugin's lifetime; see limits.md. */
@@ -164,18 +171,30 @@ typedef struct host_api_s {
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
     /* ── Channel subscription (conn-events.md / config.md) ──────────── */
-    /* Universal pub/sub gateway. `channel` selects the source — see    */
-    /* `gn_subscribe_channel_t` in sdk/conn_events.h; the cb receives a */
-    /* type-erased payload + size pair. The id returned from `subscribe`*/
-    /* carries a 4-bit channel tag in its top bits so `unsubscribe(id)` */
-    /* routes back to the right channel without naming it twice.        */
-    gn_result_t (*subscribe)(void* host_ctx,
-                              gn_subscribe_channel_t channel,
-                              gn_subscribe_cb_t cb,
-                              void* user_data,
-                              gn_subscription_id_t* out_id);
+    /* Two typed slots — one per channel — instead of a single        */
+    /* `subscribe(channel, ...)` dispatcher: the kernel knows the     */
+    /* payload shape per channel and the binding never has to type-  */
+    /* erase. `ud_destroy` runs once with `user_data` when the        */
+    /* subscription is removed, whether by `unsubscribe(id)` or by   */
+    /* the kernel observing the plugin's lifetime anchor expire.     */
+    /* Pass `NULL` when `user_data` carries no resources to free.    */
+    gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                         gn_conn_state_cb_t cb,
+                                         void* user_data,
+                                         void (*ud_destroy)(void*),
+                                         gn_subscription_id_t* out_id);
+
+    gn_result_t (*subscribe_config_reload)(void* host_ctx,
+                                            gn_config_reload_cb_t cb,
+                                            void* user_data,
+                                            void (*ud_destroy)(void*),
+                                            gn_subscription_id_t* out_id);
+
+    /* `unsubscribe` is shared across both channels; the id is unique  */
+    /* across them and the kernel routes the cancel internally.        */
     gn_result_t (*unsubscribe)(void* host_ctx,
                                 gn_subscription_id_t id);
+
     gn_result_t (*for_each_connection)(void* host_ctx,
                                        gn_conn_visitor_t visitor,
                                        void* user_data);
@@ -210,7 +229,7 @@ if (GN_API_HAS(api, kick_handshake)) {
 }
 ```
 
-### 2.1 `config_get` — typed read with out_free contract
+### 2.1 `config_get` — typed read with `(out_user_data, out_free)` pair
 
 `config_get` reads one node out of the live config tree under a
 runtime contract that bindings must respect verbatim:
@@ -218,21 +237,33 @@ runtime contract that bindings must respect verbatim:
 - `out_value` shape is type-tagged. See `gn_config_value_type_t` in
   `sdk/types.h` for the per-type table (`int64_t*` / `int32_t*` /
   `double*` / `char**` / `size_t*`).
-- `out_free` is **mandatory** for `STRING` reads (scalar and
-  array-element) — the kernel writes a destructor pointer the
-  plugin must call on the returned buffer. Passing `NULL` for
-  `out_free` on a `STRING` read returns `GN_ERR_NULL_ARG`.
-- `out_free` is **forbidden** for non-`STRING` reads — passing a
-  non-`NULL` `out_free` on `INT64` / `BOOL` / `DOUBLE` /
+- `out_user_data` and `out_free` form a paired destructor handle —
+  the kernel writes both on success of a `STRING` read. The plugin
+  invokes `out_free(out_user_data, returned_bytes)` to release the
+  buffer once it is done with the string. Both must be non-NULL for
+  a `STRING` read; either one NULL returns `GN_ERR_NULL_ARG`.
+- `out_user_data` and `out_free` are **forbidden** for non-`STRING`
+  reads — passing either non-NULL on `INT64` / `BOOL` / `DOUBLE` /
   `ARRAY_SIZE` returns `GN_ERR_NULL_ARG`. The asymmetry keeps the
   destructor pointer's type unambiguous for FFI and prevents the
-  "I always wired it just in case" pattern from leaving free_fn
+  "I always wired it just in case" pattern from leaving the pair
   dangling.
 - `index` is `GN_CONFIG_NO_INDEX` for scalar reads; `INT64` and
   `STRING` accept a real array-element ordinal as well. Other
   types reject a real index with `GN_ERR_OUT_OF_RANGE`.
 - An unknown `gn_config_value_type_t` enumerator returns
   `GN_ERR_INVALID_ENVELOPE` before any other validation runs.
+
+| Condition | Result |
+|---|---|
+| `key == NULL` or `out_value == NULL` | `GN_ERR_NULL_ARG` |
+| `STRING` read with either of `out_user_data` / `out_free` NULL, or non-`STRING` read with either non-NULL | `GN_ERR_NULL_ARG` |
+| scalar read with `index != GN_CONFIG_NO_INDEX`, or array-element read with `index == GN_CONFIG_NO_INDEX` | `GN_ERR_OUT_OF_RANGE` |
+| key not present in config | `GN_ERR_NOT_FOUND` |
+| live value's parse type does not match `type` | `GN_ERR_INVALID_ENVELOPE` |
+| `ARRAY_SIZE` query against a non-array key | `GN_ERR_INVALID_ENVELOPE` |
+| `index` past array length | `GN_ERR_OUT_OF_RANGE` |
+| unknown `type` enum value | `GN_ERR_INVALID_ENVELOPE` |
 
 ---
 
