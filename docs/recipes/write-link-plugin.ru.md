@@ -192,9 +192,12 @@ Hot-path требования (sdk/host_api.h §`notify_inbound_bytes`):
 
 `send(self, conn, bytes, size)` — outbound на конкретное соединение.
 Bytes borrowed на время вызова; link копирует во внутренний queue.
-Возвращает `GN_OK`, либо `gn_backpressure_t`-семантику через result code:
-queue заполнился — возвращай `GN_ERR_LIMIT_REACHED` и тут же
-эмить `notify_backpressure` (`backpressure.md` §3).
+Возвращает `gn_result_t`: `GN_OK` принят; `GN_ERR_LIMIT_REACHED` —
+queue past hard cap, sender обязан back-off'нуть. Hard-cap reject и
+soft-watermark уведомление — два разных surface'а: hard reject через
+return code (дискретный per-frame отказ), soft pressure через
+`notify_backpressure` (длительное состояние, sender реагирует
+заранее) per `backpressure.md` §3.
 
 ```c
 static gn_result_t tcpx_send(void* self_v, gn_conn_id_t conn,
@@ -227,8 +230,9 @@ static gn_result_t tcpx_send_batch(void* self_v, gn_conn_id_t conn,
 ```
 
 Soft-edge → operator замедляется; hard-edge → ядро отбрасывает frame
-и эмить `drop.queue_hard_cap`. Tight-loop retry на `GN_BP_HARD_LIMIT`
-— контрактное нарушение.
+и эмить `drop.queue_hard_cap`. Tight-loop retry на `GN_ERR_LIMIT_REACHED`
+— контрактное нарушение: hard-cap дроп означает «sender обогнал
+drain rate», немедленный retry усугубляет, не лечит.
 
 ---
 

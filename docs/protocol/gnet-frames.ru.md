@@ -245,20 +245,27 @@ Partial header (< 14 байт) → `GN_ERR_DEFRAME_INCOMPLETE`, kernel ждёт.
 
 ## Backpressure
 
-`host_api->send` возвращает `gn_backpressure_t`:
+`host_api->send` возвращает `gn_result_t` per
+[backpressure.md](../contracts/backpressure.en.md) §1. На hard-cap
+queue overflow результат — `GN_ERR_LIMIT_REACHED`; sender обязан
+back off'нуть и не tight-loop'ить, иначе все последующие frames
+тоже отвергаются и connection деградирует под собственным напором.
 
-| Value | Meaning | Recommended response |
+| Возврат | Условие | Ответ sender'а |
 |---|---|---|
-| `GN_BP_OK` | принято, queue ниже soft watermark | продолжать |
-| `GN_BP_SOFT_LIMIT` | queue ≥ `pending_queue_bytes_soft` | sender замедляется |
-| `GN_BP_HARD_LIMIT` | dropped, queue ≥ `pending_queue_bytes_hard` | back off, **не** retry tight |
-| `GN_BP_DISCONNECT` | connection ушла | прекратить отправку |
+| `GN_OK` | accepted, queue ниже hard cap | продолжать |
+| `GN_ERR_LIMIT_REACHED` | dropped, queue ≥ `pending_queue_bytes_hard` | back off; не retry tight |
+| `GN_ERR_NOT_FOUND` | connection не существует или уже закрыт | прекратить отправку |
 
-Tight-loop на `HARD_LIMIT` — contract violation
-([types.h](../../sdk/types.h) — `gn_backpressure_e` Doxygen).
-
-Cross-link: [backpressure.md](../contracts/backpressure.en.md) формализует
-queue thresholds и SecuritySession partial-frame буферный бюджет.
+Per-connection soft watermark (`pending_queue_bytes_low/high`) и
+теряемое-соединение-на-горизонте сурфачатся ОТДЕЛЬНЫМ событийным
+каналом — `GN_SUBSCRIBE_CONN_STATE` доставляет
+`BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` (см. [conn-events.md](../contracts/conn-events.en.md) §2).
+Тип `gn_backpressure_t` в [types.h](../../sdk/types.h) — wire shape
+для этого канала, не возврат `send`'а; отдельный канал нужен
+потому что hard-cap reject'ы дискретны (один frame, один error
+code), а soft-pressure — это длительное состояние, на которое
+sender должен реагировать заранее, до фактического drop'а.
 
 ---
 

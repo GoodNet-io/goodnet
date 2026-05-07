@@ -69,9 +69,9 @@ field is written first, the event fires second.** No exceptions.
 
 ## 4. Callback returns
 
-Three current callback types return values. The contract is the same
-for each: **either the value is consumed at every call site, or the
-value is removed from the type.**
+Two current callback families return values. The contract is the
+same for each: **either the value is consumed at every call site,
+or the value is removed from the type.**
 
 ### 4.1 `gn_propagation_t` from `handle_message`
 
@@ -84,7 +84,7 @@ value is removed from the type.**
 Pre-RC review fails on any dispatch invocation whose return is not
 used. Discarding `Propagation` is a contract violation.
 
-### 4.2 `gn_backpressure_t` (queue-pressure signal)
+### 4.2 `gn_backpressure_t` (queue-pressure signal — reserved)
 
 | Value | Meaning |
 |---|---|
@@ -93,23 +93,13 @@ used. Discarding `Propagation` is a contract violation.
 | `GN_BP_HARD_LIMIT` | dropped — caller must back off, not retry tight |
 | `GN_BP_DISCONNECT` | connection gone — caller should stop |
 
-`host_api->send` itself returns `gn_result_t`; the
-backpressure enum is surfaced through a separate per-connection
-signal once the send-queue layer lands. Plugins that retain the
-intent **must** branch on the value when consumed; ignoring
-`HARD_LIMIT` and tight-looping on send is a contract violation.
-
-### 4.3 `gn_on_result_policy_t` from `on_result`
-
-| Value | Meaning |
-|---|---|
-| `GN_ORP_CONTINUE_CHAIN` | continue dispatch (default) |
-| `GN_ORP_STOP_CHAIN` | stop without further handlers |
-
-The pinned-handler fast-path mirrors the slow-path callback set
-fully — a handler that pinned itself still receives `on_result`.
-Eliding the callback for the fast path would silently lose
-message-completion notifications.
+`host_api->send` itself returns `gn_result_t`; on a hard-cap drop
+the result is `GN_ERR_LIMIT_REACHED` per `backpressure.md` §1. The
+`gn_backpressure_t` enum is the wire shape reserved for the
+per-connection pressure channel once it ships in a v1.x minor —
+plugins that subscribe to that future channel **must** branch on
+the value, since `BACKPRESSURE_HARD_LIMIT` arrives as a discrete
+event and ignoring it would tight-loop on `send`.
 
 ---
 

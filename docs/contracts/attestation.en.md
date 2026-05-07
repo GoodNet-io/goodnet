@@ -103,28 +103,28 @@ runs. Steps run in order; the dispatcher exits on the first failure
 and the connection is closed:
 
 1. **Size check.** Drop and disconnect if `payload_size != 232`;
-   metric `attestation.bad_size`.
+   metric `drop.attestation_bad_size`.
 2. **Layout split.** Read attestation bytes `[0, 136)`, binding
    `[136, 168)`, signature `[168, 232)`.
 3. **Binding match.** Drop and disconnect if `binding` differs from
    the current session's exported `handshake_hash`; metric
-   `attestation.replay`.
+   `drop.attestation_replay`.
 4. **Cert parse.** Drop and disconnect if the 136-byte attestation
    does not parse per `identity.md` §4; metric
-   `attestation.parse_failed`.
+   `drop.attestation_parse_failed`.
 5. **Signature verify.** Drop and disconnect if the Ed25519
    signature does not verify against the parsed attestation's
    `device_pk` over `attestation || binding`; metric
-   `attestation.bad_signature`.
+   `drop.attestation_bad_signature`.
 6. **Cert verify.** Drop and disconnect if the cert verify
    (signature self-check against the embedded `user_pk` plus
    non-expired against the current clock) fails; metric
-   `attestation.expired_or_invalid`.
+   `drop.attestation_expired_or_invalid`.
 7. **Cross-session identity stability.** Consult
    `ConnectionRegistry::get_pinned_device_pk(peer_pk)`. If the
    registry already pinned a `device_pk` that differs from the
    envelope's, drop and disconnect; metric
-   `attestation.identity_change`. If the registry has no pin,
+   `drop.attestation_identity_change`. If the registry has no pin,
    write through `pin_device_pk(peer_pk, device_pk)`; a
    non-`GN_OK` return — a concurrent caller wrote a different
    `device_pk` for this peer — is treated identically to the
@@ -138,7 +138,7 @@ and the connection is closed:
    already verified on this connection, compare the new
    `device_pk` against the per-conn cached one:
    - **Different** `device_pk` — drop and disconnect; same
-     metric `attestation.identity_change`. This catches a peer
+     metric `drop.attestation_identity_change`. This catches a peer
      that swaps its device key mid-session even if the registry-
      side pin agreed (e.g. mismatch-after-clear).
    - **Same** `device_pk` — drop the envelope but leave the
@@ -167,12 +167,13 @@ value declared in `sdk/types.h`:
 | 8 | per-session device_pk swap | `GN_DROP_ATTESTATION_IDENTITY_CHANGE` |
 
 The dispatcher emits these as structured log fields at warn level
-and passes the enum through `disconnect_on_consumer_failure`. v1
-does not lift the enum to a kernel-managed counter surface; the
-counter wiring lands when the cross-cutting drop-metrics design
-ships (`limits.md` §5 names the same `gn_drop_reason_t` as the
-intended counter key, but the surface is reserved for a future
-minor release).
+and passes the enum through `disconnect_on_consumer_failure`, which
+bumps the matching `drop.attestation_*` counter on `MetricsRegistry`.
+Sharing the `drop.*` namespace with every other rejection class —
+`drop.queue_hard_cap`, `drop.frame_too_large`, `drop.rate_limited` —
+is intentional per `metrics.md` §3: operators scrape one prefix and
+see every kernel drop class together, instead of correlating across
+a per-subsystem namespace per cause.
 
 ---
 
