@@ -1,7 +1,7 @@
 /// @file   core/registry/connection.hpp
 /// @brief  Sharded connection registry with atomic insert-with-index.
 ///
-/// Implements `docs/contracts/registry.md`. Three indexes (id, URI,
+/// Implements `docs/contracts/registry.en.md`. Three indexes (id, URI,
 /// pk) are kept in lockstep through a single insert/erase operation.
 /// Lookups by any of the three return a value-type snapshot of the
 /// record so callers do not race with concurrent erase.

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   sdk/cpp/uri.hpp
-/// @brief  Header-only URI parser per `docs/contracts/uri.md`.
+/// @brief  Header-only URI parser per `docs/contracts/uri.en.md`.
 ///
 /// One parser shared by every transport plugin and the kernel
 /// connection registry's URI index. Without it, "tcp://1.2.3.4:80"
@@ -116,7 +116,7 @@ struct UriParts {
 }
 
 /// Parse a connection URI. Returns `nullopt` on every failure mode in
-/// `docs/contracts/uri.md` §5; never throws, never writes through a
+/// `docs/contracts/uri.en.md` §5; never throws, never writes through a
 /// partial result.
 [[nodiscard]] inline std::optional<UriParts>
 parse_uri(std::string_view uri) {

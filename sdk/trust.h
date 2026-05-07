@@ -4,7 +4,7 @@
  *
  * Every connection has a trust level. Every security stack has a permitted
  * set of trust levels. The kernel rejects mismatches at construction time.
- * See `docs/contracts/security-trust.md`.
+ * See `docs/contracts/security-trust.en.md`.
  */
 #ifndef GOODNET_SDK_TRUST_H
 #define GOODNET_SDK_TRUST_H

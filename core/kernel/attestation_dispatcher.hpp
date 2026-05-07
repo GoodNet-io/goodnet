@@ -2,7 +2,7 @@
 /// @brief  Kernel-internal attestation exchange that gates
 ///         `Untrusted → Peer` trust upgrade.
 ///
-/// Implements `docs/contracts/attestation.md`. Both peers, on every
+/// Implements `docs/contracts/attestation.en.md`. Both peers, on every
 /// connection that reaches `Transport` phase with trust class
 /// `Untrusted`, exchange a 232-byte payload on system msg_id `0x11`
 /// over the secured channel. Successful mutual exchange triggers

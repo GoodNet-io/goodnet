@@ -6,7 +6,7 @@
  * and perform per-message encryption/decryption. The canonical
  * implementation is the Noise provider (`plugins/security/noise/docs/handshake.md`).
  *
- * See `docs/contracts/security-trust.md` for trust-class policy.
+ * See `docs/contracts/security-trust.en.md` for trust-class policy.
  */
 #ifndef GOODNET_SDK_SECURITY_H
 #define GOODNET_SDK_SECURITY_H

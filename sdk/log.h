@@ -12,7 +12,7 @@
  * `gn_log_debug(...)` while the operator is running at INFO does
  * not pay for the `snprintf` of a message that nobody will see.
  *
- * See `docs/contracts/host-api.md` §11.
+ * See `docs/contracts/host-api.en.md` §11.
  */
 #ifndef GOODNET_SDK_LOG_H
 #define GOODNET_SDK_LOG_H

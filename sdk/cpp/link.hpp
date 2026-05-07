@@ -4,7 +4,7 @@
 /// Mirrors `gn_link_vtable_t` from `sdk/link.h`. C++ plugin
 /// authors inherit from `gn::ILink` and export the vtable through
 /// the plugin entry point. The contract for the interface is in
-/// `docs/contracts/link.md`.
+/// `docs/contracts/link.en.md`.
 
 #pragma once
 

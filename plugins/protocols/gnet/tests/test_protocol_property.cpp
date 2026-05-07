@@ -3,7 +3,7 @@
 ///
 /// Quantifies the round-trip contract of the IProtocolLayer envelope
 /// through `frame` then `deframe` against the identity-sourcing rules
-/// from `docs/contracts/protocol-layer.md` §5 and the wire-format from
+/// from `docs/contracts/protocol-layer.en.md` §5 and the wire-format from
 /// `plugins/protocols/gnet/docs/wire-format.md`:
 ///
 ///   ∀ legal envelope (msg_id != 0, sender_pk != ZERO, payload ≤ cap):

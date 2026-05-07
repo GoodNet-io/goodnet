@@ -6,8 +6,8 @@
  * a pointer to it on every `IProtocolLayer::deframe` and `frame` call. The
  * accessors below are how plugins read connection state.
  *
- * See `docs/contracts/link.md` §7 and
- * `docs/contracts/protocol-layer.md` §3.
+ * See `docs/contracts/link.en.md` §7 and
+ * `docs/contracts/protocol-layer.en.md` §3.
  */
 #ifndef GOODNET_SDK_CONNECTION_H
 #define GOODNET_SDK_CONNECTION_H

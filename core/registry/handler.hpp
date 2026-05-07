@@ -1,7 +1,7 @@
 /// @file   core/registry/handler.hpp
 /// @brief  Handler registry — `(protocol_id, msg_id)` → priority chain.
 ///
-/// Implements `docs/contracts/handler-registration.md`. Handlers
+/// Implements `docs/contracts/handler-registration.en.md`. Handlers
 /// register against a `(protocol_id, msg_id)` pair; lookup returns a
 /// snapshot of the priority-ordered chain so dispatchers do not race
 /// with concurrent (un)registration.
@@ -130,7 +130,7 @@ public:
 
     /// Generation counter; bumps on every register/unregister so that
     /// dispatchers can validate cached chain snapshots per
-    /// `docs/contracts/fsm-events.md` §6.
+    /// `docs/contracts/fsm-events.en.md` §6.
     [[nodiscard]] std::uint64_t generation() const noexcept;
 
     /// Total registered handler count.

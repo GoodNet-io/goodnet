@@ -2,7 +2,7 @@
 /// @brief  GoogleTest cases for `gn::plugins::gnet::GnetProtocol`.
 ///
 /// Pins the IProtocolLayer envelope semantics from
-/// `docs/contracts/protocol-layer.md` against the GNET wire-format from
+/// `docs/contracts/protocol-layer.en.md` against the GNET wire-format from
 /// `plugins/protocols/gnet/docs/wire-format.md`:
 ///
 ///   §3.1 / §5  — direct mode: no PK on wire, identity sourced from ctx

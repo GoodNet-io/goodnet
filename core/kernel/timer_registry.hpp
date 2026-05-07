@@ -1,7 +1,7 @@
 /// @file   core/kernel/timer_registry.hpp
 /// @brief  Kernel-owned service executor — backs the `set_timer`
 ///         and `cancel_timer` host_api slots per
-///         `docs/contracts/timer.md`. Fire-and-forget work uses
+///         `docs/contracts/timer.en.md`. Fire-and-forget work uses
 ///         `set_timer(delay_ms = 0, …, out_id = NULL)`.
 ///
 /// The registry owns one `asio::io_context` and the worker thread
