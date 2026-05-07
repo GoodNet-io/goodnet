@@ -16,7 +16,11 @@ slow under load, indistinguishable from a real correctness defect.
 
 This contract states the invariant: **every time-dependent component
 accepts its time source as an explicit input.** How each language
-idiomatic-ally satisfies it lives in `docs/impl/<lang>/clock.md`.
+idiomatically satisfies it lives in the per-language guide for that
+binding (currently
+[`docs/impl/cpp/clock.ru.md`](../impl/cpp/clock.ru.md); per-language
+guides for Rust / Python / Zig / Go land alongside their
+`bridges-<lang>` repos).
 
 ---
 
@@ -104,7 +108,9 @@ A component that requires both has two inputs, not one.
 ## 7. Cross-references
 
 - Test infrastructure (mock implementations per language): the SDK
-  language bindings and `docs/impl/<lang>/clock.md`.
+  language bindings and the per-language guide
+  ([`impl/cpp/clock.ru.md`](../impl/cpp/clock.ru.md) currently;
+  Rust / Python / Zig / Go follow alongside their bindings).
 - Timer ownership invariant (one timer per slot, cancel before replace):
   `fsm-events.md` §3 and §5.
 - Generation counter (logical clock for dispatch quiescence; not real

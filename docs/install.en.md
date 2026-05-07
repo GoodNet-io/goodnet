@@ -179,16 +179,33 @@ to drain in-flight async work before `SIGKILL`.
 
 ## 6. What's not in this document
 
+- **Production deployment beyond the basic install** — sizing,
+  multi-node mesh setup, plugin manifest workflow under upgrade,
+  resource limits, service composition. Covered in
+  [`operator/deployment.en.md`](./operator/deployment.en.md).
+- **gssh** — SSH-over-GoodNet bridge (single binary, three modes:
+  user wrapper, ProxyCommand callee, server-side forwarder). The
+  install recipe carries the kernel; gssh is an operator app
+  running alongside it. Covered in
+  [`operator/gssh.ru.md`](./operator/gssh.ru.md).
+- **Operator-side C++ binding** — `bridges/cpp` ships RAII
+  wrappers over `sdk/core.h` for apps consuming the kernel as a
+  library. App authors read
+  [`architecture/bridges-model.ru.md`](./architecture/bridges-model.ru.md);
+  the binding repo lives at `goodnet-io/bridges-cpp`.
+- **Metrics scrape and alerting** — kernel and plugin counter
+  catalogue plus SLI mapping in
+  [`operator/metrics-catalog.en.md`](./operator/metrics-catalog.en.md).
+  An exporter plugin (Prometheus, OpenTelemetry) scrapes the
+  counters; out-of-tree, ships per deployment.
+- **Runtime troubleshooting** — `gn_result_t` reference, common
+  scenarios, where to look. Covered in
+  [`operator/troubleshooting.ru.md`](./operator/troubleshooting.ru.md).
 - **Reverse-proxy front-end** — operators running on the public
   internet put nginx / HAProxy in front of the TCP listener for
   per-IP rate limiting until a hardening plugin ships per-source
   bucketing. The reverse proxy is the recommended layer for now.
-- **Multi-node mesh setup** — pairing identities, NAT traversal,
-  seed-node configuration. Lands with the relay / DHT plugins.
 - **Backup and key rotation** — NodeIdentity rotation policy is
   not yet specified. Operators copy `/etc/goodnet/identity.bin`
   before generating a replacement and update each peer's
   `peers.json` entry by address.
-- **Monitoring integration** — the kernel exposes `host_api`
-  counter slots; an exporter plugin (Prometheus, OpenTelemetry)
-  scrapes them. Out-of-tree, ships per deployment.
