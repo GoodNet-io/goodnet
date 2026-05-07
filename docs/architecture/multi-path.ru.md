@@ -192,6 +192,24 @@ public-key идентифицирует peer'а вне зависимости о
 
 ---
 
+## Strategy plugins поверх sequential switch
+
+Sequential-switch primitive — это foundation, поверх которого
+живут конкретные routing strategies. Float-send (auto-best path
+по RTT / cost / privacy), relay (multi-hop forwarding), DHT
+(distributed peer routing) — все они реализуются как plugin
+extensions и используют `dial(new) → notify_connect →
+disconnect(old)` цикл, описанный выше.
+
+Plugin author не пишет multi-path логику с нуля для каждой
+strategy — он выбирает heuristic (когда переключать), composes
+через существующий примитив, expose'ит peer_pk-level API через
+extension namespace вроде `gn.float-send.rtt-optimal`.
+
+Класс strategy plugins описан в [`strategies`](./strategies.ru.md).
+
+---
+
 ## Cross-refs
 
 - Контракт событий: [conn-events.md](../contracts/conn-events.en.md)
@@ -199,6 +217,7 @@ public-key идентифицирует peer'а вне зависимости о
 - Контракт URI: [uri.md](../contracts/uri.en.md)
 - Trust-class и upgrade: [security-trust.md](../contracts/security-trust.en.md)
 - host_api: [host-api.md](../contracts/host-api.en.md)
+- Strategy plugins: [strategies.ru.md](./strategies.ru.md)
 - Конкретный пример того же шаблона: [relay-direct](relay-direct.ru.md)
 - Как extension выставляет себя в shared namespace: [extension-model](extension-model.ru.md)
 - Жизнь security-сессии в этом цикле: [security-flow](security-flow.ru.md)
