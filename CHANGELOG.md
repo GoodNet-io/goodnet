@@ -11,6 +11,29 @@ pipe, and the first handler. The kernel moves encrypted bytes
 between two processes over a real socket and surfaces RTT through a
 typed extension API.
 
+### bridges/cpp + link-ice + gssh
+
+`bridges/cpp/` is a new sibling git that ships header-only RAII C++23
+wrappers over `sdk/core.h` so operator binaries write `gn::cpp::Core`
+instead of raw `gn_core_*` calls. Lives in its own repo, mirror at
+`~/.local/share/goodnet-mirrors/bridges-cpp.git`, MIT-licensed,
+INTERFACE target `GoodNet::cpp`. The kernel build picks up the slot
+when present and pulls its smoke tests into the kernel ctest run.
+
+`plugins/links/ice/` ports the ICE NAT-traversal transport from the
+legacy GoodNet — full RFC 8445 with custom STUN/TURN (no libnice or
+libjuice dependency), GPL-2 + linking exception. The legacy
+optimizer / orchestrator coupling is dropped; signaling moved off
+the wire onto the `gn.link.ice.signal` plugin↔plugin extension. The
+plugin's own ctest suite passes 20/20 under Release / ASan / TSan.
+
+`apps/gssh/` is the new operator SSH binary — single binary, three
+modes (`gssh user@<peer-pk>` wraps `ssh -o ProxyCommand=...`,
+`gssh --bridge <peer-pk>` is the ProxyCommand callee, `gssh --listen`
+forwards inbound GoodNet conns to `localhost:22`). Consumes the
+kernel through `bridges/cpp` + `sdk/core.h`; same source tree fronts
+both client and server side.
+
 ### Documentation corpus
 
 The developer-facing documentation now stands as a complete layered
