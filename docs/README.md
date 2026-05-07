@@ -39,7 +39,8 @@ docs/
 │                           wire layouts, sequencing rules
 ├── architecture/         — prose deep-dives: kernel FSM, routing,
 │                           plugin model, host_api, extensions,
-│                           security flow, multi-path, relay-direct
+│                           security flow, multi-path, relay-direct,
+│                           ecosystem development workflow
 ├── recipes/              — task-oriented guides: write a handler,
 │                           link, security plugin; register an
 │                           extension; subscribe to events; test
