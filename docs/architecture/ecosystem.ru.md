@@ -98,10 +98,10 @@ kernel monorepo, любая правка тащит всю историю.
 через `goodnet.lib.compose`. Один монорепо означал бы что operator
 тащит все source'ы независимо от того что включает в свой image.
 
-[Plugin standalone pilot 2026-05-05](../../README.md) — pilot
-доказал модель: standalone flake ~120 LOC, monorepo build ✅,
-plugin-own тесты ✅. После него mass-applied на все 8 loadable
-плагинов + bridges/cpp + integration-tests.
+Модель прошла pilot на security-noise: standalone flake около
+120 строк, plugin-own ctest зелёный, kernel suite зелёный. После
+pilot'а mass-applied на все восемь loadable плагинов плюс
+`bridges/cpp` плюс `integration-tests`.
 
 ## Цикл разработки плагина
 
