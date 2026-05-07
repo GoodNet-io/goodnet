@@ -441,33 +441,33 @@ int run_listen(const ListenOptions& opts) {
             (void)api.unsubscribe(api.host_ctx, sub_id);
             return 1;
         }
-        const std::string scheme   = uri.substr(0, scheme_end);
-        const std::string ext_name = std::string{GN_EXT_LINK_PREFIX} + scheme;
+        const std::string scheme = uri.substr(0, scheme_end);
 
-        const void* raw = nullptr;
-        if (kernel.extensions().query_extension_checked(
-                ext_name, GN_EXT_LINK_VERSION, &raw) != GN_OK ||
-            raw == nullptr) {
+        /// Listen lives on the link's primary vtable, not on the L2
+        /// composition extension. The extension's `listen` slot is
+        /// reserved for composer plugins and returns
+        /// GN_ERR_NOT_IMPLEMENTED by design (per `link.md` §8). Walk
+        /// the kernel's link registry by scheme to reach the actual
+        /// vtable the loaded plugin registered.
+        auto link_entry = kernel.links().find_by_scheme(scheme);
+        if (!link_entry || !link_entry->vtable ||
+            !link_entry->vtable->listen) {
             (void)std::fprintf(stderr,
-                "gssh listen: scheme '%s' has no registered "
-                "link extension (loaded plugins do not provide it)\n",
+                "gssh listen: scheme '%s' has no registered link with "
+                "a listen slot — check that the link plugin loaded\n",
                 scheme.c_str());
             (void)api.unregister_vtable(api.host_ctx, handler_id);
             (void)api.unsubscribe(api.host_ctx, sub_id);
             return 1;
         }
-        const auto* link_api = static_cast<const gn_link_api_t*>(raw);
-        if (link_api->listen == nullptr) {
+        const auto listen_rc = link_entry->vtable->listen(
+            link_entry->self, uri.c_str());
+        if (listen_rc != GN_OK) {
             (void)std::fprintf(stderr,
-                "gssh listen: link '%s' has no listen slot\n",
-                scheme.c_str());
-            (void)api.unregister_vtable(api.host_ctx, handler_id);
-            (void)api.unsubscribe(api.host_ctx, sub_id);
-            return 1;
-        }
-        if (link_api->listen(link_api->ctx, uri.c_str()) != GN_OK) {
-            (void)std::fprintf(stderr,
-                "gssh listen: listen on %s failed\n", uri.c_str());
+                "gssh listen: listen on %s failed (rc=%d, %s)\n",
+                uri.c_str(),
+                static_cast<int>(listen_rc),
+                gn_strerror(listen_rc));
             (void)api.unregister_vtable(api.host_ctx, handler_id);
             (void)api.unsubscribe(api.host_ctx, sub_id);
             return 1;

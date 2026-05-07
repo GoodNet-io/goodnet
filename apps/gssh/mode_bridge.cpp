@@ -314,9 +314,11 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     //    where inbound bytes flow through dispatch.
     (void)kernel.advance_to(gn::core::Phase::Running);
 
-    // 7. Dial through the link extension. Reach the link plugin's
-    //    `connect` slot via `gn.link.<scheme>` — same path
-    //    `gn_core_connect` walks in the C ABI.
+    // 7. Dial through the link's primary vtable. The L2 composition
+    //    extension's `connect` slot returns GN_ERR_NOT_IMPLEMENTED
+    //    by design (per `link.md` §8) — the actual dial path lives
+    //    on the vtable the plugin registered into the kernel's link
+    //    registry. Walk by scheme through `kernel.links()`.
     gn_conn_id_t conn_id = GN_INVALID_ID;
     {
         const auto scheme_end = uri.find("://");
@@ -327,29 +329,31 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
                 uri.c_str());
             return 1;
         }
-        const std::string scheme   = uri.substr(0, scheme_end);
-        const std::string ext_name = std::string{GN_EXT_LINK_PREFIX} + scheme;
+        const std::string scheme = uri.substr(0, scheme_end);
 
-        const void* raw = nullptr;
-        const auto rc = kernel.extensions().query_extension_checked(
-            ext_name, GN_EXT_LINK_VERSION, &raw);
-        if (rc != GN_OK || raw == nullptr) {
+        auto link_entry = kernel.links().find_by_scheme(scheme);
+        if (!link_entry || !link_entry->vtable ||
+            !link_entry->vtable->connect) {
             (void)std::fprintf(stderr,
-                "gssh bridge: scheme '%s' has no registered "
-                "link extension (loaded plugins do not provide it)\n",
+                "gssh bridge: scheme '%s' has no registered link with "
+                "a connect slot — check that the link plugin loaded\n",
                 scheme.c_str());
             return 1;
         }
-        const auto* link_api = static_cast<const gn_link_api_t*>(raw);
-        if (link_api->connect == nullptr) {
+        /// The primary vtable's `connect` returns synchronously after
+        /// dispatching the dial; the assigned `conn_id` arrives later
+        /// via the `notify_connect` event the link plugin publishes
+        /// once the kernel side accepts the connection. The
+        /// `dialed_conn` atomic captured by the conn-state subscriber
+        /// picks it up below.
+        const auto rc = link_entry->vtable->connect(
+            link_entry->self, uri.c_str());
+        if (rc != GN_OK) {
             (void)std::fprintf(stderr,
-                "gssh bridge: link '%s' has no connect slot\n",
-                scheme.c_str());
-            return 1;
-        }
-        if (link_api->connect(link_api->ctx, uri.c_str(), &conn_id) != GN_OK) {
-            (void)std::fprintf(stderr,
-                "gssh bridge: connect %s failed\n", uri.c_str());
+                "gssh bridge: connect %s failed (rc=%d, %s)\n",
+                uri.c_str(),
+                static_cast<int>(rc),
+                gn_strerror(rc));
             return 1;
         }
     }
