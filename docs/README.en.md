@@ -43,7 +43,8 @@ docs/
 │                           security flow, multi-path, relay-direct,
 │                           ecosystem development workflow,
 │                           handler patterns, bridges binding model,
-│                           built-in extensions catalogue
+│                           built-in extensions catalogue,
+│                           strategies as plugin family
 ├── recipes/              — task-oriented guides: write a handler,
 │                           link, security plugin; register an
 │                           extension; subscribe to events; test
