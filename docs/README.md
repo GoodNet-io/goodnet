@@ -40,7 +40,8 @@ docs/
 ├── architecture/         — prose deep-dives: kernel FSM, routing,
 │                           plugin model, host_api, extensions,
 │                           security flow, multi-path, relay-direct,
-│                           ecosystem development workflow
+│                           ecosystem development workflow,
+│                           handler patterns
 ├── recipes/              — task-oriented guides: write a handler,
 │                           link, security plugin; register an
 │                           extension; subscribe to events; test
