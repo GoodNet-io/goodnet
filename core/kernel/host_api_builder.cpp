@@ -596,6 +596,9 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
             safe_call_void("subscriber.conn_state",
                 cb, ud_guard->user_data, &e);
         });
+    if (token == signal::SignalChannel<ConnEvent>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     *out_id = pack_subscription_id(GN_SUBSCRIBE_CONN_STATE,
                                     static_cast<std::uint64_t>(token));
     return GN_OK;
@@ -624,6 +627,9 @@ gn_result_t thunk_subscribe_config_reload(void* host_ctx,
             safe_call_void("subscriber.config_reload",
                 cb, ud_guard->user_data);
         });
+    if (token == signal::SignalChannel<signal::Empty>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
                                     static_cast<std::uint64_t>(token));
     return GN_OK;

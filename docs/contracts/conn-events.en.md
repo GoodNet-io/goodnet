@@ -278,13 +278,13 @@ Plugins that need a complete picture of current state subscribe
 | `unsubscribe(id)` | removed or already gone | host_ctx null, id == `GN_INVALID_SUBSCRIPTION_ID` | — |
 | `for_each_connection` | iteration ran | host_ctx / visitor null | — |
 
-The subscription cap reuses the `gn_limits_t::max_extensions`
-**numeric default** (256) so operators do not have to tune yet
-another knob. The two pools are separate — extension entries
-live in `ExtensionRegistry`, conn-event subscriptions live on
-the `SignalChannel` token list — but they share the same default
-ceiling. A plugin must not subscribe more than once per topic;
-the typical pattern is one subscription per plugin instance.
+The subscription cap is `gn_limits_t::max_subscriptions` (default
+256, `limits.md` §2). The cap is enforced **per channel** so a
+saturated `GN_SUBSCRIBE_CONN_STATE` cannot drain the slots that
+`GN_SUBSCRIBE_CONFIG_RELOAD` needs — operators tune one knob and
+both channels honour it independently. A plugin must not subscribe
+more than once per topic; the typical pattern is one subscription
+per plugin instance.
 
 ---
 

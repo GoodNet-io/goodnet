@@ -64,6 +64,7 @@ gn_limits_t server_profile() noexcept {
     L.inject_rate_burst           = GN_LIMITS_DEFAULT_INJECT_RATE_BURST;
     L.inject_rate_lru_cap         = GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP;
     L.max_counter_names           = GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES;
+    L.max_subscriptions           = GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS;
     return L;
 }
 
@@ -85,6 +86,7 @@ gn_limits_t embedded_profile() noexcept {
     L.max_relay_ttl               = 2;
     L.max_plugins                 = 8;
     L.max_extensions              = 32;
+    L.max_subscriptions           = 32;
     L.max_timers                  = 256;
     L.max_pending_tasks           = 256;
     L.pending_handshake_bytes     = 32u  * 1024;       //  32 KiB
@@ -108,6 +110,7 @@ gn_limits_t desktop_profile() noexcept {
     L.pending_queue_bytes_hard    = 1u   * 1024 * 1024; //  1 MiB
     L.max_plugins                 = 32;
     L.max_extensions              = 128;
+    L.max_subscriptions           = 128;
     L.max_timers                  = 1024;
     L.max_pending_tasks           = 1024;
     return L;
@@ -175,6 +178,7 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     GN_PICK_U32(inject_rate_burst);
     GN_PICK_U32(inject_rate_lru_cap);
     GN_PICK_U32(max_counter_names);
+    GN_PICK_U32(max_subscriptions);
 #undef GN_PICK_U32
 #undef GN_PICK_U64
     return L;

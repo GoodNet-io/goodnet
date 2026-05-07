@@ -85,6 +85,7 @@ __pycache__/
 !plugins/CMakeLists.txt
 !plugins/protocols/**
 plugins/handlers/heartbeat/
+plugins/handlers/mycelium/
 plugins/links/tcp/
 plugins/links/udp/
 plugins/links/ws/
