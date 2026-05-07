@@ -72,31 +72,25 @@ optional post-dispatch hook (для logging, metrics, etc).
 
 ## Жизнь одного сообщения
 
-```
-peer's TCP write
-     │
-     ↓
-[link plugin] notify_inbound_bytes(conn, bytes, size)
-     │
-     ↓
-[security plugin] decrypt_transport(bytes) → plaintext
-     │
-     ↓
-[protocol layer] deframe(bytes) → vector<gn_message_t>
-     │
-     ↓
-[kernel router] for each msg:
-                 lookup_handlers(msg.protocol_id, msg.msg_id)
-                  → priority-desc snapshot of handlers
-                 walk:
-                    handler[0].handle_message(msg)
-                       → CONTINUE  (next handler)
-                       → CONSUMED  (stop)
-                       → REJECT    (disconnect peer)
-                    handler[0].on_result(msg, result)
-                    handler[1].handle_message(msg) [if CONTINUE]
-                    ...
-```
+Каждый inbound байт идёт по одной и той же цепочке:
+
+1. Peer'ский TCP write → link plugin вызывает
+   `host_api->notify_inbound_bytes(conn, bytes, size)`.
+2. Security plugin расшифровывает: `decrypt_transport(bytes) →
+   plaintext`.
+3. Protocol layer деframe'ит: `deframe(bytes) →
+   vector<gn_message_t>`.
+4. Kernel router на каждое сообщение делает
+   `lookup_handlers(msg.protocol_id, msg.msg_id)`, получает
+   priority-desc snapshot of handlers, и проходит по нему:
+   - `handler[0].handle_message(msg)` возвращает `CONTINUE` /
+     `CONSUMED` / `REJECT`
+   - `handler[0].on_result(msg, result)` (если зарегистрирован)
+   - `handler[1].handle_message(msg)` (только если предыдущий
+     вернул `CONTINUE`)
+   - и так далее до `CONSUMED`, `REJECT` или конца snapshot'а
+
+![Dispatch chain](../img/dispatch_chain.svg)
 
 Существенные точки:
 
@@ -112,8 +106,6 @@ peer's TCP write
 3. **Synchronous dispatch** — `handle_message` бегает на kernel
    dispatch thread. Не блокировать. Не вызывать back в host_api
    методы что могут recurse'нуть в dispatch.
-
-Embed: `![Dispatch chain](../img/dispatch_chain.svg)`.
 
 ## Шесть паттернов
 
