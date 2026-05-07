@@ -90,6 +90,7 @@ plugins/links/udp/
 plugins/links/ws/
 plugins/links/ipc/
 plugins/links/tls/
+plugins/links/ice/
 plugins/security/noise/
 plugins/security/null/
 
