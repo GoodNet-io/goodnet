@@ -198,6 +198,17 @@ void on_conn_event_cb(void* ud, const gn_conn_event_t* ev) {
     switch (ev->kind) {
         case GN_CONN_EVENT_CONNECTED:
             s->dialed->store(ev->conn, std::memory_order_release);
+            /// `TRUST_UPGRADED` only fires for the
+            /// Untrusted → Peer transition driven by the
+            /// attestation dispatcher; loopback / intra-node
+            /// connections enter `notify_connect` already on a
+            /// trust class above Untrusted, so the only signal
+            /// the bridge ever sees is `CONNECTED` itself. Treat
+            /// any non-Untrusted ready event as a green light to
+            /// start piping.
+            if (ev->trust != GN_TRUST_UNTRUSTED) {
+                s->upgraded->store(true, std::memory_order_release);
+            }
             break;
         case GN_CONN_EVENT_TRUST_UPGRADED:
             s->upgraded->store(true, std::memory_order_release);
