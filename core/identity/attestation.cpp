@@ -52,7 +52,11 @@ namespace {
 bool Attestation::verify(const ::gn::PublicKey& expected_user,
                          std::int64_t           now_unix_ts) const noexcept {
     if (expected_user != user_pk) return false;
-    if (expiry_unix_ts <= now_unix_ts) return false;
+    /// `expiry_unix_ts == 0` is the «no expiry» sentinel — the
+    /// attestation is signed with that value as the payload and
+    /// stays valid for the rest of the keypair's lifetime. Any
+    /// non-zero expiry is a wall-clock deadline.
+    if (expiry_unix_ts != 0 && expiry_unix_ts <= now_unix_ts) return false;
 
     auto payload = canonical_payload(user_pk, device_pk, expiry_unix_ts);
     return KeyPair::verify(user_pk,
