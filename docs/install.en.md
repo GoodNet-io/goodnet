@@ -110,12 +110,24 @@ the new hash.
 
 ### 3.4 Generate the node identity
 
-*(Lands in Wave 8.1.b — the `identity gen|show` subcommands ship in
-the follow-up branch alongside the `run` subcommand. Until then,
-build the kernel as a library and call
-`gn::core::identity::NodeIdentity::generate(0)` from a host
-program; serialize the device keypair with whatever format your
-deployment already uses.)*
+```sh
+goodnet identity gen --out /etc/goodnet/identity.bin
+```
+
+The file lands at mode `0600` and carries the magic-prefixed
+77-byte layout `NodeIdentity::save_to_file` writes per
+`identity.en.md` §4. Replace the path the systemd unit's
+`--identity` flag (or the `identity_path` config key) points at
+to make the kernel pick the new file up on next start.
+
+Inspect a saved identity without revealing the secret keys:
+
+```sh
+goodnet identity show /etc/goodnet/identity.bin
+```
+
+The command prints `address`, `user_pk`, `device_pk`, `expiry`
+and exits 0; secret seeds never reach stdout.
 
 ---
 
@@ -168,14 +180,15 @@ to drain in-flight async work before `SIGKILL`.
 ## 6. What's not in this document
 
 - **Reverse-proxy front-end** — operators running on the public
-  internet should put nginx / HAProxy in front of the TCP listener
-  for per-IP rate limiting (Wave 4.1-4.4 hardening plugin lands in
-  v1.x; until then the reverse proxy is the recommended layer).
+  internet put nginx / HAProxy in front of the TCP listener for
+  per-IP rate limiting until a hardening plugin ships per-source
+  bucketing. The reverse proxy is the recommended layer for now.
 - **Multi-node mesh setup** — pairing identities, NAT traversal,
-  seed-node configuration. Lands with the relay / DHT plugins in
-  v1.x.
-- **Backup and key rotation** — NodeIdentity rotation policy ships
-  with the `identity` subcommand in Wave 8.1.b.
+  seed-node configuration. Lands with the relay / DHT plugins.
+- **Backup and key rotation** — NodeIdentity rotation policy is
+  not yet specified. Operators copy `/etc/goodnet/identity.bin`
+  before generating a replacement and update each peer's
+  `peers.json` entry by address.
 - **Monitoring integration** — the kernel exposes `host_api`
   counter slots; an exporter plugin (Prometheus, OpenTelemetry)
   scrapes them. Out-of-tree, ships per deployment.
