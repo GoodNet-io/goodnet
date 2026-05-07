@@ -29,7 +29,7 @@ uri_strip_query(std::string_view uri) noexcept {
 }
 
 /// Decode the `?peer=<hex>` query parameter into a 32-byte X25519
-/// public key per `docs/contracts/uri.md` §6 reserved keys. Returns
+/// public key per `docs/contracts/uri.en.md` §6 reserved keys. Returns
 /// nullopt when the URI is malformed, the parameter is missing, or
 /// the hex payload is not exactly 64 characters.
 [[nodiscard]] inline std::optional<std::array<std::uint8_t, 32>>

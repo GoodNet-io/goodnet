@@ -7,7 +7,7 @@
 /// kernel is the conductor that walks them through phases in order
 /// and notifies subscribers after every successful transition.
 ///
-/// Implements `docs/contracts/fsm-events.md`: commit-then-notify on
+/// Implements `docs/contracts/fsm-events.en.md`: commit-then-notify on
 /// every transition, compare-and-exchange on idempotent operations,
 /// weak-observer subscription so plugins that forget to unsubscribe
 /// do not leak.

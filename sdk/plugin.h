@@ -7,7 +7,7 @@
  * missing symbols cause the plugin to be rejected before any state
  * is constructed.
  *
- * See `docs/contracts/plugin-lifetime.md`.
+ * See `docs/contracts/plugin-lifetime.en.md`.
  */
 #ifndef GOODNET_SDK_PLUGIN_H
 #define GOODNET_SDK_PLUGIN_H

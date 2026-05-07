@@ -3,7 +3,7 @@
 ///
 /// Thunks defined in the .cpp file cast `host_ctx` to `PluginContext*`
 /// and reach into the kernel's data-path components per the slot
-/// semantics in `docs/contracts/host-api.md` §2.
+/// semantics in `docs/contracts/host-api.en.md` §2.
 
 #pragma once
 

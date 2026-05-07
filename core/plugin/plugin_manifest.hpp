@@ -29,7 +29,7 @@
 /// and unit tests do not have to fabricate hashes for ephemeral
 /// builds.
 ///
-/// Per `docs/contracts/plugin-manifest.md`.
+/// Per `docs/contracts/plugin-manifest.en.md`.
 
 #pragma once
 

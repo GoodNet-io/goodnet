@@ -349,7 +349,7 @@ static inline const char* gn_strerror(gn_result_t r) {
  *
  * Produced by `IProtocolLayer::deframe` on inbound and consumed by
  * `IProtocolLayer::frame` on outbound. Routed by the kernel using
- * `(receiver_pk, msg_id)`. See `docs/contracts/protocol-layer.md` for full
+ * `(receiver_pk, msg_id)`. See `docs/contracts/protocol-layer.en.md` for full
  * semantics.
  *
  * @par Lifetime

@@ -3,7 +3,7 @@
 ///
 /// Plugins cannot register handlers on these ids — `HandlerRegistry`
 /// rejects with `GN_ERR_INVALID_ENVELOPE` per
-/// `docs/contracts/handler-registration.md` §2a.
+/// `docs/contracts/handler-registration.en.md` §2a.
 
 #pragma once
 
@@ -11,7 +11,7 @@
 
 namespace gn::core {
 
-/// Attestation dispatcher — `docs/contracts/attestation.md` §3.
+/// Attestation dispatcher — `docs/contracts/attestation.en.md` §3.
 /// 232-byte payload; kernel intercepts after deframe, before
 /// regular handler chain dispatch.
 inline constexpr std::uint32_t kAttestationMsgId = 0x11;

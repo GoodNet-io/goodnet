@@ -1,7 +1,7 @@
 /// @file   core/util/token_bucket.hpp
 /// @brief  Token-bucket rate limiter with explicit clock injection.
 ///
-/// Per `docs/contracts/clock.md`, every time-dependent component
+/// Per `docs/contracts/clock.en.md`, every time-dependent component
 /// accepts its time source as an explicit input. The bucket is
 /// templated on `Clock` so production code uses
 /// `std::chrono::steady_clock` and tests use a deterministic mock

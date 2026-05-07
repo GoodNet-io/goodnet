@@ -49,7 +49,7 @@
  *  - Manifest SHA-256 verification is mandatory on
  *    `gn_core_load_plugin` per `plugin-manifest.md`.
  *
- * See `docs/contracts/core-c.md` for the full contract.
+ * See `docs/contracts/core-c.en.md` for the full contract.
  */
 #ifndef GOODNET_SDK_CORE_H
 #define GOODNET_SDK_CORE_H

@@ -3,7 +3,7 @@
  * @brief  ABI evolution helpers for the C plugin boundary.
  *
  * Macros and inline helpers that let plugins introspect a host vtable
- * for size-prefix evolution per `docs/contracts/abi-evolution.md`.
+ * for size-prefix evolution per `docs/contracts/abi-evolution.en.md`.
  */
 #ifndef GOODNET_SDK_ABI_H
 #define GOODNET_SDK_ABI_H

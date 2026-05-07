@@ -1,7 +1,7 @@
 /// @file   core/kernel/phase.hpp
 /// @brief  Kernel lifecycle phases.
 ///
-/// Mirrors the diagram in `docs/contracts/fsm-events.md` §2 plus the
+/// Mirrors the diagram in `docs/contracts/fsm-events.en.md` §2 plus the
 /// plugin lifecycle phases in `plugin-lifetime.md` §2. Phases are
 /// linear; backward transitions are forbidden.
 

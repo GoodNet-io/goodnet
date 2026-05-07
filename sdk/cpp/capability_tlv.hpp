@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /// @file   sdk/cpp/capability_tlv.hpp
 /// @brief  Header-only TLV encoder / decoder for the post-Noise
-///         capability handshake. Per `docs/contracts/capability-tlv.md`.
+///         capability handshake. Per `docs/contracts/capability-tlv.en.md`.
 ///
 /// Wire format: a sequence of `[type:u16 BE][length:u16 BE][value...]`
 /// records with no terminator. The consumer reads records until the

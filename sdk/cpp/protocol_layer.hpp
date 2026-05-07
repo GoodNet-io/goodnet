@@ -5,7 +5,7 @@
 /// in C++ inherit from @ref gn::IProtocolLayer and export their vtable
 /// through the plugin entry point.
 ///
-/// Contract: `docs/contracts/protocol-layer.md`.
+/// Contract: `docs/contracts/protocol-layer.en.md`.
 #pragma once
 
 #include <cstddef>

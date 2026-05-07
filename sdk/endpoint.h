@@ -4,7 +4,7 @@
  *
  * Plugins access live registry data through `host_api->get_endpoint`. The
  * returned snapshot is a copy of the small fields; pointers into the
- * registry are intentionally not exposed. See `docs/contracts/registry.md`.
+ * registry are intentionally not exposed. See `docs/contracts/registry.en.md`.
  */
 #ifndef GOODNET_SDK_ENDPOINT_H
 #define GOODNET_SDK_ENDPOINT_H

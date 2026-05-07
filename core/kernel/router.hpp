@@ -2,7 +2,7 @@
 /// @brief  Inbound envelope router.
 ///
 /// Implements the routing rules from
-/// `docs/contracts/protocol-layer.md` §6:
+/// `docs/contracts/protocol-layer.en.md` §6:
 ///
 /// ```
 /// on inbound envelope:
@@ -14,7 +14,7 @@
 ///         relay_or_drop(envelope)
 /// ```
 ///
-/// Per `docs/contracts/handler-registration.md` §3 and §6, the router
+/// Per `docs/contracts/handler-registration.en.md` §3 and §6, the router
 /// materialises the dispatch chain once, walks it in priority order,
 /// invokes `handle_message` and `on_result` on every step, and stops
 /// on `Consumed`. `Reject` propagates up so the connection can be

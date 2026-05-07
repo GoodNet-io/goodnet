@@ -17,7 +17,7 @@
  * HTTP server or a wire-format renderer — the counter store is
  * the surface, exposition is plugin business.
  *
- * Per `docs/contracts/metrics.md`.
+ * Per `docs/contracts/metrics.en.md`.
  */
 #ifndef GOODNET_SDK_METRICS_H
 #define GOODNET_SDK_METRICS_H

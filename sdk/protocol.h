@@ -4,7 +4,7 @@
  *
  * The protocol layer is the single mandatory plugin slot. The kernel binary
  * statically links exactly one implementation of @ref gn_protocol_layer_vtable_t.
- * See `docs/contracts/protocol-layer.md`.
+ * See `docs/contracts/protocol-layer.en.md`.
  */
 #ifndef GOODNET_SDK_PROTOCOL_H
 #define GOODNET_SDK_PROTOCOL_H

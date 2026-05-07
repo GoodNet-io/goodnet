@@ -4,7 +4,7 @@
  *
  * Links move bytes. They do not interpret payloads, do not
  * authenticate peers, and do not route messages. See
- * `docs/contracts/link.md`.
+ * `docs/contracts/link.en.md`.
  */
 #ifndef GOODNET_SDK_LINK_H
 #define GOODNET_SDK_LINK_H

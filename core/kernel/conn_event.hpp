@@ -4,7 +4,7 @@
 ///         `sdk/conn_events.h`; the in-process subscribers (kernel
 ///         components, kind tests) work directly with this type.
 ///
-/// Authoritative semantics live in `docs/contracts/conn-events.md`.
+/// Authoritative semantics live in `docs/contracts/conn-events.en.md`.
 
 #pragma once
 

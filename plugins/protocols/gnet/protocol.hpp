@@ -3,7 +3,7 @@
 ///
 /// `GnetProtocol` translates between the kernel-side `gn_message_t`
 /// envelope and GNET v1 wire bytes. Per
-/// `docs/contracts/protocol-layer.md` it is the canonical
+/// `docs/contracts/protocol-layer.en.md` it is the canonical
 /// mesh-framing for v1.x and statically links into the kernel binary.
 
 #pragma once

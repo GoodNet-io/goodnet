@@ -3,7 +3,7 @@
  * @brief  Connection-event publish/subscribe contract.
  *
  * The kernel publishes a typed event for every observable change in
- * a connection's lifecycle. See `docs/contracts/conn-events.md` for
+ * a connection's lifecycle. See `docs/contracts/conn-events.en.md` for
  * the authoritative semantics; this header is the C ABI surface.
  */
 #ifndef GOODNET_SDK_CONN_EVENTS_H

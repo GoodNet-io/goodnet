@@ -12,7 +12,7 @@
  * `api` and `host_ctx` remain valid from `gn_plugin_init` return until
  * `gn_plugin_shutdown` returns.
  *
- * See `docs/contracts/host-api.md`.
+ * See `docs/contracts/host-api.en.md`.
  */
 #ifndef GOODNET_SDK_HOST_API_H
 #define GOODNET_SDK_HOST_API_H

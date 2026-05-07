@@ -17,7 +17,7 @@
  * across every scheme; that uniformity is what lets a generic L2
  * link target an arbitrary L1 without scheme-aware glue.
  *
- * See `docs/contracts/link.md` §8 for the registration model and
+ * See `docs/contracts/link.en.md` §8 for the registration model and
  * the per-link `<scheme>.h` headers for capability flag values
  * specific to a scheme.
  */

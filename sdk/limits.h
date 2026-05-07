@@ -4,7 +4,7 @@
  *
  * Every code path that enforces a resource ceiling reads the live
  * `gn_limits_t` reference exposed through `host_api->limits()`. Hard-coded
- * parallel ceilings are forbidden. See `docs/contracts/limits.md`.
+ * parallel ceilings are forbidden. See `docs/contracts/limits.en.md`.
  */
 #ifndef GOODNET_SDK_LIMITS_H
 #define GOODNET_SDK_LIMITS_H
