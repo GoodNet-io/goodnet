@@ -164,18 +164,30 @@ typedef struct host_api_s {
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
     /* ── Channel subscription (conn-events.md / config.md) ──────────── */
-    /* Universal pub/sub gateway. `channel` selects the source — see    */
-    /* `gn_subscribe_channel_t` in sdk/conn_events.h; the cb receives a */
-    /* type-erased payload + size pair. The id returned from `subscribe`*/
-    /* carries a 4-bit channel tag in its top bits so `unsubscribe(id)` */
-    /* routes back to the right channel without naming it twice.        */
-    gn_result_t (*subscribe)(void* host_ctx,
-                              gn_subscribe_channel_t channel,
-                              gn_subscribe_cb_t cb,
-                              void* user_data,
-                              gn_subscription_id_t* out_id);
+    /* Two typed slots — one per channel — instead of a single        */
+    /* `subscribe(channel, ...)` dispatcher: the kernel knows the     */
+    /* payload shape per channel and the binding never has to type-  */
+    /* erase. `ud_destroy` runs once with `user_data` when the        */
+    /* subscription is removed, whether by `unsubscribe(id)` or by   */
+    /* the kernel observing the plugin's lifetime anchor expire.     */
+    /* Pass `NULL` when `user_data` carries no resources to free.    */
+    gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                         gn_conn_state_cb_t cb,
+                                         void* user_data,
+                                         void (*ud_destroy)(void*),
+                                         gn_subscription_id_t* out_id);
+
+    gn_result_t (*subscribe_config_reload)(void* host_ctx,
+                                            gn_config_reload_cb_t cb,
+                                            void* user_data,
+                                            void (*ud_destroy)(void*),
+                                            gn_subscription_id_t* out_id);
+
+    /* `unsubscribe` is shared across both channels; the id is unique  */
+    /* across them and the kernel routes the cancel internally.        */
     gn_result_t (*unsubscribe)(void* host_ctx,
                                 gn_subscription_id_t id);
+
     gn_result_t (*for_each_connection)(void* host_ctx,
                                        gn_conn_visitor_t visitor,
                                        void* user_data);
