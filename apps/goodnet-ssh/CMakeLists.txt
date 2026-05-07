@@ -15,6 +15,9 @@ add_executable(goodnet-ssh
     mode_wrap.cpp
     mode_bridge.cpp
     mode_listen.cpp
+    identity.cpp
+    peers.cpp
+    pipe.cpp
 )
 
 target_include_directories(goodnet-ssh
@@ -41,6 +44,7 @@ target_link_libraries(goodnet-ssh
         goodnet_kernel
         GoodNet::cpp
         GoodNet::protocol_gnet
+        nlohmann_json::nlohmann_json
 )
 
 target_compile_definitions(goodnet-ssh
