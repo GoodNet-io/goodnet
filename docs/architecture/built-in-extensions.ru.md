@@ -311,8 +311,19 @@ vendor'ы не занимали эти имена под свои частные
 | Имя | Назначение |
 |---|---|
 | `gn.peer-info` | каталог известных альтернативных URI на peer'а (по identity), пополняемый peer-discovery плагинами |
-| `gn.dht` | key-value lookup поверх mesh'а; producer — DHT-плагин, consumer — relay/discovery |
 | `gn.autonat` | определение reachability-статуса локального узла на основе peer-наблюдений (за NAT'ом или нет) |
+
+Дополнительно зарезервированы четыре namespace-категории под
+strategy plugins (см. [`strategies`](./strategies.ru.md) — каждая
+категория содержит несколько конкретных strategies, выбираемых
+оператором по name):
+
+| Категория | Назначение |
+|---|---|
+| `gn.float-send.<strategy>` | smart routing: какой путь выбрать для исходящего сообщения, когда несколько available |
+| `gn.dht.<strategy>` | distributed key-value lookup поверх mesh'а |
+| `gn.relay.<strategy>` | multi-hop forwarding через intermediates (NAT traversal, censorship resistance) |
+| `gn.discovery.<strategy>` | peer-finding (mDNS, DHT walk, gossip, static bootstrap list) |
 
 Семантика этих имён зафиксируется в момент, когда первый канонический
 плагин под каждое из них пройдёт дизайн-цикл и попадёт в `plugins/`.
