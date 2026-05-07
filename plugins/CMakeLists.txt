@@ -54,3 +54,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tls/CMakeLists.txt")
     add_subdirectory(links/tls)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ice/CMakeLists.txt")
+    add_subdirectory(links/ice)
+endif()

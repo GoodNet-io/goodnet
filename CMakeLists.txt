@@ -165,6 +165,15 @@ if(GOODNET_BUILD_BUNDLED_PLUGINS)
     add_subdirectory(plugins)
 endif()
 
+# ── Operator-side language bindings ──────────────────────────────────────────
+# `bridges/cpp/` lives in its own git (mirror `bridges-cpp.git`); when
+# present, surface its INTERFACE target plus its smoke tests through the
+# kernel build, so `nix run .#test` exercises the binding alongside the
+# rest of the platform.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bridges/cpp/CMakeLists.txt")
+    add_subdirectory(bridges/cpp)
+endif()
+
 # ── Operator-facing apps ─────────────────────────────────────────────────────
 option(GOODNET_BUILD_APPS "Build operator-facing CLI binaries (apps/)" ON)
 if(GOODNET_BUILD_APPS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/CMakeLists.txt")
