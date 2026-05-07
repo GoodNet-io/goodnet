@@ -1,7 +1,7 @@
-/// @file   apps/goodnet-ssh/identity.hpp
+/// @file   apps/gssh/identity.hpp
 /// @brief  Operator identity loading helpers.
 ///
-/// `goodnet-ssh` always wants the operator's persistent identity:
+/// `gssh` always wants the operator's persistent identity:
 /// reusing the same Ed25519 keypair across runs is what makes
 /// `peer_pk` a stable address. The wrapper resolves the path
 /// (`--identity` override or `~/.config/goodnet/identity.bin` default),
@@ -26,7 +26,7 @@
 
 namespace gn::core { class Kernel; }
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 /// Resolve the identity file path. `--identity` override wins; falls
 /// back to `~/.config/goodnet/identity.bin`.
@@ -45,4 +45,4 @@ namespace gn::apps::goodnet_ssh {
     const std::string& path,
     std::string& diagnostic);
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

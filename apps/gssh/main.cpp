@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/main.cpp
+/// @file   apps/gssh/main.cpp
 /// @brief  Argv dispatcher for the three operational modes.
 ///
 /// Mode selection rules:
@@ -27,9 +27,9 @@ namespace {
 
 void print_usage() {
     (void)std::fputs(
-        "usage: goodnet-ssh [user@]<peer-pk>          # wrap mode (invoke ssh)\n"
-        "       goodnet-ssh --bridge <peer-pk>        # ProxyCommand callee\n"
-        "       goodnet-ssh --listen [opts]           # server-side forwarder\n"
+        "usage: gssh [user@]<peer-pk>          # wrap mode (invoke ssh)\n"
+        "       gssh --bridge <peer-pk>        # ProxyCommand callee\n"
+        "       gssh --listen [opts]           # server-side forwarder\n"
         "\n"
         "common options:\n"
         "  --identity <path>          operator identity file\n"
@@ -86,14 +86,14 @@ void print_usage() {
 [[nodiscard]] int parse_bridge_args(
     std::span<const std::string_view> args,
     std::string& out_pk,
-    gn::apps::goodnet_ssh::Options& out_opts) {
+    gn::apps::gssh::Options& out_opts) {
     bool seen_pk = false;
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto a = args[i];
         const auto need_val = [&](const char* flag) -> bool {
             if (i + 1 >= args.size()) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh bridge: %s requires an argument\n", flag);
+                    "gssh bridge: %s requires an argument\n", flag);
                 return false;
             }
             return true;
@@ -109,14 +109,14 @@ void print_usage() {
             seen_pk = true;
         } else {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: unknown argument '%.*s'\n",
+                "gssh bridge: unknown argument '%.*s'\n",
                 static_cast<int>(a.size()), a.data());
             return 2;
         }
     }
     if (!seen_pk) {
         (void)std::fputs(
-            "goodnet-ssh bridge: peer-pk positional argument required\n",
+            "gssh bridge: peer-pk positional argument required\n",
             stderr);
         return 2;
     }
@@ -125,13 +125,13 @@ void print_usage() {
 
 [[nodiscard]] int parse_listen_args(
     std::span<const std::string_view> args,
-    gn::apps::goodnet_ssh::ListenOptions& out_opts) {
+    gn::apps::gssh::ListenOptions& out_opts) {
     for (std::size_t i = 0; i < args.size(); ++i) {
         const auto a = args[i];
         const auto need_val = [&](const char* flag) -> bool {
             if (i + 1 >= args.size()) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh listen: %s requires an argument\n", flag);
+                    "gssh listen: %s requires an argument\n", flag);
                 return false;
             }
             return true;
@@ -148,7 +148,7 @@ void print_usage() {
             std::uint16_t port = 0;
             if (!parse_host_port(args[++i], host, port)) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh listen: --target value '%.*s' must be "
+                    "gssh listen: --target value '%.*s' must be "
                     "host:port\n",
                     static_cast<int>(args[i].size()), args[i].data());
                 return 2;
@@ -157,7 +157,7 @@ void print_usage() {
             out_opts.target_port = port;
         } else {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: unknown argument '%.*s'\n",
+                "gssh listen: unknown argument '%.*s'\n",
                 static_cast<int>(a.size()), a.data());
             return 2;
         }
@@ -189,7 +189,7 @@ int main(int argc, char** argv) {
     if (first == "--listen" ||
         std::any_of(args.begin(), args.end(),
                     [](std::string_view s) { return s == "--listen"; })) {
-        gn::apps::goodnet_ssh::ListenOptions opts;
+        gn::apps::gssh::ListenOptions opts;
         // Strip the `--listen` token from the vector before parsing
         // remaining options. Allow it anywhere in argv for systemd
         // unit `ExecStart=...` flexibility.
@@ -201,11 +201,11 @@ int main(int argc, char** argv) {
         if (const auto rc = parse_listen_args(tail, opts); rc != 0) {
             return rc;
         }
-        return gn::apps::goodnet_ssh::run_listen(opts);
+        return gn::apps::gssh::run_listen(opts);
     }
 
     if (first == "--bridge") {
-        gn::apps::goodnet_ssh::Options opts;
+        gn::apps::gssh::Options opts;
         std::string pk;
         if (const auto rc = parse_bridge_args(
                 std::span<const std::string_view>(args.data() + 1,
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
             rc != 0) {
             return rc;
         }
-        return gn::apps::goodnet_ssh::run_bridge(pk, opts);
+        return gn::apps::gssh::run_bridge(pk, opts);
     }
 
     // Default: wrap mode. The first positional argument is taken
@@ -227,10 +227,10 @@ int main(int argc, char** argv) {
     }
     if (!first.empty() && first[0] == '-') {
         (void)std::fprintf(stderr,
-            "goodnet-ssh: unknown leading flag '%.*s'\n",
+            "gssh: unknown leading flag '%.*s'\n",
             static_cast<int>(first.size()), first.data());
         print_usage();
         return 2;
     }
-    return gn::apps::goodnet_ssh::run_wrap(first);
+    return gn::apps::gssh::run_wrap(first);
 }

@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/peers.hpp
+/// @file   apps/gssh/peers.hpp
 /// @brief  Peer-pk → URI lookup with a flat JSON catalogue.
 ///
 /// `~/.config/goodnet/peers.json` is the operator's address book.
@@ -31,7 +31,7 @@
 #include <string_view>
 #include <vector>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 /// One peer record loaded from the catalogue.
 struct PeerEntry {
@@ -71,4 +71,4 @@ parse_peers(const std::string& path, std::string& diagnostic);
 resolve_peer_uri(std::string_view peer_pk_str,
                  const std::vector<PeerEntry>& peers);
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

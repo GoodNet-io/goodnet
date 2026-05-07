@@ -1,19 +1,19 @@
-# goodnet-ssh
+# gssh
 
 Один бинарник, три режима. Похоже на то, как openssh делит исходники
-между `ssh` и `sshd` — у нас три режима в одном `goodnet-ssh`, а
+между `ssh` и `sshd` — у нас три режима в одном `gssh`, а
 выбор режима делается по argv.
 
 ## Режимы
 
-### `goodnet-ssh user@<peer-pk>` — wrap
+### `gssh user@<peer-pk>` — wrap
 
 Удобная обёртка. Вы запускаете её как обычный `ssh user@host`, а
 утилита подменяет транспорт openssh: запускает себя же в режиме
 `--bridge` через `ProxyCommand` openssh-клиента.
 
 ```
-$ goodnet-ssh alice@QFK4...XYZ7   # 52-символьный base32 peer-pk
+$ gssh alice@QFK4...XYZ7   # 52-символьный base32 peer-pk
 ```
 
 `ssh` стартует с опциями:
@@ -23,7 +23,7 @@ $ goodnet-ssh alice@QFK4...XYZ7   # 52-символьный base32 peer-pk
   добавляет.
 - `-o UserKnownHostsFile=/dev/null` — по той же причине.
 
-### `goodnet-ssh --bridge <peer-pk>` — bridge
+### `gssh --bridge <peer-pk>` — bridge
 
 Внутренний режим. Запускается openssh-клиентом как `ProxyCommand`.
 Поднимает kernel, читает identity из `~/.config/goodnet/identity.bin`,
@@ -33,14 +33,14 @@ $ goodnet-ssh alice@QFK4...XYZ7   # 52-символьный base32 peer-pk
 Все логи строго в stderr — stdout считывается openssh как байты SSH-
 протокола, любая лишняя строка сломает сессию.
 
-### `goodnet-ssh --listen [opts]` — listen
+### `gssh --listen [opts]` — listen
 
 Серверная часть. Слушает входящие GoodNet-соединения, на каждое
 открывает локальный TCP-сокет к target (по умолчанию `127.0.0.1:22`)
 и пробрасывает байты в обе стороны.
 
 ```
-$ goodnet-ssh --listen --listen-uri tcp://0.0.0.0:9001 --target 127.0.0.1:22
+$ gssh --listen --listen-uri tcp://0.0.0.0:9001 --target 127.0.0.1:22
 ```
 
 Опции:
@@ -77,18 +77,18 @@ Persistent identity лежит в `~/.config/goodnet/identity.bin`. Создаё
 ## systemd unit
 
 ```ini
-# /etc/systemd/system/goodnet-ssh-listen.service
+# /etc/systemd/system/gssh.service
 [Unit]
 Description=GoodNet SSH listen forwarder
 After=network-online.target
 
 [Service]
-ExecStart=/usr/bin/goodnet-ssh --listen
-Environment=HOME=/var/lib/goodnet-ssh
+ExecStart=/usr/bin/gssh --listen
+Environment=HOME=/var/lib/gssh
 Restart=on-failure
 RestartSec=5s
-User=goodnet-ssh
-Group=goodnet-ssh
+User=gssh
+Group=gssh
 
 [Install]
 WantedBy=multi-user.target

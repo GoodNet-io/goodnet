@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/identity.cpp
+/// @file   apps/gssh/identity.cpp
 /// @brief  Implementation of the identity loader.
 
 #include "identity.hpp"
@@ -11,7 +11,7 @@
 #include <core/identity/node_identity.hpp>
 #include <core/kernel/kernel.hpp>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 namespace {
 
@@ -54,4 +54,4 @@ gn_result_t install_identity_on_kernel(gn::core::Kernel& kernel,
     return GN_OK;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/pipe.cpp
+/// @file   apps/gssh/pipe.cpp
 /// @brief  Implementation of the bytes-pipe helpers.
 
 #include "pipe.hpp"
@@ -9,7 +9,7 @@
 #include <thread>
 #include <unistd.h>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 int make_fd_nonblocking(int fd) {
     const int flags = ::fcntl(fd, F_GETFL, 0);
@@ -36,4 +36,4 @@ int write_all(int fd, std::span<const std::uint8_t> bytes) {
     return 0;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

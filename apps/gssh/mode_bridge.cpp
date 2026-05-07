@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/mode_bridge.cpp
+/// @file   apps/gssh/mode_bridge.cpp
 /// @brief  Mode 2 — `ProxyCommand` bridge.
 ///
 /// openssh launches this mode as a child process whenever the wrap
@@ -77,7 +77,7 @@
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 namespace {
 
@@ -89,7 +89,7 @@ namespace {
 [[nodiscard]] std::vector<std::string> default_plugin_paths() {
     namespace fs = std::filesystem;
     // Resolve relative to the executable so a portable install
-    // (`<prefix>/bin/goodnet-ssh` next to `<prefix>/lib/*.so`) works
+    // (`<prefix>/bin/gssh` next to `<prefix>/lib/*.so`) works
     // without LD_LIBRARY_PATH gymnastics.
     std::error_code ec;
     auto exe = fs::read_symlink("/proc/self/exe", ec);
@@ -168,7 +168,7 @@ const gn_handler_vtable_t& bridge_handler_vtable() noexcept {
     auto paths = default_plugin_paths();
     if (paths.empty()) {
         (void)std::fputs(
-            "goodnet-ssh bridge: no plugins discovered next to the "
+            "gssh bridge: no plugins discovered next to the "
             "executable; bridge needs at least a link + security plugin\n",
             stderr);
         return GN_ERR_NOT_FOUND;
@@ -177,7 +177,7 @@ const gn_handler_vtable_t& bridge_handler_vtable() noexcept {
     const auto rc = mgr.load(std::span<const std::string>(paths), &diag);
     if (rc != GN_OK) {
         (void)std::fprintf(stderr,
-            "goodnet-ssh bridge: plugin load failed — %s\n",
+            "gssh bridge: plugin load failed — %s\n",
             diag.c_str());
     }
     return rc;
@@ -235,11 +235,11 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
         if (const auto rc = install_identity_on_kernel(kernel, identity_path, diag);
             rc != GN_OK) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: identity %s — %s\n",
+                "gssh bridge: identity %s — %s\n",
                 identity_path.c_str(), diag.c_str());
             if (rc == GN_ERR_NOT_FOUND) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh bridge: run 'goodnet identity gen --out %s'\n",
+                    "gssh bridge: run 'goodnet identity gen --out %s'\n",
                     identity_path.c_str());
             }
             return 1;
@@ -249,7 +249,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     // 2. host_api host context for in-process use. The bridge's own
     //    handler registration goes through this surface.
     PluginContext host_ctx;
-    host_ctx.plugin_name = "goodnet-ssh-bridge";
+    host_ctx.plugin_name = "gssh-bridge";
     host_ctx.kernel      = &kernel;
     auto api             = build_host_api(host_ctx);
 
@@ -272,13 +272,13 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
         const auto peers = parse_peers(peers_path, diag);
         if (!diag.empty()) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: %s — %s\n",
+                "gssh bridge: %s — %s\n",
                 peers_path.c_str(), diag.c_str());
         }
         auto found = resolve_peer_uri(peer_pk_str, peers);
         if (!found) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: peer %.*s not in %s; add an "
+                "gssh bridge: peer %.*s not in %s; add an "
                 "entry or pass --uri\n",
                 static_cast<int>(peer_pk_str.size()), peer_pk_str.data(),
                 peers_path.c_str());
@@ -305,7 +305,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
                                      &sub_id) != GN_OK) {
             delete state;
             (void)std::fputs(
-                "goodnet-ssh bridge: subscribe_conn_state failed\n", stderr);
+                "gssh bridge: subscribe_conn_state failed\n", stderr);
             return 1;
         }
     }
@@ -322,7 +322,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
         const auto scheme_end = uri.find("://");
         if (scheme_end == std::string::npos) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: malformed URI '%s' "
+                "gssh bridge: malformed URI '%s' "
                 "(missing scheme://)\n",
                 uri.c_str());
             return 1;
@@ -335,7 +335,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
             ext_name, GN_EXT_LINK_VERSION, &raw);
         if (rc != GN_OK || raw == nullptr) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: scheme '%s' has no registered "
+                "gssh bridge: scheme '%s' has no registered "
                 "link extension (loaded plugins do not provide it)\n",
                 scheme.c_str());
             return 1;
@@ -343,13 +343,13 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
         const auto* link_api = static_cast<const gn_link_api_t*>(raw);
         if (link_api->connect == nullptr) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: link '%s' has no connect slot\n",
+                "gssh bridge: link '%s' has no connect slot\n",
                 scheme.c_str());
             return 1;
         }
         if (link_api->connect(link_api->ctx, uri.c_str(), &conn_id) != GN_OK) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh bridge: connect %s failed\n", uri.c_str());
+                "gssh bridge: connect %s failed\n", uri.c_str());
             return 1;
         }
     }
@@ -366,13 +366,13 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     }
     if (disconnected.load(std::memory_order_acquire)) {
         (void)std::fputs(
-            "goodnet-ssh bridge: peer disconnected before trust upgrade\n",
+            "gssh bridge: peer disconnected before trust upgrade\n",
             stderr);
         return 1;
     }
     if (!trust_upgraded.load(std::memory_order_acquire)) {
         (void)std::fputs(
-            "goodnet-ssh bridge: trust upgrade timed out (15s)\n", stderr);
+            "gssh bridge: trust upgrade timed out (15s)\n", stderr);
         return 1;
     }
     if (conn_id == GN_INVALID_ID) {
@@ -383,7 +383,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     }
     if (conn_id == GN_INVALID_ID) {
         (void)std::fputs(
-            "goodnet-ssh bridge: no connection id observed\n", stderr);
+            "gssh bridge: no connection id observed\n", stderr);
         return 1;
     }
 
@@ -405,7 +405,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
             &meta, &bridge_handler_vtable(), &h_state, &handler_id);
         if (rc != GN_OK) {
             (void)std::fputs(
-                "goodnet-ssh bridge: register_handler failed\n", stderr);
+                "gssh bridge: register_handler failed\n", stderr);
             return 1;
         }
     }
@@ -416,7 +416,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     //     on session end); we exit cleanly.
     if (make_fd_nonblocking(STDIN_FILENO) < 0) {
         (void)std::fprintf(stderr,
-            "goodnet-ssh bridge: fcntl(O_NONBLOCK) on stdin failed: %s\n",
+            "gssh bridge: fcntl(O_NONBLOCK) on stdin failed: %s\n",
             std::strerror(errno));
         (void)api.unregister_vtable(api.host_ctx, handler_id);
         return 1;
@@ -431,7 +431,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
                                       buf.data(), static_cast<std::size_t>(n));
             if (rc != GN_OK) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh bridge: send failed (rc=%d)\n",
+                    "gssh bridge: send failed (rc=%d)\n",
                     static_cast<int>(rc));
                 break;
             }
@@ -444,7 +444,7 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
             continue;
         }
         (void)std::fprintf(stderr,
-            "goodnet-ssh bridge: stdin read error: %s\n",
+            "gssh bridge: stdin read error: %s\n",
             std::strerror(errno));
         break;
     }
@@ -461,4 +461,4 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     return 0;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

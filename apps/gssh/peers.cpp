@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/peers.cpp
+/// @file   apps/gssh/peers.cpp
 /// @brief  Implementation of the peers.json catalogue parser.
 ///
 /// Uses `nlohmann::json` to keep the parser short and the error
@@ -19,7 +19,7 @@
 
 #include <nlohmann/json.hpp>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 namespace {
 
@@ -127,4 +127,4 @@ resolve_peer_uri(std::string_view peer_pk_str,
     return std::nullopt;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

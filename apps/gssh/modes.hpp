@@ -1,7 +1,7 @@
-/// @file   apps/goodnet-ssh/modes.hpp
+/// @file   apps/gssh/modes.hpp
 /// @brief  Shared declarations for the three operational modes.
 ///
-/// `goodnet-ssh` is a single binary with three modes selected by
+/// `gssh` is a single binary with three modes selected by
 /// argv. The wrap mode invokes openssh with a `ProxyCommand` that
 /// re-executes the same binary in bridge mode. The bridge mode owns
 /// a kernel handle, dials the requested peer, and pipes stdin/stdout
@@ -22,7 +22,7 @@
 #include <string>
 #include <string_view>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 /// Application-level message id used by both bridge and listen modes
 /// for SSH wire bytes. Sits above the kernel-canonical 0..0xFF range
@@ -95,4 +95,4 @@ struct ListenOptions {
 /// startup failure.
 [[nodiscard]] int run_listen(const ListenOptions& opts);
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

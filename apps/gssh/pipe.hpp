@@ -1,4 +1,4 @@
-/// @file   apps/goodnet-ssh/pipe.hpp
+/// @file   apps/gssh/pipe.hpp
 /// @brief  Thin helpers for byte-level forwarding between an OS fd
 ///         and a kernel connection.
 ///
@@ -17,7 +17,7 @@
 #include <cstdint>
 #include <span>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 /// Read buffer size. 16 KiB matches the kernel's framing ceiling for
 /// a single AEAD record and is large enough that openssh's typical
@@ -42,4 +42,4 @@ inline constexpr std::size_t kPipeBufferBytes = std::size_t{16} * 1024;
 /// genuine backpressure from the SSH transport.
 [[nodiscard]] int write_all(int fd, std::span<const std::uint8_t> bytes);
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

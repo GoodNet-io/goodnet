@@ -1,7 +1,7 @@
-/// @file   apps/goodnet-ssh/mode_wrap.cpp
+/// @file   apps/gssh/mode_wrap.cpp
 /// @brief  Mode 1 — user-facing wrapper that execs into openssh.
 ///
-/// `goodnet-ssh user@<peer-pk>` is the operator-friendly surface:
+/// `gssh user@<peer-pk>` is the operator-friendly surface:
 /// the operator runs it as if it were `ssh user@host`, and the
 /// wrapper rewires openssh's transport through the GoodNet kernel
 /// using openssh's `ProxyCommand` mechanism.
@@ -33,7 +33,7 @@
 #include <unistd.h>
 #include <vector>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 namespace {
 
@@ -48,7 +48,7 @@ namespace {
         // Fall back to argv[0]-style PATH search if /proc is missing
         // (containers without /proc, NetBSD, ...). The fallback is
         // good enough for non-Linux but never reached on Linux.
-        return std::string{"goodnet-ssh"};
+        return std::string{"gssh"};
     }
     return p.string();
 }
@@ -67,7 +67,7 @@ int run_wrap(std::string_view user_at_pk) {
     }
     if (pk.empty()) {
         (void)std::fputs(
-            "goodnet-ssh wrap: empty peer-pk in target\n", stderr);
+            "gssh wrap: empty peer-pk in target\n", stderr);
         return 2;
     }
 
@@ -123,14 +123,14 @@ int run_wrap(std::string_view user_at_pk) {
     // from PATH; surface a helpful hint instead of just `errno`.
     if (errno == ENOENT) {
         (void)std::fputs(
-            "goodnet-ssh wrap: 'ssh' not found in PATH "
+            "gssh wrap: 'ssh' not found in PATH "
             "(install openssh-client)\n", stderr);
     } else {
         (void)std::fprintf(stderr,
-            "goodnet-ssh wrap: execvp ssh failed: %s\n",
+            "gssh wrap: execvp ssh failed: %s\n",
             std::strerror(errno));
     }
     return 127;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh

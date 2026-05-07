@@ -1,4 +1,4 @@
-# goodnet-ssh — single binary, three operational modes (wrap / bridge /
+# gssh — single binary, three operational modes (wrap / bridge /
 # listen). Modeled on openssh's shared-source `ssh` + `sshd` split: one
 # tree, two utilities, separated by argv. The wrap mode is the
 # user-facing convenience that execs into openssh with a ProxyCommand
@@ -10,7 +10,7 @@
 # propagate into a binary that links against them, so this app stays
 # permissively licensed for downstream operators.
 
-add_executable(goodnet-ssh
+add_executable(gssh
     main.cpp
     mode_wrap.cpp
     mode_bridge.cpp
@@ -20,12 +20,12 @@ add_executable(goodnet-ssh
     pipe.cpp
 )
 
-target_include_directories(goodnet-ssh
+target_include_directories(gssh
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_compile_features(goodnet-ssh PRIVATE cxx_std_23)
+target_compile_features(gssh PRIVATE cxx_std_23)
 
 # Linkage:
 #   - `goodnet_kernel` carries the C ABI surface AND the kernel C++
@@ -39,7 +39,7 @@ target_compile_features(goodnet-ssh PRIVATE cxx_std_23)
 #   - `GoodNet::protocol_gnet` is the canonical mesh-framing layer;
 #     statically linked because every bridge mode invocation needs
 #     it before plugin loading runs.
-target_link_libraries(goodnet-ssh
+target_link_libraries(gssh
     PRIVATE
         goodnet_kernel
         GoodNet::cpp
@@ -47,17 +47,17 @@ target_link_libraries(goodnet-ssh
         nlohmann_json::nlohmann_json
 )
 
-target_compile_definitions(goodnet-ssh
+target_compile_definitions(gssh
     PRIVATE
         GOODNET_SSH_VERSION="0.1.0"
 )
 
-set_target_properties(goodnet-ssh PROPERTIES
+set_target_properties(gssh PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
-    OUTPUT_NAME "goodnet-ssh"
+    OUTPUT_NAME "gssh"
 )
 
-# Operator-visible binary lands at `<prefix>/bin/goodnet-ssh` so the
+# Operator-visible binary lands at `<prefix>/bin/gssh` so the
 # wrap mode's ProxyCommand re-execs into the same path it was
 # invoked with.
-install(TARGETS goodnet-ssh RUNTIME DESTINATION bin)
+install(TARGETS gssh RUNTIME DESTINATION bin)

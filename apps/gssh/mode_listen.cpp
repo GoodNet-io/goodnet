@@ -1,7 +1,7 @@
-/// @file   apps/goodnet-ssh/mode_listen.cpp
+/// @file   apps/gssh/mode_listen.cpp
 /// @brief  Mode 3 — server-side forwarder.
 ///
-/// `goodnet-ssh --listen` runs as a long-lived daemon: it brings up
+/// `gssh --listen` runs as a long-lived daemon: it brings up
 /// a kernel that listens on a GoodNet URI (default
 /// `tcp://0.0.0.0:9001`), waits for inbound peers to complete a
 /// Noise handshake, and on each inbound connection opens a local
@@ -67,7 +67,7 @@
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 
-namespace gn::apps::goodnet_ssh {
+namespace gn::apps::gssh {
 
 namespace {
 
@@ -263,7 +263,7 @@ gn_propagation_t listen_handle_message(void* self, const gn_message_t* env) {
                 ctx->target_host, ctx->target_port);
             if (!fresh->open()) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh listen: upstream %s:%u open failed: %s\n",
+                    "gssh listen: upstream %s:%u open failed: %s\n",
                     ctx->target_host.c_str(),
                     static_cast<unsigned>(ctx->target_port),
                     std::strerror(errno));
@@ -321,7 +321,7 @@ void on_listen_conn_event_destroy(void*) {
     auto paths = default_plugin_paths();
     if (paths.empty()) {
         (void)std::fputs(
-            "goodnet-ssh listen: no plugins discovered next to the "
+            "gssh listen: no plugins discovered next to the "
             "executable; daemon needs at least a link + security plugin\n",
             stderr);
         return GN_ERR_NOT_FOUND;
@@ -330,7 +330,7 @@ void on_listen_conn_event_destroy(void*) {
     const auto rc = mgr.load(std::span<const std::string>(paths), &diag);
     if (rc != GN_OK) {
         (void)std::fprintf(stderr,
-            "goodnet-ssh listen: plugin load failed — %s\n",
+            "gssh listen: plugin load failed — %s\n",
             diag.c_str());
     }
     return rc;
@@ -359,11 +359,11 @@ int run_listen(const ListenOptions& opts) {
         if (const auto rc = install_identity_on_kernel(kernel, identity_path, diag);
             rc != GN_OK) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: identity %s — %s\n",
+                "gssh listen: identity %s — %s\n",
                 identity_path.c_str(), diag.c_str());
             if (rc == GN_ERR_NOT_FOUND) {
                 (void)std::fprintf(stderr,
-                    "goodnet-ssh listen: run 'goodnet identity gen --out %s'\n",
+                    "gssh listen: run 'goodnet identity gen --out %s'\n",
                     identity_path.c_str());
             }
             return 1;
@@ -372,7 +372,7 @@ int run_listen(const ListenOptions& opts) {
 
     // 2. host_api host context for the listen-side handler.
     PluginContext host_ctx;
-    host_ctx.plugin_name = "goodnet-ssh-listen";
+    host_ctx.plugin_name = "gssh-listen";
     host_ctx.kernel      = &kernel;
     auto api             = build_host_api(host_ctx);
 
@@ -401,7 +401,7 @@ int run_listen(const ListenOptions& opts) {
                                  &on_listen_conn_event_destroy,
                                  &sub_id) != GN_OK) {
         (void)std::fputs(
-            "goodnet-ssh listen: subscribe_conn_state failed\n", stderr);
+            "gssh listen: subscribe_conn_state failed\n", stderr);
         return 1;
     }
 
@@ -419,7 +419,7 @@ int run_listen(const ListenOptions& opts) {
                                 &meta, &listen_handler_vtable(), &lctx,
                                 &handler_id) != GN_OK) {
             (void)std::fputs(
-                "goodnet-ssh listen: register_handler failed\n", stderr);
+                "gssh listen: register_handler failed\n", stderr);
             (void)api.unsubscribe(api.host_ctx, sub_id);
             return 1;
         }
@@ -434,7 +434,7 @@ int run_listen(const ListenOptions& opts) {
         const auto scheme_end = uri.find("://");
         if (scheme_end == std::string::npos) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: malformed listen URI '%s' "
+                "gssh listen: malformed listen URI '%s' "
                 "(missing scheme://)\n",
                 uri.c_str());
             (void)api.unregister_vtable(api.host_ctx, handler_id);
@@ -449,7 +449,7 @@ int run_listen(const ListenOptions& opts) {
                 ext_name, GN_EXT_LINK_VERSION, &raw) != GN_OK ||
             raw == nullptr) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: scheme '%s' has no registered "
+                "gssh listen: scheme '%s' has no registered "
                 "link extension (loaded plugins do not provide it)\n",
                 scheme.c_str());
             (void)api.unregister_vtable(api.host_ctx, handler_id);
@@ -459,7 +459,7 @@ int run_listen(const ListenOptions& opts) {
         const auto* link_api = static_cast<const gn_link_api_t*>(raw);
         if (link_api->listen == nullptr) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: link '%s' has no listen slot\n",
+                "gssh listen: link '%s' has no listen slot\n",
                 scheme.c_str());
             (void)api.unregister_vtable(api.host_ctx, handler_id);
             (void)api.unsubscribe(api.host_ctx, sub_id);
@@ -467,7 +467,7 @@ int run_listen(const ListenOptions& opts) {
         }
         if (link_api->listen(link_api->ctx, uri.c_str()) != GN_OK) {
             (void)std::fprintf(stderr,
-                "goodnet-ssh listen: listen on %s failed\n", uri.c_str());
+                "gssh listen: listen on %s failed\n", uri.c_str());
             (void)api.unregister_vtable(api.host_ctx, handler_id);
             (void)api.unsubscribe(api.host_ctx, sub_id);
             return 1;
@@ -481,7 +481,7 @@ int run_listen(const ListenOptions& opts) {
     (void)std::signal(SIGTERM, &listen_signal_handler);
 
     (void)std::fprintf(stderr,
-        "goodnet-ssh listen: ready on %s, forwarding to %s:%u\n",
+        "gssh listen: ready on %s, forwarding to %s:%u\n",
         opts.listen_uri.c_str(),
         opts.target_host.c_str(),
         static_cast<unsigned>(opts.target_port));
@@ -493,7 +493,7 @@ int run_listen(const ListenOptions& opts) {
     }
 
     (void)std::fprintf(stderr,
-        "goodnet-ssh listen: signal %d received, draining\n",
+        "gssh listen: signal %d received, draining\n",
         g_quit_signal.load(std::memory_order_acquire));
 
     // 10. Tear down: unregister the handler so no further dispatch
@@ -509,4 +509,4 @@ int run_listen(const ListenOptions& opts) {
     return 0;
 }
 
-}  // namespace gn::apps::goodnet_ssh
+}  // namespace gn::apps::gssh
