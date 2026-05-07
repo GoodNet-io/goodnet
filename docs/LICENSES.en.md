@@ -31,14 +31,15 @@ itself.
 ## Compatibility matrix
 
 Read this table top-down: the row is the project's licence, the
-column is the dependency licence; a tick means the row's licence can
-incorporate or link the column's licence statically.
+column is the dependency licence. `yes` means the row's licence
+can incorporate or link the column's licence statically; `no¹`
+points at the footnote explaining the exception.
 
-| ↓ uses → | GPL-2.0 + LE | MIT | BSD-2/3 | Boost 1.0 | ISC | Apache-2.0 | LGPL-2.1 | OpenSSL 3.x |
+| Project ↓ / Dep → | GPL-2.0 + LE | MIT | BSD-2/3 | Boost 1.0 | ISC | Apache-2.0 | LGPL-2.1 | OpenSSL 3.x |
 |---|---|---|---|---|---|---|---|---|
-| **GPL-2.0** | ✅ | ✅ | ✅ | ✅ | ✅ | ❌¹ | ✅ (link) | ❌¹ |
-| **MIT** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
-| **Apache-2.0** | ✅² | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (link) | ✅ |
+| **GPL-2.0** | yes | yes | yes | yes | yes | no¹ | yes (link) | no¹ |
+| **MIT** | yes | yes | yes | yes | yes | yes | yes | yes |
+| **Apache-2.0** | yes² | yes | yes | yes | yes | yes | yes (link) | yes |
 
 Notes:
 
@@ -57,14 +58,14 @@ Notes:
 
 | Library | Used by | Upstream licence | Bucket compat |
 |---|---|---|---|
-| libsodium | `plugins/security/noise/` | ISC | ✅ everywhere |
-| spdlog | `core/` | MIT | ✅ everywhere |
-| fmt | `core/` | MIT | ✅ everywhere |
-| nlohmann/json | `core/config/` | MIT | ✅ everywhere |
-| asio (standalone) | `core/`, link plugins | Boost 1.0 | ✅ everywhere |
-| OpenSSL 3.x | `plugins/links/tls/` | Apache-2.0 | ❌ on GPL-2 link → TLS plugin stays Apache-2.0 |
-| GoogleTest | `tests/` | BSD-3 | ✅ everywhere (test-only) |
-| RapidCheck | `tests/` | BSD-2 | ✅ everywhere (test-only) |
+| libsodium | `plugins/security/noise/` | ISC | compatible everywhere |
+| spdlog | `core/` | MIT | compatible everywhere |
+| fmt | `core/` | MIT | compatible everywhere |
+| nlohmann/json | `core/config/` | MIT | compatible everywhere |
+| asio (standalone) | `core/`, link plugins | Boost 1.0 | compatible everywhere |
+| OpenSSL 3.x | `plugins/links/tls/` | Apache-2.0 | incompatible on GPL-2 link — TLS plugin stays Apache-2.0 |
+| GoogleTest | `tests/` | BSD-3 | compatible everywhere (test-only) |
+| RapidCheck | `tests/` | BSD-2 | compatible everywhere (test-only) |
 
 ## Decision rules
 
