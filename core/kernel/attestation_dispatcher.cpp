@@ -58,6 +58,7 @@ void disconnect_on_consumer_failure(Kernel&          kernel,
     /// Snapshot first so the warn line and the DISCONNECTED event
     /// carry the same `(remote_pk, trust)` view of the registry.
     auto removed = kernel.connections().snapshot_and_erase(conn);
+    kernel.send_queues().erase(conn);
 
     /// Per `metrics.md` §3 every drop site bumps both the named
     /// counter and a structured log. Counter without log leaves

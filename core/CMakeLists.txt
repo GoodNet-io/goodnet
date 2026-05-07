@@ -17,6 +17,7 @@ set(_goodnet_kernel_sources
     registry/handler.cpp
     registry/security.cpp
     registry/link.cpp
+    registry/send_queue.cpp
     security/session.cpp
     security/inline_crypto.cpp
     kernel/router.cpp
