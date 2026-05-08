@@ -296,9 +296,9 @@ The per-package JSON is for downstream tooling:
 | `meta.timestamp` not ISO-8601 | tooling rejects with «invalid timestamp format» |
 
 Tooling MUST emit loud errors per the failure-mode table; silent
-skips are forbidden per the build infrastructure contract in
-`project_goodnet_subplan_infrastructure.md` anti-«тяп-ляп»
-discipline.
+skips are forbidden — a manifest defect that the build glosses
+over reaches operators as a runtime integrity-check failure with
+no diagnostic trail.
 
 ### 8.4 Out of scope for v1
 

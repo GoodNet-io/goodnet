@@ -53,9 +53,9 @@ policy сознательно.
 - Композится app'ом через `host_api->query_extension_checked`
 
 Kernel не знает что strategies существуют. Не выбирает между
-ними. Не координирует. Per
-[`feedback_goodnet_no_orchestrator`](../../README.md) — kernel
-agnostic, plugins сами координируются.
+ними. Не координирует. Это центральный инвариант ядра: kernel
+agnostic, plugins сами координируются (см.
+[plugin-model](plugin-model.ru.md)).
 
 ## Reserved категории
 

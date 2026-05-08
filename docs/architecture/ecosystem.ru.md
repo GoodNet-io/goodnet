@@ -237,8 +237,8 @@ binding checkout'а apps skip'аются — их CMakeLists guard'ятся
 
 Сейчас shipped: `cpp`. Roadmap: `rust`, `python`, `zig`, `go`.
 
-Конвенция repo naming: `bridges-<lang>` (без `goodnet-` префикса
-per [`feedback_goodnet_repo_naming`](../../README.md)).
+Конвенция repo naming: `bridges-<lang>` (без `goodnet-` префикса —
+org name уже `goodnet-io`, дублирование избыточно).
 
 ## Композиция узла оператором
 
@@ -318,9 +318,9 @@ Plugin author работает в plugin checkout: `nix run .#test` там
 прогоняет ТОЛЬКО plugin's own тесты + kernel-only subflake build —
 быстрая итерация.
 
-`feedback_no_test_filters` правило сюда применимо: всегда full
-run, никаких `ctest -E` / `--gtest_filter` exclude'ов. Тест либо
-есть и запускается, либо нет вообще.
+Базовое правило: всегда full run, никаких `ctest -E` /
+`--gtest_filter` exclude'ов. Тест либо есть и запускается, либо
+нет вообще — фильтр прячет регрессию, а не лечит её.
 
 ## Релизный паттерн
 

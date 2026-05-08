@@ -439,9 +439,8 @@ Quiescence-wait (`plugin-lifetime.md` §4) обеспечивает, что по
 - **Не владеет соединениями.** `gn_conn_id_t` приходит как аргумент;
   link их создаёт, ядро их закрывает.
 - **Не парсит wire-framing.** 2-byte BE length prefix per Noise §7
-  обрабатывает kernel-side `SecuritySession` (см.
-  `feedback_kernel_only_subflake_pivot` контекст про bench defect
-  fix); provider шифрует логический payload.
+  обрабатывает kernel-side `SecuritySession`; provider шифрует
+  логический payload.
 - **Не делает attestation сам.** Attestation flow — kernel-internal
   dispatcher на reserved msg_id `0x11` (см. handler-registration.md
   §2a). Provider только экспортирует `handshake_hash`.
