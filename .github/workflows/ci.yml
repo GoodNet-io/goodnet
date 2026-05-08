@@ -44,7 +44,7 @@ jobs:
         with:
           use-flakehub: false
       - name: AddressSanitizer + UBSan
-        run: nix run .#test-asan -- --output-on-failure
+        run: nix run .#test -- asan --output-on-failure
 
   tsan:
     runs-on: ubuntu-latest
@@ -56,7 +56,7 @@ jobs:
         with:
           use-flakehub: false
       - name: ThreadSanitizer
-        run: nix run .#test-tsan -- --output-on-failure
+        run: nix run .#test -- tsan --output-on-failure
 
   clang-tidy:
     runs-on: ubuntu-latest
