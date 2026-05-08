@@ -21,8 +21,8 @@ This contract pins the structure and the validation rules.
 
 ## 2. The `gn_limits_t` struct
 
-Declared in `sdk/types.h` (additions in Phase 3). Fields, all unsigned
-integers in network byte order on the C ABI:
+Declared in `sdk/types.h`. Fields, all unsigned integers in
+network byte order on the C ABI:
 
 | Field | Width | Default | Purpose |
 |---|---|---|---|
@@ -128,10 +128,10 @@ on limit exceeded:
     return GN_ERR_PAYLOAD_TOO_LARGE | GN_ERR_LIMIT_REACHED | …
 ```
 
-Drop reasons live in the `gn_drop_reason_t` enum (`sdk/types.h` Phase 3),
-with one metric counter per value. Operators reading `/metrics` see
-the per-reason breakdown — limit drops do not blend into a generic
-`errors_total` bucket.
+Drop reasons live in the `gn_drop_reason_t` enum (`sdk/types.h`),
+with one metric counter per value. Operators reading `/metrics`
+see the per-reason breakdown — limit drops do not blend into a
+generic `errors_total` bucket.
 
 Silent `break` or `continue` on limit violation is a code-review
 failure pre-RC.

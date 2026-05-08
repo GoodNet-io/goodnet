@@ -70,7 +70,7 @@ are forbidden.
 | `gn_plugin_unregister(self)` | 8 | undo every registration done in phase 5 |
 | `gn_plugin_shutdown(self)` | 9 | release internal state; **must not** call `host_api` after return |
 
-Full signatures live in `sdk/plugin.h` (Phase 3). Plugins written in any
+Full signatures live in `sdk/plugin.h`. Plugins written in any
 FFI-capable language export these symbols with C linkage.
 
 ---

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** every plugin that exchanges capability state with a peer
             (heartbeat, discovery plugins, future companion handlers)
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-08
 **Stability:** v1.x; type registry grows append-only.
 
 ---

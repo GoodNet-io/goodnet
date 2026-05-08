@@ -241,8 +241,10 @@ unregister'ен раньше, чем ожидаемо. Plugin lifecycle issue:
 - если `bytes_buffered` колеблется вокруг high-watermark и не уходит
   ниже — bottleneck на удалённой стороне или в локальном link-плагине.
 
-CryptoPath не имеет своих counter'ов в v1; Phase 2-5 inline crypto
-работа отдельным sprint'ом.
+CryptoPath не имеет своих counter'ов в v1 — кернел-side
+encrypt/decrypt latency наблюдается через `perf record` /
+дашборд-side. Per-conn счётчиков bytes-encrypted / bytes-
+decrypted v1 не выставляет.
 
 ---
 

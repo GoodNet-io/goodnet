@@ -147,15 +147,18 @@ operator guide is [`docs/operator/deployment.en.md`](docs/operator/deployment.en
 
 ## Status
 
-**Pre-1.0 release candidate.** Wire format, public API, and
-plugin contracts are still moving. Do not pin against this tree
-for production yet. The first stable surface lands on
-`v1.0.0-rc1`. The branch model is `dev` for development, `main`
-for releases (between tags `main` is quiet).
+The tree carries release-candidate quality: every test green
+under Release, ASan, and TSan on the reference machine,
+contracts in `docs/contracts/` document the surface, and the
+operator binary boots end-to-end from a generated identity and
+a signed plugin manifest.
 
-Sanitizer matrix: 878/878 ctest green under Release, ASan, TSan
-on the reference machine. Memory hygiene: zero unsuppressed
-leaks under valgrind on the integration suite.
+Wire format, public C ABI, and plugin contracts are RC-frozen —
+each release-candidate iteration may break one of them in
+response to integration findings; the surface stabilises at the
+first plain `v1.0.0` tag without an `-rcN` suffix. The branch
+model is `dev` for development, `main` for releases (between
+tags `main` is quiet).
 
 ## Documentation
 
@@ -189,12 +192,13 @@ in 1991: GPL on the kernel keeps the substrate open, the linking
 exception keeps applications free. See [`LICENSE`](LICENSE) and
 each plugin's `LICENSE` file.
 
-## Out of scope (today)
+## Not on this tree yet
 
-- Pre-built release binaries — none until `v1.0.0-rc1`.
-- API stability — none until `v1.0.0-rc1`.
-- Per-plugin GitHub repositories — bundled plugins ship in-tree
-  for now; the org repos at `goodnet-io/<kind>-<name>` come
-  online after `rc1`.
-- A registered domain — none, at the moment. Documentation
-  references the GitHub org directly.
+- Pre-built release binaries. Build from source through Nix or
+  the standard CMake path above.
+- Per-plugin GitHub repositories. The bundled plugins live
+  in-tree under `plugins/`; the org repos at
+  `goodnet-io/<kind>-<name>` come online when each plugin
+  extracts.
+- A registered domain. Documentation references the GitHub
+  organisation directly.
