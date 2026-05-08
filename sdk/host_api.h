@@ -23,6 +23,7 @@
 #include <sdk/conn_events.h>
 #include <sdk/types.h>
 #include <sdk/handler.h>
+#include <sdk/identity.h>
 #include <sdk/limits.h>
 #include <sdk/endpoint.h>
 #include <sdk/log.h>
@@ -552,6 +553,53 @@ typedef struct host_api_s {
      * after `gn_plugin_shutdown` returns is undefined.
      */
     int32_t (*is_shutdown_requested)(void* host_ctx);
+
+    /* ── Identity primitives (identity.en.md §5) ─────────────────────────
+     *
+     * The kernel holds private bytes for every key the local node
+     * uses; plugins drive registration, listing, deletion, and
+     * signing through opaque handles. A plugin never sees a
+     * private-key byte. See `sdk/identity.h` for the purpose enum
+     * and key descriptor type.
+     *
+     * `register_local_key` mints a fresh Ed25519 keypair under the
+     * given purpose and returns the kernel-allocated id; on
+     * success the public key is exposed through `list_local_keys`.
+     *
+     * `delete_local_key` removes the entry, zeroising the private
+     * bytes through the kernel's destructor; subsequent
+     * `sign_local_by_id` returns `GN_ERR_NOT_FOUND`.
+     *
+     * `list_local_keys` snapshots the current set into a
+     * caller-provided buffer; `*out_count` reports the total so
+     * truncation can be detected.
+     *
+     * `sign_local` signs `payload` with the first key matching
+     * `purpose` (built-in or registered). For deterministic key
+     * selection callers use `sign_local_by_id`.
+     */
+    gn_result_t (*register_local_key)(void* host_ctx,
+                                       gn_key_purpose_t purpose,
+                                       const char* label,
+                                       gn_key_id_t* out_id);
+
+    gn_result_t (*delete_local_key)(void* host_ctx,
+                                     gn_key_id_t id);
+
+    gn_result_t (*list_local_keys)(void* host_ctx,
+                                    gn_key_descriptor_t* out_array,
+                                    size_t array_cap,
+                                    size_t* out_count);
+
+    gn_result_t (*sign_local)(void* host_ctx,
+                               gn_key_purpose_t purpose,
+                               const uint8_t* payload, size_t size,
+                               uint8_t out_sig[64]);
+
+    gn_result_t (*sign_local_by_id)(void* host_ctx,
+                                     gn_key_id_t id,
+                                     const uint8_t* payload, size_t size,
+                                     uint8_t out_sig[64]);
 
     /* ── Reserved for future extension ───────────────────────────────────
      *

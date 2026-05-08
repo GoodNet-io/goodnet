@@ -6,10 +6,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 
+#include <core/identity/node_identity.hpp>
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/identity.h>
 
 #include "connection_context.hpp"
 #include "kernel.hpp"
@@ -893,6 +896,131 @@ std::uint64_t thunk_iterate_counters(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return 0;
     return pc->kernel->metrics().iterate(visitor, user_data);
+}
+
+/* ── Identity primitives ───────────────────────────────────────────── */
+
+gn_result_t thunk_register_local_key(void* host_ctx,
+                                      gn_key_purpose_t purpose,
+                                      const char* label,
+                                      gn_key_id_t* out_id) {
+    if (!host_ctx || !out_id) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+    *out_id = GN_INVALID_KEY_ID;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) return GN_ERR_INVALID_STATE;
+
+    auto cloned = current->clone();
+    if (!cloned) return cloned.error().code;
+
+    auto kp = identity::KeyPair::generate();
+    if (!kp) return kp.error().code;
+
+    const std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
+    const std::string_view label_sv = (label != nullptr) ? label : "";
+    const auto id = cloned->sub_keys().insert(purpose, std::move(*kp),
+                                               label_sv, now);
+    *out_id = id;
+
+    pc->kernel->set_node_identity(std::move(*cloned));
+    return GN_OK;
+}
+
+gn_result_t thunk_delete_local_key(void* host_ctx, gn_key_id_t id) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (id == GN_INVALID_KEY_ID) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) return GN_ERR_INVALID_STATE;
+
+    auto cloned = current->clone();
+    if (!cloned) return cloned.error().code;
+
+    if (!cloned->sub_keys().erase(id)) return GN_ERR_NOT_FOUND;
+    pc->kernel->set_node_identity(std::move(*cloned));
+    return GN_OK;
+}
+
+gn_result_t thunk_list_local_keys(void* host_ctx,
+                                   gn_key_descriptor_t* out_array,
+                                   std::size_t array_cap,
+                                   std::size_t* out_count) {
+    if (!host_ctx || !out_count) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) {
+        *out_count = 0;
+        return GN_ERR_INVALID_STATE;
+    }
+    current->sub_keys().snapshot(out_array, array_cap, out_count);
+    return GN_OK;
+}
+
+gn_result_t thunk_sign_local(void* host_ctx,
+                              gn_key_purpose_t purpose,
+                              const std::uint8_t* payload,
+                              std::size_t size,
+                              std::uint8_t out_sig[64]) {
+    if (!host_ctx || !out_sig) return GN_ERR_NULL_ARG;
+    if (!payload && size > 0) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) return GN_ERR_INVALID_STATE;
+
+    /// Built-in keys answer first: user_pk for ASSERT /
+    /// ROTATION_SIGN, device_pk for AUTH / KEY_AGREEMENT. Other
+    /// purposes route through the sub-key registry.
+    const identity::KeyPair* kp = nullptr;
+    switch (purpose) {
+    case GN_KEY_PURPOSE_ASSERT:
+    case GN_KEY_PURPOSE_ROTATION_SIGN:
+        kp = &current->user();
+        break;
+    case GN_KEY_PURPOSE_AUTH:
+    case GN_KEY_PURPOSE_KEY_AGREEMENT:
+        kp = &current->device();
+        break;
+    default:
+        kp = current->sub_keys().find_first_of_purpose(purpose);
+        break;
+    }
+    if (!kp) return GN_ERR_NOT_FOUND;
+
+    auto sig = kp->sign(std::span<const std::uint8_t>(payload, size));
+    if (!sig) return sig.error().code;
+    std::memcpy(out_sig, sig->data(), 64);
+    return GN_OK;
+}
+
+gn_result_t thunk_sign_local_by_id(void* host_ctx,
+                                    gn_key_id_t id,
+                                    const std::uint8_t* payload,
+                                    std::size_t size,
+                                    std::uint8_t out_sig[64]) {
+    if (!host_ctx || !out_sig) return GN_ERR_NULL_ARG;
+    if (id == GN_INVALID_KEY_ID) return GN_ERR_NULL_ARG;
+    if (!payload && size > 0) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) return GN_ERR_INVALID_STATE;
+
+    const auto* kp = current->sub_keys().find_by_id(id);
+    if (!kp) return GN_ERR_NOT_FOUND;
+
+    auto sig = kp->sign(std::span<const std::uint8_t>(payload, size));
+    if (!sig) return sig.error().code;
+    std::memcpy(out_sig, sig->data(), 64);
+    return GN_OK;
 }
 
 gn_result_t thunk_unsubscribe(void* host_ctx,
@@ -2026,6 +2154,12 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.emit_counter            = &thunk_emit_counter;
     a.iterate_counters        = &thunk_iterate_counters;
+
+    a.register_local_key      = &thunk_register_local_key;
+    a.delete_local_key        = &thunk_delete_local_key;
+    a.list_local_keys         = &thunk_list_local_keys;
+    a.sign_local              = &thunk_sign_local;
+    a.sign_local_by_id        = &thunk_sign_local_by_id;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

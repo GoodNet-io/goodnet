@@ -54,6 +54,18 @@ void KeyPair::wipe() noexcept {
     present_ = false;
 }
 
+::gn::Result<KeyPair> KeyPair::clone() const {
+    if (!present_) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_INVALID_STATE, "clone: keypair not initialised"});
+    }
+    /// Re-seed from the stored seed prefix. Produces an
+    /// independently-owned KeyPair instance whose destructor
+    /// wipes its own secret.
+    return from_seed(std::span<const std::uint8_t, kEd25519SeedBytes>(
+        sk_.data(), kEd25519SeedBytes));
+}
+
 ::gn::Result<KeyPair> KeyPair::generate() {
     ensure_sodium_initialised();
     KeyPair kp;

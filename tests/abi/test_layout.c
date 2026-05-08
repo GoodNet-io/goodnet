@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 392,
-               "host_api_t size pinned at 392");
+_Static_assert(sizeof(host_api_t) == 432,
+               "host_api_t size pinned at 432");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -202,8 +202,18 @@ _Static_assert(offsetof(host_api_t, iterate_counters) == 312,
                "host_api_t::iterate_counters offset pinned at 312");
 _Static_assert(offsetof(host_api_t, is_shutdown_requested) == 320,
                "host_api_t::is_shutdown_requested offset pinned at 320");
-_Static_assert(offsetof(host_api_t, _reserved) == 328,
-               "host_api_t::_reserved offset pinned at 328");
+_Static_assert(offsetof(host_api_t, register_local_key) == 328,
+               "host_api_t::register_local_key offset pinned at 328");
+_Static_assert(offsetof(host_api_t, delete_local_key) == 336,
+               "host_api_t::delete_local_key offset pinned at 336");
+_Static_assert(offsetof(host_api_t, list_local_keys) == 344,
+               "host_api_t::list_local_keys offset pinned at 344");
+_Static_assert(offsetof(host_api_t, sign_local) == 352,
+               "host_api_t::sign_local offset pinned at 352");
+_Static_assert(offsetof(host_api_t, sign_local_by_id) == 360,
+               "host_api_t::sign_local_by_id offset pinned at 360");
+_Static_assert(offsetof(host_api_t, _reserved) == 368,
+               "host_api_t::_reserved offset pinned at 368");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 

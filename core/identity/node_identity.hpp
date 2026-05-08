@@ -1,10 +1,12 @@
 /// @file   core/identity/node_identity.hpp
 /// @brief  Aggregated node identity — user keypair, device keypair,
-///         attestation, and the derived mesh address.
+///         attestation, derived mesh address, sub-key registry,
+///         rotation counter + history.
 ///
-/// One NodeIdentity per running kernel for the single-tenant case;
-/// future multi-device deployments compose several device-side
-/// NodeIdentity instances under one persistent UserKeyPair.
+/// One NodeIdentity per running kernel (single-tenant). Multi-device
+/// deployments compose several NodeIdentity instances under one
+/// persistent user keypair; rotation propagates through
+/// `core/identity/rotation.{hpp,cpp}`.
 
 #pragma once
 
@@ -12,17 +14,26 @@
 #include <cstdint>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "attestation.hpp"
 #include "derive.hpp"
 #include "keypair.hpp"
+#include "sub_key_registry.hpp"
 
 namespace gn::core::identity {
 
-/// On-disk identity file size. Format pinned in `node_identity.cpp`:
-/// 4-byte magic + 1-byte version + 8-byte expiry_be64 +
-/// 32-byte user seed + 32-byte device seed = 77 bytes.
-inline constexpr std::size_t kIdentityFileBytes = 77;
+/// One past-rotation entry recorded by the kernel for retroactive
+/// signature verification of historical proofs. Rotation logic
+/// (`core/identity/rotation.{hpp,cpp}`) populates this vector
+/// when the kernel either announces or applies a rotation.
+struct RotationEntry {
+    ::gn::PublicKey                 prev_user_pk;
+    ::gn::PublicKey                 next_user_pk;
+    std::uint64_t                   counter;
+    std::int64_t                    valid_from_unix_ts;
+    std::array<std::uint8_t, 64>    sig_by_prev;
+};
 
 class NodeIdentity {
 public:
@@ -35,7 +46,8 @@ public:
 
     /// Generate a fresh identity: random user keypair, random device
     /// keypair, attestation valid until @p expiry_unix_ts, derived
-    /// address bound to the pair.
+    /// address bound to the device keypair only (per
+    /// `docs/contracts/identity.en.md` §3 decouple).
     [[nodiscard]] static ::gn::Result<NodeIdentity>
     generate(std::int64_t expiry_unix_ts);
 
@@ -50,32 +62,61 @@ public:
     [[nodiscard]] const Attestation&        attestation() const noexcept { return att_; }
     [[nodiscard]] const ::gn::PublicKey&    address()     const noexcept { return address_; }
 
-    /// Persist this identity to @p path. Writes a 77-byte binary
-    /// blob at file mode `0600` so a casual `cat` of the directory
-    /// does not leak secret material to peers on the host. Format:
-    /// magic + version + expiry + (user, device) seeds; the
-    /// attestation signature and the derived address are reproduced
-    /// deterministically on `load_from_file`. Failure modes:
+    [[nodiscard]] SubKeyRegistry&           sub_keys()       noexcept { return sub_keys_; }
+    [[nodiscard]] const SubKeyRegistry&     sub_keys() const noexcept { return sub_keys_; }
+
+    [[nodiscard]] std::uint64_t rotation_counter() const noexcept {
+        return rotation_counter_;
+    }
+    [[nodiscard]] const std::vector<RotationEntry>&
+    rotation_history() const noexcept { return rotation_history_; }
+
+    /// Bump the rotation counter (Phase 5 calls this when announcing
+    /// or applying a rotation). Returns the new value.
+    std::uint64_t bump_rotation_counter() noexcept {
+        return ++rotation_counter_;
+    }
+
+    /// Append a rotation entry to the kernel-side history.
+    /// Rotation logic calls this after persisting the new
+    /// `user_` keypair.
+    void push_rotation_history(RotationEntry entry) {
+        rotation_history_.push_back(entry);
+    }
+
+    /// Persist this identity to @p path at file mode `0600`.
+    /// Format: 4-byte magic `"GNID"` + 1-byte version + 1-byte
+    /// flags + 8-byte expiry + user_seed + device_seed +
+    /// rotation_counter + sub-key entries + rotation history.
+    /// Failure modes:
     /// - `GN_ERR_INVALID_STATE` if the keypairs were wiped.
     /// - `GN_ERR_NULL_ARG` on empty @p path.
     /// - `GN_ERR_OUT_OF_MEMORY` on filesystem write failure.
     [[nodiscard]] static ::gn::Result<void>
     save_to_file(const NodeIdentity& self, const std::string& path);
 
-    /// Inverse of `save_to_file`. Reconstructs the full identity from
-    /// the saved seeds, re-derives the attestation and address, and
-    /// returns the assembled instance. Verifies the magic + version
-    /// prefix and the attestation's own signature before returning;
-    /// a tampered file fails with `GN_ERR_INTEGRITY_FAILED` rather
-    /// than silently producing garbage keys.
+    /// Inverse of `save_to_file`. Verifies the magic + version
+    /// prefix and the attestation's own signature; a tampered
+    /// file fails with `GN_ERR_INTEGRITY_FAILED`.
     [[nodiscard]] static ::gn::Result<NodeIdentity>
     load_from_file(const std::string& path);
 
+    /// Deep-clone this identity. Used by host_api thunks that
+    /// mutate identity state (`register_local_key`,
+    /// `delete_local_key`, rotation): callers clone the current
+    /// instance, mutate the clone, then swap it in via
+    /// `Kernel::set_node_identity`. Concurrent readers of the
+    /// prior instance keep a valid `shared_ptr<const>` snapshot.
+    [[nodiscard]] ::gn::Result<NodeIdentity> clone() const;
+
 private:
-    KeyPair         user_;
-    KeyPair         device_;
-    Attestation     att_{};
-    ::gn::PublicKey address_{};
+    KeyPair                     user_;
+    KeyPair                     device_;
+    Attestation                 att_{};
+    ::gn::PublicKey             address_{};
+    SubKeyRegistry              sub_keys_;
+    std::uint64_t               rotation_counter_ = 0;
+    std::vector<RotationEntry>  rotation_history_;
 };
 
 } // namespace gn::core::identity
