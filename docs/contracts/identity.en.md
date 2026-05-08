@@ -2,9 +2,10 @@
 
 **Status:** active · v1
 **Owner:** `core/identity/`
-**Stability:** stable for v1.x; the wire form of an attestation
-is part of the v1 mesh-address scheme and bumps the
-`kAddressDeriveSalt` constant on any breaking change.
+**Last verified:** 2026-05-08
+**Stability:** stable for v1.x. Mesh-address derivation, attestation
+wire form, sub-key registry layout, and rotation-proof wire form
+are all locked at the rc1 surface.
 
 ---
 
@@ -166,45 +167,169 @@ bridge is bound to.
 
 ## 6a. Identity rotation surface
 
-The kernel's local identity is mutable through one entry point:
-`Kernel::set_node_identity(NodeIdentity)`. The setter installs
-the new identity through an atomic `shared_ptr` swap on the
-`node_identity_` slot; concurrent readers either see the prior
-or the new value, never a half-written state. v1 exposes this
-operation **only on the C++ kernel surface** — the embedding
-application (process owner, daemon binary, test harness) calls
-it directly and is responsible for any policy that gates the
-rotation.
+The kernel exposes user-key rotation through two paths:
 
-The C ABI `host_api_t` does **not** carry a rotation slot. Plugin
-authors cannot rotate the local identity. The exclusion is
-intentional and load-bearing:
+1. **Embedding-side `Kernel::set_node_identity(NodeIdentity)`** — the
+   process owner replaces the entire identity object atomically
+   through a `shared_ptr` swap on the `node_identity_` slot. Used
+   by the operator binary at startup and by recovery flows that
+   load a fresh identity from disk.
+2. **Plugin-side `host_api->announce_rotation(valid_from)`** — a
+   plugin (or app talking through the C ABI) rotates the
+   user_pk while keeping the device_pk untouched. The kernel
+   signs a `RotationProof`, persists the new identity, and pushes
+   the proof on every live conn at trust >= Peer under msg_id
+   `0x12`. Receivers verify and advance their pinned `user_pk`
+   without disconnecting; full protocol in §10.
 
-- Identity rotation is a privileged operation. A handler plugin
-  flipping the local identity mid-flight would change the
-  `sender_pk` on every outgoing envelope — peers that pinned
-  trust against the prior key see traffic from a stranger.
-- The rotation surface needs to coordinate with attestation,
-  trust upgrade, and on-disk persistence (when the embedding
-  application stores the device seed). Those concerns belong
-  to the embedding code, not to a plugin.
-
-In-flight effects after a rotation:
+In-flight effects after a `host_api->announce_rotation`:
 
 | Surface | Effect |
 |---|---|
-| New connections | open with the new device key; address derived per §3 |
+| Live transport connections | survive — device-derived mesh address (§3 decouple) does not move |
+| `peer_pin_map[remote_pk].user_pk` on peers | advances atomically through `apply_rotation` after proof verifies |
+| `GN_CONN_EVENT_IDENTITY_ROTATED` on each conn | fired so apps update connectivity-graph edges |
+| Plugin-visible `gn_ctx_local_pk` (mesh address) | unchanged |
+| Built-in user_pk-purpose signing (`sign_local(ASSERT)` etc) | uses the new key |
+| `rotation_history_` on local identity | gains the just-signed entry |
+
+Effects after `Kernel::set_node_identity`:
+
+| Surface | Effect |
+|---|---|
+| New connections | open with the swapped device key; mesh address derived per §3 |
 | Existing transport-phase connections | retain the keys they negotiated under the prior identity; the kernel does not interrupt them |
 | Pending handshakes | sample `node_identity()` at handshake start; whichever value the atomic load returned wins for that session |
 | Plugin-visible `gn_ctx_local_pk` | tracks the kernel's current identity at the time the dispatch context was built |
 
-A future v1.x may extend the host API with a privileged
-rotation helper for embedding code that runs the kernel in a
-sandbox; v1 keeps the surface narrow.
+---
+
+## 7. Sub-key registry
+
+Beyond the built-in `(user_pk, device_pk)` pair, NodeIdentity
+holds a per-purpose registry of additional Ed25519 keypairs.
+Plugins drive registration and signing through host_api slots
+(§8); private bytes never leave the kernel.
+
+`gn_key_purpose_t` (`sdk/identity.h`):
+
+| Value | Symbol | Default mapping |
+|---|---|---|
+| 1 | `AUTH` | device_pk (handshake) |
+| 2 | `ASSERT` | user_pk (sign claims about self) |
+| 3 | `KEY_AGREEMENT` | device_pk (X25519 ECDH) |
+| 4 | `CAPABILITY_INVOKE` | sub-key — sign RPC requests |
+| 5 | `ROTATION_SIGN` | user_pk (sign next-pk in chain) |
+| 6 | `SECOND_FACTOR` | sub-key — user-level 2FA |
+| 7 | `RECOVERY` | sub-key — offline backup |
+
+Multiple sub-keys per purpose are allowed; `sign_local(purpose)`
+picks the first registered match. `sign_local_by_id(id)` is the
+explicit selector.
+
+The on-disk identity file (4-byte `"GNID"` magic + version 1
++ flags + expiry + user_seed + device_seed) carries the sub-key
+seeds, the rotation counter, and the rotation history. File is
+`0600` and reproduces deterministically from the seed bytes.
 
 ---
 
-## 7. Cross-references
+## 8. Plugin-visible host_api surface
+
+Identity-bearing slots in `host_api_t`:
+
+| Slot | Purpose |
+|---|---|
+| `register_local_key(purpose, label, &id)` | mint sub-key |
+| `delete_local_key(id)` | remove sub-key, zeroise |
+| `list_local_keys(out_array, cap, &count)` | enumerate descriptors |
+| `sign_local(purpose, payload, sig)` | sign with first matching key |
+| `sign_local_by_id(id, payload, sig)` | sign with specific key |
+| `get_peer_user_pk(conn, out_pk)` | peer's pinned user_pk |
+| `get_peer_device_pk(conn, out_pk)` | peer's pinned device_pk |
+| `get_handshake_hash(conn, out)` | noise handshake hash |
+| `present_capability_blob(conn, blob, size, expires)` | ship cred |
+| `subscribe_capability_blob(cb, ud, ud_destroy, &id)` | receive |
+| `announce_rotation(valid_from)` | rotate user_pk |
+| `unsubscribe(id)` | remove subscription |
+
+Plugin **never** sees private bytes. `sign_local` performs the
+operation in the kernel and returns the 64-byte detached
+signature.
+
+---
+
+## 9. Reserved msg_id range
+
+The kernel reserves `0x10..0x1F` for identity-bearing transport
+under `core/kernel/system_handler_ids.hpp`:
+
+| Id | Use | Surface |
+|---|---|---|
+| `0x11` | Attestation (`attestation.en.md` §3) | hard-reserved (kernel-internal) |
+| `0x12` | Identity rotation announce (§7 above) | kernel-internal (intercepts) |
+| `0x13` | Capability blob | kernel-internal (intercepts + bus) |
+| `0x14` | User-level 2FA challenge | plugin-registerable |
+| `0x15` | User-level 2FA response | plugin-registerable |
+
+Plugins **cannot** synthesise any id in the range through the
+inject boundary (`is_identity_range_msg_id` rejects). Legitimate
+identity traffic flows through `host_api->send` (carrying the
+originating plugin's anchor) or the dedicated typed slots
+(`present_capability_blob`, `announce_rotation`).
+
+---
+
+## 10. Rotation continuity
+
+When a user-key rotation happens, every live transport survives
+because the mesh address is device-derived (§3 decouple). The
+proof's wire format is fixed at 150 bytes:
+
+```
+0   4   magic   = "GNRX"
+4   1   version = 0x01
+5   1   flags   = reserved 0
+6   32  new_user_pk
+38  32  prev_user_pk
+70  8   counter (BE64, monotonic per prev_user_pk — anti-replay)
+78  8   valid_from_unix_ts (BE64, signed)
+86  64  Ed25519 signature by prev_user_pk over SHA-256(0..85)
+```
+
+Sender flow (`announce_rotation` thunk):
+
+1. Mint a fresh user keypair.
+2. Bump local rotation counter.
+3. Sign the proof with the **old** user keypair.
+4. Persist the new identity (counter + history + sub-keys) to
+   the on-disk file via `NodeIdentity::save_to_file`.
+5. Send the proof on every conn at trust >= Peer under msg_id
+   `0x12`.
+
+Receiver flow (kernel-internal handler in `notify_inbound_bytes`):
+
+1. Look up the peer's pinned `user_pk` in
+   `peer_pin_map_[remote_pk]`.
+2. Call `verify_rotation(payload, expected_prev_user_pk)`. The
+   anti-confusion gate refuses proofs whose embedded
+   `prev_user_pk` does not match the expected pin.
+3. Call `ConnectionRegistry::apply_rotation(remote_pk,
+   new_user_pk, counter)`. The registry rejects with
+   `INVALID_ENVELOPE` when the counter does not strictly exceed
+   the stored value (replay defence). On success the pin
+   advances atomically.
+4. Fire `GN_CONN_EVENT_IDENTITY_ROTATED` on the conn-event
+   channel; the event borrows pointers to the prev / new
+   user_pk and the counter through `_reserved[0..2]`.
+
+App-level effect: subscribers update connectivity-graph edges
+keyed by user_pk without observing a transport disconnect. The
+device_pk and the live noise session keep running.
+
+---
+
+## 11. Cross-references
 
 - TrustClass policy that gates attestation use: `security-trust.md`.
 - Curve conversion (Ed25519 → X25519) for Noise DH: `plugins/security/noise/docs/handshake.md` §8.
