@@ -1386,8 +1386,13 @@ gn_result_t thunk_register_vtable(void* host_ctx,
     }
     case GN_REGISTER_LINK: {
         gn_link_id_t inner = GN_INVALID_ID;
+        const std::string_view declared_protocol_id =
+            meta->protocol_id != nullptr
+                ? std::string_view{meta->protocol_id}
+                : std::string_view{};
         const auto rc = pc->kernel->links().register_link(
             meta->name,
+            declared_protocol_id,
             static_cast<const gn_link_vtable_t*>(vtable),
             self, &inner, pc->plugin_anchor);
         if (rc != GN_OK) return rc;

@@ -20,6 +20,8 @@
 #include <sdk/link.h>
 #include <sdk/types.h>
 
+#include "protocol_layer.hpp"
+
 namespace gn::core {
 
 /// One row in the transport registry. Holds the plugin-supplied
@@ -28,6 +30,13 @@ namespace gn::core {
 struct LinkEntry {
     gn_link_id_t            id              = GN_INVALID_ID;
     std::string                  scheme;
+    /// Mesh-framing layer this link's connections route through.
+    /// Per `protocol-layer.md` §4 every link declares which layer
+    /// owns its byte stream; default is the kernel's canonical
+    /// `gnet-v1` (`kDefaultProtocolId`). The kernel stamps each
+    /// connection's `ConnectionRecord::protocol_id` from this
+    /// field at `notify_connect`.
+    std::string                  protocol_id;
     const gn_link_vtable_t* vtable          = nullptr;
     void*                        self            = nullptr;
 
@@ -46,8 +55,12 @@ public:
 
     /// Register a transport for @p scheme. Fails with
     /// `GN_ERR_LIMIT_REACHED` if the scheme is already taken.
+    /// @p protocol_id declares the mesh-framing layer this link's
+    /// connections route through; empty selects the default
+    /// `gnet-v1` per `kDefaultProtocolId`.
     /// @p lifetime_anchor mirrors `HandlerRegistry::register_handler`.
     [[nodiscard]] gn_result_t register_link(std::string_view scheme,
+                                                 std::string_view protocol_id,
                                                  const gn_link_vtable_t* vtable,
                                                  void* self,
                                                  gn_link_id_t* out_id,

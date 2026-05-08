@@ -37,7 +37,7 @@ const gn_link_vtable_t* make_dummy_vtable() {
 TEST(LinkRegistry_Args, RejectsEmptyScheme) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
-    EXPECT_EQ(r.register_link("",
+    EXPECT_EQ(r.register_link("", "",
                                     make_dummy_vtable(),
                                     nullptr, &id),
               GN_ERR_NULL_ARG);
@@ -48,13 +48,13 @@ TEST(LinkRegistry_Args, RejectsEmptyScheme) {
 TEST(LinkRegistry_Args, RejectsNullVtable) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
-    EXPECT_EQ(r.register_link("tcp", nullptr, nullptr, &id),
+    EXPECT_EQ(r.register_link("tcp", "", nullptr, nullptr, &id),
               GN_ERR_NULL_ARG);
 }
 
 TEST(LinkRegistry_Args, RejectsNullOutId) {
     LinkRegistry r;
-    EXPECT_EQ(r.register_link("tcp", make_dummy_vtable(),
+    EXPECT_EQ(r.register_link("tcp", "", make_dummy_vtable(),
                                     nullptr, nullptr),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(r.size(), 0u);
@@ -72,7 +72,7 @@ TEST(LinkRegistry_Register, RoundTripById) {
     LinkRegistry r;
     int dummy_self = 0;
     gn_link_id_t id = GN_INVALID_ID;
-    ASSERT_EQ(r.register_link("tcp",
+    ASSERT_EQ(r.register_link("tcp", "",
                                     make_dummy_vtable(),
                                     &dummy_self, &id),
               GN_OK);
@@ -92,7 +92,7 @@ TEST(LinkRegistry_Register, RoundTripById) {
 TEST(LinkRegistry_Register, RoundTripByScheme) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
-    ASSERT_EQ(r.register_link("udp",
+    ASSERT_EQ(r.register_link("udp", "",
                                     make_dummy_vtable(),
                                     nullptr, &id),
               GN_OK);
@@ -109,9 +109,9 @@ TEST(LinkRegistry_Register, DuplicateSchemeRejected) {
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
     int va = 0, vb = 0;
-    ASSERT_EQ(r.register_link("tcp", make_dummy_vtable(), &va, &id1),
+    ASSERT_EQ(r.register_link("tcp", "", make_dummy_vtable(), &va, &id1),
               GN_OK);
-    EXPECT_EQ(r.register_link("tcp", make_dummy_vtable(), &vb, &id2),
+    EXPECT_EQ(r.register_link("tcp", "", make_dummy_vtable(), &vb, &id2),
               GN_ERR_LIMIT_REACHED);
 
     /// Atomicity: id2 must remain unset and registry size unchanged.
@@ -130,9 +130,9 @@ TEST(LinkRegistry_Register, DistinctSchemesGetDistinctIds) {
     LinkRegistry r;
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
-    ASSERT_EQ(r.register_link("tcp", make_dummy_vtable(),
+    ASSERT_EQ(r.register_link("tcp", "", make_dummy_vtable(),
                                     nullptr, &id1), GN_OK);
-    ASSERT_EQ(r.register_link("udp", make_dummy_vtable(),
+    ASSERT_EQ(r.register_link("udp", "", make_dummy_vtable(),
                                     nullptr, &id2), GN_OK);
     EXPECT_NE(id1, id2);
     EXPECT_EQ(r.size(), 2u);
@@ -151,7 +151,7 @@ TEST(LinkRegistry_Find, MissReturnsNullopt) {
 TEST(LinkRegistry_Unregister, RemovesEntry) {
     LinkRegistry r;
     gn_link_id_t id = GN_INVALID_ID;
-    ASSERT_EQ(r.register_link("tcp", make_dummy_vtable(),
+    ASSERT_EQ(r.register_link("tcp", "", make_dummy_vtable(),
                                     nullptr, &id), GN_OK);
     ASSERT_EQ(r.unregister_link(id), GN_OK);
     EXPECT_EQ(r.size(), 0u);
@@ -170,10 +170,10 @@ TEST(LinkRegistry_Unregister, FreesSchemeForReuse) {
     LinkRegistry r;
     gn_link_id_t id1 = GN_INVALID_ID;
     gn_link_id_t id2 = GN_INVALID_ID;
-    ASSERT_EQ(r.register_link("tcp", make_dummy_vtable(),
+    ASSERT_EQ(r.register_link("tcp", "", make_dummy_vtable(),
                                     nullptr, &id1), GN_OK);
     ASSERT_EQ(r.unregister_link(id1), GN_OK);
-    EXPECT_EQ(r.register_link("tcp", make_dummy_vtable(),
+    EXPECT_EQ(r.register_link("tcp", "", make_dummy_vtable(),
                                     nullptr, &id2), GN_OK);
 }
 
@@ -197,7 +197,7 @@ TEST(LinkRegistry_Concurrency, FourThreadsRegisterUnregister) {
             std::string scheme =
                 "scheme-t" + std::to_string(tid) + "-" + std::to_string(i);
             gn_link_id_t id = GN_INVALID_ID;
-            if (r.register_link(scheme, make_dummy_vtable(),
+            if (r.register_link(scheme, "", make_dummy_vtable(),
                                       nullptr, &id) == GN_OK) {
                 ++reg_ok;
                 {
@@ -253,7 +253,7 @@ TEST(LinkRegistry_VtableApiSize, RejectsZeroApiSize) {
     LinkRegistry r;
     gn_link_vtable_t vt{};  /// api_size left at zero
     gn_link_id_t id = GN_INVALID_ID;
-    EXPECT_EQ(r.register_link("tcp", &vt, nullptr, &id),
+    EXPECT_EQ(r.register_link("tcp", "", &vt, nullptr, &id),
               GN_ERR_VERSION_MISMATCH);
     EXPECT_EQ(id, GN_INVALID_ID);
     EXPECT_EQ(r.size(), 0u);
@@ -267,7 +267,7 @@ TEST(LinkRegistry_VtableApiSize, RejectsTruncatedVtable) {
     vt.api_size = static_cast<std::uint32_t>(
         sizeof(gn_link_vtable_t) - 1);
     gn_link_id_t id = GN_INVALID_ID;
-    EXPECT_EQ(r.register_link("tcp", &vt, nullptr, &id),
+    EXPECT_EQ(r.register_link("tcp", "", &vt, nullptr, &id),
               GN_ERR_VERSION_MISMATCH);
     EXPECT_EQ(id, GN_INVALID_ID);
 }
@@ -277,7 +277,7 @@ TEST(LinkRegistry_VtableApiSize, AcceptsExactlyMinimumApiSize) {
     gn_link_vtable_t vt{};
     vt.api_size = sizeof(gn_link_vtable_t);
     gn_link_id_t id = GN_INVALID_ID;
-    EXPECT_EQ(r.register_link("tcp", &vt, nullptr, &id), GN_OK);
+    EXPECT_EQ(r.register_link("tcp", "", &vt, nullptr, &id), GN_OK);
     EXPECT_NE(id, GN_INVALID_ID);
 }
 
