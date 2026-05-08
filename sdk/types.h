@@ -154,10 +154,10 @@ typedef enum gn_inject_layer_e {
  *
  * Per-kind expectations on `gn_register_meta_t`:
  *
- * | Kind                     | `name`                    | `msg_id` / `priority`                  | `vtable`                       | `self`                  |
- * |--------------------------|---------------------------|----------------------------------------|--------------------------------|-------------------------|
- * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | `gn_handler_vtable_t*`         | per-handler instance    |
- * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | `gn_link_vtable_t*`            | per-link instance       |
+ * | Kind                     | `name`                    | `msg_id` / `priority`                  | `protocol_id`                  | `vtable`                       | `self`                  |
+ * |--------------------------|---------------------------|----------------------------------------|--------------------------------|--------------------------------|-------------------------|
+ * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | ignored (zero it)              | `gn_handler_vtable_t*`         | per-handler instance    |
+ * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | declares protocol layer        | `gn_link_vtable_t*`            | per-link instance       |
  */
 typedef enum gn_register_kind_e {
     GN_REGISTER_HANDLER = 0,
@@ -186,6 +186,17 @@ typedef struct gn_register_meta_s {
     uint32_t      msg_id;          /**< HANDLER only; zero otherwise */
     uint8_t       priority;        /**< HANDLER only; zero otherwise */
     uint8_t       _pad[3];         /**< MUST be zero; see contract above */
+    /**
+     * LINK only: protocol layer this link's connections route through.
+     * @borrowed for the call. NULL or empty selects the kernel default
+     * (`gnet-v1`). HANDLER kind reads this slot as zero — the protocol
+     * scope of a handler is `name` (which IS the protocol_id by
+     * convention). Per `protocol-layer.md` §4 the kernel resolves the
+     * declared id against `ProtocolLayerRegistry` at first
+     * `notify_connect` for the link's scheme; an unregistered id
+     * surfaces as `GN_ERR_NOT_FOUND` at the connection site.
+     */
+    const char*   protocol_id;     /**< LINK only; @borrowed for the call */
     void*         _reserved[4];    /**< MUST be zero; see contract above */
 } gn_register_meta_t;
 
