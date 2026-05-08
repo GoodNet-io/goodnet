@@ -37,6 +37,7 @@ typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_TRUST_UPGRADED       = 3,
     GN_CONN_EVENT_BACKPRESSURE_SOFT    = 4,
     GN_CONN_EVENT_BACKPRESSURE_CLEAR   = 5,
+    GN_CONN_EVENT_IDENTITY_ROTATED     = 6,
 } gn_conn_event_kind_t;
 
 typedef struct gn_conn_event_s {
@@ -46,7 +47,7 @@ typedef struct gn_conn_event_s {
     gn_trust_class_t      trust;          /* current trust at the event */
     uint8_t               remote_pk[GN_PUBLIC_KEY_BYTES];
     uint64_t              pending_bytes;  /* used by BACKPRESSURE_* */
-    void*                 _reserved[4];
+    void*                 _reserved[4];   /* kind-specific payload */
 } gn_conn_event_t;
 ```
 
@@ -66,6 +67,26 @@ Semantics:
   not enforce.
 - `BACKPRESSURE_CLEAR` — fired when the queue drops below
   `pending_queue_bytes_low`.
+- `IDENTITY_ROTATED` — fired when a peer rotates its `user_pk`
+  (per `identity.md` §10 rotation continuity). The kernel
+  verifies the inbound `RotationProof` against the pinned
+  `user_pk`, advances `peer_pin_map[remote_pk].user_pk`
+  atomically, then fires this event on every conn to the same
+  peer. The transport does **not** disconnect; subscribers
+  update connectivity-graph edges keyed by `user_pk` while the
+  live noise session keeps running.
+
+  Payload pointers (borrowed for the call duration only):
+
+  | Slot | Type | Meaning |
+  |---|---|---|
+  | `_reserved[0]` | `const uint8_t*` (32 bytes) | previous `user_pk` |
+  | `_reserved[1]` | `const uint8_t*` (32 bytes) | new `user_pk` |
+  | `_reserved[2]` | `const uint64_t*`           | rotation counter |
+  | `_reserved[3]` | `NULL`                      | reserved |
+
+  Subscribers must not retain the pointers past the callback
+  return. Other event kinds leave the `_reserved` slot zero.
 
 The `BACKPRESSURE_*` event kinds are reserved at v1.0 but the
 producer ships in `backpressure.md`. Subscribers register a single

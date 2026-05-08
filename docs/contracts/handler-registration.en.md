@@ -111,31 +111,49 @@ this vtable as fixed-shape at v1; growth happens through
 
 ## 2a. Reserved msg_id values
 
-Some msg_ids are reserved for kernel-internal dispatch and may not
-be registered through this surface. `register_vtable(GN_REGISTER_HANDLER)` rejects
-registrations against these ids with `GN_ERR_INVALID_ENVELOPE`;
-the failed call has no effect on registry state.
+The range `0x10..0x1F` is reserved for identity-bearing transport.
+Two classes of reservation, both enforced through
+`core/kernel/system_handler_ids.hpp`:
+
+**Hard-reserved** — `register_vtable(GN_REGISTER_HANDLER)` rejects
+registrations with `GN_ERR_INVALID_ENVELOPE`; the kernel
+intercepts inbound envelopes ahead of the registry chain and
+routes them directly to the owning subsystem.
 
 | msg_id | Reserved for | Specification |
 |---|---|---|
 | `0x00` | unset sentinel | this section |
 | `0x11` | attestation dispatcher | `attestation.md` §3 |
+| `0x12` | identity rotation announce | `identity.md` §10 |
+| `0x13` | capability TLV transport | `identity.md` §9, `capability-tlv.md` |
+
+`0x12` and `0x13` ride alongside `0x11` because the kernel
+intercepts them in `notify_inbound_bytes`: the rotation handler
+verifies the proof against the pinned `user_pk` and advances the
+pin atomically; the capability blob handler fans the bytes to
+every subscriber registered via
+`host_api->subscribe_capability_blob`. Plugins that want to
+emit identity events use the typed slots
+(`announce_rotation`, `present_capability_blob`); they cannot
+bypass through the regular handler surface.
+
+**Plugin-reserved** — plugins may register handlers on these
+ids, but the inject boundary (`host_api->inject(LAYER_MESSAGE)`)
+rejects them with `GN_ERR_INVALID_ENVELOPE`. The asymmetry
+prevents a bridge-style inject from spoofing identity events on
+a connection the calling plugin does not own.
+
+| msg_id | Reserved for | Specification |
+|---|---|---|
+| `0x14` | user-level 2FA challenge | `identity.md` §6/§9 |
+| `0x15` | user-level 2FA response | `identity.md` §6/§9 |
 
 The kernel owns the reserved msg_id table; the canonical
 enumeration lives in `core/kernel/system_handler_ids.hpp` and
-the `is_reserved_system_msg_id()` helper enforces it across
-every registration entry. New reservations land both in that
-header and as a row above.
-
-Kernel-internal handlers do not use the registry described in this
-contract. Their dispatch path runs ahead of the registry chain
-lookup — the kernel intercepts envelopes carrying a reserved
-msg_id after the protocol layer's `deframe` step and routes them
-directly to the owning subsystem (`attestation.md` §3 specifies
-the interception point for `0x11`). A plugin handler accidentally
-chained against a reserved msg_id, were the registration not
-rejected at registration time, would never see traffic — the
-rejection here gives the plugin author a loud, immediate signal.
+the `is_reserved_system_msg_id()` /
+`is_identity_range_msg_id()` helpers enforce it across every
+registration and inject entry. New reservations land both in
+that header and as rows above.
 
 ---
 

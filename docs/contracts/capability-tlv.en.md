@@ -26,15 +26,41 @@ extensions are wire-additive, no version bump required.
 
 The blob is exchanged in-band over the secured GNET channel
 once the handshake completes — it rides as the payload of an
-application message, not a distinct frame format
-(`plugins/protocols/gnet/docs/wire-format.md` §6 notes the same intent). The kernel
-itself does not encode or decode the blob — plugins encode and
-decode it through the header-only `sdk/cpp/capability_tlv.hpp`
-and send / receive results through the regular `host_api->send`
-plus handler-vtable surface. Dedicated host_api slots for
-capability exchange are reserved in `host_api_t::_reserved[8]`
-for v1.1; until then traffic rides on a reserved application
-`msg_id`.
+application message under reserved msg_id `0x13`
+(`identity.md` §9). The kernel itself does not encode or decode
+the blob — plugins encode and decode it through the header-only
+`sdk/cpp/capability_tlv.hpp`. Two dedicated host_api slots front
+the transport:
+
+```c
+gn_result_t (*present_capability_blob)(void* host_ctx,
+                                        gn_conn_id_t conn,
+                                        const uint8_t* blob,
+                                        size_t size,
+                                        int64_t expires_unix_ts);
+
+gn_result_t (*subscribe_capability_blob)(void* host_ctx,
+                                          gn_capability_blob_cb_t cb,
+                                          void* user_data,
+                                          void (*ud_destroy)(void*),
+                                          gn_subscription_id_t* out_id);
+```
+
+Sender-side: `present_capability_blob` prefixes the user-supplied
+bytes with an 8-byte big-endian `expires_unix_ts` and ships the
+result through the regular send path (kernel queue + drain +
+AEAD). Hard cap on blob size:
+`gn_limits_t::max_capability_blob_bytes` (default 16 KiB; 0
+disables). A blob exceeding the cap returns
+`GN_ERR_PAYLOAD_TOO_LARGE` and bumps
+`drop.capability_blob_too_large`.
+
+Receiver-side: the kernel intercepts msg_id `0x13` in
+`notify_inbound_bytes`, parses the expiry prefix, and fans the
+remaining bytes out to every subscriber via
+`CapabilityBlobBus`. `ud_destroy(user_data)` runs once on
+`unsubscribe(id)` or kernel teardown so plugins do not leak
+their callback state.
 
 ---
 

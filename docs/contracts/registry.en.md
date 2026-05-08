@@ -322,13 +322,25 @@ through `pin_device_pk` after the attestation step (§8a).
 
 ---
 
-## 8a. Per-peer device-key pinning
+## 8a. Per-peer identity pinning
 
-The registry holds a separate `peer_pk → device_pk` map keyed on the
+The registry holds a separate `peer_pk → PeerPin` map keyed on the
 peer's mesh public key. The map outlives connection records: a
 connection close removes the per-conn record from all three indexes
 but leaves the pin entry untouched, so a peer that reconnects sees
 the same pin.
+
+`PeerPin` carries everything plugins need to reason about peer
+identity without re-fetching from the security session:
+
+```cpp
+struct PeerPin {
+    PublicKey                       device_pk;
+    PublicKey                       user_pk;
+    std::array<std::uint8_t, GN_HASH_BYTES> handshake_hash;
+    std::uint64_t                   rotation_counter;
+};
+```
 
 The attestation dispatcher writes the pin on the first successful
 attestation from a peer and consults it on every subsequent
@@ -338,14 +350,19 @@ identity-change attempt across sessions; the registry rejects the
 new pin with `GN_ERR_INVALID_ENVELOPE` and the dispatcher
 disconnects the connection with
 `GN_DROP_ATTESTATION_IDENTITY_CHANGE`. A second attestation
-carrying the same `device_pk` is idempotent success.
+carrying the same `device_pk` is idempotent success — the call
+also refreshes `user_pk` and `handshake_hash` to the latest
+attestation's view, so plugin-visible bytes track the live
+session.
 
-The map provides three operations:
+The map provides four operations:
 
 | Method | Effect |
 |---|---|
-| `pin_device_pk(peer_pk, device_pk)` | inserts the pin; returns `GN_OK` on first pin or matching repin, `GN_ERR_INVALID_ENVELOPE` on mismatch |
-| `get_pinned_device_pk(peer_pk)` | returns the pinned value or `nullopt` |
+| `pin_peer(peer_pk, device_pk, user_pk, handshake_hash)` | inserts the pin; returns `GN_OK` on first pin or matching repin (refreshing `user_pk` + `handshake_hash`), `GN_ERR_INVALID_ENVELOPE` on `device_pk` mismatch |
+| `get_pinned_peer(peer_pk)` | returns the full `PeerPin` snapshot or `nullopt` |
+| `get_pinned_device_pk(peer_pk)` | convenience slice — returns the device half or `nullopt` |
+| `apply_rotation(peer_pk, new_user_pk, new_counter)` | swaps the pinned `user_pk` to `new_user_pk` and bumps `rotation_counter` to `new_counter`. Rejects with `INVALID_ENVELOPE` when `new_counter` does not strictly exceed the stored value (anti-replay); `NOT_FOUND` if no pin exists. Used by the kernel's rotation handler after `verify_rotation` accepts a 150-byte `RotationProof` (see `identity.md` §10) |
 | `clear_pinned_device_pk(peer_pk)` | removes the pin (admin path; not a normal lifecycle event) |
 
 The pin is **per-peer**, not per-connection — a connection record
