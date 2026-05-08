@@ -3,15 +3,16 @@
 GoodNet is a small kernel surrounded by independent plugins. The
 kernel and the SDK live here; the bundled plugins live in this tree
 through the reshape window (see
-[`docs/contracts/abi-evolution.md`](docs/contracts/abi-evolution.md) §3b)
+[`docs/contracts/abi-evolution.en.md`](docs/contracts/abi-evolution.en.md) §3b)
 and may move to per-plugin repositories once the surface stabilises.
 
 ## Where contributions land
 
-- **Kernel and SDK changes** — pull request against `main` of this
+- **Kernel and SDK changes** — pull request against `dev` of this
   repository. Reviewed by the kernel maintainers; the C ABI is
   treated as a contract and every change goes through the audit
-  pass below.
+  pass below. `main` carries tagged releases only; merges into
+  `main` are reserved for release cuts.
 - **Bundled plugin changes** (`plugins/` tree) — same repository,
   same review process.
 - **Out-of-tree plugin changes** — those live in their own
@@ -37,13 +38,16 @@ lifts the shell automatically when the operator opts in.
 
 ## Branch model
 
-`main` is always green: every commit on `main` builds, passes the
-default test suite, ASan + UBSan, TSan, and strict clang-tidy.
+`dev` carries day-to-day work; every commit on `dev` builds, passes
+the default test suite, ASan + UBSan, TSan, and strict clang-tidy.
+`main` carries tagged releases only; between tags `main` is quiet
+and a merge from `dev` happens once per release cut.
+
 Feature work lives on `feat/<topic>` branches; fixes on
-`fix/<topic>`; documentation-only changes on `docs/<topic>`. Merges
-into `main` are non-fast-forward (`git merge --no-ff`) so the merge
-commit names the branch and the topic for `git log --first-parent`
-readers.
+`fix/<topic>`; documentation-only changes on `docs/<topic>`.
+Merges into `dev` are non-fast-forward (`git merge --no-ff`) so
+the merge commit names the branch and the topic for
+`git log --first-parent` readers.
 
 A branch carries **one logical change**. Two unrelated improvements
 land as two branches with two merges. The atomic discipline is the
@@ -91,17 +95,18 @@ The test layout:
 Sanitiser entrypoints — required green on every PR:
 
 ```bash
-nix run .#test-asan   # AddressSanitizer + UBSan
-nix run .#test-tsan   # ThreadSanitizer
+nix run .#test -- asan   # AddressSanitizer + UBSan
+nix run .#test -- tsan   # ThreadSanitizer
 ```
 
 ## Audit pass
 
-After a non-trivial merge a code-critic agent reads the diff against
-the parent and produces a structured report (CRIT / HIGH / MED /
-LOW per-file findings). CRIT and HIGH findings land as a follow-up
-branch in the same review cycle — they are not deferred to "later
-polish". The audit pass is a quality gate, not an autopsy.
+After a non-trivial merge a reviewer reads the diff against the
+parent and produces a structured report graded
+CRIT / HIGH / MED / LOW per file. CRIT and HIGH findings land as
+a follow-up branch in the same review cycle — they are not
+deferred to "later polish". The audit pass is a quality gate,
+not an autopsy.
 
 ## Contracts first
 
@@ -133,7 +138,7 @@ how it got there.
 ## Reshape window
 
 While the reshape window in
-[`docs/contracts/abi-evolution.md`](docs/contracts/abi-evolution.md) §3b
+[`docs/contracts/abi-evolution.en.md`](docs/contracts/abi-evolution.en.md) §3b
 is open, the C ABI in `sdk/host_api.h` permits removal, rename, and
 replacement of slots. The size-prefix gating in §3 stays useful as a
 forward-compatibility helper while shape settles. Once the window

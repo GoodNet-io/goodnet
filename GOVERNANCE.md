@@ -23,7 +23,7 @@ After `rc1` the kernel and SDK move to a small maintainer team
 (target: three to five). A maintainer is added by unanimous vote of
 the existing team after a sustained track record of merged
 contributions, contract authorship, and audit closures. Maintainers
-review pull requests against `main`; two approvals from
+review pull requests against `dev`; two approvals from
 non-author maintainers are required to merge a kernel change.
 
 ### Plugin authors
@@ -69,10 +69,11 @@ team makes informal consensus enough.
 
 ## Merge gates
 
-A change merges into `main` when:
+A change merges into `dev` when:
 
 1. `cmake --build build` is green on the default toolchain.
-2. `nix run .#test`, `.#test-asan`, `.#test-tsan` all green.
+2. `nix run .#test`, `nix run .#test -- asan`, and
+   `nix run .#test -- tsan` all green.
 3. Strict `clang-tidy` is green on touched files.
 4. The `CONTRIBUTING.md` commit format is followed.
 5. Contract changes ride together with the code that implements
@@ -97,8 +98,9 @@ commit.
 | `v2.0` | Breaking changes — wire-protocol revision, post-quantum, etc. |
 
 Rc1 is **not** a date-driven release; it lands when the public
-surface is complete and the contracts have settled. Wave D / E /
-F / G in `docs/ROADMAP.md` is the closure list.
+surface is complete and the contracts have settled. The closure
+list is the Reachability / Address routing / Persistence /
+Stable platform sections in [`docs/ROADMAP.en.md`](docs/ROADMAP.en.md).
 
 ## Plugin admission criteria
 
@@ -130,6 +132,6 @@ on a fork is not.
 ## Document amendments
 
 This governance document is amended by the same process as a
-contract: pull request, maintainer review, merge into `main`. A
+contract: pull request, maintainer review, merge into `dev`. A
 change to the BDFL clause itself requires the BDFL's explicit
 agreement (pre-rc1) or unanimous maintainer consent (post-rc1).

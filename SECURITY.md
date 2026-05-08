@@ -29,7 +29,7 @@ In scope:
 Out of scope:
 
 - Third-party plugins outside this repository — report to their
-  maintainers. The GoodNet kernel's plugin manifest (`plugin-manifest.md`)
+  maintainers. The GoodNet kernel's plugin manifest (`plugin-manifest.en.md`)
   pins SHA-256 hashes of every loaded `.so`; an unverified plugin cannot
   reach the kernel address space, so a third-party plugin's
   vulnerability is bounded by the operator's manifest.
@@ -37,17 +37,18 @@ Out of scope:
   production, exposing IPC sockets without filesystem ACLs, weak
   passphrases on operator-owned key files).
 - Side channels in plugin code that the kernel has no visibility into —
-  TLS server cert handling beneath Noise (`security-trust.md` §3 covers
-  the link-layer policy), application-level message contents.
+  TLS server cert handling beneath Noise (`security-trust.en.md` §3 covers
+  the link-layer policy in `docs/contracts/security-trust.en.md`),
+  application-level message contents.
 
 ## Threat model
 
-`docs/threat-model.md` is authoritative. Summary:
+[`docs/threat-model.en.md`](docs/threat-model.en.md) is authoritative. Summary:
 
 - The kernel **enforces** envelope authentication (Noise XX / IK
   handshake binds peer pk to connection), replay window per session,
   TrustClass policy (loopback / IntraNode / Untrusted / Peer per
-  `security-trust.md`), bridge identity binding (`attestation.md`).
+  `security-trust.en.md`), bridge identity binding (`attestation.en.md`).
 - The kernel **does not enforce** denial-of-service resistance against
   a peer-privileged attacker (the attacker can flood the link layer;
   per-source rate limits live in `host_api->inject` and the link
