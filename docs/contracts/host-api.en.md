@@ -229,6 +229,72 @@ typedef struct host_api_s {
     /* they drain ahead of the kernel's bounded wait.                  */
     int32_t (*is_shutdown_requested)(void* host_ctx);
 
+    /* ── Identity primitives (identity.md §8) ──────────────────────── */
+    /* The kernel holds private bytes for every key the local node    */
+    /* uses; plugins drive registration, listing, deletion, and       */
+    /* signing through opaque handles. A plugin never sees a          */
+    /* private-key byte. `gn_key_purpose_t` and `gn_key_descriptor_t` */
+    /* live in `sdk/identity.h`.                                       */
+    gn_result_t (*register_local_key)(void* host_ctx,
+                                       gn_key_purpose_t purpose,
+                                       const char* label,
+                                       gn_key_id_t* out_id);
+    gn_result_t (*delete_local_key)(void* host_ctx, gn_key_id_t id);
+    gn_result_t (*list_local_keys)(void* host_ctx,
+                                    gn_key_descriptor_t* out_array,
+                                    size_t array_cap,
+                                    size_t* out_count);
+    gn_result_t (*sign_local)(void* host_ctx,
+                               gn_key_purpose_t purpose,
+                               const uint8_t* payload, size_t size,
+                               uint8_t out_sig[64]);
+    gn_result_t (*sign_local_by_id)(void* host_ctx,
+                                     gn_key_id_t id,
+                                     const uint8_t* payload, size_t size,
+                                     uint8_t out_sig[64]);
+
+    /* ── Peer identity readers (identity.md §3, §6a) ────────────────── */
+    /* After attestation pins a peer's user_pk + device_pk + handshake */
+    /* hash against its mesh address, plugins read the components      */
+    /* separately for user-level operations. Each slot returns         */
+    /* GN_ERR_INVALID_STATE until attestation completes;               */
+    /* GN_ERR_NOT_FOUND if the conn is not in the registry.            */
+    gn_result_t (*get_peer_user_pk)(void* host_ctx,
+                                     gn_conn_id_t conn,
+                                     uint8_t out_pk[GN_PUBLIC_KEY_BYTES]);
+    gn_result_t (*get_peer_device_pk)(void* host_ctx,
+                                       gn_conn_id_t conn,
+                                       uint8_t out_pk[GN_PUBLIC_KEY_BYTES]);
+    gn_result_t (*get_handshake_hash)(void* host_ctx,
+                                       gn_conn_id_t conn,
+                                       uint8_t out_hash[GN_HASH_BYTES]);
+
+    /* ── Capability TLV transport (capability-tlv.md) ────────────────── */
+    /* Plugins ship identity-bearing blobs over the secured channel    */
+    /* without minting a per-app msg_id. The kernel reserves `0x13`,   */
+    /* prepends an 8-byte BE expires_unix_ts prefix, fans the bytes    */
+    /* out to every subscriber on the receiver. Hard cap on blob      */
+    /* size lives in gn_limits_t::max_capability_blob_bytes (default  */
+    /* 16 KiB).                                                        */
+    gn_result_t (*present_capability_blob)(void* host_ctx,
+                                            gn_conn_id_t conn,
+                                            const uint8_t* blob,
+                                            size_t size,
+                                            int64_t expires_unix_ts);
+    gn_result_t (*subscribe_capability_blob)(void* host_ctx,
+                                              gn_capability_blob_cb_t cb,
+                                              void* user_data,
+                                              void (*ud_destroy)(void*),
+                                              gn_subscription_id_t* out_id);
+
+    /* ── Identity rotation announce (identity.md §10) ────────────────── */
+    /* Mints a fresh user keypair, bumps the rotation counter, signs  */
+    /* a 150-byte RotationProof with the OLD user_pk, persists, then  */
+    /* sends the proof on every live conn at trust >= Peer under     */
+    /* msg_id 0x12. Receivers verify and advance their pin.            */
+    gn_result_t (*announce_rotation)(void* host_ctx,
+                                      int64_t valid_from_unix_ts);
+
     /* ── Reserved for future use ─────────────────────────────────────── */
     void* _reserved[8];
 } host_api_t;

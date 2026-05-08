@@ -362,6 +362,41 @@ consistency, buffer sizing, rekey semantics — lives in
 
 ---
 
+## 8a. Identity rotation under trust
+
+User-key rotation is a kernel primitive (`identity.md` §10) that
+preserves trust without an explicit policy entry on this surface:
+
+- `mesh_address` is device-derived (`identity.md` §3 decouple), so
+  a `user_pk` rotation does **not** change the address. The peer's
+  `TrustClass` stays at whatever it was immediately before the
+  rotation arrived (`Peer` in the typical case).
+- `peer_pin_map[remote_pk].user_pk` advances atomically through
+  `apply_rotation` after the kernel verifies the inbound 150-byte
+  `RotationProof` against the *previously* pinned `user_pk`. The
+  device_pk pin is unchanged; cross-session identity-change checks
+  in §3 still gate device_pk mismatches.
+- `GN_CONN_EVENT_IDENTITY_ROTATED` fires with old / new user_pk +
+  counter pointers in `_reserved[0..2]`. Subscribers observe the
+  event on the publishing thread and update connectivity-graph
+  edges keyed by `user_pk` without disconnecting.
+- Anti-replay: every pin carries a monotonic `rotation_counter`;
+  `apply_rotation` rejects with `GN_ERR_INVALID_ENVELOPE` when a
+  proposed counter does not strictly exceed the stored value.
+  The counter persists alongside the user_pk in the on-disk
+  identity file.
+- A peer that returns with a different `device_pk` for the same
+  `peer_pk` is **not** a rotation; it is the cross-session
+  identity-change attempt §3 already disconnects on. The two
+  paths are non-overlapping.
+
+Out-of-band concerns (revocation, recovery from compromise,
+witness signatures on a rotation) are app territory: the kernel
+exposes the rotation primitive and the events; policy lives
+above.
+
+---
+
 ## 9. Cross-references
 
 - Wire details for the canonical security provider:
