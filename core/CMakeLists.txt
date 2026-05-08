@@ -20,6 +20,7 @@ set(_goodnet_kernel_sources
     registry/send_queue.cpp
     security/session.cpp
     security/inline_crypto.cpp
+    crypto/crypto_worker_pool.cpp
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/core_c.cpp

@@ -35,6 +35,23 @@ inline void build_nonce(std::uint64_t n,
     return acc != 0;
 }
 
+/// `CryptoWorkerPool::JobFn` for ChaCha20-Poly1305 IETF AEAD
+/// encrypt. Reads `key`, `nonce`, `plain`, writes `out`+tag and
+/// stores the ciphertext length into `result_len`. Stamped into
+/// every Job built by `make_encrypt_job`.
+void chacha20poly1305_encrypt_job(CryptoWorkerPool::Job& job) noexcept {
+    std::uint8_t nonce_buf[InlineCrypto::kNonceBytes];
+    build_nonce(job.nonce, nonce_buf);
+    unsigned long long clen = 0;
+    crypto_aead_chacha20poly1305_ietf_encrypt(
+        job.out.data(), &clen,
+        job.plain.data(), job.plain.size(),
+        /*ad*/    nullptr, 0,
+        /*nsec*/  nullptr,
+        nonce_buf, job.key);
+    job.result_len = static_cast<std::size_t>(clen);
+}
+
 } // namespace
 
 InlineCrypto::~InlineCrypto() {
@@ -79,6 +96,29 @@ gn_result_t InlineCrypto::encrypt(
         nonce_buf, send_key_);
     out_cipher.resize(static_cast<std::size_t>(clen));
     return GN_OK;
+}
+
+std::uint64_t InlineCrypto::reserve_send_nonces(std::size_t k) noexcept {
+    /// Atomic reservation — drainer that wins
+    /// `PerConnQueue::drain_scheduled` is the only caller per
+    /// connection; concurrent reservations across distinct
+    /// connections do not race because each `InlineCrypto` is
+    /// per-connection. The single-writer invariant from
+    /// `link.md §4` is preserved.
+    return send_nonce_.fetch_add(k, std::memory_order_relaxed);
+}
+
+CryptoWorkerPool::Job InlineCrypto::make_encrypt_job(
+    std::span<const std::uint8_t> plaintext,
+    std::uint64_t                 nonce,
+    std::span<std::uint8_t>       out_cipher) const noexcept {
+    CryptoWorkerPool::Job job{};
+    job.fn    = &chacha20poly1305_encrypt_job;
+    job.key   = send_key_;
+    job.nonce = nonce;
+    job.plain = plaintext;
+    job.out   = out_cipher;
+    return job;
 }
 
 gn_result_t InlineCrypto::decrypt(

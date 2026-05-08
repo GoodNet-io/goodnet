@@ -225,67 +225,112 @@ void route_one_envelope(Kernel& kernel,
     }
 }
 
+/// Hand a batch of wire-frame buffers to the link plugin. `send_batch`
+/// is optional per `link.md` §4: a link declares it `nullptr` *or*
+/// returns `GN_ERR_NOT_IMPLEMENTED` to opt out, and the kernel falls
+/// through to the scalar `send` slot one frame at a time. A genuine
+/// batch failure (link's hard cap, transport tear-down) does not retry
+/// — the link plugin owns retry / disconnect policy on its own state.
+void send_link_batch(PluginContext*                                  pc,
+                     const LinkEntry&                                trans,
+                     gn_conn_id_t                                    conn,
+                     std::span<const std::vector<std::uint8_t>>      batch) noexcept {
+    if (batch.empty()) return;
+
+    std::vector<gn_byte_span_t> spans;
+    spans.reserve(batch.size());
+    std::size_t total_bytes = 0;
+    for (const auto& frame : batch) {
+        spans.push_back({frame.data(), frame.size()});
+        total_bytes += frame.size();
+    }
+
+    gn_result_t batch_rc = GN_ERR_NOT_IMPLEMENTED;
+    if (trans.vtable->send_batch != nullptr) {
+        batch_rc = safe_call_result("link.send_batch",
+            trans.vtable->send_batch, trans.self, conn,
+            spans.data(), spans.size());
+    }
+    if (batch_rc == GN_ERR_NOT_IMPLEMENTED) {
+        for (const auto& frame : batch) {
+            (void)safe_call_result("link.send",
+                trans.vtable->send, trans.self, conn,
+                frame.data(), frame.size());
+        }
+    }
+    pc->kernel->connections().add_outbound(
+        conn, total_bytes, batch.size());
+}
+
 /// Drain a connection's send queue — claim has already been won via
-/// the `PerConnQueue::drain_scheduled` CAS. Pulls up to
-/// `drain_batch_size` frames, calls the link's `send_batch` slot
-/// (or falls back to the scalar `send` slot when the link does not
-/// expose batch send), and re-loops if pushers raced more frames in
-/// after the batch came back. Per `docs/contracts/backpressure.en.md`
-/// §5 — at most one drainer per connection at a time.
+/// the `PerConnQueue::drain_scheduled` CAS. Two ring pairs feed the
+/// drainer per `docs/contracts/backpressure.en.md` §3:
+///
+/// 1. **Plaintext rings** (`frames_plain_high/low`) — populated when
+///    the session has fast-crypto seeded. Drainer reserves K send
+///    nonces atomically through `SecuritySession::encrypt_batch_transport`,
+///    runs K parallel jobs through `CryptoWorkerPool`, then ships
+///    the wire-framed ciphertext through `link->send_batch`.
+/// 2. **Ciphertext rings** (`frames_high/low`) — populated when the
+///    session has no fast-crypto seeded (loopback, null security,
+///    vtable-only providers). Drainer hands the bytes verbatim to
+///    the link.
+///
+/// Plaintext is drained first so a session that just upgraded to
+/// fast-crypto does not strand any wire bytes left over from the
+/// vtable-encrypt phase. The drainer re-loops while either ring
+/// has frames; per `link.md` §4 single-writer is preserved by the
+/// drain CAS.
 ///
 /// Send failures from the link are dropped silently here: the kernel
 /// queue has already counted the bytes through `pending_bytes` and the
 /// link plugin owns retry / disconnect policy on hard caps. Future
 /// improvement: re-push on `GN_ERR_LIMIT_REACHED` from the link.
-void drain_send_queue(PluginContext*    pc,
-                      const LinkEntry&  trans,
-                      gn_conn_id_t      conn,
-                      PerConnQueue&     queue) noexcept {
+void drain_send_queue(PluginContext*                            pc,
+                      const LinkEntry&                          trans,
+                      gn_conn_id_t                              conn,
+                      PerConnQueue&                             queue,
+                      const std::shared_ptr<SecuritySession>&   session) noexcept {
     while (true) {
-        auto batch = queue.drain_batch();
-        if (batch.empty()) {
-            queue.drain_scheduled.store(false, std::memory_order_release);
-            if (!queue.has_frames()) return;
-            /// Pusher slipped a frame in between drain-empty and the
-            /// flag clear. Re-claim or hand off to whichever caller
-            /// owns the next drain cycle.
-            bool exp = false;
-            if (!queue.drain_scheduled.compare_exchange_strong(
-                    exp, true, std::memory_order_acq_rel)) {
-                return;
+        /// Plaintext path — only when the session has fast crypto
+        /// active. A drained plain batch is encrypted in parallel
+        /// through `CryptoWorkerPool` before it goes to the link.
+        if (session != nullptr && session->fast_crypto_active() &&
+            queue.has_plain()) {
+            auto plain_batch = queue.drain_plain_batch();
+            if (!plain_batch.empty()) {
+                std::vector<std::vector<std::uint8_t>> wire_batch;
+                const gn_result_t rc = session->encrypt_batch_transport(
+                    pc->kernel->crypto_pool(), plain_batch, wire_batch);
+                if (rc == GN_OK) {
+                    send_link_batch(pc, trans, conn, wire_batch);
+                }
+                /// On `rc != GN_OK` (oversized cipher, session torn
+                /// down between push and drain) the batch is dropped
+                /// — `pending_bytes` already decremented by the
+                /// drain. Producer learns through the `add_outbound`
+                /// counter not advancing.
+                continue;
             }
+        }
+
+        /// Ciphertext path — bytes are wire-ready already.
+        auto cipher_batch = queue.drain_batch();
+        if (!cipher_batch.empty()) {
+            send_link_batch(pc, trans, conn, cipher_batch);
             continue;
         }
 
-        std::vector<gn_byte_span_t> spans;
-        spans.reserve(batch.size());
-        std::size_t total_bytes = 0;
-        for (const auto& frame : batch) {
-            spans.push_back({frame.data(), frame.size()});
-            total_bytes += frame.size();
+        /// Both rings empty — clear flag and re-check for a pusher
+        /// that slipped a frame in between drain-empty and the flag
+        /// clear.
+        queue.drain_scheduled.store(false, std::memory_order_release);
+        if (!queue.has_frames() && !queue.has_plain()) return;
+        bool exp = false;
+        if (!queue.drain_scheduled.compare_exchange_strong(
+                exp, true, std::memory_order_acq_rel)) {
+            return;
         }
-
-        /// `send_batch` is optional per `link.md` §4: a link declares
-        /// it `nullptr` *or* returns `GN_ERR_NOT_IMPLEMENTED` to opt
-        /// out, and the kernel falls through to the scalar `send`
-        /// slot one frame at a time. A genuine batch failure (link's
-        /// hard cap, transport tear-down) does not retry — the link
-        /// plugin owns retry / disconnect policy on its own state.
-        gn_result_t batch_rc = GN_ERR_NOT_IMPLEMENTED;
-        if (trans.vtable->send_batch != nullptr) {
-            batch_rc = safe_call_result("link.send_batch",
-                trans.vtable->send_batch, trans.self, conn,
-                spans.data(), spans.size());
-        }
-        if (batch_rc == GN_ERR_NOT_IMPLEMENTED) {
-            for (const auto& frame : batch) {
-                (void)safe_call_result("link.send",
-                    trans.vtable->send, trans.self, conn,
-                    frame.data(), frame.size());
-            }
-        }
-        pc->kernel->connections().add_outbound(
-            conn, total_bytes, batch.size());
     }
 }
 
@@ -343,24 +388,26 @@ gn_result_t thunk_send(void* host_ctx,
                                          static_cast<std::uint64_t>(cap));
     }
 
-    /// Encrypt to wire bytes when a Transport-phase session is bound;
-    /// otherwise the framed plaintext goes out verbatim (loopback /
-    /// null-security paths per `security-trust.md` §4).
-    std::vector<std::uint8_t> wire;
-    if (session != nullptr && session->phase() == SecurityPhase::Transport) {
-        const gn_result_t rc = session->encrypt_transport(*framed, wire);
-        if (rc != GN_OK) return rc;
-    } else {
-        wire = std::move(*framed);
-    }
-
-    /// Push onto the per-conn send queue and try to claim drain. The
-    /// queue exists for every conn registered through `notify_connect`
-    /// (`SendQueueManager::create` runs on insert). A null queue
-    /// surfaces only on test scaffolds that bypass `notify_connect`;
-    /// fall through to the scalar send path so those tests still pass.
+    /// Decide which ring to push onto. When the session has the
+    /// fast crypto path active, the framed plaintext goes onto the
+    /// plaintext rings — the drainer reserves K send nonces and
+    /// runs K parallel encrypt jobs through `CryptoWorkerPool`,
+    /// amortising the AEAD pass across cores. Otherwise (loopback,
+    /// null security, vtable-only providers) the synchronous path
+    /// stays — encrypt now, push wire bytes onto the ciphertext
+    /// rings.
     auto queue = pc->kernel->send_queues().find(conn);
     if (queue == nullptr) {
+        /// No queue — test scaffolding that bypassed `notify_connect`.
+        /// Fall through to the synchronous send so those tests still
+        /// pass; the path encrypts inline if a session exists.
+        std::vector<std::uint8_t> wire;
+        if (session != nullptr && session->phase() == SecurityPhase::Transport) {
+            const gn_result_t rc = session->encrypt_transport(*framed, wire);
+            if (rc != GN_OK) return rc;
+        } else {
+            wire = std::move(*framed);
+        }
         const auto send_rc = safe_call_result("link.send",
             trans->vtable->send, trans->self, conn,
             wire.data(), wire.size());
@@ -371,14 +418,29 @@ gn_result_t thunk_send(void* host_ctx,
         return send_rc;
     }
 
-    if (!queue->try_push(std::move(wire), SendPriority::Low)) {
-        return GN_ERR_LIMIT_REACHED;
+    if (session != nullptr && session->fast_crypto_active()) {
+        /// Push framed plaintext — drainer encrypts in batch.
+        if (!queue->try_push_plain(std::move(*framed), SendPriority::Low)) {
+            return GN_ERR_LIMIT_REACHED;
+        }
+    } else {
+        /// Encrypt synchronously (vtable fallback or no session).
+        std::vector<std::uint8_t> wire;
+        if (session != nullptr && session->phase() == SecurityPhase::Transport) {
+            const gn_result_t rc = session->encrypt_transport(*framed, wire);
+            if (rc != GN_OK) return rc;
+        } else {
+            wire = std::move(*framed);
+        }
+        if (!queue->try_push(std::move(wire), SendPriority::Low)) {
+            return GN_ERR_LIMIT_REACHED;
+        }
     }
 
     bool expected = false;
     if (queue->drain_scheduled.compare_exchange_strong(
             expected, true, std::memory_order_acq_rel)) {
-        drain_send_queue(pc, *trans, conn, *queue);
+        drain_send_queue(pc, *trans, conn, *queue, session);
     }
     /// When CAS lost — another caller is already draining and our
     /// frame goes out as part of their next batch.
