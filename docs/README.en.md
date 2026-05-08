@@ -12,8 +12,9 @@ Brand-new — read the project [README](../README.md) at the repository
 root. It states what GoodNet is, what the kernel knows, and what it
 delegates to plugins.
 
-Building from source — see the **Build** section of the root README.
-The short version is `nix develop` and `cfg && b`.
+Building from source — see the **Quickstart** section of the
+root README. The short version is `nix develop` followed by
+`cmake -B build -G Ninja && cmake --build build`.
 
 Writing a plugin — start with the contracts in `contracts/`. The
 plugin author's reading order is:

@@ -1,10 +1,10 @@
 # Installing GoodNet
 
 This page covers a production install of the GoodNet kernel as a
-systemd-managed service. Operators looking for a development build
-should follow the `nix run .#dev` path in `README.md` — that hands
-you a kernel + plugins built into `build/` without touching the
-system.
+systemd-managed service. Operators looking for a development
+build should follow the **Quickstart** in `README.md` — that
+hands you a kernel + plugins built into `build-release/` without
+touching the system.
 
 ---
 
@@ -38,13 +38,13 @@ matrix.
 GoodNet uses CMake + a Nix dev shell. From a clone of the repo:
 
 ```sh
-nix run .#build       # release build, populates build-release/
+nix run .#build -- release   # release build, populates build-release/
 sudo install -m 0755 build-release/bin/goodnet /usr/bin/goodnet
 sudo install -d /usr/lib/goodnet
 sudo install -m 0644 build-release/plugins/lib*.so /usr/lib/goodnet/
 ```
 
-The `nix run .#dev` shell supplies every transitive build dep
+The `nix develop` shell supplies every transitive build dep
 (gcc 15, cmake, ninja, libsodium, asio, spdlog, fmt, nlohmann-json,
 gtest) — host package versions do not matter as long as the dev
 shell is on the build path.

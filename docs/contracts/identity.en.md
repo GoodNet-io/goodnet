@@ -65,10 +65,10 @@ Properties:
   `host_api->get_peer_user_pk(conn)` (a separate API surface),
   not by reading bits out of the mesh address.
 - **Versioned** — `kAddressDeriveSalt = "goodnet/v1/device-address"`.
-  Salt deliberately differs from the legacy `goodnet/v1/address`
-  so a v1-derived address (which mixed user_pk into the IKM)
-  never collides with a v1-decouple address from the same
-  device — peers reject the mismatch via attestation pin.
+  The `v1` prefix in the salt scopes the derivation; a future
+  wire-protocol major rotates the salt so addresses minted under
+  the new IKM never collide with v1 addresses from the same
+  device.
 - **One-way** — given an address there is no efficient way to
   recover the device public key; rotating the device key
   produces a new address.
@@ -186,7 +186,7 @@ In-flight effects after a `host_api->announce_rotation`:
 
 | Surface | Effect |
 |---|---|
-| Live transport connections | survive — device-derived mesh address (§3 decouple) does not move |
+| Live transport connections | survive — device-derived mesh address (§3) does not move |
 | `peer_pin_map[remote_pk].user_pk` on peers | advances atomically through `apply_rotation` after proof verifies |
 | `GN_CONN_EVENT_IDENTITY_ROTATED` on each conn | fired so apps update connectivity-graph edges |
 | Plugin-visible `gn_ctx_local_pk` (mesh address) | unchanged |
@@ -283,7 +283,7 @@ originating plugin's anchor) or the dedicated typed slots
 ## 10. Rotation continuity
 
 When a user-key rotation happens, every live transport survives
-because the mesh address is device-derived (§3 decouple). The
+because the mesh address is device-derived (§3). The
 proof's wire format is fixed at 150 bytes:
 
 ```

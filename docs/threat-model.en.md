@@ -52,10 +52,10 @@ Every envelope arriving at a handler carries a `sender_pk` that the
 Noise handshake bound to the originating connection. A peer cannot
 forge `sender_pk` without forging the handshake, which requires the
 peer's static private key. `null` security plugin (loopback /
-`IntraNode`-only per `security-trust.md` §4) is the explicit opt-out
+`IntraNode`-only per `security-trust.en.md` §4) is the explicit opt-out
 for trusted-domain links.
 
-Reference: `plugins/security/noise/docs/handshake.md`, `security-trust.md` §3.
+Reference: `plugins/security/noise/docs/handshake.md`, `security-trust.en.md` §3.
 
 ### 2.2 Replay window
 
@@ -72,30 +72,30 @@ the security pipeline (`Untrusted → Peer` after handshake). Handler
 contracts that depend on Peer-class trust gate themselves on the
 `trust` field of `gn_message_t::ctx`.
 
-Reference: `security-trust.md` §3 (one-way upgrade), §4 (loopback /
+Reference: `security-trust.en.md` §3 (one-way upgrade), §4 (loopback /
 IntraNode permits null security).
 
 ### 2.4 Identity binding
 
-The attestation dispatcher (`attestation.md`) binds peer pk to a
+The attestation dispatcher (`attestation.en.md`) binds peer pk to a
 device pk on first attested handshake, then rejects subsequent
 attestations from the same peer with a different device pk —
 `GN_DROP_ATTESTATION_IDENTITY_CHANGE`. A connection-registry pin
-(`registry.md` §8a) outlives the connection record so a peer that
+(`registry.en.md` §8a) outlives the connection record so a peer that
 disconnects and reconnects meets the same pin.
 
 ### 2.5 Plugin pinning
 
 `PluginManager::set_manifest()` locks loaded plugins to a SHA-256
 allowlist; `set_manifest_required(true)` makes the empty-manifest
-case a hard error (`plugin-manifest.md` §7). Production deployments
+case a hard error (`plugin-manifest.en.md` §7). Production deployments
 ship a non-empty manifest and the strict flag; an unsigned plugin
 cannot reach the kernel address space.
 
 ### 2.6 Argument validation at the C ABI
 
 Every host-API thunk validates arguments before any state mutation
-or token consumption (`host-api.md` §2.1, `host-api.md` §8). A
+or token consumption (`host-api.en.md` §2.1, `host-api.en.md` §8). A
 misbehaving plugin that passes NULL meta, an unknown enum tag, an
 oversized payload, a tampered subscription id, or a kind-flipped
 register id receives `GN_ERR_*` without affecting kernel state.
@@ -123,7 +123,7 @@ buffers are zeroised before reassignment and at destructor; the
 A peer that has completed the Noise handshake can flood the kernel
 with envelopes up to the `inject_rate_per_source` token bucket and
 the per-link backpressure cap. Beyond that the kernel applies
-backpressure (`backpressure.md` §3) and may close the connection,
+backpressure (`backpressure.en.md` §3) and may close the connection,
 but the **resource cost up to the cap is real**. An operator who
 needs harder DoS protection runs a relay plugin that throttles
 by IP at L4.
@@ -154,10 +154,9 @@ manifest pinning prevents *unsigned* plugins from reaching the
 kernel; it does not prevent a *signed buggy* plugin from compromising
 the kernel.
 
-Mitigation roadmap: per-plugin sandboxing (`feedback_plugin_deployment_modes`)
-runs dynamically-loaded plugins under a default-deny capability
-manifest that gates host-API calls. Statically-linked plugins
-remain trusted.
+Mitigation roadmap: per-plugin sandboxing runs dynamically-loaded
+plugins under a default-deny capability manifest that gates
+host-API calls. Statically-linked plugins remain trusted.
 
 ### 3.5 Side channels in plugin-internal cryptography
 
@@ -183,7 +182,7 @@ loaded from contains the bytes the operator built or downloaded.
 | `Loopback` | AF_UNIX socket / 127.0.0.1 / ::1 | the link-layer endpoint is the same machine; OS-level isolation already applies |
 | `IntraNode` | intra-process pipe | both endpoints share the same kernel and address space |
 | `Untrusted` | public IP / unauthenticated peer | nothing is known about the remote until handshake completes |
-| `Peer` | post-handshake | remote pk is bound; `security-trust.md` §3 one-way upgrade |
+| `Peer` | post-handshake | remote pk is bound; `security-trust.en.md` §3 one-way upgrade |
 
 A handler that queries `gn_message_t::ctx.trust` is making a real
 authorisation decision; the kernel guarantees the field reflects
@@ -200,7 +199,7 @@ forges the value.
 | ChaCha20-Poly1305 IETF | cipherstate | same |
 | BLAKE2b | Noise HKDF, MAC | same |
 | Ed25519 | static identity (`NodeIdentity`) | identity rotation campaign + kernel release |
-| SHA-256 | plugin manifest hashes | manifest format bump (`plugin-manifest.md`); old hashes refused |
+| SHA-256 | plugin manifest hashes | manifest format bump (`plugin-manifest.en.md`); old hashes refused |
 
 We commit to a security-release cadence under coordinated disclosure
 (`SECURITY.md` §"Disclosure timeline"). A primitive-level break

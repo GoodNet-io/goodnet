@@ -297,7 +297,7 @@ manifest entry or upstream release announcement.
 
 Re-run `manifest gen` whenever any plugin .so on the path list
 changes: after `apt upgrade` / package upgrade touching
-`/usr/lib/goodnet/`, after a fresh `nix run .#build` + `install`,
+`/usr/lib/goodnet/`, after a fresh `nix run .#build -- release` + `install`,
 and after replacing a single plugin for debugging or A/B testing.
 Even a one-byte change shifts the digest.
 
