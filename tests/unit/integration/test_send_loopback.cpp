@@ -21,6 +21,7 @@
 #include <core/kernel/connection_context.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <tests/util/protocol_setup.hpp>
 #include <core/kernel/plugin_anchor.hpp>
 #include <core/kernel/plugin_context.hpp>
 
@@ -110,7 +111,7 @@ struct Node {
     PublicKey                     pk{};
 
     Node(std::string name, std::uint8_t pk_seed) {
-        kernel->set_protocol_layer(proto);
+        gn::test::util::register_default_protocol(*kernel, proto);
         plugin_ctx.plugin_name = std::move(name);
         plugin_ctx.kernel      = kernel.get();
         api = build_host_api(plugin_ctx);

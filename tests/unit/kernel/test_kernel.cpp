@@ -292,100 +292,12 @@ TEST(Kernel_Stop, ConcurrentStopFiresExactlyTwice) {
     EXPECT_EQ(k.current_phase(), Phase::Shutdown);
 }
 
-// ── Concurrent atomic-shared field stress (HIGH-B + HIGH-C) ──────────────
-
-/// Empty IProtocolLayer that satisfies the interface enough to be
-/// stored in `protocol_layer_`. The body never runs in this test —
-/// the point is to exercise the atomic store/load on a real shared
-/// snapshot, not to dispatch through it.
-class StubProtocolLayer final : public ::gn::IProtocolLayer {
-public:
-    [[nodiscard]] std::string_view protocol_id() const noexcept override {
-        return "stub";
-    }
-    Result<DeframeResult> deframe(::gn::ConnectionContext&,
-                                   std::span<const std::uint8_t>) override {
-        return std::unexpected(::gn::Error{
-            GN_ERR_NOT_IMPLEMENTED, "stub"});
-    }
-    Result<std::vector<std::uint8_t>> frame(::gn::ConnectionContext&,
-                                             const gn_message_t&) override {
-        return std::unexpected(::gn::Error{
-            GN_ERR_NOT_IMPLEMENTED, "stub"});
-    }
-    [[nodiscard]] std::size_t max_payload_size() const noexcept override {
-        return 0;
-    }
-};
-
-TEST(Kernel_AtomicFields, ProtocolLayerConcurrentSetLoadHasNoRace) {
-    Kernel k;
-    auto a = std::make_shared<StubProtocolLayer>();
-    auto b = std::make_shared<StubProtocolLayer>();
-
-    std::atomic<bool> stop{false};
-    std::atomic<std::uint64_t> reads{0};
-
-    /// Reader thread: load and verify the snapshot is one of the
-    /// two stub layers (or the initial null on the first iteration).
-    /// `protocol_id()` is the stable observable per IProtocolLayer.
-    std::thread reader([&] {
-        while (!stop.load(std::memory_order_relaxed)) {
-            auto snap = k.protocol_layer();
-            if (snap) {
-                EXPECT_EQ(snap->protocol_id(), "stub");
-            }
-            reads.fetch_add(1, std::memory_order_relaxed);
-        }
-    });
-
-    /// Writer thread: alternate between the two stubs in a tight
-    /// loop. Each iteration is a release store; the reader's load
-    /// pairs acquire-release with whichever store it observes.
-    std::thread writer([&] {
-        for (int i = 0; i < 100'000; ++i) {
-            k.set_protocol_layer(i % 2 == 0 ? a : b);
-        }
-        stop.store(true, std::memory_order_relaxed);
-    });
-
-    writer.join();
-    reader.join();
-
-    EXPECT_GT(reads.load(), 0u)
-        << "reader thread must have observed at least one snapshot";
-}
-
-TEST(Kernel_AtomicFields, ProtocolLayerSnapshotOutlivesReplacement) {
-    Kernel k;
-    auto first = std::make_shared<StubProtocolLayer>();
-    k.set_protocol_layer(first);
-
-    auto snapshot = k.protocol_layer();
-    ASSERT_TRUE(snapshot);
-    EXPECT_EQ(snapshot.get(), first.get());
-
-    /// Replace the layer; a thunk holding `snapshot` must keep the
-    /// old layer alive for the duration of its dispatch.
-    auto second = std::make_shared<StubProtocolLayer>();
-    k.set_protocol_layer(second);
-
-    /// The kernel's current value is `second`, but `snapshot` still
-    /// points at `first` because shared_ptr ref-count semantics keep
-    /// the old object alive while any caller holds a snapshot.
-    EXPECT_EQ(snapshot.get(), first.get())
-        << "in-flight snapshot must not flip under a concurrent set";
-    EXPECT_EQ(k.protocol_layer().get(), second.get());
-
-    /// Drop our remaining strong references; the second-set object
-    /// stays in the kernel until the kernel itself dies.
-    snapshot.reset();
-    first.reset();
-    second.reset();
-    EXPECT_TRUE(k.protocol_layer())
-        << "kernel still holds the most-recent set, even after the "
-           "external strong refs went away";
-}
+/// Pre-relax test_kernel held two ProtocolLayer atomic-slot tests
+/// (`ProtocolLayerConcurrentSetLoadHasNoRace`,
+/// `ProtocolLayerSnapshotOutlivesReplacement`). Both invariants are
+/// preserved under the new ProtocolLayerRegistry shape and covered
+/// in `tests/unit/registry/test_protocol_layer.cpp`
+/// (`ConcurrentRegisterFindNoRace`, `SnapshotOutlivesUnregister`).
 
 }  // namespace
 }  // namespace gn::core

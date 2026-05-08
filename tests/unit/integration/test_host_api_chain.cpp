@@ -17,6 +17,7 @@
 #include <core/kernel/connection_context.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <tests/util/protocol_setup.hpp>
 #include <core/kernel/plugin_context.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
@@ -51,7 +52,7 @@ struct KernelHarness {
     host_api_t                    api{};
 
     KernelHarness(std::string plugin_name = "test") {
-        kernel->set_protocol_layer(proto);
+        gn::test::util::register_default_protocol(*kernel, proto);
         plugin_ctx.plugin_name = std::move(plugin_name);
         plugin_ctx.kernel      = kernel.get();
         api = build_host_api(plugin_ctx);
@@ -271,9 +272,9 @@ TEST(HostApiChain, NotifyConnectSchemeNotOwnedByCallerRejected) {
     gn_link_id_t tcp_id = GN_INVALID_ID;
     gn_link_id_t ws_id  = GN_INVALID_ID;
     ASSERT_EQ(h.kernel->links().register_link(
-                  "tcp", &dummy_vt, nullptr, &tcp_id, tcp_anchor), GN_OK);
+                  "tcp", "", &dummy_vt, nullptr, &tcp_id, tcp_anchor), GN_OK);
     ASSERT_EQ(h.kernel->links().register_link(
-                  "ws", &dummy_vt, nullptr, &ws_id, ws_anchor), GN_OK);
+                  "ws", "", &dummy_vt, nullptr, &ws_id, ws_anchor), GN_OK);
 
     PublicKey peer_pk{};
     peer_pk[0] = 0x77;

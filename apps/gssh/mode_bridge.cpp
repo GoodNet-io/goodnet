@@ -237,7 +237,12 @@ int run_bridge(std::string_view peer_pk_str, const Options& opts) {
     // 1. Identity. Persistent operator keypair must be installed
     //    BEFORE the kernel's security pipeline sees a connection.
     Kernel kernel;
-    kernel.set_protocol_layer(std::make_shared<GnetProtocol>());
+    {
+        gn::core::protocol_layer_id_t proto_id =
+            gn::core::kInvalidProtocolLayerId;
+        (void)kernel.protocol_layers().register_layer(
+            std::make_shared<GnetProtocol>(), &proto_id);
+    }
 
     const std::string identity_path =
         opts.identity_path.empty() ? default_identity_path() : opts.identity_path;

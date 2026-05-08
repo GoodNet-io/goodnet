@@ -160,12 +160,24 @@ Links register through the universal `register_vtable` slot in
 The link-specific shape:
 
 - `kind = GN_REGISTER_LINK`
-- `meta->name`     — URI scheme (e.g. `"tcp"`, `"udp"`, `"ws"`)
-- `meta->msg_id`   — ignored
-- `meta->priority` — ignored
-- `vtable`         — `const gn_link_vtable_t*`
-- `self`           — per-link instance state, opaque to the kernel
-- `*out_id`        — populated on success; encodes the
+- `meta->name`        — URI scheme (e.g. `"tcp"`, `"udp"`, `"ws"`)
+- `meta->msg_id`      — ignored
+- `meta->priority`    — ignored
+- `meta->protocol_id` — `@borrowed` for the call. Declares the
+  mesh-framing layer this link's connections route through per
+  `protocol-layer.en.md` §4. NULL or empty selects the kernel
+  default `gnet-v1`. The kernel resolves the id against the
+  `ProtocolLayerRegistry` at `notify_connect` time; an
+  unregistered id surfaces the connect-side trust-mask gate as
+  permissive (no layer, no mask) and the connection is
+  accepted, then the dispatch sites (`send`,
+  `notify_inbound_bytes`, `inject`) return `GN_ERR_NOT_IMPLEMENTED`
+  on first use. Operators that want the connect to fail loudly
+  on a missing layer register the layer before
+  `notify_connect` ever fires.
+- `vtable`            — `const gn_link_vtable_t*`
+- `self`              — per-link instance state, opaque to the kernel
+- `*out_id`           — populated on success; encodes the
   `GN_REGISTER_LINK` tag in its top 4 bits so a later
   `unregister_vtable(id)` routes back to `LinkRegistry`
   without naming the kind a second time.

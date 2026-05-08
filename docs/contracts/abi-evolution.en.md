@@ -144,25 +144,31 @@ register thunk and therefore validate consumer-side instead:
 
 ---
 
-## 3b. Pre-RC reshape window
+## 3b. Pre-`v1.0.0` reshape window
 
-Until the `v1.0.0-rc1` tag the platform has no released binary
-consumers. Inside that window the `host_api_t` shape is **open**:
-existing entries may be removed, renamed, reordered, or replaced
-without a major-version bump. The size-prefix gating in §3 stays
-useful as a forward-compatibility helper while the shape settles,
-but it is not a binding promise on slots that have not yet shipped
-under `rc1`.
+The reshape window stays open through the entire rc cycle and
+closes only on the plain `v1.0.0` tag. RC tags
+(`v1.0.0-rc1`, `v1.0.0-rc2`, …) are integration checkpoints; an
+RC release does **not** freeze the public surface. Inside the
+window the `host_api_t` shape and every named-slot table
+(`gn_register_meta_t`, `gn_link_vtable_t`,
+`gn_handler_vtable_t`, `gn_security_provider_vtable_t`,
+`gn_protocol_layer_vtable_t`) are **open**: existing entries may
+be removed, renamed, reordered, or replaced without a major-
+version bump. The size-prefix gating in §3 stays useful as a
+forward-compatibility helper while the shape settles, but it is
+not a binding promise on slots that have not yet shipped under
+`v1.0.0`.
 
-The window closes on the day `v1.0.0-rc1` is tagged. From that tag
+The window closes on the day `v1.0.0` is tagged. From that tag
 onwards every rule in §3 (append-only, reserved-tail-only,
-size-prefix gating) applies without exception. Any post-rc1
+size-prefix gating) applies without exception. Any post-`v1.0.0`
 removal or rename of a host-API slot is a major-version bump.
 
-The pre-RC reshape window does not weaken any other invariant —
-TrustClass policy (`security-trust.md`), envelope shape
-(`protocol-layer.md`), wire framing (`plugins/protocols/gnet/docs/wire-format.md`) and the
-manifest pinning (`plugin-manifest.md`) hold throughout.
+The reshape window does not weaken any other invariant —
+TrustClass policy (`security-trust.en.md`), envelope shape
+(`protocol-layer.en.md`), wire framing (`plugins/protocols/gnet/docs/wire-format.md`) and the
+manifest pinning (`plugin-manifest.en.md`) hold throughout.
 
 ---
 

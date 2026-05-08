@@ -127,7 +127,7 @@ TEST(LinkAnchor, EntryHoldsAnchorThroughLookup) {
     std::weak_ptr<int> watch = anchor;
 
     gn_link_id_t id = GN_INVALID_ID;
-    ASSERT_EQ(reg.register_link("test-scheme",
+    ASSERT_EQ(reg.register_link("test-scheme", "",
                                      dummy_transport_vtable(),
                                      nullptr, &id, anchor),
               GN_OK);

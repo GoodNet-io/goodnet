@@ -9,6 +9,7 @@ namespace gn::core {
 
 gn_result_t LinkRegistry::register_link(
     std::string_view scheme,
+    std::string_view protocol_id,
     const gn_link_vtable_t* vtable,
     void* self,
     gn_link_id_t* out_id,
@@ -34,9 +35,18 @@ gn_result_t LinkRegistry::register_link(
         return GN_ERR_LIMIT_REACHED;
     }
 
+    /// Empty or unset protocol_id selects the kernel default
+    /// (`gnet-v1`). Resolution against ProtocolLayerRegistry
+    /// happens at first `notify_connect` so an unregistered id
+    /// surfaces close to the operator-controlled site.
+    std::string protocol_id_str = protocol_id.empty()
+        ? std::string{kDefaultProtocolId}
+        : std::string{protocol_id};
+
     LinkEntry entry;
     entry.id              = next_id_.fetch_add(1, std::memory_order_relaxed);
     entry.scheme          = scheme_str;
+    entry.protocol_id     = std::move(protocol_id_str);
     entry.vtable          = vtable;
     entry.self            = self;
     entry.lifetime_anchor = std::move(lifetime_anchor);

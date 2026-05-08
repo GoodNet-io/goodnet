@@ -348,7 +348,12 @@ int run_listen(const ListenOptions& opts) {
     // 1. Identity. Persistent operator keypair before any peer
     //    handshake.
     Kernel kernel;
-    kernel.set_protocol_layer(std::make_shared<GnetProtocol>());
+    {
+        gn::core::protocol_layer_id_t proto_id =
+            gn::core::kInvalidProtocolLayerId;
+        (void)kernel.protocol_layers().register_layer(
+            std::make_shared<GnetProtocol>(), &proto_id);
+    }
 
     const std::string identity_path =
         opts.common.identity_path.empty()

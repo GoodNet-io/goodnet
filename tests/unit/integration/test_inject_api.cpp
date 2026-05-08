@@ -12,6 +12,7 @@
 #include <core/kernel/connection_context.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <tests/util/protocol_setup.hpp>
 #include <core/kernel/plugin_context.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
@@ -53,7 +54,7 @@ struct KernelHarness {
     host_api_t                    api{};
 
     KernelHarness() {
-        kernel->set_protocol_layer(proto);
+        gn::test::util::register_default_protocol(*kernel, proto);
         plugin_ctx.plugin_name = "inject-test";
         plugin_ctx.kernel      = kernel.get();
         api = build_host_api(plugin_ctx);
