@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 456,
-               "host_api_t size pinned at 456");
+_Static_assert(sizeof(host_api_t) == 472,
+               "host_api_t size pinned at 472");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -218,8 +218,12 @@ _Static_assert(offsetof(host_api_t, get_peer_device_pk) == 376,
                "host_api_t::get_peer_device_pk offset pinned at 376");
 _Static_assert(offsetof(host_api_t, get_handshake_hash) == 384,
                "host_api_t::get_handshake_hash offset pinned at 384");
-_Static_assert(offsetof(host_api_t, _reserved) == 392,
-               "host_api_t::_reserved offset pinned at 392");
+_Static_assert(offsetof(host_api_t, present_capability_blob) == 392,
+               "host_api_t::present_capability_blob offset pinned at 392");
+_Static_assert(offsetof(host_api_t, subscribe_capability_blob) == 400,
+               "host_api_t::subscribe_capability_blob offset pinned at 400");
+_Static_assert(offsetof(host_api_t, _reserved) == 408,
+               "host_api_t::_reserved offset pinned at 408");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 
@@ -269,8 +273,10 @@ _Static_assert(offsetof(gn_limits_t, max_counter_names) == 88,
                "gn_limits_t::max_counter_names offset pinned at 88");
 _Static_assert(offsetof(gn_limits_t, max_subscriptions) == 92,
                "gn_limits_t::max_subscriptions offset pinned at 92");
-_Static_assert(offsetof(gn_limits_t, _reserved) == 96,
-               "gn_limits_t::_reserved offset pinned at 96");
+_Static_assert(offsetof(gn_limits_t, max_capability_blob_bytes) == 96,
+               "gn_limits_t::max_capability_blob_bytes offset pinned at 96");
+_Static_assert(offsetof(gn_limits_t, _reserved) == 100,
+               "gn_limits_t::_reserved offset pinned at 100");
 
 /* ── sdk/log.h ─────────────────────────────────────────────────────────────── */
 
