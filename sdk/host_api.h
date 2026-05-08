@@ -28,6 +28,7 @@
 #include <sdk/endpoint.h>
 #include <sdk/log.h>
 #include <sdk/metrics.h>
+#include <sdk/security.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -600,6 +601,33 @@ typedef struct host_api_s {
                                      gn_key_id_t id,
                                      const uint8_t* payload, size_t size,
                                      uint8_t out_sig[64]);
+
+    /* ── Peer identity readers (identity.en.md §5) ──────────────────────
+     *
+     * After attestation pins a peer's user_pk and device_pk
+     * against its mesh address, plugins read the components
+     * separately for user-level operations: building
+     * connectivity graphs by user_pk, verifying credentials
+     * presented in capability blobs, signing user-level
+     * challenges. The handshake hash is the binding the kernel
+     * already exposes to the security layer; plugins use it for
+     * post-handshake-bound proofs.
+     *
+     * Each slot returns `GN_ERR_INVALID_STATE` until the conn
+     * reaches Transport phase and the attestation succeeds;
+     * `GN_ERR_NOT_FOUND` if the conn is not in the registry.
+     */
+    gn_result_t (*get_peer_user_pk)(void* host_ctx,
+                                     gn_conn_id_t conn,
+                                     uint8_t out_pk[GN_PUBLIC_KEY_BYTES]);
+
+    gn_result_t (*get_peer_device_pk)(void* host_ctx,
+                                       gn_conn_id_t conn,
+                                       uint8_t out_pk[GN_PUBLIC_KEY_BYTES]);
+
+    gn_result_t (*get_handshake_hash)(void* host_ctx,
+                                       gn_conn_id_t conn,
+                                       uint8_t out_hash[GN_HASH_BYTES]);
 
     /* ── Reserved for future extension ───────────────────────────────────
      *

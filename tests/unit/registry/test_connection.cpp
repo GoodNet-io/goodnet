@@ -796,14 +796,31 @@ TEST(ConnectionRegistry_UpdateRemotePk, UnknownIdRejected) {
     EXPECT_EQ(reg.update_remote_pk(GN_INVALID_ID, pk), GN_ERR_NULL_ARG);
 }
 
-// ── Per-peer device-key pinning ──────────────────────────────────────────
+// ── Per-peer identity pinning (device_pk + user_pk + handshake_hash) ────
 
-TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {
+namespace {
+
+/// Helper that calls `pin_peer` with a placeholder user_pk and
+/// zeroed handshake_hash so the existing device-pk-pinning
+/// invariants stay covered without each test naming the
+/// auxiliary fields.
+gn_result_t pin_device(ConnectionRegistry& reg,
+                        const PublicKey& peer,
+                        const PublicKey& device) {
+    const auto user = make_pk(0xFE);
+    std::array<std::uint8_t, GN_HASH_BYTES> hh{};
+    return reg.pin_peer(peer, device, user,
+                        std::span<const std::uint8_t, GN_HASH_BYTES>(hh));
+}
+
+}  // namespace
+
+TEST(ConnectionRegistry_Pin, FirstPinAccepted) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
     const auto device = make_pk(2);
     EXPECT_EQ(reg.get_pinned_device_pk(peer), std::nullopt);
-    EXPECT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    EXPECT_EQ(pin_device(reg, peer, device), GN_OK);
     auto fetched = reg.get_pinned_device_pk(peer);
     ASSERT_TRUE(fetched.has_value());
     if (fetched.has_value()) {
@@ -812,26 +829,26 @@ TEST(ConnectionRegistry_PinDevicePk, FirstPinAccepted) {
     EXPECT_EQ(reg.pin_count(), 1u);
 }
 
-TEST(ConnectionRegistry_PinDevicePk, RepinSameDeviceIdempotent) {
+TEST(ConnectionRegistry_Pin, RepinSameDeviceIdempotent) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
     const auto device = make_pk(2);
-    ASSERT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    ASSERT_EQ(pin_device(reg, peer, device), GN_OK);
     /// Same peer+device pair: idempotent success, no map growth.
-    EXPECT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    EXPECT_EQ(pin_device(reg, peer, device), GN_OK);
     EXPECT_EQ(reg.pin_count(), 1u);
 }
 
-TEST(ConnectionRegistry_PinDevicePk, RepinDifferentDeviceRejected) {
+TEST(ConnectionRegistry_Pin, RepinDifferentDeviceRejected) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
     const auto device_a = make_pk(2);
     const auto device_b = make_pk(3);
-    ASSERT_EQ(reg.pin_device_pk(peer, device_a), GN_OK);
+    ASSERT_EQ(pin_device(reg, peer, device_a), GN_OK);
     /// Cross-session identity-change attempt: same peer, different
     /// device_pk. The registry rejects with INVALID_ENVELOPE; the
     /// caller maps the rejection to a peer disconnect.
-    EXPECT_EQ(reg.pin_device_pk(peer, device_b),
+    EXPECT_EQ(pin_device(reg, peer, device_b),
               GN_ERR_INVALID_ENVELOPE);
     /// The earlier pin survives.
     auto fetched = reg.get_pinned_device_pk(peer);
@@ -841,14 +858,14 @@ TEST(ConnectionRegistry_PinDevicePk, RepinDifferentDeviceRejected) {
     }
 }
 
-TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
+TEST(ConnectionRegistry_Pin, PinSurvivesEraseWithIndex) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
     const auto device = make_pk(2);
     const auto id = reg.alloc_id();
     auto rec = make_record(id, "tcp://h:1", peer);
     ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
-    ASSERT_EQ(reg.pin_device_pk(peer, device), GN_OK);
+    ASSERT_EQ(pin_device(reg, peer, device), GN_OK);
 
     /// Connection close removes the record; the per-peer pin is a
     /// separate map and outlives the connection.
@@ -861,7 +878,7 @@ TEST(ConnectionRegistry_PinDevicePk, PinSurvivesEraseWithIndex) {
     }
 }
 
-TEST(ConnectionRegistry_PinDevicePk, ConcurrentDifferentDeviceLeavesOneWinner) {
+TEST(ConnectionRegistry_Pin, ConcurrentDifferentDeviceLeavesOneWinner) {
     /// Two threads pin the same `peer_pk` with different
     /// `device_pk` values simultaneously. Exactly one returns
     /// `GN_OK`; the other must receive `GN_ERR_INVALID_ENVELOPE`,
@@ -878,7 +895,7 @@ TEST(ConnectionRegistry_PinDevicePk, ConcurrentDifferentDeviceLeavesOneWinner) {
         std::atomic<int> ok_count{0};
         std::atomic<int> reject_count{0};
         auto worker = [&](const PublicKey& dev) {
-            const auto rc = r.pin_device_pk(peer, dev);
+            const auto rc = pin_device(r, peer, dev);
             if (rc == GN_OK) ok_count.fetch_add(1);
             else if (rc == GN_ERR_INVALID_ENVELOPE) reject_count.fetch_add(1);
         };
@@ -892,14 +909,36 @@ TEST(ConnectionRegistry_PinDevicePk, ConcurrentDifferentDeviceLeavesOneWinner) {
     (void)reg;
 }
 
-TEST(ConnectionRegistry_PinDevicePk, ClearRemovesPin) {
+TEST(ConnectionRegistry_Pin, ClearRemovesPin) {
     ConnectionRegistry reg;
     const auto peer = make_pk(1);
-    ASSERT_EQ(reg.pin_device_pk(peer, make_pk(2)), GN_OK);
+    ASSERT_EQ(pin_device(reg, peer, make_pk(2)), GN_OK);
     EXPECT_EQ(reg.pin_count(), 1u);
     reg.clear_pinned_device_pk(peer);
     EXPECT_EQ(reg.get_pinned_device_pk(peer), std::nullopt);
     EXPECT_EQ(reg.pin_count(), 0u);
+}
+
+TEST(ConnectionRegistry_Pin, GetPinnedPeerReturnsAllFields) {
+    ConnectionRegistry reg;
+    const auto peer       = make_pk(0x10);
+    const auto device     = make_pk(0x20);
+    const auto user       = make_pk(0x30);
+    std::array<std::uint8_t, GN_HASH_BYTES> hh{};
+    for (std::size_t i = 0; i < hh.size(); ++i) {
+        hh[i] = static_cast<std::uint8_t>(0xA0 + i);
+    }
+    ASSERT_EQ(reg.pin_peer(peer, device, user,
+                            std::span<const std::uint8_t, GN_HASH_BYTES>(hh)),
+              GN_OK);
+
+    auto fetched = reg.get_pinned_peer(peer);
+    ASSERT_TRUE(fetched.has_value());
+    if (fetched.has_value()) {
+        EXPECT_EQ(fetched->device_pk, device);
+        EXPECT_EQ(fetched->user_pk,   user);
+        EXPECT_EQ(fetched->handshake_hash, hh);
+    }
 }
 
 }  // namespace

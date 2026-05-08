@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 432,
-               "host_api_t size pinned at 432");
+_Static_assert(sizeof(host_api_t) == 456,
+               "host_api_t size pinned at 456");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -212,8 +212,14 @@ _Static_assert(offsetof(host_api_t, sign_local) == 352,
                "host_api_t::sign_local offset pinned at 352");
 _Static_assert(offsetof(host_api_t, sign_local_by_id) == 360,
                "host_api_t::sign_local_by_id offset pinned at 360");
-_Static_assert(offsetof(host_api_t, _reserved) == 368,
-               "host_api_t::_reserved offset pinned at 368");
+_Static_assert(offsetof(host_api_t, get_peer_user_pk) == 368,
+               "host_api_t::get_peer_user_pk offset pinned at 368");
+_Static_assert(offsetof(host_api_t, get_peer_device_pk) == 376,
+               "host_api_t::get_peer_device_pk offset pinned at 376");
+_Static_assert(offsetof(host_api_t, get_handshake_hash) == 384,
+               "host_api_t::get_handshake_hash offset pinned at 384");
+_Static_assert(offsetof(host_api_t, _reserved) == 392,
+               "host_api_t::_reserved offset pinned at 392");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 

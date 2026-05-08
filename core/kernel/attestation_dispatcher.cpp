@@ -323,26 +323,28 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
         if (gn_pk_is_zero(peer_pk.data()) == 0) {
             auto existing =
                 kernel.connections().get_pinned_device_pk(peer_pk);
-            if (existing.has_value()) {
-                if (sodium_memcmp(existing->data(), device_pk.data(),
+            if (existing.has_value()
+                && sodium_memcmp(existing->data(), device_pk.data(),
                                   GN_PUBLIC_KEY_BYTES) != 0) {
-                    disconnect_on_consumer_failure(kernel, conn,
-                        GN_DROP_ATTESTATION_IDENTITY_CHANGE);
-                    return static_cast<int>(Outcome::IdentityChange);
-                }
-            } else {
-                /// `pin_device_pk` returns non-GN_OK when a
-                /// concurrent caller already wrote a different
-                /// device_pk for this peer; treat the rejection
-                /// identically to the mismatch path so a write
-                /// race cannot smuggle past the cross-session
-                /// gate.
-                if (kernel.connections().pin_device_pk(
-                        peer_pk, device_pk) != GN_OK) {
-                    disconnect_on_consumer_failure(kernel, conn,
-                        GN_DROP_ATTESTATION_IDENTITY_CHANGE);
-                    return static_cast<int>(Outcome::IdentityChange);
-                }
+                disconnect_on_consumer_failure(kernel, conn,
+                    GN_DROP_ATTESTATION_IDENTITY_CHANGE);
+                return static_cast<int>(Outcome::IdentityChange);
+            }
+            /// `pin_peer` returns non-GN_OK when a concurrent
+            /// caller already wrote a different device_pk for
+            /// this peer; treat the rejection identically to the
+            /// mismatch path so a write race cannot smuggle past
+            /// the cross-session gate. On idempotent success
+            /// (same device_pk) the call refreshes user_pk and
+            /// handshake_hash to the latest attestation's view —
+            /// host_api consumers reach those bytes through
+            /// `get_peer_user_pk` / `get_handshake_hash`.
+            if (kernel.connections().pin_peer(
+                    peer_pk, device_pk, user_pk,
+                    binding) != GN_OK) {
+                disconnect_on_consumer_failure(kernel, conn,
+                    GN_DROP_ATTESTATION_IDENTITY_CHANGE);
+                return static_cast<int>(Outcome::IdentityChange);
             }
         }
     }
