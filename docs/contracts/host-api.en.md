@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
 **Implements:** size-prefix evolution per `abi-evolution.md`
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-08
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---
@@ -208,6 +208,20 @@ typedef struct host_api_s {
     gn_result_t (*notify_backpressure)(void* host_ctx, gn_conn_id_t conn,
                                        gn_conn_event_kind_t kind,
                                        uint64_t bytes);
+
+    /* ── Metrics (metrics.md) ───────────────────────────────────────── */
+    /* The kernel store is a flat map of monotonic UTF-8-named 64-bit  */
+    /* counters. Plugins emit cross-cutting telemetry (relay forwards, */
+    /* cache hits, retries) through `emit_counter` rather than spinning */
+    /* up their own metrics infrastructure; an out-of-tree exporter    */
+    /* plugin walks the merged set through `iterate_counters` and       */
+    /* serves whatever wire format the operator picks. Counter names   */
+    /* are convention-only — recommended pattern is                    */
+    /* `<subsystem>.<event>.<reason>` (e.g. `relay.forward.ok`).        */
+    void     (*emit_counter)(void* host_ctx, const char* name);
+    uint64_t (*iterate_counters)(void* host_ctx,
+                                  gn_counter_visitor_t visitor,
+                                  void* user_data);
 
     /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────── */
     /* Non-zero once teardown for this plugin has begun. Plugins poll  */

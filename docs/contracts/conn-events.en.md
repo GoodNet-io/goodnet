@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin that observes connection state
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-08
 **Stability:** v1.x; the event-kind enum grows additively at the tail.
 
 ---
@@ -160,30 +160,44 @@ typedef uint64_t gn_subscription_id_t;
    impossible across realistic kernel runtimes per
    signal-channel.md §3. */
 
-typedef enum gn_subscribe_channel_e {
-    GN_SUBSCRIBE_CONN_STATE     = 0,
-    GN_SUBSCRIBE_CONFIG_RELOAD  = 1
-} gn_subscribe_channel_t;
+typedef void (*gn_conn_state_cb_t)(void* user_data,
+                                    const gn_conn_event_t* event);
 
-typedef void (*gn_subscribe_cb_t)(void*       user_data,
-                                   const void* payload,
-                                   size_t      size);
+typedef void (*gn_config_reload_cb_t)(void* user_data);
 
-gn_result_t (*subscribe)(void* host_ctx,
-                          gn_subscribe_channel_t channel,
-                          gn_subscribe_cb_t cb,
-                          void* user_data,
-                          gn_subscription_id_t* out_id);
+/* Two typed slots — one per channel — instead of a single        */
+/* `subscribe(channel, …)` dispatcher: the kernel knows the       */
+/* payload shape per channel and FFI bindings never have to       */
+/* type-erase. `ud_destroy` runs once with `user_data` when the   */
+/* subscription is removed, whether by `unsubscribe(id)` or by    */
+/* the kernel observing the plugin's lifetime anchor expire.     */
+gn_result_t (*subscribe_conn_state)(void* host_ctx,
+                                     gn_conn_state_cb_t cb,
+                                     void* user_data,
+                                     void (*ud_destroy)(void*),
+                                     gn_subscription_id_t* out_id);
 
+gn_result_t (*subscribe_config_reload)(void* host_ctx,
+                                        gn_config_reload_cb_t cb,
+                                        void* user_data,
+                                        void (*ud_destroy)(void*),
+                                        gn_subscription_id_t* out_id);
+
+/* `unsubscribe` is shared across both channels; the id carries  */
+/* a routing tag the kernel reads internally, so callers do not  */
+/* re-name the channel here.                                      */
 gn_result_t (*unsubscribe)(void* host_ctx,
                             gn_subscription_id_t id);
 ```
 
-For `GN_SUBSCRIBE_CONN_STATE` the kernel hands `payload =
-&gn_conn_event_t`, `size = sizeof(gn_conn_event_t)`. The
-subscription id carries a 4-bit channel tag in its top bits so
-`unsubscribe(id)` routes to the right channel without naming it
-twice.
+`subscribe_conn_state` hands the callback a borrowed
+`const gn_conn_event_t*` valid for the call.
+`subscribe_config_reload` is fire-only — there is no per-event
+payload; subscribers re-read configuration through
+`host_api->config_get` after each tick. The
+`gn_subscribe_channel_t` enum at `sdk/conn_events.h:61-62` exists
+as an internal routing tag carried in the top bits of
+`gn_subscription_id_t`; plugins do not pass it explicitly.
 
 Every subscription carries a weak observer of the calling plugin's
 lifetime anchor (`plugin-lifetime.md` §4); a callback whose
@@ -216,10 +230,10 @@ threads.
 Subscribers must be cheap; long work is posted back through
 `set_timer(0, …)`. Re-entry is permitted under the
 `signal-channel.md` snapshot rule: a callback that calls
-`subscribe(GN_SUBSCRIBE_CONN_STATE)` or `unsubscribe` while a fire
-is in progress runs to completion against the snapshot taken
-before the change — newly-added subscribers do not see the
-in-flight event, newly-removed subscribers still see it.
+`subscribe_conn_state` or `unsubscribe` while a fire is in
+progress runs to completion against the snapshot taken before
+the change — newly-added subscribers do not see the in-flight
+event, newly-removed subscribers still see it.
 
 ---
 
@@ -274,14 +288,15 @@ Plugins that need a complete picture of current state subscribe
 
 | Slot | `GN_OK` | `GN_ERR_NULL_ARG` | `GN_ERR_LIMIT_REACHED` |
 |---|---|---|---|
-| `subscribe(GN_SUBSCRIBE_CONN_STATE)` | subscribed | host_ctx / cb / out_id null | per-kernel cap exceeded |
+| `subscribe_conn_state` | subscribed | host_ctx / cb / out_id null | per-kernel cap exceeded |
+| `subscribe_config_reload` | subscribed | host_ctx / cb / out_id null | per-kernel cap exceeded |
 | `unsubscribe(id)` | removed or already gone | host_ctx null, id == `GN_INVALID_SUBSCRIPTION_ID` | — |
 | `for_each_connection` | iteration ran | host_ctx / visitor null | — |
 
 The subscription cap is `gn_limits_t::max_subscriptions` (default
 256, `limits.md` §2). The cap is enforced **per channel** so a
-saturated `GN_SUBSCRIBE_CONN_STATE` cannot drain the slots that
-`GN_SUBSCRIBE_CONFIG_RELOAD` needs — operators tune one knob and
+saturated `subscribe_conn_state` cannot drain the slots that
+`subscribe_config_reload` needs — operators tune one knob and
 both channels honour it independently. A plugin must not subscribe
 more than once per topic; the typical pattern is one subscription
 per plugin instance.

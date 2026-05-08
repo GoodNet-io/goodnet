@@ -58,9 +58,17 @@ void on_conn_state_change(void* ud, const gn_conn_event_t* ev) {
                            direct_uri, sizeof(direct_uri)) != 0)
         return;
 
-    gn_conn_id_t new_conn;
-    if (host_api->dial(host_ctx, direct_uri, "tcp", &new_conn) != GN_OK)
+    /* outbound dial идёт через link-extension `gn.link.tcp`        */
+    /* (или другой scheme); link-плагин сам вернёт свежий conn_id   */
+    /* через `notify_connect` после установления сокета.            */
+    gn_conn_id_t new_conn = GN_INVALID_CONN_ID;
+    auto link_ext = (gn_link_tcp_api_t*)
+        host_api->query_extension_checked(
+            host_ctx, "gn.link.tcp", GN_EXT_LINK_TCP_VERSION, NULL);
+    if (!link_ext || link_ext->dial(link_ext->ctx, direct_uri) != GN_OK)
         return;
+    /* `new_conn` приедет в callback `subscribe_conn_state` на      */
+    /* событие `CONNECTED` от только что открытой conn'и.           */
 
     record_pending_swap(ev->remote_pk, ev->conn /* relay */, new_conn);
 }
