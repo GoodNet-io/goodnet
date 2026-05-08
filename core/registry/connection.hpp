@@ -51,6 +51,15 @@ struct ConnectionRecord {
     gn_handshake_role_t role        = GN_ROLE_INITIATOR;
     std::string        scheme;
 
+    /// Mesh-framing layer this connection routes through. Stamped at
+    /// `notify_connect` time from the matching `LinkEntry::protocol_id`.
+    /// Per `protocol-layer.md` §4 the kernel uses this id to look up
+    /// the active layer in `ProtocolLayerRegistry` for every dispatch
+    /// site (`send`, `notify_inbound_bytes`, `inject`). Empty equals
+    /// the kernel default `gnet-v1`; an unregistered id surfaces as
+    /// `GN_ERR_NOT_IMPLEMENTED` at the dispatch site.
+    std::string        protocol_id;
+
     /// Relay capability: when set, the protocol layer accepts inbound
     /// frames carrying EXPLICIT_SENDER / EXPLICIT_RECEIVER (relay or
     /// broadcast paths) per `plugins/protocols/gnet/docs/wire-format.md` §5. Default `false`

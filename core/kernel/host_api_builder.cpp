@@ -10,6 +10,7 @@
 
 #include <core/identity/node_identity.hpp>
 #include <core/identity/rotation.hpp>
+#include <core/registry/protocol_layer.hpp>
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
@@ -1791,6 +1792,17 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     rec.trust = trust;
     rec.role  = role;
     std::memcpy(rec.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
+
+    /// Stamp the protocol layer the link declared at registration.
+    /// Empty scheme entries (in-tree fixtures that bypass
+    /// `register_link`) get the kernel default `gnet-v1` so the
+    /// dispatch sites resolve consistently.
+    if (const auto link = pc->kernel->links().find_by_scheme(scheme);
+        link.has_value() && !link->protocol_id.empty()) {
+        rec.protocol_id = link->protocol_id;
+    } else {
+        rec.protocol_id = std::string{::gn::core::kDefaultProtocolId};
+    }
 
     const gn_result_t rc =
         pc->kernel->connections().insert_with_index(std::move(rec));
