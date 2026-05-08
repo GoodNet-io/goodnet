@@ -170,6 +170,17 @@ TrustClass policy (`security-trust.en.md`), envelope shape
 (`protocol-layer.en.md`), wire framing (`plugins/protocols/gnet/docs/wire-format.md`) and the
 manifest pinning (`plugin-manifest.en.md`) hold throughout.
 
+### Slot-promotion journal
+
+Tracks every slot promoted during the open window so a future
+contributor reviewing ABI history can see what moved and why
+without `git log`-archaeology.
+
+| Date | Struct | Change | Slice |
+|---|---|---|---|
+| 2026-05-08 | `gn_register_meta_t` | additive: new `const char* protocol_id` slot before existing `_reserved[4]` (LINK kind declares mesh-framing layer); reserved tail unchanged | `feat/protocol-layer-registry` |
+| 2026-05-09 | `gn_register_meta_t` | promoted `_reserved[3] → const char* namespace_id` before remaining `_reserved[3]` (HANDLER kind declares tenant scope) | `feat/lifecycle-namespaces` |
+
 ---
 
 ## 4. `_reserved` slots in value-type structs
