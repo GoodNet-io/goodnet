@@ -2,23 +2,34 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel`, `core/registry`, `plugins/protocols/*`
-**Last verified:** 2026-04-27
-**Stability:** breaking changes require kernel ABI bump
+**Last verified:** 2026-05-08
+**Stability:** RC tags do not freeze the public surface; the
+plain `v1.0.0` tag closes the reshape window per
+`abi-evolution.en.md` §3b.
 
 ---
 
 ## 1. Purpose
 
-Mesh-framing is the **single mandatory layer** that lets the kernel route by
-public-key without polluting application protocols. This contract defines the
-data structure (`gn_message_t`) and interface (`IProtocolLayer`) that kernel
-and protocol plugins agree on. Wire bytes belong to the plugin; kernel never
-parses bytes itself.
+Mesh-framing lets the kernel route by public-key without polluting
+application protocols. This contract defines the data structure
+(`gn_message_t`) and interface (`IProtocolLayer`) that kernel and
+protocol plugins agree on. Wire bytes belong to the plugin; kernel
+never parses bytes itself.
+
+The kernel maintains a **registry** of one or more protocol layer
+implementations identified by `protocol_id` (`"gnet-v1"`,
+`"raw-v1"`, future `"ssh-v1"`). Every connection records the
+`protocol_id` declared by its link plugin; the dispatch sites
+(`send`, `notify_inbound_bytes`, `inject`) resolve the matching
+layer through the registry per-call. See §4 for the registry
+semantics and §6 for the per-link declaration shape.
 
 The contract is consumed by:
 - `core/kernel` — calls `deframe` on inbound, `frame` on outbound, dispatches
-  by `(receiver_pk, msg_id)`.
-- `core/registry` — keys connection lookup by `(local_pk, remote_pk)`.
+  by `(receiver_pk, msg_id)` against the connection's recorded protocol_id.
+- `core/registry` — keys connection lookup by `(local_pk, remote_pk)` and
+  carries each connection's `protocol_id` for the dispatch lookup.
 - `plugins/protocols/<name>/` — implements `IProtocolLayer`.
 
 It is **not** consumed by handlers. Handlers see the envelope read-only and
@@ -205,25 +216,55 @@ the v1 reference binding.
 
 ---
 
-## 4. Mandatory single-implementation rule
+## 4. Protocol layer registry
 
-The kernel binary links **exactly one** `IProtocolLayer` implementation
-statically (`target_link_libraries(kernel PUBLIC <impl>)`). Default
-implementation: `gnet-v1` in `plugins/protocols/gnet/`. A second
-implementation, `raw-v1` in `plugins/protocols/raw/`, is permitted as
-a build-time alternative for simulation harnesses, PCAP replay, and
-foreign-protocol passthrough; `raw-v1` deframes only on
-`GN_TRUST_LOOPBACK` / `GN_TRUST_INTRA_NODE` per `security-trust.md`
-§4.
+The kernel maintains a `ProtocolLayerRegistry` keyed by
+`protocol_id`. One or more `IProtocolLayer` implementations may
+be registered concurrently:
 
-Multi-impl loading at runtime is **not** supported. Future evolution path:
-1. Add `mesh-v2` impl alongside `gnet-v1`.
-2. Build kernel with `-DGOODNET_MESH_LAYER=mesh-v2`.
-3. Cut deprecation release that ships both binaries during transition.
-4. Drop `gnet-v1` once ecosystem migrated.
+- `gnet-v1` (`plugins/protocols/gnet/`) — canonical mesh-framing,
+  registered by `gn_core_init`. The kernel default
+  (`kDefaultProtocolId`) when a link plugin doesn't declare
+  otherwise.
+- `raw-v1` (`plugins/protocols/raw/`) — opaque-payload passthrough
+  for simulation harnesses, PCAP replay, and foreign-protocol
+  bridges. Deframes only on `GN_TRUST_LOOPBACK` /
+  `GN_TRUST_INTRA_NODE` per `security-trust.en.md` §4.
+- Out-of-tree implementations register through
+  `gn_core_register_protocol` from a host program.
 
-This is intentional — runtime selection of mesh-framing creates wire-format
-ambiguity at peer-to-peer handshake. One node, one mesh-format.
+**Per-link selection.** A link plugin declares its protocol_id at
+registration time through `gn_register_meta_t::protocol_id` (see
+§6 below). The kernel resolves the declared id against the
+registry on every dispatch and stamps each connection's
+`ConnectionRecord::protocol_id` from the matching link entry at
+`notify_connect`. Dispatch sites (`send`, `notify_inbound_bytes`,
+`inject`, attestation_dispatcher's `frame`) read
+`rec->protocol_id` and look up the layer in the registry per call.
+
+**Cross-protocol envelope isolation.** A handler registered for
+`(protocol_id, msg_id)` never sees envelopes that arrived through
+a different protocol — `route_one_envelope` carries the
+protocol_id of the deframing layer into `HandlerRegistry::lookup`.
+Two protocols sharing the same `msg_id` value coexist without
+collision because the dispatch chain is keyed on the pair.
+
+**Unregister and quiescence.** A layer registered while connections
+are routing through it stays alive past `unregister_layer` for the
+duration of any in-flight `find_by_protocol_id` snapshot
+(`shared_ptr` extending lifetime). New `notify_connect` calls
+under a scheme whose declared id was unregistered surface
+`GN_ERR_NOT_FOUND` from the trust-mask gate before the connection
+record is created. Operators that want to disconnect existing
+connections under an unregistered layer do so explicitly through
+`disconnect`.
+
+**Default `protocol_id` resolution.** Empty / NULL `protocol_id`
+on `register_link` selects `kDefaultProtocolId` (`"gnet-v1"`).
+Connections inserted directly into `ConnectionRegistry` without
+going through `notify_connect` (test fixtures, simulation
+harnesses) carry the same default through `ConnectionRecord`'s
+member initializer.
 
 ---
 
@@ -246,21 +287,25 @@ Kernel routing logic — protocol-agnostic:
 
 ```
 on inbound bytes from transport:
-    plaintexts = security.decrypt_stream(ctx, bytes)   # 0..N frames per call
+    rec        = connections.find_by_id(conn)
+    plaintexts = security.decrypt_stream(ctx, bytes)            # 0..N frames per call
+    plugin     = protocol_layers.find_by_protocol_id(rec.protocol_id)
     for plaintext in plaintexts:
         envelopes = plugin.deframe(ctx, plaintext)
         for envelope in envelopes:
             if envelope.receiver_pk == ZERO:
-                dispatch_broadcast(envelope.msg_id, envelope)
+                dispatch_broadcast(plugin.protocol_id, envelope.msg_id, envelope)
             elif envelope.receiver_pk in local_identities:
-                dispatch_local(envelope.receiver_pk, envelope.msg_id, envelope)
+                dispatch_local(plugin.protocol_id, envelope.receiver_pk,
+                               envelope.msg_id, envelope)
             else:
-                relay_or_drop(envelope)   # delegated to relay-extension if loaded
+                relay_or_drop(envelope)                          # delegated to relay-extension if loaded
 
 on outbound from handler:
-    plugin = registry.active_protocol_layer
+    rec    = connections.find_by_id(conn)
+    plugin = protocol_layers.find_by_protocol_id(rec.protocol_id)
     bytes  = plugin.frame(ctx, envelope)
-    framed = security.encrypt(ctx, bytes)              # [u16 BE len][cipher+tag]
+    framed = security.encrypt(ctx, bytes)                       # [u16 BE len][cipher+tag]
     transport.send(ctx, framed)
 ```
 
@@ -320,11 +365,12 @@ their ID space without cross-protocol coordination. See
 
 ## 9. Compatibility statement
 
-This contract is **stable for v1.0.x**. Field additions to `gn_message_t`
-require ABI bump (`GOODNET_ABI_VERSION` minor → major) and a parallel
-`gn_message_v2_t` until removal cycle completes. `_reserved` slots exist
-exactly to permit additive evolution without immediate ABI break, but only
-the kernel may interpret them.
+The reshape window per `abi-evolution.en.md` §3b stays open through
+the rc cycle and closes only on the plain `v1.0.0` tag. Pre-v1.0.0
+field additions to `gn_message_t` use the trailing `_reserved`
+slots; post-v1.0.0 every change goes through the additive ABI
+evolution rules. `_reserved` slots are the additive-evolution
+budget — only the kernel may interpret them.
 
 ---
 
