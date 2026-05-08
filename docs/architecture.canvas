@@ -374,7 +374,7 @@
 		{
 			"id": "n_tcp_plugin",
 			"type": "text",
-			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`goodnet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Boost.Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench (post inline-crypto Phase 1): 6.42 Gbps single-conn 16KB×1000.",
+			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`goodnet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Boost.Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench (i5-1235U, loopback, 16 KiB payload):\n- 1c burst 1000 frames: ~7 Gbps\n- 1c sustained 5000 frames: ~6 Gbps\n- 4c sustained 5000 frames: ~20 Gbps aggregate",
 			"x": 5643,
 			"y": 1037,
 			"width": 540,

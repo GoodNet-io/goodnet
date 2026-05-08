@@ -47,12 +47,28 @@ ceilings.
 | Desktop  | tcp + ipc + security-noise | up to 512 | 80-150 MiB | 5-10% of one core |
 | Server   | full transport + security set | up to 4096 | 200-500 MiB | scales linearly with conn count |
 
-Throughput for a single TCP+Noise connection is approximately
-6 Gbps end-to-end on the reference CPU, set by the inline
-ChaCha20-Poly1305 path. Aggregate throughput across many
-connections scales until the io_context worker saturates or the
-per-conn send-queue ceiling (`pending_queue_bytes_hard`, 4 MiB
-default) trips backpressure.
+Throughput on the reference i5-1235U CPU, loopback, 16 KiB
+payloads:
+
+- Single TCP+Noise connection — 7 Gbps burst (1000-frame run,
+  bench warmup before TCP write-buffer saturates), 6 Gbps
+  sustained (5000-frame run with sender feedback loop). Inline
+  ChaCha20-Poly1305 sets the ceiling; libsodium's
+  `chacha20_encrypt_bytes` accounts for ~42% of cycles per
+  `perf record`, `poly1305_blocks` ~30%.
+- 4 connections, sustained (5000-frame each, four producer
+  threads) — 19-21 Gbps aggregate; multi-conn beats the single-
+  conn ceiling because the kernel's per-conn drain CAS lets four
+  encrypt batches run on independent strands.
+
+Real workloads underperform these numbers — physical NICs add
+syscall overhead and serialisation, multi-tenant CPUs lose cache,
+and application-side message processing eats into the budget.
+Measure on target hardware before committing to capacity planning.
+
+Aggregate throughput scales with connection count until the
+io_context worker saturates or the per-conn send-queue ceiling
+(`pending_queue_bytes_hard`, 4 MiB default) trips backpressure.
 
 The `embedded` profile inherits a tighter baseline: 64 conns, 8 KiB
 max frame, 256 timers, narrowed inject-rate limiter. The `desktop`
