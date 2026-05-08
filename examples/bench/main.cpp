@@ -25,6 +25,7 @@
 #include <sdk/link.h>
 #include <sdk/types.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -39,7 +40,13 @@
 #include <vector>
 
 #ifndef GOODNET_NOISE_PLUGIN_PATH
-#error "GOODNET_NOISE_PLUGIN_PATH must be defined to locate the noise .so"
+/// Build-time `-D GOODNET_NOISE_PLUGIN_PATH=...` (set by
+/// `examples/bench/CMakeLists.txt`) points the bench at the noise
+/// plugin's `.so`. Clang-tidy invocations that lack the define would
+/// reject the source with `#error`; substituting an obviously-bad
+/// stub keeps the analyser happy while still failing loudly at
+/// startup if the build configuration ever forgets to set it.
+#define GOODNET_NOISE_PLUGIN_PATH "/nonexistent/noise.so"
 #endif
 
 namespace {
@@ -182,15 +189,49 @@ int main(int argc, char** argv) {
     if (argc > 1) count   = std::strtoull(argv[1], nullptr, 10);
     if (argc > 2) size_kb = std::strtoul (argv[2], nullptr, 10);
     if (argc > 3) conns   = std::strtoul (argv[3], nullptr, 10);
-    const std::size_t payload_size = size_kb * 1024;
-
-    std::cout << "[bench] count=" << count
-              << " size=" << size_kb << "KB"
-              << " conns=" << conns
-              << " noise=" << GOODNET_NOISE_PLUGIN_PATH << "\n";
 
     Node alice("alice");
     Node bob  ("bob");
+
+    /// Clamp `payload_size` so the default `size_kb=64` (which produces
+    /// 65536 — one byte over the 64 KiB frame cap minus the 14-byte
+    /// fixed gnet header) does not bounce every send with
+    /// `GN_ERR_PAYLOAD_TOO_LARGE`. The protocol layer enforces the
+    /// stricter ceiling — gnet reserves both optional public-key fields
+    /// in its worst-case header, so the live cap is
+    /// `max_frame_bytes - 14 - 2*32 = 65458` rather than the loose
+    /// kernel-side `max_payload_bytes = 65522`. Bench picks the
+    /// stricter of the two so the message is wire-legal under whichever
+    /// gate trips first.
+    std::size_t payload_size = size_kb * 1024;
+    const std::size_t kernel_cap = bob.api.limits != nullptr
+        ? static_cast<std::size_t>(
+              bob.api.limits(bob.api.host_ctx)->max_payload_bytes)
+        : 0u;
+    const std::size_t protocol_cap = bob.proto != nullptr
+        ? bob.proto->max_payload_size()
+        : 0u;
+    std::size_t cap = 0;
+    if (kernel_cap != 0 && protocol_cap != 0) {
+        cap = std::min(kernel_cap, protocol_cap);
+    } else if (kernel_cap != 0) {
+        cap = kernel_cap;
+    } else if (protocol_cap != 0) {
+        cap = protocol_cap;
+    }
+    if (cap != 0 && payload_size > cap) {
+        std::cout << "[bench] requested " << payload_size
+                  << "B exceeds payload ceiling " << cap
+                  << " (kernel " << kernel_cap
+                  << " ∩ protocol " << protocol_cap
+                  << "); clamping payload\n";
+        payload_size = cap;
+    }
+
+    std::cout << "[bench] count=" << count
+              << " size=" << payload_size << "B"
+              << " conns=" << conns
+              << " noise=" << GOODNET_NOISE_PLUGIN_PATH << "\n";
 
     /// Counting consumer — Alice's handler tallies bytes seen so the
     /// run can report wire ↔ payload symmetry at the end.
