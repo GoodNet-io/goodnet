@@ -19,6 +19,8 @@
 #include <sdk/security.h>
 #include <sdk/types.h>
 
+#include <core/crypto/crypto_worker_pool.hpp>
+
 namespace gn::core {
 
 /// Per-connection symmetric AEAD state. One direction is keyed for
@@ -59,6 +61,27 @@ public:
     [[nodiscard]] gn_result_t encrypt(
         std::span<const std::uint8_t> plaintext,
         std::vector<std::uint8_t>& out_cipher);
+
+    /// Reserve K send nonces atomically. Returns the base nonce;
+    /// jobs[i] uses `base + i`. Used by the kernel-side batch
+    /// encrypt path: `drain_send_queue_with_encrypt` reserves K
+    /// upfront, dispatches K parallel jobs through
+    /// `CryptoWorkerPool`, coalesces ciphertext into the link's
+    /// `send_batch`. Single-writer per-conn invariant
+    /// (`PerConnQueue::drain_scheduled` CAS) keeps the
+    /// reservation race-free across drainers.
+    [[nodiscard]] std::uint64_t reserve_send_nonces(std::size_t k) noexcept;
+
+    /// Build a `CryptoWorkerPool::Job` that encrypts @p plaintext
+    /// at @p nonce into @p out_cipher. The returned Job borrows
+    /// the InlineCrypto's send key for the lifetime of the job —
+    /// caller MUST run the job through `pool.run_batch()` before
+    /// the InlineCrypto is destroyed. `out_cipher` MUST already
+    /// be sized to `plaintext.size() + kTagBytes`.
+    [[nodiscard]] CryptoWorkerPool::Job make_encrypt_job(
+        std::span<const std::uint8_t> plaintext,
+        std::uint64_t                 nonce,
+        std::span<std::uint8_t>       out_cipher) const noexcept;
 
     /// Decrypt one transport-phase frame. The recv nonce advances by
     /// one per call. Returns `GN_ERR_INVALID_ENVELOPE` on AEAD

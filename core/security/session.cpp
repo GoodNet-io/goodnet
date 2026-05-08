@@ -208,6 +208,61 @@ gn_result_t SecuritySession::encrypt_transport(
     return GN_OK;
 }
 
+bool SecuritySession::fast_crypto_active() const noexcept {
+    return phase_.load(std::memory_order_acquire) == SecurityPhase::Transport &&
+           inline_crypto_.seeded();
+}
+
+gn_result_t SecuritySession::encrypt_batch_transport(
+    CryptoWorkerPool&                                pool,
+    std::span<const std::vector<std::uint8_t>>       plaintexts,
+    std::vector<std::vector<std::uint8_t>>&          out_wire_frames) {
+    if (!fast_crypto_active()) return GN_ERR_INVALID_STATE;
+    out_wire_frames.clear();
+    if (plaintexts.empty()) return GN_OK;
+
+    /// Cipher size for ChaCha20-Poly1305 IETF is exactly
+    /// `plain.size() + kTagBytes` (16). Bound-check every frame
+    /// against the wire-side u16 ceiling **before** consuming any
+    /// nonces — partial nonce consumption on a bad batch would
+    /// strand the receiver out of step with the sender.
+    for (const auto& plain : plaintexts) {
+        const std::size_t cipher_size = plain.size() + InlineCrypto::kTagBytes;
+        if (cipher_size > kFrameCipherMaxBytes) {
+            return GN_ERR_PAYLOAD_TOO_LARGE;
+        }
+    }
+
+    const std::size_t k = plaintexts.size();
+    const std::uint64_t nonce_base = inline_crypto_.reserve_send_nonces(k);
+
+    out_wire_frames.resize(k);
+    std::vector<CryptoWorkerPool::Job> jobs;
+    jobs.reserve(k);
+    for (std::size_t i = 0; i < k; ++i) {
+        const auto& plain = plaintexts[i];
+        const std::size_t cipher_size = plain.size() + InlineCrypto::kTagBytes;
+        out_wire_frames[i].resize(kFramePrefixBytes + cipher_size);
+
+        /// Write the 2-byte BE length prefix up front — cipher
+        /// size is fixed by AEAD overhead, so the prefix is known
+        /// before the worker runs. The pool fills the cipher
+        /// portion in place.
+        const std::uint16_t len_be = static_cast<std::uint16_t>(cipher_size);
+        out_wire_frames[i][0] = static_cast<std::uint8_t>((len_be >> 8) & 0xFF);
+        out_wire_frames[i][1] = static_cast<std::uint8_t>(len_be        & 0xFF);
+
+        std::span<std::uint8_t> cipher_slot{
+            out_wire_frames[i].data() + kFramePrefixBytes,
+            cipher_size};
+        jobs.push_back(inline_crypto_.make_encrypt_job(
+            plain, nonce_base + i, cipher_slot));
+    }
+
+    pool.run_batch(jobs);
+    return GN_OK;
+}
+
 gn_result_t SecuritySession::enqueue_pending(
     std::vector<std::uint8_t>&& bytes,
     std::uint64_t hard_cap_bytes) {

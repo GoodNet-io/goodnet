@@ -143,6 +143,33 @@ public:
         std::span<const std::uint8_t> plaintext,
         std::vector<std::uint8_t>& out_cipher);
 
+    /// True when the session is in Transport phase AND has the
+    /// kernel-side fast crypto seeded (`InlineCrypto`). The
+    /// `drain_send_queue` path routes plaintext through
+    /// `encrypt_batch_transport` only on this fast path; otherwise
+    /// a single-frame `encrypt_transport` runs synchronously per
+    /// the legacy path.
+    [[nodiscard]] bool fast_crypto_active() const noexcept;
+
+    /// Encrypt a batch of N plaintext frames in parallel through
+    /// @p pool. Each output buffer carries the wire framing
+    /// `[u16 BE cipher_len][cipher+tag]` — same shape as
+    /// `encrypt_transport` produces, but K-way parallel via
+    /// `CryptoWorkerPool::run_batch`. The drainer reserves K send
+    /// nonces atomically before dispatching, so the per-frame
+    /// nonce sequence stays gap-free under the single-writer
+    /// drain CAS.
+    ///
+    /// @pre `fast_crypto_active() == true`.
+    /// @return `GN_OK` on success. `GN_ERR_PAYLOAD_TOO_LARGE` when
+    ///         any plaintext's cipher size would overflow the
+    ///         16-bit wire prefix; the entire batch is rejected so
+    ///         no nonce is consumed for the failure case.
+    [[nodiscard]] gn_result_t encrypt_batch_transport(
+        CryptoWorkerPool&                                 pool,
+        std::span<const std::vector<std::uint8_t>>        plaintexts,
+        std::vector<std::vector<std::uint8_t>>&           out_wire_frames);
+
     /// Drain zero or more complete transport-phase frames from the
     /// per-conn inbound buffer. The kernel feeds raw transport bytes
     /// (a single TCP read may carry partial, exact, or coalesced

@@ -67,8 +67,24 @@ struct PerConnQueue {
     /// drive drain from multiple threads.
     std::atomic_flag drain_lock_ = ATOMIC_FLAG_INIT;
 
+    /// Encrypted-frame rings — used when the session has no
+    /// fast-crypto path (loopback, null security) or when the
+    /// security provider is not `InlineCrypto`-shaped. The kernel
+    /// pushes wire bytes, the drainer hands them straight to the
+    /// link's `send_batch`.
     MpscRing<std::vector<std::uint8_t>> frames_high;
     MpscRing<std::vector<std::uint8_t>> frames_low;
+
+    /// Plaintext-frame rings — used when the session has
+    /// `InlineCrypto` seeded. The kernel pushes framed plaintext
+    /// here; the drainer reserves K send nonces, runs K parallel
+    /// `chacha20poly1305_encrypt_job`s through `CryptoWorkerPool`,
+    /// coalesces the ciphertexts into the link's `send_batch`.
+    /// Single-writer per-conn invariant
+    /// (`drain_scheduled` CAS) keeps the nonce reservation
+    /// race-free across drainers.
+    MpscRing<std::vector<std::uint8_t>> frames_plain_high;
+    MpscRing<std::vector<std::uint8_t>> frames_plain_low;
 
     explicit PerConnQueue(std::size_t limit = kDefaultQueueLimit,
                           std::size_t batch = kDefaultDrainBatch)
@@ -81,13 +97,28 @@ struct PerConnQueue {
     [[nodiscard]] bool try_push(std::vector<std::uint8_t> frame,
                                 SendPriority              priority = SendPriority::Low);
 
+    /// Same shape as `try_push` but routes onto the plaintext ring
+    /// pair. Caller pushes here when the session has fast-crypto
+    /// seeded — encryption deferred to drain time.
+    [[nodiscard]] bool try_push_plain(std::vector<std::uint8_t> frame,
+                                      SendPriority              priority = SendPriority::Low);
+
     /// Pop up to `max_frames` frames in priority order. Defaults to
     /// the live `drain_batch_size` value.
     [[nodiscard]] std::vector<std::vector<std::uint8_t>>
     drain_batch(std::size_t max_frames = 0);
 
+    /// Pop up to `max_frames` plaintext frames in priority order.
+    /// Defaults to the live `drain_batch_size` value.
+    [[nodiscard]] std::vector<std::vector<std::uint8_t>>
+    drain_plain_batch(std::size_t max_frames = 0);
+
     [[nodiscard]] bool has_frames() const {
         return !frames_high.empty() || !frames_low.empty();
+    }
+
+    [[nodiscard]] bool has_plain() const {
+        return !frames_plain_high.empty() || !frames_plain_low.empty();
     }
 };
 

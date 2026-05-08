@@ -31,6 +31,7 @@
 #include "router.hpp"
 #include "timer_registry.hpp"
 
+#include <core/crypto/crypto_worker_pool.hpp>
 #include <core/identity/node_identity.hpp>
 #include <core/security/session.hpp>
 #include <core/util/token_bucket.hpp>
@@ -103,6 +104,7 @@ public:
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] LinkRegistry&        links()       noexcept { return links_; }
     [[nodiscard]] SendQueueManager&    send_queues() noexcept { return send_queues_; }
+    [[nodiscard]] CryptoWorkerPool&    crypto_pool() noexcept { return crypto_pool_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
     [[nodiscard]] SessionRegistry&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
@@ -214,6 +216,11 @@ private:
     ConnectionRegistry   connections_;
     LinkRegistry         links_;
     SendQueueManager     send_queues_;
+    /// Default-constructed pool spins up `hardware_concurrency()/2`
+    /// workers per `CryptoWorkerPool` ctor; the kernel keeps one
+    /// pool across every connection because the pool itself is
+    /// stateless across batches.
+    CryptoWorkerPool     crypto_pool_;
     SecurityRegistry     security_;
     SessionRegistry             sessions_;
     ExtensionRegistry    extensions_;
