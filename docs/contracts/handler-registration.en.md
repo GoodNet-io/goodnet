@@ -2,8 +2,10 @@
 
 **Status:** active · v1
 **Owner:** `core/registry/handler.hpp`, `core/signal/pipeline.hpp`
-**Last verified:** 2026-04-29
-**Stability:** v1.x
+**Last verified:** 2026-05-09
+**Stability:** RC tags do not freeze the public surface; the
+plain `v1.0.0` tag closes the reshape window per
+`abi-evolution.en.md` §3b.
 
 ---
 
@@ -23,12 +25,24 @@ Handlers register through the universal `register_vtable` slot in
 The handler-specific shape:
 
 - `kind = GN_REGISTER_HANDLER`
-- `meta->name`     — protocol id (e.g. `"gnet-v1"`)
-- `meta->msg_id`   — per-protocol message id
-- `meta->priority` — 0..255 dispatch priority
-- `vtable`         — `const gn_handler_vtable_t*`
-- `self`           — per-handler state, opaque to the kernel
-- `*out_id`        — populated on success; encodes the
+- `meta->name`         — protocol id (e.g. `"gnet-v1"`)
+- `meta->msg_id`       — per-protocol message id
+- `meta->priority`     — 0..255 dispatch priority
+- `meta->namespace_id` — `@borrowed`. Tenant scope this handler
+  registers under. NULL or empty selects the kernel default
+  `"default"`. Two handlers registered against the same
+  `(protocol_id, msg_id)` pair under different namespaces
+  coexist; envelope dispatch fans out across every namespace's
+  chain for the matching pair (handler-side isolation only —
+  cross-process tenant boundaries land with the WASM /
+  socket-IPC plugin runtimes per the lifecycle roadmap).
+  `Kernel::drain_namespace(ns_id, deadline)` walks the
+  registry, unregisters every entry under the named namespace,
+  and waits for captured `lifetime_anchor` weak refs to drain
+  — operator-driven graceful tenant teardown.
+- `vtable`             — `const gn_handler_vtable_t*`
+- `self`               — per-handler state, opaque to the kernel
+- `*out_id`            — populated on success; encodes the
   `GN_REGISTER_HANDLER` tag in its top 4 bits so a later
   `unregister_vtable(id)` routes back to `HandlerRegistry`
   without naming the kind a second time.
@@ -46,19 +60,29 @@ Rules:
   exhaustion returns `GN_ERR_LIMIT_REACHED`; `msg_id == 0` is
   reserved as the unset sentinel and rejected with
   `GN_ERR_INVALID_ENVELOPE`.
-- `msg_id` is the per-protocol identifier; namespaces are isolated. The
+- `msg_id` is the per-protocol identifier; protocols are isolated. The
   same `msg_id = 0x42` under `"gnet-v1"` and a future `"mesh-v2"` are
   unrelated.
+- `namespace_id` is the tenant scope; namespaces are isolated. Two
+  handlers under different namespaces but the same
+  `(protocol_id, msg_id)` pair coexist. Lookup fans out across
+  every namespace's chain for the matching pair, returns one
+  merged priority-sorted chain. Per-namespace teardown through
+  `Kernel::drain_namespace(ns_id, deadline)`: removes every row
+  whose `namespace_id` matches and spin-waits on captured
+  `lifetime_anchor` weak refs until all expire (or the deadline
+  short-circuits the wait — registry rows are still gone).
 - `priority` orders the dispatch chain: higher priority first. Default
   range:
   - `255` — pin-eligible critical paths (gaming, real-time RPC)
   - `128` — application default
   - `64`  — observability / metrics-only handlers
   - `0`   — fallback / catch-all
-- Multiple handlers may share `(protocol_id, msg_id, priority)`; insertion
-  order resolves ties.
-- Maximum chain length per `(protocol_id, msg_id)` is `Limits::max_handlers_per_msg_id`
-  (default 8). Exceeding returns `GN_ERR_LIMIT_REACHED`.
+- Multiple handlers may share `(namespace_id, protocol_id, msg_id, priority)`;
+  insertion order resolves ties.
+- Maximum chain length per `(namespace_id, protocol_id, msg_id)` is
+  `Limits::max_handlers_per_msg_id` (default 8). Exceeding returns
+  `GN_ERR_LIMIT_REACHED`.
 
 The returned `gn_handler_id_t` is opaque, stable until `unregister_vtable(id)`.
 Plugins keep it for their own bookkeeping; the kernel does not require it
