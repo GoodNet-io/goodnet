@@ -15,9 +15,11 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstddef>
 #include <memory>
 #include <mutex>
+#include <string_view>
 #include <vector>
 
 #include <sdk/cpp/protocol_layer.hpp>
@@ -134,6 +136,18 @@ public:
     [[nodiscard]] const MetricsRegistry& metrics() const noexcept {
         return metrics_;
     }
+
+    /// Drain every handler registered under @p ns_id and wait until
+    /// the captured `lifetime_anchor` weak refs all expire (or the
+    /// deadline elapses). Operator-driven graceful tenant teardown
+    /// per `handler-registration.md` §2 — analogous to PluginManager's
+    /// `drain_anchor` cycle but scoped to a namespace.
+    ///
+    /// @return number of HandlerEntry rows removed; on deadline-miss
+    /// the rows are still gone from the registry but the wait
+    /// short-circuited.
+    std::size_t drain_namespace(std::string_view ns_id,
+                                std::chrono::milliseconds deadline);
 
     /// Read-only resource bounds per `limits.md` §2. Loaded once at
     /// startup; subsequent reload requires kernel restart.

@@ -1377,7 +1377,12 @@ gn_result_t thunk_register_vtable(void* host_ctx,
     switch (kind) {
     case GN_REGISTER_HANDLER: {
         gn_handler_id_t inner = GN_INVALID_ID;
+        const std::string_view declared_namespace =
+            meta->namespace_id != nullptr
+                ? std::string_view{meta->namespace_id}
+                : std::string_view{};
         const auto rc = pc->kernel->handlers().register_handler(
+            declared_namespace,
             meta->name, meta->msg_id, meta->priority,
             static_cast<const gn_handler_vtable_t*>(vtable),
             self, &inner, pc->plugin_anchor, pc->plugin_name);
