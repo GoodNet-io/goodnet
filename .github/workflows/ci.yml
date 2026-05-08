@@ -32,7 +32,7 @@ jobs:
         with:
           use-flakehub: false
       - name: Build (Debug) and run unit + integration tests
-        run: nix run .#test -- --output-on-failure
+        run: nix run .#test
 
   asan-ubsan:
     runs-on: ubuntu-latest
@@ -44,7 +44,7 @@ jobs:
         with:
           use-flakehub: false
       - name: AddressSanitizer + UBSan
-        run: nix run .#test -- asan --output-on-failure
+        run: nix run .#test -- asan
 
   tsan:
     runs-on: ubuntu-latest
@@ -56,7 +56,7 @@ jobs:
         with:
           use-flakehub: false
       - name: ThreadSanitizer
-        run: nix run .#test -- tsan --output-on-failure
+        run: nix run .#test -- tsan
 
   clang-tidy:
     runs-on: ubuntu-latest

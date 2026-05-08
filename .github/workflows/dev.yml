@@ -18,4 +18,4 @@ jobs:
           use-flakehub: false
 
       - name: Build (Release) and run tests
-        run: nix run .#test -- --output-on-failure
+        run: nix run .#test
