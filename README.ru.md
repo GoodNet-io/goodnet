@@ -18,9 +18,9 @@ standalone-демон. Стабильна ровно одна граница —
 ```bash
 git clone https://github.com/GoodNet-io/goodnet.git
 cd goodnet
-nix run .#setup            # bootstrap зеркал и плагинов
-nix run .#build            # release-сборка с LTO → build-release/
-nix run .#run -- demo      # два узла, Noise-over-TCP, одно сообщение
+nix run .#setup                # bootstrap зеркал и плагинов
+nix run .#build -- release     # release-сборка с LTO → build-release/
+nix run .#run -- demo          # два узла, Noise-over-TCP, одно сообщение
 ```
 
 Без Nix: gcc 15, libsodium, OpenSSL, asio, spdlog, gtest,
@@ -95,7 +95,7 @@ loopback TCP. iperf3 vs goodnet-bench, 5 секунд.
 NIC расклад смещается: zero-copy kernel-path WireGuard'a сложно
 переиграть из userspace. Это loopback-only evidence.
 
-Воспроизвести: `nix run .#build && build-release/bin/goodnet-bench 5000 16 4`.
+Воспроизвести: `nix run .#build -- release && build-release/bin/goodnet-bench 5000 16 4`.
 
 ## Архитектура
 

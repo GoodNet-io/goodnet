@@ -17,9 +17,9 @@ plugin loaded through `dlopen` against a versioned C ABI.
 ```bash
 git clone https://github.com/GoodNet-io/goodnet.git
 cd goodnet
-nix run .#setup            # bootstrap mirrors + plugins
-nix run .#build            # release build with LTO → build-release/
-nix run .#run -- demo      # two-node Noise-over-TCP, one message
+nix run .#setup                # bootstrap mirrors + plugins
+nix run .#build -- release     # release build with LTO → build-release/
+nix run .#run -- demo          # two-node Noise-over-TCP, one message
 ```
 
 Without Nix: gcc 15, libsodium, OpenSSL, asio, spdlog,
@@ -97,7 +97,7 @@ benchmark. On a real 10 Gbps NIC, the comparison shifts —
 WireGuard's zero-copy kernel path is hard to beat from
 userspace. This is loopback-only evidence.
 
-Reproduce: `nix run .#build && build-release/bin/goodnet-bench 5000 16 4`.
+Reproduce: `nix run .#build -- release && build-release/bin/goodnet-bench 5000 16 4`.
 
 ## Architecture
 
