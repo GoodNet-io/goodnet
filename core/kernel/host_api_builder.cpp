@@ -233,15 +233,28 @@ void route_one_envelope(Kernel& kernel,
 ///
 /// Returns `GN_OK` when the link accepted the batch (or every frame
 /// of the scalar fallback). Returns `GN_ERR_LIMIT_REACHED` when the
-/// link signalled hard-cap rejection — drainer parks the batch as
-/// stalled and retries on the next claim with the **same wire
-/// bytes**, preserving the AEAD nonce sequence the receiver
-/// expects.
+/// link signalled hard-cap rejection — drainer parks **only the
+/// rejected suffix** (per `out_accepted`) as stalled and retries on
+/// the next claim with the **same wire bytes**, preserving the AEAD
+/// nonce sequence the receiver expects.
+///
+/// `out_accepted` reports how many leading frames the link accepted
+/// before any rejection. It equals `batch.size()` on full success
+/// and is the index of the first rejected frame on
+/// `GN_ERR_LIMIT_REACHED`. The vtable batch path is all-or-nothing
+/// per `link.md §3` ("one logical write"), so `out_accepted` is
+/// either 0 (LIMIT_REACHED) or `batch.size()` (OK) on that path; the
+/// scalar fallback below honours the contract by reporting the
+/// genuine partial accept count so the drainer never re-sends the
+/// already-accepted prefix — duplicate wire bytes under fresh recv
+/// nonces would otherwise break the AEAD MAC and tear the link down.
 [[nodiscard]] gn_result_t send_link_batch(
     PluginContext*                                pc,
     const LinkEntry&                              trans,
     gn_conn_id_t                                  conn,
-    std::span<const std::vector<std::uint8_t>>    batch) noexcept {
+    std::span<const std::vector<std::uint8_t>>    batch,
+    std::size_t&                                  out_accepted) noexcept {
+    out_accepted = 0;
     if (batch.empty()) return GN_OK;
 
     std::vector<gn_byte_span_t> spans;
@@ -259,18 +272,18 @@ void route_one_envelope(Kernel& kernel,
             spans.data(), spans.size());
     }
     if (batch_rc == GN_ERR_NOT_IMPLEMENTED) {
-        /// Scalar fallback. Track aggregate result — if any frame
-        /// hits LIMIT_REACHED we surface that to the drainer so
-        /// the remaining frames stall together (preserving order
-        /// and nonce continuity for the receiver).
+        /// Scalar fallback for vtables that opt out of batch.
+        /// Tracks accepted count so the caller (drainer) can park
+        /// only the unsent suffix; without this the partial prefix
+        /// already on the wire would replay on retry under fresh
+        /// recv nonces and break the AEAD MAC.
         batch_rc = GN_OK;
-        std::size_t accepted = 0;
         for (const auto& frame : batch) {
             const auto rc = safe_call_result("link.send",
                 trans.vtable->send, trans.self, conn,
                 frame.data(), frame.size());
             if (rc == GN_OK) {
-                ++accepted;
+                ++out_accepted;
                 continue;
             }
             if (rc == GN_ERR_LIMIT_REACHED) {
@@ -279,20 +292,20 @@ void route_one_envelope(Kernel& kernel,
             }
             /// Other failure (transport tear-down, etc.) — bytes
             /// gone, link plugin owns retry / disconnect policy.
-            ++accepted;
+            ++out_accepted;
         }
-        /// Report only the bytes the link accepted.
         std::size_t accepted_bytes = 0;
-        for (std::size_t i = 0; i < accepted; ++i) {
+        for (std::size_t i = 0; i < out_accepted; ++i) {
             accepted_bytes += batch[i].size();
         }
-        if (accepted > 0) {
+        if (out_accepted > 0) {
             pc->kernel->connections().add_outbound(
-                conn, accepted_bytes, accepted);
+                conn, accepted_bytes, out_accepted);
         }
         return batch_rc;
     }
     if (batch_rc == GN_OK) {
+        out_accepted = batch.size();
         pc->kernel->connections().add_outbound(
             conn, total_bytes, batch.size());
     }
@@ -338,8 +351,9 @@ void drain_send_queue(PluginContext*                            pc,
         /// here on successful flush) so producers continue to
         /// observe backpressure through `try_push`.
         if (!queue.stalled_wire_batch.empty()) {
+            std::size_t accepted = 0;
             const gn_result_t rc = send_link_batch(
-                pc, trans, conn, queue.stalled_wire_batch);
+                pc, trans, conn, queue.stalled_wire_batch, accepted);
             if (rc == GN_OK) {
                 std::size_t cleared = 0;
                 for (const auto& f : queue.stalled_wire_batch) {
@@ -350,8 +364,27 @@ void drain_send_queue(PluginContext*                            pc,
                 queue.stalled_wire_batch.clear();
                 /// Fall through — try draining new frames.
             } else {
-                /// Link still rejecting; halt. Producer's next
-                /// push claims drain again, retries.
+                /// Link still rejecting; halt. Compact the parked
+                /// batch to drop the prefix the link DID accept
+                /// before it returned `LIMIT_REACHED`. Without the
+                /// compaction the next claim retries the already-
+                /// sent prefix, the receiver's recv nonce has
+                /// advanced past those frames, AEAD MAC fails, and
+                /// the link's `host_api_failures_` threshold tears
+                /// the conn down. Producer's next push claims
+                /// drain again to retry the suffix.
+                if (accepted > 0 && accepted < queue.stalled_wire_batch.size()) {
+                    std::size_t cleared = 0;
+                    for (std::size_t i = 0; i < accepted; ++i) {
+                        cleared += queue.stalled_wire_batch[i].size();
+                    }
+                    queue.pending_bytes.fetch_sub(
+                        cleared, std::memory_order_acq_rel);
+                    queue.stalled_wire_batch.erase(
+                        queue.stalled_wire_batch.begin(),
+                        queue.stalled_wire_batch.begin()
+                            + static_cast<std::ptrdiff_t>(accepted));
+                }
                 queue.drain_scheduled.store(
                     false, std::memory_order_release);
                 return;
@@ -374,13 +407,23 @@ void drain_send_queue(PluginContext*                            pc,
                     /// learns through `add_outbound` not advancing.
                     continue;
                 }
+                std::size_t accepted = 0;
                 const gn_result_t link_rc = send_link_batch(
-                    pc, trans, conn, wire_batch);
+                    pc, trans, conn, wire_batch, accepted);
                 if (link_rc == GN_ERR_LIMIT_REACHED) {
                     /// Park as stalled — same wire bytes (with
                     /// reserved nonces) retried on next claim.
-                    /// Re-credit `pending_bytes` so producers
-                    /// see backpressure while the batch is held.
+                    /// Drop the accepted prefix so the parked
+                    /// remainder doesn't replay frames already on
+                    /// the wire under fresh recv nonces. Re-credit
+                    /// `pending_bytes` for the parked suffix so
+                    /// producers see backpressure while it's held.
+                    if (accepted > 0) {
+                        wire_batch.erase(
+                            wire_batch.begin(),
+                            wire_batch.begin()
+                                + static_cast<std::ptrdiff_t>(accepted));
+                    }
                     std::size_t parked = 0;
                     for (const auto& f : wire_batch) {
                         parked += f.size();
@@ -399,9 +442,16 @@ void drain_send_queue(PluginContext*                            pc,
         /// Ciphertext path — bytes are wire-ready already.
         auto cipher_batch = queue.drain_batch();
         if (!cipher_batch.empty()) {
+            std::size_t accepted = 0;
             const gn_result_t rc = send_link_batch(
-                pc, trans, conn, cipher_batch);
+                pc, trans, conn, cipher_batch, accepted);
             if (rc == GN_ERR_LIMIT_REACHED) {
+                if (accepted > 0) {
+                    cipher_batch.erase(
+                        cipher_batch.begin(),
+                        cipher_batch.begin()
+                            + static_cast<std::ptrdiff_t>(accepted));
+                }
                 std::size_t parked = 0;
                 for (const auto& f : cipher_batch) {
                     parked += f.size();
