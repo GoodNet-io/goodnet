@@ -60,9 +60,13 @@ claiming existing peer_pk) живёт на
 действует строго последовательно: открывает новый, дожидается, пока
 тот закрепится, и только потом закрывает старый. Алгоритм:
 
-1. Плагин вызывает `host_api->dial(host_ctx, new_uri, scheme, &new_conn)`
-   — link-плагин нужного `scheme` начинает свой `connect`, а ядро
-   возвращает свежевыделенный `gn_conn_id_t`.
+1. Strategy-плагин обращается напрямую к link-плагину нужного
+   `scheme` через extension-API (`gn.link.<scheme>`) — link-плагин
+   запускает свой `connect(uri)`, и его собственный обработчик
+   `notify_connect` отдаст ядру свежий `gn_conn_id_t`. Outbound
+   dial — ответственность link-плагина (см.
+   [link.md](../contracts/link.en.md) §2); host_api напрямую
+   соединения не открывает.
 2. Плагин подписан на канал `GN_SUBSCRIBE_CONN_STATE` через
    `host_api->subscribe_conn_state` (см.
    [host-api.md](../contracts/host-api.en.md) §2). Подписка существовала

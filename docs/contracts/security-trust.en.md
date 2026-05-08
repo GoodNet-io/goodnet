@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel` (TrustClass propagation), `plugins/security/*`,
             `plugins/links/*` (TrustClass declaration on connect)
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-08
 **Stability:** v1.x; the TrustClass enum may grow only by appending values.
 
 ---
@@ -45,14 +45,15 @@ otherwise without source-level evidence:
 gn_result_t (*notify_connect)(void* host_ctx,
                               const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
                               const char* uri,
-                              const char* scheme,
                               gn_trust_class_t trust,
                               gn_handshake_role_t role,
                               gn_conn_id_t* out_conn);
 ```
 
 The kernel allocates `*out_conn` and returns it to the transport;
-`role` reports whether the local side initiated (outbound `connect`)
+the scheme is derived from the `uri://` prefix so the transport
+plugin owning the scheme need not pass it explicitly. `role`
+reports whether the local side initiated (outbound `connect`)
 or accepted (inbound on `listen`) so the security session drives
 the correct half of the asymmetric handshake pattern.
 

@@ -315,9 +315,11 @@ blob   := record record record …
 
 TLV-blob едет как payload application-сообщения с зарезервированным
 msg_id, **не** как отдельный wire-формат. Ядро само blob не парсит —
-поверхность для плагинов через `host_api->send_capability_blob` и
-`host_api->set_capability_handler` (зарезервированы под v1.1). Сейчас
-encode/decode живут в header-only `sdk/cpp/capability_tlv.hpp`.
+плагины encode/decode'ят через header-only
+`sdk/cpp/capability_tlv.hpp` и шлют/принимают результат через
+обычный `host_api->send` + handler-vtable. Соответствующие host_api
+slot'ы для capability-обмена забронированы под v1.1 в зоне
+`_reserved[8]`; до тех пор передача идёт через прикладной msg_id.
 
 Reserved type ranges:
 

@@ -6,48 +6,186 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Two nodes can talk: real transports, an end-to-end secured byte
-pipe, and the first handler. The kernel moves encrypted bytes
-between two processes over a real socket and surfaces RTT through a
-typed extension API.
+Nothing yet.
 
-### bridges/cpp + link-ice + gssh
+## [1.0.0-rc1] — 2026-05-08
 
-`bridges/cpp/` is a new sibling git that ships header-only RAII C++23
-wrappers over `sdk/core.h` so operator binaries write `gn::cpp::Core`
-instead of raw `gn_core_*` calls. Lives in its own repo, mirror at
-`~/.local/share/goodnet-mirrors/bridges-cpp.git`, MIT-licensed,
-INTERFACE target `GoodNet::cpp`. The kernel build picks up the slot
-when present and pulls its smoke tests into the kernel ctest run.
+First release candidate. Wire format, public C ABI, plugin
+contracts, and the operator surface are frozen for the rc series;
+post-rc1 work routes through the contract-amendment process in
+`GOVERNANCE.md`.
 
-`plugins/links/ice/` ports the ICE NAT-traversal transport from the
-legacy GoodNet — full RFC 8445 with custom STUN/TURN (no libnice or
-libjuice dependency), GPL-2 + linking exception. The legacy
-optimizer / orchestrator coupling is dropped; signaling moved off
-the wire onto the `gn.link.ice.signal` plugin↔plugin extension. The
-plugin's own ctest suite passes 20/20 under Release / ASan / TSan.
+### Multi-connection per peer
 
-`apps/gssh/` is the new operator SSH binary — single binary, three
+Kernel `ConnectionRegistry` admits N concurrent connections to the
+same peer. URI and pk indexes became last-writer-wins (`insert_or_assign`
+under the per-shard lock); `conn_id` stays the only uniqueness key.
+The contract change unblocks multi-path strategies that hold a TCP
+conn and an ICE conn to the same peer at the same time, with a
+strategy plugin choosing which carries application traffic. See
+`docs/contracts/registry.en.md` §3 and `docs/architecture/routing.ru.md`
+§"Регистр соединений".
+
+### AEAD batch send invariant — scalar fallback fixed
+
+The kernel's `send_link_batch` scalar fallback (used when a link
+plugin's vtable returns `GN_ERR_NOT_IMPLEMENTED` for `send_batch`)
+accepted a partial prefix then surfaced `LIMIT_REACHED`. The drainer
+parked the **whole** wire batch as stalled and replayed the
+already-sent prefix on retry, breaking the AEAD nonce sequence on
+the receiver. Fix: `send_link_batch` now reports the accepted-frame
+count through an out parameter, and the drainer's three send sites
+(stalled retry, plaintext path, ciphertext path) erase the accepted
+prefix before parking the remainder. Any link plugin that opts out
+of batch send no longer triggers wire-byte replay under back-pressure.
+See `docs/contracts/link.en.md` §3.
+
+### Inline-crypto fast path + CryptoWorkerPool
+
+`SecuritySession` exposes `encrypt_batch_transport(plaintexts,
+&wire_batch)` that atomically reserves K AEAD nonces and submits
+K encrypt jobs to the `CryptoWorkerPool`, then coalesces the wire-
+framed ciphertexts into one `link->send_batch` call. Single
+connection sustained throughput on the reference machine
+(i5-1235U, loopback, 16 KiB payloads) lands at ~6 Gbps; four-conn
+aggregate at ~20 Gbps. WireGuard single tunnel measured under the
+same conditions hits 4.94 Gbps (mainline data plane runs single-
+threaded in softirq context). See `docs/operator/deployment.en.md`
+§1 for the full bench matrix and `README.md` for the WireGuard
+comparison.
+
+### Receiver-side recv backpressure
+
+TCP plugin pauses the read loop when `notify_inbound_bytes` returns
+`GN_ERR_LIMIT_REACHED`, parks the rejected chunk in
+`stalled_inbound_`, and retries on a 100 µs strand-bound timer.
+The kernel's per-session recv buffer cap rose from `2 *
+max_frame_bytes` (128 KiB) to `kDefaultDrainBatch *
+max_frame_bytes` (4 MiB) so the receiver absorbs a full peer drain
+batch without tripping the failure threshold. See
+`docs/contracts/backpressure.en.md` §9 and the link plugin's
+recv-loop pattern in `docs/impl/cpp/transports.ru.md`.
+
+### Honest performance reporting
+
+`docs/operator/deployment.en.md` §1 now labels burst (1000-frame
+warmup) and sustained (5000-frame feedback loop) numbers
+separately. `perf record` evidence for the AEAD hot path
+(chacha20_encrypt_bytes 42 % of cycles, poly1305_blocks 30 %) ships
+in the architecture canvas's link-tcp card.
+
+### Contract corrections
+
+- `docs/contracts/host-api.en.md` §2 — `emit_counter` and
+  `iterate_counters` slots now appear in the ABI table (they
+  were live in `sdk/host_api.h` but missing from the contract
+  document).
+- `docs/contracts/conn-events.en.md` §3 — replaced the obsolete
+  single-slot `subscribe(channel, …)` rendering with the real
+  typed pair (`subscribe_conn_state` /
+  `subscribe_config_reload`).
+- `docs/contracts/security-trust.en.md` §3 — dropped the phantom
+  `scheme` parameter from `notify_connect`'s signature; the
+  kernel derives scheme from the `uri://` prefix.
+- `docs/contracts/registry.en.md` §3 — corrected the
+  "all-or-nothing on any key" wording to reflect the multi-conn
+  semantic (only `conn_id` and `max_connections` cap reject).
+- `docs/contracts/capability-tlv.en.md` §1 — removed reference
+  to phantom `host_api->send_capability_blob` /
+  `set_capability_handler` slots; capability blobs ride as
+  application-message payload until v1.1.
+
+### Two nodes talk: bridges/cpp + link-ice + gssh
+
+`bridges/cpp/` is a sibling git that ships header-only RAII C++23
+wrappers over `sdk/core.h` so operator binaries write
+`gn::cpp::Core` instead of raw `gn_core_*` calls. MIT-licensed,
+INTERFACE target `GoodNet::cpp`. The kernel build picks up the
+slot when present and pulls its smoke tests into the kernel ctest
+run.
+
+`plugins/links/ice/` ports the ICE NAT-traversal transport from
+the legacy GoodNet — full RFC 8445 with custom STUN/TURN (no
+libnice or libjuice dependency), GPL-2 + linking exception. The
+legacy optimizer/orchestrator coupling is dropped; signalling
+moved off the wire onto the `gn.link.ice.signal` plugin↔plugin
+extension. The plugin's own ctest suite passes 20/20 under
+Release / ASan / TSan.
+
+`apps/gssh/` is the operator SSH binary — single binary, three
 modes (`gssh user@<peer-pk>` wraps `ssh -o ProxyCommand=...`,
-`gssh --bridge <peer-pk>` is the ProxyCommand callee, `gssh --listen`
-forwards inbound GoodNet conns to `localhost:22`). Consumes the
-kernel through `bridges/cpp` + `sdk/core.h`; same source tree fronts
-both client and server side.
+`gssh --bridge <peer-pk>` is the ProxyCommand callee,
+`gssh --listen` forwards inbound GoodNet conns to `localhost:22`).
+Consumes the kernel through `bridges/cpp` + `sdk/core.h`; same
+source tree fronts both client and server side.
+
+### Tests as plugin-owned units
+
+Each loadable plugin owns its own conformance tests. `link.md` §9
+shutdown contract lives in `sdk/test/conformance/link_teardown.hpp`
+(typed-test fixture exported from the SDK); each link plugin's
+own `tests/test_<link>_conformance.cpp` instantiates the suite
+for its type. A regression in IPC's `shutdown()` now fails IPC
+plugin's own `nix run .#test`, not a kernel-side cross-plugin
+runner.
+
+Cross-plugin integration tests (Noise+TCP end-to-end, plugin
+teardown, goodnet binary boot, backpressure across plugins, link
+extension API) live in `goodnet-integration-tests` sibling repo
+pulled into the kernel's `tests/integration/` slot via
+`nix run .#plugin -- install`.
 
 ### Documentation corpus
 
-The developer-facing documentation now stands as a complete layered
-stack: 23 canonical contracts in `docs/contracts/`, ten architecture
+23 canonical contracts in `docs/contracts/`, ten architecture
 deep-dives in `docs/architecture/`, eight task recipes in
 `docs/recipes/`, five C++ implementation guides in
-`docs/impl/cpp/`, and four wire-format references in
-`docs/protocol/`. Architecture diagrams live as 17 SVGs under
-`docs/img/` produced by `tools/gen_diagrams.py`; the bird's-eye
-summary canvas lives at `docs/architecture.canvas`. Doxygen API
-reference is wired through `nix run .#docs` against
-`docs/Doxyfile`. Introduction-level material («how to use this from
-a first-time operator's view») is intentionally out of this corpus
-and grows in its own pass.
+`docs/impl/cpp/`, four wire-format references in
+`docs/protocol/`. Architecture diagrams as 17 SVGs under
+`docs/img/` produced by `tools/gen_diagrams.py`; bird's-eye
+canvas at `docs/architecture.canvas`. Doxygen API reference is
+wired through `nix run .#docs` against `docs/Doxyfile`.
+
+### Workflow
+
+Loadable plugins live in their own gits; the kernel monorepo
+ignores their slots entirely. The kernel's flake exposes seven
+`nix run .#…` apps that cover the full lifecycle, plus an
+auto-pull `shellHook` that wires a fresh checkout on first
+`nix develop`:
+
+```
+nix run .#                           # default = debug build
+nix run .#setup                      # mirrors + plugins + hooks
+nix run .#update                     # nix flake update + plugin pulls
+nix run .#build  [-- release|debug]
+nix run .#test   [-- asan|tsan|all]
+nix run .#run    -- <demo|node|goodnet> [args]
+nix run .#plugin -- <new|pull|install|update> [args]
+```
+
+### Verification
+
+- ctest 878/878 green under Release, ASan, TSan on the reference
+  machine.
+- 5/5 sustained-tight-loop bench runs (1c × 16 KiB × 5000 frames)
+  complete with zero AEAD-MAC failures.
+- 30× TSan stress run on link-teardown without surfacing the
+  shutdown race that closed in late April.
+
+### Known limitations
+
+- **Plugin flake input is a relative `git+file:../../..`** which
+  Nix has deprecated in favour of absolute or `github:` URLs
+  (see https://github.com/NixOS/nix/issues/12281). Each plugin's
+  `flake.lock` therefore needs `--allow-dirty-locks` to refresh.
+  Workaround stays in place until each plugin extracts to its
+  `goodnet-io/<repo>` GitHub URL post-rc1.
+- **No per-plugin GitHub repositories yet.** The `goodnet-io`
+  organisation is empty; bundled plugins ship in-tree until
+  rc1 cuts and the per-plugin repos go live.
+- **No registered domain.** Documentation references the GitHub
+  organisation directly.
 
 ### Teardown protocol pinned
 
@@ -62,93 +200,6 @@ the four affected link plugins (TCP, IPC, WS, TLS) landed the fix
 in its own git on `fix/teardown-race`, merged into the plugin's
 `main`. The kernel-side TSan suite ran 30× post-fix without a
 single teardown-race surface.
-
-### Known limitations
-
-- **Plugin flake input is a relative `git+file:../../..`** which
-  Nix has deprecated in favour of absolute or `github:` URLs (see
-  https://github.com/NixOS/nix/issues/12281). Each plugin's
-  `flake.lock` therefore needs `--allow-dirty-locks` to refresh.
-  Workaround stays in place until each plugin extracts to its
-  `goodnet-io/<repo>` github URL post-rc1, at which point the
-  input becomes `github:goodnet-io/<repo>` with no relativity to
-  warn about.
-
-### Tests no longer in the kernel
-
-Loadable plugins now own their own conformance tests. The
-`link.md` §9 shutdown contract lives in
-`sdk/test/conformance/link_teardown.hpp` (typed-test fixture
-exported from the SDK); each link plugin's own
-`tests/test_<link>_conformance.cpp` instantiates the suite for
-its type. A regression in IPC's `shutdown()` now fails IPC
-plugin's own `nix run .#test`, not a kernel-side cross-plugin
-runner.
-
-Cross-plugin integration tests (Noise+TCP end-to-end, plugin
-teardown, goodnet binary boot, backpressure across plugins,
-link extension API) move to a new `goodnet-integration-tests`
-sibling repo pulled into the kernel's `tests/integration/`
-slot via `nix run .#plugin -- install`. The slot is gitignored
-in the kernel; `tests/CMakeLists.txt` conditionally
-`add_subdirectory(integration)` only when the overlay is
-present.
-
-11 truly kernel-only tests previously filed under
-`tests/integration/` (backpressure_role, config_reload,
-conn_events, core_c, host_api_chain, inbound_chain,
-inject_api, inject_limits, metrics_thunks, send_loopback,
-trust_class_metric) move to `tests/unit/integration/` and are
-picked up by the kernel unit binary's existing GLOB. Six of
-them reference `gn::plugins::gnet`; the unit binary now links
-the static gnet target the kernel binary already includes.
-
-`tests/support/test_self_signed_cert.hpp` removed from the
-kernel — the only consumers were TLS plugin tests (now in TLS
-plugin's git) and `test_link_teardown_conformance` (now in
-the integration-tests overlay, which carries its own copy).
-
-Open trade-off: `tests/unit/plugin/test_plugin_manager.cpp`
-stays in the kernel because it uses kernel-internal headers
-(`core/kernel/kernel.hpp`, `core/plugin/plugin_manager.hpp`)
-that the SDK does not export. The test gates on
-`GOODNET_NULL_PLUGIN_PATH` so it skips silently when the null
-plugin isn't pulled. A post-rc1 refactor either exposes a
-test-only kernel-internals slice or rewrites the test against
-a built-in mock plugin.
-
-### Workflow
-
-Loadable plugins live in their own gits; the kernel monorepo
-ignores their slots entirely. The kernel's flake exposes seven
-`nix run .#…` apps that cover the full lifecycle, plus an
-auto-pull `shellHook` that wires a fresh checkout on first
-`nix develop`. The Make wrapper exposes the same surface for
-operators who prefer `make setup && make test`.
-
-```
-nix run .#                           # default = debug build
-nix run .#setup                      # mirrors + plugins + hooks
-nix run .#update                     # nix flake update + plugin pulls
-nix run .#build  [-- release|debug]
-nix run .#test   [-- asan|tsan|all]
-nix run .#run    -- <demo|node|goodnet> [args]
-nix run .#plugin -- <new|pull|install|update> [args]
-```
-
-Verified end-to-end on the latest dev tree:
-
-```
-cp -a GoodNet/ /tmp/gn-final-verify/
-cd /tmp/gn-final-verify
-rm -rf plugins/handlers plugins/links plugins/security/{noise,null}
-# eight plugin slots empty — only protocols/{gnet,raw} remain
-nix develop --command make test
-# shellHook auto-runs setup → 8 plugins pulled from
-# ~/.local/share/goodnet-mirrors/<repo>.git
-# CMake reconfigures, builds, runs ctest
-# → 856/856 tests pass (116 integration + remainder)
-```
 
 ### Added
 

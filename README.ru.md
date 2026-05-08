@@ -1,120 +1,198 @@
 # GoodNet
 
-Сетевой фреймворк по образцу Linux: маленькое ядро, плагины для
-транспортов, провайдеров безопасности, протокольных слоёв и
-обработчиков. Приложение либо встраивает ядро как библиотеку,
-либо запускает standalone-демон. Стабильна только C ABI между
-ядром и плагинами, всё остальное — композиция.
+Маленькое сетевое ядро с подключаемыми транспортами,
+криптопровайдерами, протокольными слоями и обработчиками.
+Приложения встраивают его как библиотеку или запускают
+standalone-демон. Стабильна ровно одна граница — C ABI между
+ядром и плагинами; всё остальное — композиция.
 
-**Статус: pre-1.0, идёт стабилизация.** Wire-format, публичная API
-и плагин-контракты всё ещё двигаются. Pin против этого дерева в
-продакшен пока нельзя. Первая стабильная поверхность — `v1.0.0-rc1`.
+Опорная аналогия — Linux. Ядро не знает что такое TCP, что
+такое Noise, что такое приложение. Оно ведёт логические
+соединения, типизированные сообщения, адреса-публичные-ключи и
+зарегистрированные обработчики. Каждый транспорт, каждый шифр,
+каждый wire-формат живёт в плагине, загружаемом через `dlopen`
+по версионированному C ABI.
 
-English: см. [`README.md`](README.md).
-
-## Сборка из исходников
-
-Поддерживаемый путь — Nix. Flake пинит toolchain (gcc 15,
-libsodium, OpenSSL, asio, spdlog, gtest, rapidcheck, clang-tidy 21),
-поэтому чистый клон собирается одинаково на любом хосте.
+## Quickstart
 
 ```bash
 git clone https://github.com/GoodNet-io/goodnet.git
 cd goodnet
-nix develop                     # вход в shell с пин-toolchain
-cmake -B build -G Ninja
-cmake --build build
-ctest --test-dir build          # на dev ожидается 856/856
+nix run .#setup            # bootstrap зеркал и плагинов
+nix run .#build            # release-сборка с LTO → build-release/
+nix run .#run -- demo      # два узла, Noise-over-TCP, одно сообщение
 ```
 
-Удобные алиасы через flake:
+Без Nix: gcc 15, libsodium, OpenSSL, asio, spdlog, gtest,
+rapidcheck, CMake 3.25 — поставить через свой пакетник, потом
+`cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
-```bash
-nix run .#               # debug-сборка (инкрементальная)
-nix run .#build          # release с LTO
-nix run .#test           # debug-сборка + ctest
-nix run .#test-asan      # sanitizer-сборка + ctest
-nix run .#test-tsan
-nix run .#demo           # двухнодовый Noise-over-TCP quickstart
-nix run .#goodnet -- version
+## Чем отличается
+
+- **Multi-path транспорт.** Все транспорты работают
+  одновременно. Соединение через TCP мигрирует на ICE или IPC
+  без того чтобы приложение увидело шов. Скоринг путей выбирает
+  лучший в реальном времени.
+- **Relay → direct upgrade.** Соединение начинается через
+  relay когда нужно и за несколько секунд переходит в прямое,
+  пробивая NAT приёмника. Приложение видит один и тот же
+  `conn_id` через переход.
+- **Plugin-first экосистема.** Транспорты, криптопровайдеры,
+  протокольные слои и обработчики — загружаемые `.so` со своим
+  гитом, своей лицензией, своим релизным темпом. Bundled-набор
+  это стартовый kit, а не запечатанный монолит.
+- **C ABI стабильности через языки.** Ядро экспонирует один
+  surface — указатель + размер, никаких STL-типов через
+  границу — поэтому биндинги на Python, Rust, Go, Java
+  ложатся на один контракт. Плагины на разных языках
+  работают в одном процессе.
+
+## Сравнение
+
+| | GoodNet | libp2p | WireGuard | Matrix |
+|---|---|---|---|---|
+| **Форма** | Ядро + C ABI | Библиотека | Kernel-модуль | Приложение (чат) |
+| **Транспорты** | Все одновременно (multi-path) | По одному на conn | Только UDP | Homeserver HTTP |
+| **Языки** | Любой (через C ABI) | Go/Rust/JS форки несовместимы | C / kernel | Python/JS/Go |
+| **NAT** | Heartbeat-observed + AutoNAT + relay → direct | Ручной relay | Никак | Pivot через homeserver |
+| **Pluggable security** | Да (Noise XX/IK, Null, TLS planned) | Да (Noise) | Нет (только Noise IK) | TLS до homeserver |
+| **Лицензия** | GPL-2 + linking exception (strategic), MIT (periphery) | MIT/Apache | GPL-2 | Apache |
+
+## Производительность
+
+Референсная машина: i5-1235U, loopback, 16 KiB payload, после
+fix'а AEAD-batch в `dev`. ChaCha20-Poly1305 через libsodium.
+
+| Сценарий | Среднее (5 запусков) | Разброс |
+|---|---|---|
+| 1 conn, burst (1000 фреймов) | 7.05 Gbps | 5.1 – 9.0 |
+| 1 conn, sustained (5000 фреймов) | 6.01 Gbps | 5.7 – 6.3 |
+| 4 conn, sustained agg | 19.84 Gbps | 17.8 – 20.8 |
+| 8 conn, burst agg | 20.49 Gbps | 15.8 – 30.6 |
+
+Single-conn сидит на ~75 % потолка одного ядра libsodium ChaCha
+(`perf record`: 42 % циклов в `chacha20_encrypt_bytes`, 30 % в
+`poly1305_blocks`). Multi-conn масштабируется потому что
+`CryptoWorkerPool` распределяет AEAD-jobs параллельно по ядрам;
+у каждого conn'а свой asio-strand и своя per-conn drain CAS.
+
+### vs WireGuard
+
+Та же машина, тот же kernel, тот же ChaCha20-Poly1305.
+WireGuard через veth между двумя network-namespaces, GoodNet —
+loopback TCP. iperf3 vs goodnet-bench, 5 секунд.
+
+| | Throughput |
+|---|---|
+| veth-bridge (без crypto, baseline) | 80.4 Gbps |
+| WireGuard single tunnel (kernel, single-thread) | 4.94 Gbps |
+| **GoodNet single connection (userspace, multi-thread crypto)** | **6.01 Gbps** |
+| **GoodNet 4 conn aggregate** | **19.84 Gbps** |
+
+Замечания: data plane WireGuard в mainline Linux работает в
+одном softirq-контексте — encrypt пинит одно ядро. GoodNet
+распределяет AEAD по worker-thread'ам пула. На реальной 10 Gbps
+NIC расклад смещается: zero-copy kernel-path WireGuard'a сложно
+переиграть из userspace. Это loopback-only evidence.
+
+Воспроизвести: `nix run .#build && build-release/bin/goodnet-bench 5000 16 4`.
+
+## Архитектура
+
+Ядро — восемь подсистем одного уровня: connection registry,
+signal bus, plugin manager, service resolver, session registry
+(security state), send-queue manager, extension registry,
+metrics exporter. Ни одна не знает имени конкретного плагина.
+Единственные точки входа — контракты в [`docs/contracts/`](docs/contracts/),
+которые дерево считает авторитетными: контракт меняется
+первым, код подтягивается.
+
+Layout:
+
+```
+core/        ядро и примитивы
+sdk/         публичный C ABI (host_api, link, security, protocol, handler, ...)
+plugins/     bundled link / security / protocol / handler плагины
+apps/        бинарь демона goodnet, gssh, demo
+examples/    bench harness, two-node демо
+docs/        contracts (авторитет), architecture (narrative), operator
+tests/       unit, integration, property, conformance
+dist/        пример operator-конфига + systemd unit
 ```
 
-Без Nix собрать тоже можно, если на хосте уже есть gcc ≥ 15,
-зависимости из списка выше и CMake ≥ 3.25, но flake — референс.
+Каждый плагин под `plugins/<kind>/<name>/` — самодостаточная
+единица: свой `CMakeLists.txt`, свой `default.nix`, свой git,
+своя лицензия. Грузится в ядро через `PluginManager::load`
+против SHA-256 манифеста (`/etc/goodnet/plugins.json`).
 
-## Попробовать
+## Демон
 
-Демо двух нод поднимает Noise XX handshake по loopback TCP и
-обменивается одним сообщением:
-
-```bash
-nix run .#demo
-```
-
-Bench-харнесс меряет throughput по encrypted-каналу:
+`goodnet` — multicall-бинарь:
 
 ```bash
-nix run .# -- build/bin/goodnet-bench 1000 16 1
-# ожидаемо ~6 Gbps single-conn loopback на ноуте 2024
-```
-
-## CLI оператора
-
-`goodnet` — это бинарник демона плюс несколько админ-команд:
-
-```bash
-goodnet version
-goodnet identity gen --out node.id
-goodnet config validate dist/example/node.json
+goodnet identity gen --out /etc/goodnet/identity.bin
 goodnet manifest gen build/plugins/libgoodnet_*.so > plugins.json
+goodnet config validate dist/example/node.json
 goodnet run --config dist/example/node.json \
             --manifest plugins.json \
-            --identity node.id
+            --identity /etc/goodnet/identity.bin
 ```
 
-Рабочий пример operator-сетапа лежит в
-[`dist/example/`](dist/example/).
+Рабочий operator-setup с systemd-юнитом и примером `node.json`
+лежит в [`dist/example/`](dist/example/). Operator-гайд —
+[`docs/operator/deployment.en.md`](docs/operator/deployment.en.md).
 
-## Раскладка дерева
+## Статус
 
-- [`core/`](core/) — ядро
-- [`sdk/`](sdk/) — публичные C ABI заголовки (host_api, security,
-  link, protocol, handler, conn_events, …) плюс C++ обёртки в
-  `sdk/cpp/`
-- [`plugins/`](plugins/) — встроенные плагины (транспорты,
-  провайдеры, протокольные слои, обработчики); каждый —
-  самостоятельная единица с собственным `CMakeLists.txt` и
-  `default.nix`
-- [`apps/`](apps/) — бинарник `goodnet` демона и друзья
-- [`examples/`](examples/) — `bench` (throughput-харнесс) и
-  `two_node` (Noise-over-TCP демо)
-- [`docs/contracts/`](docs/contracts/) — поведенческие правила
-  ядра и плагинов; контракт меняется первым, код за ним
-- [`tests/`](tests/) — kernel-side unit + integration тесты
-- [`dist/`](dist/) — пример operator-конфига, systemd-юнит,
-  заметки по миграциям
+**Pre-1.0 release candidate.** Wire-формат, публичный API и
+плагин-контракты ещё двигаются. Не пинить против этого дерева
+для production пока. Первая стабильная поверхность — на
+`v1.0.0-rc1`. Ветки: `dev` для разработки, `main` для релизов
+(между тегами `main` стоит).
+
+Sanitizer-матрица: 878/878 ctest зелёные под Release, ASan,
+TSan на референсной машине.
 
 ## Документация
 
-- [`docs/contracts/`](docs/contracts/) — авторитетные контракты
-  (начни с [`host-api.md`](docs/contracts/host-api.md))
+- [`docs/contracts/`](docs/contracts/) — авторитетные
+  behavioural-контракты. Старт: [`host-api.en.md`](docs/contracts/host-api.en.md)
+  если встраиваешь ядро, [`link.en.md`](docs/contracts/link.en.md)
+  если пишешь транспорт.
+- [`docs/architecture/`](docs/architecture/) — narrative
+  объяснения по-русски: routing, multi-path, wire-protocol.
+- [`docs/operator/`](docs/operator/) — deployment,
+  troubleshooting.
 - [`CONTRIBUTING.md`](CONTRIBUTING.md) — workflow разработки,
-  branch-модель, audit-pass
-- [`SECURITY.md`](SECURITY.md) — threat-модель, канал репортинга
-- [`GOVERNANCE.md`](GOVERNANCE.md) — принятие решений, процесс
-  amendment контрактов
+  branch-модель, audit-pass.
+- [`SECURITY.md`](SECURITY.md) — threat-модель, канал
+  репортинга.
+- [`GOVERNANCE.md`](GOVERNANCE.md) — принятие решений,
+  процедура изменения контрактов.
+
+English: see [`README.md`](README.md).
 
 ## Лицензия
 
-GPL-2.0 с linking exception для стратегического baseline (ядро,
-TCP / UDP / WS / Noise / Heartbeat). Периферийные плагины (raw
-protocol, null security, IPC link) — MIT. TLS link — Apache-2.0
-для совместимости с OpenSSL. См. [`LICENSE`](LICENSE) и
-per-plugin `LICENSE` в каждом плагине.
+GPL-2.0 с linking exception для strategic-базы: ядро,
+bundled-плагины TCP / UDP / WS / Noise / Heartbeat. Linking
+exception разрешает out-of-tree плагинам жить под любой
+лицензией — граница это C ABI, не лицензия. Periphery-плагины
+(raw protocol, null security, IPC link) — MIT для широты
+экосистемы. TLS-плагин — Apache-2.0 ради совместимости с
+OpenSSL.
 
-## Что вне scope (сегодня)
+Стратегический rationale тот же что Linux в 1991: GPL на ядре
+держит субстрат открытым, linking exception оставляет
+приложения свободными. См. [`LICENSE`](LICENSE) и `LICENSE` в
+каждом плагине.
 
-- Готовые бинарные релизы — до `v1.0.0-rc1` нет.
-- API stability — до `v1.0.0-rc1` нет.
-- Out-of-tree plugin distribution channel — пока только встроенные;
-  per-plugin репозитории появятся на `rc1`.
+## Вне scope (сегодня)
+
+- Готовых release-бинарей нет до `v1.0.0-rc1`.
+- API-стабильности нет до `v1.0.0-rc1`.
+- Per-plugin GitHub-репозиториев нет — bundled-плагины пока
+  едут в дереве; org-repos `goodnet-io/<kind>-<name>` встанут
+  после `rc1`.
+- Зарегистрированного домена — нет, на данный момент.
+  Документация ссылается на GitHub-org напрямую.

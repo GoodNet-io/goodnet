@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/registry/connection.hpp`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-08
 **Stability:** v1.x
 
 ---
@@ -94,8 +94,17 @@ unchanged.
 
 Properties:
 
-- **All-or-nothing.** Any insert that would collide on any key fails
-  before any mutation.
+- **All-or-nothing on `conn_id`.** An insert that violates `conn_id`
+  uniqueness or the `max_connections` cap fails before any mutation.
+  URI and pk indexes admit duplicates: a second insert against the
+  same URI or the same remote public key overwrites the existing
+  index entry (last-writer-wins). This is the multi-conn-per-peer
+  primitive — the kernel admits N concurrent connections to one
+  peer, and a strategy plugin (multi-path, relay→direct upgrade)
+  picks which one carries application traffic. Lookup-by-URI and
+  lookup-by-pk return whichever conn wrote the index last; an
+  iteration over `for_each_connection` sees every live conn
+  regardless of index aliasing.
 - **No reader-visible intermediate state.** The three locks are held
   for the duration of the mutation; readers either see the record
   under all three keys or under none.

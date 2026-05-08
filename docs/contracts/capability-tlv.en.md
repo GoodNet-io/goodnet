@@ -28,10 +28,13 @@ The blob is exchanged in-band over the secured GNET channel
 once the handshake completes — it rides as the payload of an
 application message, not a distinct frame format
 (`plugins/protocols/gnet/docs/wire-format.md` §6 notes the same intent). The kernel
-itself does not encode or decode the blob — it surfaces the
-bytes through `host_api->send_capability_blob` /
-`host_api->set_capability_handler` hooks (reserved for v1.1) so
-plugins own the schema.
+itself does not encode or decode the blob — plugins encode and
+decode it through the header-only `sdk/cpp/capability_tlv.hpp`
+and send / receive results through the regular `host_api->send`
+plus handler-vtable surface. Dedicated host_api slots for
+capability exchange are reserved in `host_api_t::_reserved[8]`
+for v1.1; until then traffic rides on a reserved application
+`msg_id`.
 
 ---
 
