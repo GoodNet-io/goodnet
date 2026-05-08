@@ -72,6 +72,27 @@ gn_result_t tcp_send(void* self, gn_conn_id_t conn,
         conn, std::span<const std::uint8_t>(bytes, size));
 }
 
+/// Route batched sends through `TcpLink::send_batch` so the all-or-
+/// nothing hard-cap check fires once per batch — the kernel's scalar
+/// fallback (when `send_batch` is `NOT_IMPLEMENTED`) accepts a partial
+/// prefix then surfaces `LIMIT_REACHED`, and the drainer parks the
+/// **whole** wire batch with the same reserved nonces. On retry the
+/// already-sent prefix replays under fresh recv nonces, breaking the
+/// AEAD MAC and tripping the link's failure threshold. Per
+/// `docs/contracts/link.en.md` §3 send_batch is "one logical write".
+gn_result_t tcp_send_batch(void* self, gn_conn_id_t conn,
+                            const gn_byte_span_t* batch, std::size_t count) {
+    if (!self) return GN_ERR_NULL_ARG;
+    if (count > 0 && !batch) return GN_ERR_NULL_ARG;
+    std::vector<std::span<const std::uint8_t>> frames;
+    frames.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        frames.emplace_back(batch[i].bytes, batch[i].size);
+    }
+    return static_cast<TcpLink*>(self)->send_batch(
+        conn, std::span<const std::span<const std::uint8_t>>(frames));
+}
+
 gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
     if (!self) return GN_ERR_NULL_ARG;
     return static_cast<TcpLink*>(self)->disconnect(conn);
@@ -80,7 +101,6 @@ gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
 const char* tcp_scheme(void*)                                                 { return "tcp"; }
 gn_result_t tcp_listen_unused(void*, const char*)                              { return GN_ERR_NOT_IMPLEMENTED; }
 gn_result_t tcp_connect_unused(void*, const char*)                             { return GN_ERR_NOT_IMPLEMENTED; }
-gn_result_t tcp_batch_unused(void*, gn_conn_id_t, const gn_byte_span_t*, std::size_t) { return GN_ERR_NOT_IMPLEMENTED; }
 const char* tcp_ext_name(void*)                                                { return nullptr; }
 const void* tcp_ext_vtable(void*)                                              { return nullptr; }
 void        tcp_destroy(void*)                                                 {}
@@ -92,7 +112,7 @@ const gn_link_vtable_t kTcpVtable = []() {
     v.listen           = &tcp_listen_unused;
     v.connect          = &tcp_connect_unused;
     v.send             = &tcp_send;
-    v.send_batch       = &tcp_batch_unused;
+    v.send_batch       = &tcp_send_batch;
     v.disconnect       = &tcp_disconnect;
     v.extension_name   = &tcp_ext_name;
     v.extension_vtable = &tcp_ext_vtable;
