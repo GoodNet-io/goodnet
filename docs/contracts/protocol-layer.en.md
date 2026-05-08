@@ -70,7 +70,12 @@ identity. Broadcast scope is a per-protocol policy (gossip TTL, neighbour-only,
 flood) and lives inside the plugin, not the kernel.
 
 A sender **must never** be `ZERO`. Messages with `sender_pk == ZERO` are
-dropped at kernel ingress and counted in `metrics.dropped.zero_sender`.
+dropped at kernel ingress and counted in `route.outcome.dropped_zero_sender`
+— the rejection lands on the routing-pipeline namespace per
+`metrics.md` §3 because the drop happens after deframe, when the
+router refuses to dispatch the envelope; consumers scrape the same
+prefix as every other "what did the chain do with this envelope"
+counter.
 
 ---
 

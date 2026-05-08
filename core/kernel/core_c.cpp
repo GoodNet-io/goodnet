@@ -265,7 +265,8 @@ void gn_core_broadcast(gn_core_t* core,
     /// best-effort by contract (mirrors legacy `Orchestrator::broadcast`).
     core->kernel.connections().for_each(
         [core, msg_id, payload, payload_size]
-        (const gn::core::ConnectionRecord& rec) -> bool {
+        (const gn::core::ConnectionRecord& rec,
+         const gn::core::ConnectionRegistry::CounterSnapshot& /*counters*/) -> bool {
             (void)gn_core_send_to(core, rec.id, msg_id, payload, payload_size);
             return true;
         });
@@ -295,12 +296,19 @@ gn_result_t gn_core_get_stats(gn_core_t* core, gn_stats_t* out) {
     out->bytes_out             = 0;
     out->frames_in             = 0;
     out->frames_out            = 0;
+    /// Counters live on the per-id `AtomicCounters` slot, not on
+    /// the record itself; `for_each` snapshots them under the same
+    /// shard lock that publishes the record, so the accumulator
+    /// observes a coherent (record, counters) pair without a
+    /// second `shared_mutex` acquire (which would be UB per
+    /// `std::shared_mutex` non-recursion).
     core->kernel.connections().for_each(
-        [out](const gn::core::ConnectionRecord& rec) -> bool {
-            out->bytes_in   += rec.bytes_in;
-            out->bytes_out  += rec.bytes_out;
-            out->frames_in  += rec.frames_in;
-            out->frames_out += rec.frames_out;
+        [out](const gn::core::ConnectionRecord& /*rec*/,
+              const gn::core::ConnectionRegistry::CounterSnapshot& c) -> bool {
+            out->bytes_in   += c.bytes_in;
+            out->bytes_out  += c.bytes_out;
+            out->frames_in  += c.frames_in;
+            out->frames_out += c.frames_out;
             return true;
         });
     out->plugin_dlclose_leaks = core->plugins.leaked_handles();

@@ -93,6 +93,11 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     if (limits_.max_counter_names != 0) {
         metrics_.set_max_counter_names(limits_.max_counter_names);
     }
+    if (limits_.max_subscriptions != 0) {
+        const std::size_t cap = limits_.max_subscriptions;
+        on_conn_event_.set_max_subscribers(cap);
+        on_config_reload_.set_max_subscribers(cap);
+    }
 }
 
 gn_result_t Kernel::reload_config(std::string_view text) {

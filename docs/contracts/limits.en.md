@@ -37,12 +37,13 @@ integers in network byte order on the C ABI:
 | `max_relay_ttl` | 32 | 4 | forwarded message hop count |
 | `max_plugins` | 32 | 64 | dlopen ceiling |
 | `max_extensions` | 32 | 256 | extension registry size |
+| `max_subscriptions` | 32 | 256 | per-channel `SignalChannel` subscriber cap (`conn-events.md` §3); kept independent of `max_extensions` so saturating one extension pool does not bleed into the conn-state event surface |
 | `max_timers` | 32 | 4096 | active one-shot timers (`timer.md` §6) |
 | `max_pending_tasks` | 32 | 4096 | queued service-executor tasks (`set_timer` fire-and-forget) |
 | `pending_handshake_bytes` | 32 | 256 KiB | per-conn cap on app data buffered while a security session is in `Handshake` (`backpressure.md` §8) |
 | `max_storage_table_entries` | 64 | 10 000 | storage handler bound |
 | `max_storage_value_bytes` | 64 | `max_payload_bytes` | per-entry size |
-| `_reserved[8]` | 32×8 | 0 | size-prefix evolution |
+| `_reserved[6]` | 32×6 | 0 | size-prefix evolution |
 
 The struct is loaded from `Config::limits` at kernel startup. After
 construction it is **read-only** for the kernel's lifetime; reload of
@@ -87,10 +88,11 @@ enforce each cap during `Kernel::set_limits` — `max_connections` to
 `ConnectionRegistry`, `max_extensions` to `ExtensionRegistry`,
 `max_plugins` to `PluginManager`, `max_handlers_per_msg_id` to
 `HandlerRegistry`, `max_timers` and `max_pending_tasks` to
-`TimerRegistry`. A registry whose cap is left at the
-`set_*` default of zero treats the bound as "unlimited"; production
-configurations always set a non-zero value through the loaded
-config.
+`TimerRegistry`, `max_subscriptions` to every `SignalChannel`
+(conn-state and config-reload). A registry or channel whose cap
+is left at the `set_*` default of zero treats the bound as
+"unlimited"; production configurations always set a non-zero
+value through the loaded config.
 
 ---
 

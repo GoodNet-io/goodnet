@@ -41,6 +41,7 @@
 #include <core/registry/handler.hpp>
 #include <core/registry/security.hpp>
 #include <core/registry/link.hpp>
+#include <core/registry/send_queue.hpp>
 #include <core/signal/signal_channel.hpp>
 
 namespace gn::core {
@@ -101,6 +102,7 @@ public:
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] LinkRegistry&        links()       noexcept { return links_; }
+    [[nodiscard]] SendQueueManager&    send_queues() noexcept { return send_queues_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
     [[nodiscard]] SessionRegistry&            sessions()    noexcept { return sessions_; }
     [[nodiscard]] ExtensionRegistry&   extensions()  noexcept { return extensions_; }
@@ -211,6 +213,7 @@ private:
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
     LinkRegistry         links_;
+    SendQueueManager     send_queues_;
     SecurityRegistry     security_;
     SessionRegistry             sessions_;
     ExtensionRegistry    extensions_;

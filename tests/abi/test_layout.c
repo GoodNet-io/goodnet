@@ -251,8 +251,10 @@ _Static_assert(offsetof(gn_limits_t, max_storage_value_bytes) == 80,
                "gn_limits_t::max_storage_value_bytes offset pinned at 80");
 _Static_assert(offsetof(gn_limits_t, max_counter_names) == 88,
                "gn_limits_t::max_counter_names offset pinned at 88");
-_Static_assert(offsetof(gn_limits_t, _reserved) == 92,
-               "gn_limits_t::_reserved offset pinned at 92");
+_Static_assert(offsetof(gn_limits_t, max_subscriptions) == 92,
+               "gn_limits_t::max_subscriptions offset pinned at 92");
+_Static_assert(offsetof(gn_limits_t, _reserved) == 96,
+               "gn_limits_t::_reserved offset pinned at 96");
 
 /* ── sdk/log.h ─────────────────────────────────────────────────────────────── */
 

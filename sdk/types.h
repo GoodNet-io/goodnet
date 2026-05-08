@@ -109,11 +109,14 @@ typedef enum gn_drop_reason_e {
 } gn_drop_reason_t;
 
 /**
- * @brief Backpressure signal returned to senders when the queue is loaded.
+ * @brief Backpressure signal — reserved for the future per-connection
+ *        pressure channel.
  *
- * Returned by `host_api->send` and friends. Plugins must branch on the value;
- * ignoring `GN_BP_HARD_LIMIT` and tight-looping on send is a contract
- * violation.
+ * `host_api->send` itself returns `gn_result_t`; on a hard-cap drop
+ * the result is `GN_ERR_LIMIT_REACHED` per `backpressure.md` §1.
+ * This enum is the wire shape the per-conn `BACKPRESSURE_*` channel
+ * will surface once that channel ships in a v1.x minor — see
+ * `fsm-events.md` §4.2.
  */
 typedef enum gn_backpressure_e {
     GN_BP_OK            = 0,  /**< accepted, no pressure */
@@ -121,14 +124,6 @@ typedef enum gn_backpressure_e {
     GN_BP_HARD_LIMIT    = 2,  /**< dropped — back off, do not retry tight */
     GN_BP_DISCONNECT    = 3   /**< connection gone — caller should stop */
 } gn_backpressure_t;
-
-/**
- * @brief Policy returned from `IHandler::on_result` to influence dispatch.
- */
-typedef enum gn_on_result_policy_e {
-    GN_ON_RESULT_CONTINUE_CHAIN = 0, /**< default: dispatch continues per `Propagation` */
-    GN_ON_RESULT_STOP_CHAIN     = 1  /**< stop the chain regardless of `Propagation` */
-} gn_on_result_policy_t;
 
 /**
  * @brief Layer selector for `host_api->inject`.

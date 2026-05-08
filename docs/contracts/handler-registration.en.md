@@ -217,9 +217,9 @@ Three rules:
    envelope.
 2. **Equal priority sees in registration order.** Older registrations
    come first; this ordering is stable to plugin authors who care.
-Priority is a hint, not enforcement; an application can register a
-`priority=0` handler that watches every message for metrics without
-risking that it intercepts traffic.
+3. **Priority is advisory, not enforcement.** An application can register
+   a `priority=0` handler that watches every message for metrics without
+   risking that it intercepts traffic.
 
 ---
 

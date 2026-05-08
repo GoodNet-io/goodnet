@@ -234,8 +234,8 @@ TEST(AttestationDispatcher_Mutual, FiresUpgradeWhenBothFlagsSet) {
     EXPECT_TRUE(got_upgrade);
     EXPECT_EQ(got_trust, GN_TRUST_PEER);
     auto rec = kernel.connections().find_by_id(conn);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
+    ASSERT_NE(rec, nullptr);
+    if (rec != nullptr) {
         EXPECT_EQ(rec->trust, GN_TRUST_PEER);
     }
 }
@@ -260,8 +260,8 @@ TEST(AttestationDispatcher_Mutual, NoUpgradeWhenOnlyOurSent) {
 
     EXPECT_FALSE(got_upgrade);
     auto rec = kernel.connections().find_by_id(conn);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
+    ASSERT_NE(rec, nullptr);
+    if (rec != nullptr) {
         EXPECT_EQ(rec->trust, GN_TRUST_UNTRUSTED);
     }
 }
@@ -289,8 +289,8 @@ TEST(AttestationDispatcher_Mutual, NoUpgradeWhenOnlyTheirReceived) {
 
     EXPECT_FALSE(got_upgrade);
     auto rec = kernel.connections().find_by_id(conn);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
+    ASSERT_NE(rec, nullptr);
+    if (rec != nullptr) {
         EXPECT_EQ(rec->trust, GN_TRUST_UNTRUSTED);
     }
 }
@@ -359,8 +359,8 @@ TEST(AttestationDispatcher_Mutual, LoopbackTrustNotUpgraded) {
 
     EXPECT_FALSE(got_upgrade);
     auto rec = kernel.connections().find_by_id(conn);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
+    ASSERT_NE(rec, nullptr);
+    if (rec != nullptr) {
         EXPECT_EQ(rec->trust, GN_TRUST_LOOPBACK);
     }
 }

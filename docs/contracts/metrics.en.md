@@ -54,7 +54,8 @@ visitor on `iterate_counters` returns zero.
 ### 2.1 Cardinality cap
 
 The map is bounded by `gn_limits_t::max_counter_names` (default
-`8192`, `sdk/limits.h:131`). Past the cap, `emit_counter` on a
+`GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES = 8192` in `sdk/limits.h`).
+Past the cap, `emit_counter` on a
 **previously-unseen** name is rejected and bumps the
 always-present `metrics.cardinality_rejected` sentinel slot
 (pre-created at registry construction, so the counter is
@@ -118,7 +119,7 @@ v1.1. The currently-emitting reasons:
 | `drop.deframe_corrupt` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` — magic / version drift |
 | `drop.queue_hard_cap` | per-link `send` / `send_batch` (TCP / WS / IPC / TLS) | per-conn pending queue past `pending_queue_bytes_hard` |
 | `drop.trust_class_mismatch` | `notify_connect` thunk | declared trust not in `protocol_layer().allowed_trust_mask()` (protocol-side gate, `host_api_builder.cpp:1067`) **or** not in the security provider's `allowed_trust_mask` (security-side gate, `host_api_builder.cpp:1130` after `SessionRegistry::create` returns `INVALID_ENVELOPE`); same counter for both per `security-trust.md` §4 |
-| `attestation.bad_size` / `replay` / `parse_failed` / `bad_signature` / `expired_or_invalid` / `identity_change` | `attestation_dispatcher` | `attestation.md` §5 step failures |
+| `drop.attestation_bad_size` / `_replay` / `_parse_failed` / `_bad_signature` / `_expired_or_invalid` / `_identity_change` | `attestation_dispatcher` via `MetricsRegistry::increment_drop_reason` | `attestation.md` §5 step failures — one counter per `gn_drop_reason_t` enum value, sharing the kernel's `drop.*` namespace so operators scrape every rejection class together |
 
 `route.outcome.*` is the **routing-pipeline** namespace ("a
 deframed envelope reached the dispatch chain — what happened

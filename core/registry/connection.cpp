@@ -3,6 +3,7 @@
 
 #include "connection.hpp"
 
+#include <memory>
 #include <mutex>
 
 namespace gn::core {
@@ -69,7 +70,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     const std::string  uri   = rec.uri;
     const PublicKey    pk    = rec.remote_pk;
 
-    s.records.emplace(id, std::move(rec));
+    s.records.emplace(id, std::make_shared<const ConnectionRecord>(std::move(rec)));
     s.counters.emplace(id, std::make_unique<AtomicCounters>());
     uri_index_.emplace(uri, id);
     if (has_peer_pk) pk_index_.emplace(pk, id);
@@ -96,10 +97,12 @@ gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
         return GN_ERR_NOT_FOUND;
     }
 
-    /// Copy index keys before erasing the record itself; after the
-    /// shard erase the references would dangle.
-    const std::string uri = it->second.uri;
-    const PublicKey   pk  = it->second.remote_pk;
+    /// Copy index keys before dropping the record's shared_ptr so
+    /// the references stay alive while the index erases run. Other
+    /// readers that already hold a copy of the same shared_ptr
+    /// keep observing the record until they release it.
+    const std::string uri = it->second->uri;
+    const PublicKey   pk  = it->second->remote_pk;
 
     uri_index_.erase(uri);
     pk_index_.erase(pk);
@@ -121,8 +124,11 @@ ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
 
     /// `insert_with_index` always emplaces a counter slot beside the
     /// record under the same scoped_lock, so an existing record
-    /// always has a live counter slot.
-    ConnectionRecord snapshot = std::move(it->second);
+    /// always has a live counter slot. Copy out a value-typed
+    /// snapshot here — the caller wants ownership for one-shot
+    /// event publishing, not a continuing reference to the
+    /// shared_ptr.
+    ConnectionRecord snapshot = *it->second;
     auto cit = s.counters.find(id);
     const auto& c = *cit->second;
     snapshot.bytes_in            = c.bytes_in.load(std::memory_order_relaxed);
@@ -133,8 +139,9 @@ ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
         c.pending_queue_bytes.load(std::memory_order_relaxed);
     snapshot.last_rtt_us         = c.last_rtt_us.load(std::memory_order_relaxed);
 
-    /// `snapshot` owns a copy of `uri` and `remote_pk` after the move,
-    /// so the index erases below are safe even after the shard erase.
+    /// `snapshot` owns a copy of `uri` and `remote_pk` after the
+    /// dereference, so the index erases below are safe even after
+    /// the shard erase drops the stored shared_ptr.
     uri_index_.erase(snapshot.uri);
     pk_index_.erase(snapshot.remote_pk);
     s.counters.erase(id);
@@ -143,29 +150,32 @@ ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
     return snapshot;
 }
 
-std::optional<ConnectionRecord> ConnectionRegistry::find_by_id(gn_conn_id_t id) const {
-    if (id == GN_INVALID_ID) return std::nullopt;
+std::shared_ptr<const ConnectionRecord>
+ConnectionRegistry::find_by_id(gn_conn_id_t id) const {
+    if (id == GN_INVALID_ID) return nullptr;
     const Shard& s = shard_for(id);
     std::shared_lock lock(s.mu);
     auto it = s.records.find(id);
-    if (it == s.records.end()) return std::nullopt;
-    ConnectionRecord snapshot = it->second;
-    /// `merge_counters` reads the per-id atomics under the same
-    /// shared lock so the snapshot reflects a consistent view.
-    /// Atomic loads themselves do not need the lock; the lock
-    /// guards the lookup of the counters slot.
-    auto cit = s.counters.find(id);
-    if (cit != s.counters.end() && cit->second != nullptr) {
-        const auto& c = *cit->second;
-        snapshot.bytes_in            = c.bytes_in.load(std::memory_order_relaxed);
-        snapshot.bytes_out           = c.bytes_out.load(std::memory_order_relaxed);
-        snapshot.frames_in           = c.frames_in.load(std::memory_order_relaxed);
-        snapshot.frames_out          = c.frames_out.load(std::memory_order_relaxed);
-        snapshot.pending_queue_bytes =
-            c.pending_queue_bytes.load(std::memory_order_relaxed);
-        snapshot.last_rtt_us         = c.last_rtt_us.load(std::memory_order_relaxed);
-    }
-    return snapshot;
+    if (it == s.records.end()) return nullptr;
+    return it->second;
+}
+
+ConnectionRegistry::CounterSnapshot
+ConnectionRegistry::read_counters(gn_conn_id_t id) const noexcept {
+    CounterSnapshot out{};
+    if (id == GN_INVALID_ID) return out;
+    const Shard& s = shard_for(id);
+    std::shared_lock lock(s.mu);
+    auto it = s.counters.find(id);
+    if (it == s.counters.end() || it->second == nullptr) return out;
+    const auto& c = *it->second;
+    out.bytes_in            = c.bytes_in.load(std::memory_order_relaxed);
+    out.bytes_out           = c.bytes_out.load(std::memory_order_relaxed);
+    out.frames_in           = c.frames_in.load(std::memory_order_relaxed);
+    out.frames_out          = c.frames_out.load(std::memory_order_relaxed);
+    out.pending_queue_bytes = c.pending_queue_bytes.load(std::memory_order_relaxed);
+    out.last_rtt_us         = c.last_rtt_us.load(std::memory_order_relaxed);
+    return out;
 }
 
 gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
@@ -176,17 +186,20 @@ gn_result_t ConnectionRegistry::upgrade_trust(gn_conn_id_t id,
     std::unique_lock lock(s.mu);
     auto it = s.records.find(id);
     if (it == s.records.end()) return GN_ERR_NOT_FOUND;
-    if (!gn_trust_can_upgrade(it->second.trust, target)) {
+    if (!gn_trust_can_upgrade(it->second->trust, target)) {
         /// Helper from `sdk/trust.h` rejects: only `Untrusted → Peer`
         /// or identity transitions. The shard mutex serialises the
         /// read-decide-write so concurrent upgrades cannot race past
         /// the gate.
         return GN_ERR_LIMIT_REACHED;
     }
-    it->second.trust = target;
-    if (out_record != nullptr) {
-        *out_record = it->second;
-    }
+    /// Copy-on-write replace — readers holding the prior shared_ptr
+    /// observe the old record until they drop their reference;
+    /// readers post-store observe the new trust class.
+    auto next = std::make_shared<ConnectionRecord>(*it->second);
+    next->trust = target;
+    if (out_record != nullptr) *out_record = *next;
+    it->second = std::move(next);
     return GN_OK;
 }
 
@@ -201,7 +214,7 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
     auto it = s.records.find(id);
     if (it == s.records.end()) return GN_ERR_NOT_FOUND;
 
-    const PublicKey old_pk = it->second.remote_pk;
+    const PublicKey old_pk = it->second->remote_pk;
     if (old_pk == new_pk) return GN_OK;  /// idempotent no-op
 
     /// Reject `new_pk` already pointing at a different conn id —
@@ -223,27 +236,33 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
         pk_index_.erase(old_pk);
     }
     pk_index_.insert_or_assign(new_pk, id);
-    it->second.remote_pk = new_pk;
+
+    /// Copy-on-write replace mirrors `upgrade_trust`.
+    auto next = std::make_shared<ConnectionRecord>(*it->second);
+    next->remote_pk = new_pk;
+    it->second = std::move(next);
     return GN_OK;
 }
 
-std::optional<ConnectionRecord> ConnectionRegistry::find_by_uri(std::string_view uri) const {
+std::shared_ptr<const ConnectionRecord>
+ConnectionRegistry::find_by_uri(std::string_view uri) const {
     gn_conn_id_t id = GN_INVALID_ID;
     {
         std::shared_lock lock(uri_mu_);
         auto it = uri_index_.find(std::string{uri});
-        if (it == uri_index_.end()) return std::nullopt;
+        if (it == uri_index_.end()) return nullptr;
         id = it->second;
     }
     return find_by_id(id);
 }
 
-std::optional<ConnectionRecord> ConnectionRegistry::find_by_pk(const PublicKey& pk) const {
+std::shared_ptr<const ConnectionRecord>
+ConnectionRegistry::find_by_pk(const PublicKey& pk) const {
     gn_conn_id_t id = GN_INVALID_ID;
     {
         std::shared_lock lock(pk_mu_);
         auto it = pk_index_.find(pk);
-        if (it == pk_index_.end()) return std::nullopt;
+        if (it == pk_index_.end()) return nullptr;
         id = it->second;
     }
     return find_by_id(id);
@@ -259,12 +278,24 @@ std::size_t ConnectionRegistry::size() const noexcept {
 }
 
 void ConnectionRegistry::for_each(
-    const std::function<bool(const ConnectionRecord&)>& visitor) const {
+    const std::function<bool(const ConnectionRecord&,
+                              const CounterSnapshot&)>& visitor) const {
     if (!visitor) return;
     for (const auto& s : shards_) {
         std::shared_lock lock(s.mu);
-        for (const auto& [_, rec] : s.records) {
-            if (!visitor(rec)) return;
+        for (const auto& [id, rec] : s.records) {
+            CounterSnapshot snap{};
+            auto cit = s.counters.find(id);
+            if (cit != s.counters.end() && cit->second != nullptr) {
+                const auto& c = *cit->second;
+                snap.bytes_in            = c.bytes_in.load(std::memory_order_relaxed);
+                snap.bytes_out           = c.bytes_out.load(std::memory_order_relaxed);
+                snap.frames_in           = c.frames_in.load(std::memory_order_relaxed);
+                snap.frames_out          = c.frames_out.load(std::memory_order_relaxed);
+                snap.pending_queue_bytes = c.pending_queue_bytes.load(std::memory_order_relaxed);
+                snap.last_rtt_us         = c.last_rtt_us.load(std::memory_order_relaxed);
+            }
+            if (!visitor(*rec, snap)) return;
         }
     }
 }

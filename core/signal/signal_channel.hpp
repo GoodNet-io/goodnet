@@ -43,12 +43,27 @@ public:
     /// `unsubscribe`. An empty `std::function` (default-constructed
     /// or wrapping a NULL C function pointer) returns `kInvalidToken`
     /// per `signal-channel.md` §6.1; the subscriber list is unchanged.
+    /// A subscribe past the live-cap (`set_max_subscribers`) also
+    /// returns `kInvalidToken`; the host_api thunks surface that to
+    /// callers as `GN_ERR_LIMIT_REACHED` per `conn-events.md` §6.
     [[nodiscard]] Token subscribe(Handler handler) {
         if (!handler) return kInvalidToken;
         std::unique_lock lock(mu_);
+        const std::size_t cap = max_subscribers_;
+        if (cap != 0 && subs_.size() >= cap) return kInvalidToken;
         Token t = next_token_++;
         subs_.push_back(Sub{t, std::move(handler)});
         return t;
+    }
+
+    /// Set the live-subscriber cap. Zero disables the check.
+    /// Plain store under the mutex so a concurrent `subscribe`
+    /// either sees the new cap or completes against the old one;
+    /// in either case the cap holds eventually because the live
+    /// list is protected by the same mutex.
+    void set_max_subscribers(std::size_t cap) {
+        std::unique_lock lock(mu_);
+        max_subscribers_ = cap;
     }
 
     /// Remove the subscription. Idempotent — calling on an already-
@@ -100,6 +115,7 @@ private:
     mutable std::shared_mutex mu_;
     std::vector<Sub>          subs_;
     Token                     next_token_{1};
+    std::size_t               max_subscribers_{0};
 };
 
 /// Empty event type — used as the payload for parameterless signals

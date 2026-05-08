@@ -73,35 +73,47 @@ event fires.
 
 ```
 host_api->send(conn, bytes)
-  └── transport.send(conn, bytes)
+  └── kernel: frame + encrypt
        │
-       │   [check hard cap]
-       │   if bytes_buffered + bytes > pending_queue_bytes_hard:
-       │       return GN_ERR_LIMIT_REACHED
+       │   [check kernel-side hard cap on per-conn ring]
+       │   if pending_bytes + bytes > pending_queue_bytes_hard:
+       │       return GN_ERR_LIMIT_REACHED       # producer back-off
        │
-       │   bytes_buffered += bytes
-       │   write_queue.push(bytes)
+       │   pending_bytes += bytes
+       │   PerConnQueue.try_push(wire_bytes, priority = Low)
        │
-       │   [check soft watermark — only on rising edge]
-       │   if !soft_signaled && bytes_buffered > pending_queue_bytes_high:
-       │       fire(BACKPRESSURE_SOFT, pending_bytes = bytes_buffered)
-       │       soft_signaled = true
-       │
-       │   maybe_start_write()
+       │   [claim drain — at most one in flight per conn]
+       │   if drain_scheduled.compare_exchange(expected = false, true):
+       │       drain_send_queue(conn)            # caller thread
 
-drain (async_write completion)
-  └── bytes_buffered -= written
-       │
-       │   [check clear watermark — only on falling edge]
-       │   if soft_signaled && bytes_buffered < pending_queue_bytes_low:
-       │       fire(BACKPRESSURE_CLEAR, pending_bytes = bytes_buffered)
-       │       soft_signaled = false
+drain_send_queue(conn):
+  while pending bytes remain in the per-conn rings:
+    batch = drain_batch(up to drain_batch_size frames, high prio first)
+    link->vtable->send_batch(self, conn, batch)  # writev coalesce
+    pending_bytes -= sum(batch)
+
+  [check clear watermark — only on falling edge]
+  if soft_signaled && pending_bytes < pending_queue_bytes_low:
+      fire(BACKPRESSURE_CLEAR, pending_bytes)
+      soft_signaled = false
+
+  drain_scheduled.store(false)
+  re-claim if a producer raced a push between drain-empty and clear
 ```
 
-`soft_signaled` is per-connection state inside the transport's
-session record. The single rising / falling edge model suppresses
-duplicate signals while the queue oscillates inside the
-hysteresis band.
+Hard-cap enforcement and the rising-edge `BACKPRESSURE_SOFT` /
+falling-edge `BACKPRESSURE_CLEAR` events live on the
+**kernel-side `SendQueueManager`**, not on the transport. The link
+plugin owns the actual writev under `send_batch` (see
+[`link.md` §4](./link.en.md)) but does not maintain its own
+application-visible queue: `PerConnQueue::pending_bytes` is the
+single byte-counter the watermark logic gates on, and
+`drain_scheduled` is the CAS that gives every connection a
+single-writer drain without blocking pushers.
+
+`soft_signaled` is per-connection state on `PerConnQueue`. The
+single rising / falling edge model suppresses duplicate signals
+while the queue oscillates inside the hysteresis band.
 
 ### 3.1 Transport-internal control replies
 

@@ -225,11 +225,25 @@ guarantees вернуть стабильный человекочитаемый 
 
 ## Threading model
 
-GoodNet kernel — event-driven, single-threaded по умолчанию: один
-io_context, один dispatch thread. Все callback'и (handler dispatch,
-message subscription, conn-event subscription, plugin timer
-delivery) runs **на этом dispatch thread'е**. Это ключевое
-утверждение, которое определяет всю threading model биндинга.
+GoodNet kernel разносит работу по нескольким исполнителям: kernel-side
+service executor (один thread, под `set_timer` / `cancel_timer`), и
+плагиновые io_context'ы внутри link plugins. TCP-link plugin держит
+worker pool размером `max(1, hardware_concurrency()/2)` thread'ов на
+одном `io_context` per
+[multi-path.md](./multi-path.ru.md) — несколько connection'ов
+прогрессируют параллельно, per-Session strand сериализует I/O одной
+связи. UDP / WS / IPC / TLS на момент v1 спавнят ровно один worker;
+будущие минорные релизы могут расширить пул, контракт это допускает.
+
+Канонический spec threading'а subscribers и callback'ов —
+[`conn-events.md` §3](../contracts/conn-events.en.md). Ключевые факты,
+на которых строится binding:
+
+- `CONNECTED` / `DISCONNECTED` / `BACKPRESSURE_*` — на link plugin'a
+  strand'е (TCP это один из workers, UDP/WS/IPC/TLS — single).
+- `TRUST_UPGRADED` — на thread'е что drove handshake completion.
+- Service-executor callback'и (`set_timer(delay_ms, …)`) — всегда
+  на kernel-side service executor thread'е.
 
 ### User thread → Core methods: safe
 
@@ -239,14 +253,18 @@ mutexes защищают registry state, atomic counters — fast-path
 все thread-safe. App может держать N worker thread'ов без external
 synchronisation.
 
-### Callback thread → user code: dispatch thread
+### Callback thread → user code: publishing thread
 
 Trampoline'ы (`message_trampoline`, `conn_event_trampoline`,
-`handler_handle_message_thunk`) вызываются на dispatch thread'е и
-синхронно зовут user lambda. **Lambda не должна блокировать**:
-блокирующее IO, mutex с contention, sleep, длительная computation
-останавливают dispatch для всех остальных connections. Идиоматично
-— скопировать payload в очередь и сигнализировать worker thread'у.
+`handler_handle_message_thunk`) вызываются на **publishing thread'е**
+— разной для разных event kind'ов, см. список выше. Subscriber что
+поддерживает state across event kinds **обязан** guard'ить его lock'ом
+или posting'ом каждого event'а через `host_api->set_timer(0, …)` на
+service executor thread (per `conn-events.md` §3). **Lambda не должна
+блокировать**: блокирующее IO, mutex с contention, sleep, длительная
+computation останавливают I/O drain для всех connections, sharing'их
+этот worker. Идиоматично — скопировать payload в очередь и
+сигнализировать worker thread'у.
 
 `payload` — borrowed для duration of call (`std::span` фиксирует
 это в типе). Если lambda хочет сохранить bytes — она копирует.

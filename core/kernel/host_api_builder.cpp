@@ -155,6 +155,7 @@ void kernel_initiated_disconnect(const PluginContext* pc,
     pc->kernel->sessions().destroy(conn);
     pc->kernel->attestation_dispatcher().on_disconnect(conn);
     auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+    pc->kernel->send_queues().erase(conn);
     if (snapshot) {
         ConnEvent ev{};
         ev.kind      = GN_CONN_EVENT_DISCONNECTED;
@@ -224,6 +225,70 @@ void route_one_envelope(Kernel& kernel,
     }
 }
 
+/// Drain a connection's send queue — claim has already been won via
+/// the `PerConnQueue::drain_scheduled` CAS. Pulls up to
+/// `drain_batch_size` frames, calls the link's `send_batch` slot
+/// (or falls back to the scalar `send` slot when the link does not
+/// expose batch send), and re-loops if pushers raced more frames in
+/// after the batch came back. Per `docs/contracts/backpressure.en.md`
+/// §5 — at most one drainer per connection at a time.
+///
+/// Send failures from the link are dropped silently here: the kernel
+/// queue has already counted the bytes through `pending_bytes` and the
+/// link plugin owns retry / disconnect policy on hard caps. Future
+/// improvement: re-push on `GN_ERR_LIMIT_REACHED` from the link.
+void drain_send_queue(PluginContext*    pc,
+                      const LinkEntry&  trans,
+                      gn_conn_id_t      conn,
+                      PerConnQueue&     queue) noexcept {
+    while (true) {
+        auto batch = queue.drain_batch();
+        if (batch.empty()) {
+            queue.drain_scheduled.store(false, std::memory_order_release);
+            if (!queue.has_frames()) return;
+            /// Pusher slipped a frame in between drain-empty and the
+            /// flag clear. Re-claim or hand off to whichever caller
+            /// owns the next drain cycle.
+            bool exp = false;
+            if (!queue.drain_scheduled.compare_exchange_strong(
+                    exp, true, std::memory_order_acq_rel)) {
+                return;
+            }
+            continue;
+        }
+
+        std::vector<gn_byte_span_t> spans;
+        spans.reserve(batch.size());
+        std::size_t total_bytes = 0;
+        for (const auto& frame : batch) {
+            spans.push_back({frame.data(), frame.size()});
+            total_bytes += frame.size();
+        }
+
+        /// `send_batch` is optional per `link.md` §4: a link declares
+        /// it `nullptr` *or* returns `GN_ERR_NOT_IMPLEMENTED` to opt
+        /// out, and the kernel falls through to the scalar `send`
+        /// slot one frame at a time. A genuine batch failure (link's
+        /// hard cap, transport tear-down) does not retry — the link
+        /// plugin owns retry / disconnect policy on its own state.
+        gn_result_t batch_rc = GN_ERR_NOT_IMPLEMENTED;
+        if (trans.vtable->send_batch != nullptr) {
+            batch_rc = safe_call_result("link.send_batch",
+                trans.vtable->send_batch, trans.self, conn,
+                spans.data(), spans.size());
+        }
+        if (batch_rc == GN_ERR_NOT_IMPLEMENTED) {
+            for (const auto& frame : batch) {
+                (void)safe_call_result("link.send",
+                    trans.vtable->send, trans.self, conn,
+                    frame.data(), frame.size());
+            }
+        }
+        pc->kernel->connections().add_outbound(
+            conn, total_bytes, batch.size());
+    }
+}
+
 /* ── Slot thunks. Each casts host_ctx → PluginContext* and dispatches. ── */
 
 gn_result_t thunk_send(void* host_ctx,
@@ -267,43 +332,57 @@ gn_result_t thunk_send(void* host_ctx,
     auto framed = layer->frame(ctx, env);
     if (!framed) return framed.error().code;
 
-    /// Encrypt the framed envelope through the connection's security
-    /// session when one is bound and has reached the transport phase.
-    /// While the session is in Handshake the framed plaintext is
-    /// buffered on the session's pending queue and drained once the
-    /// transport keys come up (`backpressure.md` §8). The no-session
-    /// path (loopback / null-security per `security-trust.md` §4)
-    /// sends the framed bytes verbatim.
+    /// Handshake-phase frames buffer on the session's own pending
+    /// queue, not the kernel send queue, because their order is tied
+    /// to the AEAD nonce sequence the session will commit only on
+    /// the upgrade to Transport.
     auto session = pc->kernel->sessions().find(conn);
-    if (session != nullptr) {
-        if (session->phase() == SecurityPhase::Handshake) {
-            const auto cap = pc->kernel->limits().pending_handshake_bytes;
-            return session->enqueue_pending(std::move(*framed),
-                                             static_cast<std::uint64_t>(cap));
-        }
-        if (session->phase() == SecurityPhase::Transport) {
-            std::vector<std::uint8_t> cipher;
-            const gn_result_t rc = session->encrypt_transport(*framed, cipher);
-            if (rc != GN_OK) return rc;
-            const auto send_rc = safe_call_result("link.send",
-                trans->vtable->send, trans->self, conn,
-                cipher.data(), cipher.size());
-            if (send_rc == GN_OK) {
-                pc->kernel->connections().add_outbound(
-                    conn, cipher.size(), 1);
-            }
-            return send_rc;
-        }
+    if (session != nullptr && session->phase() == SecurityPhase::Handshake) {
+        const auto cap = pc->kernel->limits().pending_handshake_bytes;
+        return session->enqueue_pending(std::move(*framed),
+                                         static_cast<std::uint64_t>(cap));
     }
 
-    const auto send_rc = safe_call_result("link.send",
-        trans->vtable->send, trans->self, conn,
-        framed->data(), framed->size());
-    if (send_rc == GN_OK) {
-        pc->kernel->connections().add_outbound(
-            conn, framed->size(), 1);
+    /// Encrypt to wire bytes when a Transport-phase session is bound;
+    /// otherwise the framed plaintext goes out verbatim (loopback /
+    /// null-security paths per `security-trust.md` §4).
+    std::vector<std::uint8_t> wire;
+    if (session != nullptr && session->phase() == SecurityPhase::Transport) {
+        const gn_result_t rc = session->encrypt_transport(*framed, wire);
+        if (rc != GN_OK) return rc;
+    } else {
+        wire = std::move(*framed);
     }
-    return send_rc;
+
+    /// Push onto the per-conn send queue and try to claim drain. The
+    /// queue exists for every conn registered through `notify_connect`
+    /// (`SendQueueManager::create` runs on insert). A null queue
+    /// surfaces only on test scaffolds that bypass `notify_connect`;
+    /// fall through to the scalar send path so those tests still pass.
+    auto queue = pc->kernel->send_queues().find(conn);
+    if (queue == nullptr) {
+        const auto send_rc = safe_call_result("link.send",
+            trans->vtable->send, trans->self, conn,
+            wire.data(), wire.size());
+        if (send_rc == GN_OK) {
+            pc->kernel->connections().add_outbound(
+                conn, wire.size(), 1);
+        }
+        return send_rc;
+    }
+
+    if (!queue->try_push(std::move(wire), SendPriority::Low)) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    bool expected = false;
+    if (queue->drain_scheduled.compare_exchange_strong(
+            expected, true, std::memory_order_acq_rel)) {
+        drain_send_queue(pc, *trans, conn, *queue);
+    }
+    /// When CAS lost — another caller is already draining and our
+    /// frame goes out as part of their next batch.
+    return GN_OK;
 }
 
 gn_result_t thunk_find_conn_by_pk(void* host_ctx,
@@ -345,12 +424,17 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
     std::memcpy(out->scheme, rec->scheme.data(), scheme_n);
     out->scheme[scheme_n] = '\0';
 
-    out->bytes_in            = rec->bytes_in;
-    out->bytes_out           = rec->bytes_out;
-    out->frames_in           = rec->frames_in;
-    out->frames_out          = rec->frames_out;
-    out->pending_queue_bytes = rec->pending_queue_bytes;
-    out->last_rtt_us         = rec->last_rtt_us;
+    /// Counters live on the per-id `AtomicCounters` block, not on
+    /// the shared record — `find_by_id` returns a `shared_ptr` ref
+    /// bump on the hot path so its bytes_in/out fields stay zero.
+    /// `read_counters` loads the live atomic values.
+    const auto counters = pc->kernel->connections().read_counters(conn);
+    out->bytes_in            = counters.bytes_in;
+    out->bytes_out           = counters.bytes_out;
+    out->frames_in           = counters.frames_in;
+    out->frames_out          = counters.frames_out;
+    out->pending_queue_bytes = counters.pending_queue_bytes;
+    out->last_rtt_us         = counters.last_rtt_us;
     return GN_OK;
 }
 
@@ -517,6 +601,9 @@ gn_result_t thunk_subscribe_conn_state(void* host_ctx,
             safe_call_void("subscriber.conn_state",
                 cb, ud_guard->user_data, &e);
         });
+    if (token == signal::SignalChannel<ConnEvent>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     *out_id = pack_subscription_id(GN_SUBSCRIBE_CONN_STATE,
                                     static_cast<std::uint64_t>(token));
     return GN_OK;
@@ -545,6 +632,9 @@ gn_result_t thunk_subscribe_config_reload(void* host_ctx,
             safe_call_void("subscriber.config_reload",
                 cb, ud_guard->user_data);
         });
+    if (token == signal::SignalChannel<signal::Empty>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
     *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
                                     static_cast<std::uint64_t>(token));
     return GN_OK;
@@ -610,7 +700,8 @@ gn_result_t thunk_for_each_connection(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->connections().for_each(
-        [visitor, user_data](const ConnectionRecord& rec) -> bool {
+        [visitor, user_data](const ConnectionRecord& rec,
+                              const ConnectionRegistry::CounterSnapshot& /*counters*/) -> bool {
             const auto rc_opt = safe_call_value<int>(
                 "for_each_connection.visitor",
                 visitor, user_data,
@@ -945,6 +1036,7 @@ gn_result_t send_raw_via_link(PluginContext* pc,
 void publish_kernel_disconnect(PluginContext* pc, gn_conn_id_t conn) {
     pc->kernel->sessions().destroy(conn);
     auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+    pc->kernel->send_queues().erase(conn);
     pc->kernel->attestation_dispatcher().on_disconnect(conn);
     if (!snapshot) return;
     ConnEvent ev{};
@@ -1138,6 +1230,8 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         pc->kernel->connections().insert_with_index(std::move(rec));
     if (rc != GN_OK) return rc;
 
+    pc->kernel->send_queues().create(new_id);
+
     *out_conn = new_id;
 
     {
@@ -1199,6 +1293,7 @@ gn_result_t thunk_notify_connect(void* host_ctx,
                 pc->kernel->metrics().increment("drop.trust_class_mismatch");
             }
             (void)pc->kernel->connections().erase_with_index(new_id);
+            pc->kernel->send_queues().erase(new_id);
             return session_rc;
         }
         /// Initiator's first wire message is deferred to a separate
@@ -1626,6 +1721,7 @@ gn_result_t thunk_notify_disconnect(void* host_ctx,
     /// `GN_ERR_NOT_FOUND` without publishing.
     pc->kernel->sessions().destroy(conn);
     auto snapshot = pc->kernel->connections().snapshot_and_erase(conn);
+    pc->kernel->send_queues().erase(conn);
 
     /// Drop kernel-internal per-connection state before publishing
     /// the event. A subscriber that re-uses the numeric id (after

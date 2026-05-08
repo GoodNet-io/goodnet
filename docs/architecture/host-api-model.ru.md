@@ -195,14 +195,30 @@ Pointer carry'ит scope плагина. Не per-thread — плагин мож
 
 `send` возвращает `gn_result_t`. Hot-path кодировка:
 
-- `GN_OK` — envelope принят, очередь не нагружена.
-- `GN_BP_SOFT_LIMIT` (через отдельный enum в `sdk/types.h`) — пройден low watermark, отправитель должен сбавить темп.
-- `GN_BP_HARD_LIMIT` — драп, не ретраим в tight loop'е.
-- `GN_BP_DISCONNECT` — соединение ушло, прекращаем.
+- `GN_OK` — envelope принят на per-conn `SendQueueManager` ring.
+- `GN_ERR_LIMIT_REACHED` — pending bytes пересекли hard cap
+  (`gn_limits_t::pending_queue_bytes_hard`); драп, не ретраим в tight
+  loop'е, sender обязан back-off'нуть.
+- `GN_ERR_NOT_FOUND` — соединение не существует или уже закрыто.
 
-Игнорировать `HARD_LIMIT` и долбить `send` в цикле — контрактное нарушение. Кernel detect'ит через counters, плагин получает `metrics.host_api.send.errors` flood в логах.
+Игнорировать `LIMIT_REACHED` и долбить `send` в цикле — контрактное
+нарушение: hard-cap reject означает что producer обогнал drain rate,
+немедленный retry усугубляет, не лечит. Kernel detect'ит через
+counters, плагин получает `metrics.host_api.send.errors` flood в логах.
 
-Параллельно с return code'ом ядро публикует `BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` события на conn-state канал. Подписчик читает `pending_bytes` из payload'а и принимает решение — это внешний наблюдатель (метрики, optimizer, UI). Sender-side сам видит результат `send` и может реагировать локально, без подписки.
+Soft-watermark и потерянное-соединение-на-горизонте — отдельный
+событийный surface, не возврат `send`'а. Канал
+`GN_SUBSCRIBE_CONN_STATE` доставляет `BACKPRESSURE_SOFT` /
+`BACKPRESSURE_CLEAR` (см.
+[conn-events.md §2](../contracts/conn-events.en.md)). Подписчик читает
+`pending_bytes` из payload'а и принимает решение. Тип
+`gn_backpressure_t` в [`sdk/types.h`](../../sdk/types.h) — wire shape
+для этого канала, зарезервированный под per-conn pressure
+сигнал в v1.x minor; на возврат `send`'а не отображается. Разнесение
+hard-cap reject (дискретный per-frame отказ через return code) и
+soft-pressure (длительное состояние, event-driven) нужно потому что
+sender обязан реагировать на soft заранее, до фактического drop'а
+hard-cap'а.
 
 `inject` следует тому же паттерну плюс per-source token bucket: 100 messages/sec с burst'ом 50 на каждый source conn по умолчанию, ключ — первые 8 байт `remote_pk` источника. Bucket consumes ровно после прохождения всех остальных гейтов (argument validation, layer-specific size cap, presence of protocol layer); ошибки на ранних стадиях не съедают токены — иначе плагин с плохими input'ами выжигал бы лимит легитимного трафика.
 

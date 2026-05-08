@@ -84,8 +84,8 @@ TEST(ConnectionRegistry_Insert, IdRoundTrip) {
     ASSERT_EQ(reg.insert_with_index(rec), GN_OK);
 
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         const auto& got = *fetched;
         EXPECT_EQ(got.id, id);
         EXPECT_EQ(got.uri, "tcp://10.0.0.1:5000");
@@ -103,10 +103,10 @@ TEST(ConnectionRegistry_Insert, UriIndexRoundTrip) {
         make_record(id, "tcp://host:1", pk)), GN_OK);
 
     auto by_uri = reg.find_by_uri("tcp://host:1");
-    ASSERT_TRUE(by_uri.has_value());
+    ASSERT_NE(by_uri, nullptr);
     auto by_id  = reg.find_by_id(id);
-    ASSERT_TRUE(by_id.has_value());
-    if (by_uri.has_value() && by_id.has_value()) {
+    ASSERT_NE(by_id, nullptr);
+    if (by_uri != nullptr && by_id != nullptr) {
         const auto& uri_rec = *by_uri;
         const auto& id_rec  = *by_id;
         EXPECT_EQ(uri_rec.id, id_rec.id);
@@ -123,10 +123,10 @@ TEST(ConnectionRegistry_Insert, PkIndexRoundTrip) {
         make_record(id, "tcp://host:2", pk)), GN_OK);
 
     auto by_pk = reg.find_by_pk(pk);
-    ASSERT_TRUE(by_pk.has_value());
+    ASSERT_NE(by_pk, nullptr);
     auto by_id = reg.find_by_id(id);
-    ASSERT_TRUE(by_id.has_value());
-    if (by_pk.has_value() && by_id.has_value()) {
+    ASSERT_NE(by_id, nullptr);
+    if (by_pk != nullptr && by_id != nullptr) {
         const auto& pk_rec = *by_pk;
         const auto& id_rec = *by_id;
         EXPECT_EQ(pk_rec.id, id_rec.id);
@@ -150,8 +150,8 @@ TEST(ConnectionRegistry_Duplicate, IdRejectedAndAtomic) {
               GN_ERR_LIMIT_REACHED);
 
     /// Atomicity: pk2 / "tcp://b" must NOT be visible.
-    EXPECT_FALSE(reg.find_by_uri("tcp://b").has_value());
-    EXPECT_FALSE(reg.find_by_pk(pk2).has_value());
+    EXPECT_EQ(reg.find_by_uri("tcp://b"), nullptr);
+    EXPECT_EQ(reg.find_by_pk(pk2), nullptr);
     EXPECT_EQ(reg.size(), 1u);
 }
 
@@ -168,8 +168,8 @@ TEST(ConnectionRegistry_Duplicate, UriRejectedAndAtomic) {
               GN_ERR_LIMIT_REACHED);
 
     /// Atomicity: id2 / pk2 must NOT be visible.
-    EXPECT_FALSE(reg.find_by_id(id2).has_value());
-    EXPECT_FALSE(reg.find_by_pk(pk2).has_value());
+    EXPECT_EQ(reg.find_by_id(id2), nullptr);
+    EXPECT_EQ(reg.find_by_pk(pk2), nullptr);
     EXPECT_EQ(reg.size(), 1u);
 }
 
@@ -185,8 +185,8 @@ TEST(ConnectionRegistry_Duplicate, PkRejectedAndAtomic) {
               GN_ERR_LIMIT_REACHED);
 
     /// Atomicity: id2 / "tcp://b" must NOT be visible.
-    EXPECT_FALSE(reg.find_by_id(id2).has_value());
-    EXPECT_FALSE(reg.find_by_uri("tcp://b").has_value());
+    EXPECT_EQ(reg.find_by_id(id2), nullptr);
+    EXPECT_EQ(reg.find_by_uri("tcp://b"), nullptr);
     EXPECT_EQ(reg.size(), 1u);
 }
 
@@ -198,15 +198,15 @@ TEST(ConnectionRegistry_Erase, RemovesFromAllIndexes) {
     const PublicKey    pk = make_pk(7);
     ASSERT_EQ(reg.insert_with_index(make_record(id, "tcp://x", pk)), GN_OK);
 
-    EXPECT_TRUE(reg.find_by_id(id).has_value());
-    EXPECT_TRUE(reg.find_by_uri("tcp://x").has_value());
-    EXPECT_TRUE(reg.find_by_pk(pk).has_value());
+    EXPECT_NE(reg.find_by_id(id), nullptr);
+    EXPECT_NE(reg.find_by_uri("tcp://x"), nullptr);
+    EXPECT_NE(reg.find_by_pk(pk), nullptr);
 
     ASSERT_EQ(reg.erase_with_index(id), GN_OK);
 
-    EXPECT_FALSE(reg.find_by_id(id).has_value());
-    EXPECT_FALSE(reg.find_by_uri("tcp://x").has_value());
-    EXPECT_FALSE(reg.find_by_pk(pk).has_value());
+    EXPECT_EQ(reg.find_by_id(id), nullptr);
+    EXPECT_EQ(reg.find_by_uri("tcp://x"), nullptr);
+    EXPECT_EQ(reg.find_by_pk(pk), nullptr);
     EXPECT_EQ(reg.size(), 0u);
 }
 
@@ -256,9 +256,9 @@ TEST(ConnectionRegistry_SnapshotAndErase, ReturnsRecordAndDropsAllIndexes) {
         EXPECT_EQ(s.trust,     GN_TRUST_PEER);
     }
 
-    EXPECT_FALSE(reg.find_by_id(id).has_value());
-    EXPECT_FALSE(reg.find_by_uri("tcp://snap").has_value());
-    EXPECT_FALSE(reg.find_by_pk(pk).has_value());
+    EXPECT_EQ(reg.find_by_id(id), nullptr);
+    EXPECT_EQ(reg.find_by_uri("tcp://snap"), nullptr);
+    EXPECT_EQ(reg.find_by_pk(pk), nullptr);
     EXPECT_EQ(reg.size(), 0u);
     EXPECT_EQ(reg.erase_with_index(id), GN_ERR_NOT_FOUND);
 }
@@ -451,7 +451,7 @@ TEST(ConnectionRegistry_MaxConnections, RejectsBeyondCap) {
         over_id, "tcp://capped-overflow",
         make_pk(0xDEADBEEFull))), GN_ERR_LIMIT_REACHED);
     EXPECT_EQ(reg.size(), 4u);
-    EXPECT_FALSE(reg.find_by_uri("tcp://capped-overflow").has_value());
+    EXPECT_EQ(reg.find_by_uri("tcp://capped-overflow"), nullptr);
 }
 
 TEST(ConnectionRegistry_MaxConnections, ErasureFreesSlot) {
@@ -514,9 +514,9 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
                 auto by_id  = reg.find_by_id(id);
                 auto by_uri = reg.find_by_uri(uri);
                 auto by_pk  = reg.find_by_pk(pk);
-                EXPECT_TRUE(by_id.has_value());
-                EXPECT_TRUE(by_uri.has_value());
-                EXPECT_TRUE(by_pk.has_value());
+                EXPECT_NE(by_id, nullptr);
+                EXPECT_NE(by_uri, nullptr);
+                EXPECT_NE(by_pk, nullptr);
                 if (by_id && by_uri && by_pk) {
                     EXPECT_EQ(by_id->id,  id);
                     EXPECT_EQ(by_uri->id, id);
@@ -579,8 +579,8 @@ TEST(ConnectionRegistry_PkIndex, RandomKeysAllFindable) {
     /// Every randomly generated pk must round-trip through the index.
     for (std::size_t i = 0; i < kCount; ++i) {
         auto rec = reg.find_by_pk(keys[i]);
-        ASSERT_TRUE(rec.has_value()) << "pk-lookup miss at iter " << i;
-        if (rec.has_value()) {
+        ASSERT_NE(rec, nullptr) << "pk-lookup miss at iter " << i;
+        if (rec != nullptr) {
             const auto& r = *rec;
             EXPECT_EQ(r.remote_pk, keys[i]);
         }
@@ -606,8 +606,8 @@ TEST(ConnectionRegistry_UpgradeTrust, UntrustedToPeerSucceeds) {
 
     EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_PEER), GN_OK);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
     }
 }
@@ -621,8 +621,8 @@ TEST(ConnectionRegistry_UpgradeTrust, IdentityIsNoOpSuccess) {
 
     EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_LOOPBACK), GN_OK);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->trust, GN_TRUST_LOOPBACK);
     }
 }
@@ -638,8 +638,8 @@ TEST(ConnectionRegistry_UpgradeTrust, LoopbackToPeerRejected) {
     /// the record untouched.
     EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_PEER), GN_ERR_LIMIT_REACHED);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->trust, GN_TRUST_LOOPBACK);
     }
 }
@@ -656,8 +656,8 @@ TEST(ConnectionRegistry_UpgradeTrust, PeerToUntrustedRejected) {
     EXPECT_EQ(reg.upgrade_trust(id, GN_TRUST_UNTRUSTED),
               GN_ERR_LIMIT_REACHED);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->trust, GN_TRUST_PEER);
     }
 }
@@ -679,18 +679,18 @@ TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     /// Pre-update: insert_with_index skips zero pk on purpose, so the
     /// placeholder is *not* in the pk index — many concurrent
     /// pre-handshake responders coexist without index collisions.
-    EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
+    EXPECT_EQ(reg.find_by_pk(placeholder), nullptr);
 
     const auto real_pk = make_pk(0xCAFEBABE);
     ASSERT_EQ(reg.update_remote_pk(id, real_pk), GN_OK);
 
     /// Post-update: real_pk indexed, placeholder still absent (no
     /// index entry to displace), record carries new pk.
-    EXPECT_TRUE(reg.find_by_pk(real_pk).has_value());
-    EXPECT_FALSE(reg.find_by_pk(placeholder).has_value());
+    EXPECT_NE(reg.find_by_pk(real_pk), nullptr);
+    EXPECT_EQ(reg.find_by_pk(placeholder), nullptr);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->remote_pk, real_pk);
     }
 }
@@ -713,7 +713,7 @@ TEST(ConnectionRegistry_Insert, ZeroPkSkipsPkIndex) {
         make_record(id_b, "tcp://h:2", zero)), GN_OK);
     EXPECT_EQ(reg.size(), 2u);
     /// pk_index_ stays empty; lookup by zero pk reports nothing.
-    EXPECT_FALSE(reg.find_by_pk(zero).has_value());
+    EXPECT_EQ(reg.find_by_pk(zero), nullptr);
 }
 
 TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {
@@ -728,8 +728,8 @@ TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {
 
     EXPECT_EQ(reg.update_remote_pk(id, pk), GN_OK);
     auto fetched = reg.find_by_id(id);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         EXPECT_EQ(fetched->remote_pk, pk);
     }
 }
@@ -753,12 +753,12 @@ TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
     /// Both records still resolve through their original keys.
     auto by_a = reg.find_by_pk(pk_a);
     auto by_b = reg.find_by_pk(pk_b);
-    ASSERT_TRUE(by_a.has_value());
-    ASSERT_TRUE(by_b.has_value());
-    if (by_a.has_value()) {
+    ASSERT_NE(by_a, nullptr);
+    ASSERT_NE(by_b, nullptr);
+    if (by_a != nullptr) {
         EXPECT_EQ(by_a->id, id_a);
     }
-    if (by_b.has_value()) {
+    if (by_b != nullptr) {
         EXPECT_EQ(by_b->id, id_b);
     }
 }

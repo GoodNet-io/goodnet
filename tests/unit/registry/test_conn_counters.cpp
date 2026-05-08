@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_conn_counters.cpp
 /// @brief  Per-connection counter wiring on `ConnectionRegistry`.
 ///
-/// `find_by_id` must reflect every `add_inbound` / `add_outbound`
+/// `read_counters` must reflect every `add_inbound` / `add_outbound`
 /// / `set_pending_bytes` call. Counters allocated on insert and
 /// reaped on erase. Calls on missing ids are silent no-ops.
 
@@ -29,22 +29,18 @@ ConnectionRecord make_rec(gn_conn_id_t id, std::string_view uri,
 
 }  // namespace
 
-TEST(ConnCounters, AddInboundShowsThroughFindById) {
+TEST(ConnCounters, AddInboundShowsThroughReadCounters) {
     ConnectionRegistry r;
     ASSERT_EQ(r.insert_with_index(make_rec(1, "tcp://1", 0x01)), GN_OK);
 
     r.add_inbound(1, /*bytes=*/100, /*frames=*/2);
     r.add_inbound(1, /*bytes=*/50, /*frames=*/1);
 
-    auto rec = r.find_by_id(1);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
-        const auto& got = *rec;
-        EXPECT_EQ(got.bytes_in, 150u);
-        EXPECT_EQ(got.frames_in, 3u);
-        EXPECT_EQ(got.bytes_out, 0u);
-        EXPECT_EQ(got.frames_out, 0u);
-    }
+    const auto c = r.read_counters(1);
+    EXPECT_EQ(c.bytes_in, 150u);
+    EXPECT_EQ(c.frames_in, 3u);
+    EXPECT_EQ(c.bytes_out, 0u);
+    EXPECT_EQ(c.frames_out, 0u);
 }
 
 TEST(ConnCounters, AddOutboundIsSeparateFromInbound) {
@@ -54,15 +50,11 @@ TEST(ConnCounters, AddOutboundIsSeparateFromInbound) {
     r.add_outbound(7, /*bytes=*/200, /*frames=*/1);
     r.add_inbound(7, /*bytes=*/64, /*frames=*/1);
 
-    auto rec = r.find_by_id(7);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
-        const auto& got = *rec;
-        EXPECT_EQ(got.bytes_out, 200u);
-        EXPECT_EQ(got.frames_out, 1u);
-        EXPECT_EQ(got.bytes_in, 64u);
-        EXPECT_EQ(got.frames_in, 1u);
-    }
+    const auto c = r.read_counters(7);
+    EXPECT_EQ(c.bytes_out, 200u);
+    EXPECT_EQ(c.frames_out, 1u);
+    EXPECT_EQ(c.bytes_in, 64u);
+    EXPECT_EQ(c.frames_in, 1u);
 }
 
 TEST(ConnCounters, SetPendingBytesIsAbsoluteNotAdditive) {
@@ -72,12 +64,9 @@ TEST(ConnCounters, SetPendingBytesIsAbsoluteNotAdditive) {
     r.set_pending_bytes(11, 1024);
     r.set_pending_bytes(11, 512);
 
-    auto rec = r.find_by_id(11);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
-        EXPECT_EQ(rec->pending_queue_bytes, 512u)
-            << "set_pending_bytes is a store, not a fetch_add";
-    }
+    const auto c = r.read_counters(11);
+    EXPECT_EQ(c.pending_queue_bytes, 512u)
+        << "set_pending_bytes is a store, not a fetch_add";
 }
 
 TEST(ConnCounters, EraseRemovesCounters) {
@@ -91,12 +80,9 @@ TEST(ConnCounters, EraseRemovesCounters) {
     r.add_inbound(13, 5, 1);
     /// Re-insert under the same id and verify counters start fresh.
     ASSERT_EQ(r.insert_with_index(make_rec(13, "tcp://13", 0x0D)), GN_OK);
-    auto rec = r.find_by_id(13);
-    ASSERT_TRUE(rec.has_value());
-    if (rec.has_value()) {
-        EXPECT_EQ(rec->bytes_in, 0u);
-        EXPECT_EQ(rec->frames_in, 0u);
-    }
+    const auto c = r.read_counters(13);
+    EXPECT_EQ(c.bytes_in, 0u);
+    EXPECT_EQ(c.frames_in, 0u);
 }
 
 TEST(ConnCounters, NoOpOnMissingId) {
@@ -107,13 +93,18 @@ TEST(ConnCounters, NoOpOnMissingId) {
     r.add_inbound(42, 100, 1);
     r.add_outbound(42, 200, 2);
     r.set_pending_bytes(42, 1024);
-    /// `find_by_id` of a missing id stays `nullopt`.
-    EXPECT_FALSE(r.find_by_id(42).has_value());
+    /// `find_by_id` of a missing id stays null.
+    EXPECT_EQ(r.find_by_id(42), nullptr);
+    /// `read_counters` of a missing id returns the zero snapshot.
+    const auto c = r.read_counters(42);
+    EXPECT_EQ(c.bytes_in, 0u);
+    EXPECT_EQ(c.bytes_out, 0u);
+    EXPECT_EQ(c.pending_queue_bytes, 0u);
 }
 
-TEST(ConnCounters, FindByPkPicksUpCounters) {
-    /// `find_by_pk` chains into `find_by_id`, so counters surface
-    /// through every alternate index too.
+TEST(ConnCounters, FindByPkResolvesToSameIdForCounters) {
+    /// `find_by_pk` returns the same record as `find_by_id`; counter
+    /// reads go through `read_counters(id)` either way.
     ConnectionRegistry r;
     auto rec = make_rec(21, "tcp://21", 0x21);
     ASSERT_EQ(r.insert_with_index(rec), GN_OK);
@@ -123,9 +114,10 @@ TEST(ConnCounters, FindByPkPicksUpCounters) {
     gn::PublicKey pk{};
     pk[0] = 0x21;
     auto via_pk = r.find_by_pk(pk);
-    ASSERT_TRUE(via_pk.has_value());
-    if (via_pk.has_value()) {
-        EXPECT_EQ(via_pk->bytes_in, 333u);
-        EXPECT_EQ(via_pk->frames_in, 3u);
-    }
+    ASSERT_NE(via_pk, nullptr);
+    EXPECT_EQ(via_pk->id, 21u);
+
+    const auto c = r.read_counters(21);
+    EXPECT_EQ(c.bytes_in, 333u);
+    EXPECT_EQ(c.frames_in, 3u);
 }

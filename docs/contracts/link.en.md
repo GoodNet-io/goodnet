@@ -107,6 +107,19 @@ sees two `send`-class syscalls for the same socket-FD overlapping. How
 the language enforces it (mutex, single-task ownership, message-queue
 serialisation) is internal to the implementation.
 
+For application-driven sends, the kernel-side `SendQueueManager`
+already provides single-writer guarantees on top of the link: at
+most one drainer per connection runs at a time, gated by
+`PerConnQueue::drain_scheduled` CAS, so `send` / `send_batch` calls
+arriving at the link from `host_api->send` never overlap. Link
+implementations still **must** uphold the invariant for paths the
+kernel does not drive — peer-initiated control replies (WebSocket
+pong, graceful close echo per `backpressure.md` §3.1), TLS
+renegotiation, link-internal keep-alive — because those go through
+the same socket-FD without crossing the kernel queue. A link that
+fans out application sends through extra worker threads on top of
+the queue must serialise them on its own strand.
+
 The same invariant applies to `send_batch`: the batched scatter-gather
 list is one logical write; it may not interleave with other sends on
 the same connection.

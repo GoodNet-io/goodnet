@@ -100,12 +100,29 @@ typedef struct gn_limits_s {
      * bytes-precise. */
     uint32_t max_counter_names;
 
-    /* MUST be zero. Slot count `7` (uint32_t) follows the
+    /* Per-channel subscription cap (`conn-events.md` §3).
+     *
+     * Hard cap on the number of live subscriptions a single
+     * `SignalChannel` (`GN_SUBSCRIBE_CONN_STATE`,
+     * `GN_SUBSCRIBE_CONFIG_RELOAD`) will hold. A `subscribe`
+     * call past this cap returns `GN_ERR_LIMIT_REACHED`. The
+     * cap is per-channel rather than per-kernel because the two
+     * channels carry independent payloads — saturating one with
+     * ConnState subscribers must not exhaust the slots the
+     * config-reload channel needs. Default 256 matches the
+     * extension-registry default and supports the documented
+     * pattern of one subscription per plugin instance.
+     *
+     * Slot promoted out of `_reserved[]` per `abi-evolution.md`
+     * §4 — same MINOR-compat shape as `max_counter_names`. */
+    uint32_t max_subscriptions;
+
+    /* MUST be zero. Slot count `6` (uint32_t) follows the
      * operator-tunable family per `abi-evolution.md` §4 — limits
      * accumulate faster than vtable slots over the platform's
      * lifetime, and the wider tail keeps a MAJOR bump off this
      * surface. */
-    uint32_t _reserved[7];
+    uint32_t _reserved[6];
 } gn_limits_t;
 
 /* ── Default values ──────────────────────────────────────────────────────── */
@@ -129,6 +146,7 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_INJECT_RATE_BURST            50u
 #define GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP          4096u
 #define GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES            8192u
+#define GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS            256u
 
 #ifdef __cplusplus
 } /* extern "C" */
