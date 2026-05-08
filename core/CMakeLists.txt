@@ -12,6 +12,7 @@ set(_goodnet_kernel_sources
     identity/derive.cpp
     identity/attestation.cpp
     identity/node_identity.cpp
+    identity/sub_key_registry.cpp
     registry/connection.cpp
     registry/extension.cpp
     registry/handler.cpp

@@ -84,6 +84,13 @@ public:
     /// pair to disk — secret stays only as long as needed.
     void wipe() noexcept;
 
+    /// Deep-clone the keypair. Re-seeds a new instance from the
+    /// stored seed prefix, producing an independently-owned
+    /// `KeyPair` that wipes its own secret on destruction. Used
+    /// by `NodeIdentity::clone()` for the copy-on-write mutation
+    /// path through the kernel's atomic shared_ptr swap.
+    [[nodiscard]] ::gn::Result<KeyPair> clone() const;
+
 private:
     ::gn::PublicKey                                  pk_{};
     std::array<std::uint8_t, kEd25519SecretKeyBytes> sk_{};
