@@ -10,8 +10,8 @@
 # pulls in what they want for local development.
 #
 # Repo-name convention.  Plugin repos are named `<kind-singular>
-# -<name>` per `feedback_goodnet_repo_naming` (e.g. `security
-# -noise`, `link-tcp`, `handler-heartbeat`). The first hyphen
+# -<name>` (e.g. `security-noise`, `link-tcp`,
+# `handler-heartbeat`). The first hyphen
 # splits the singular kind from the plugin name; the kernel's
 # directory layout reverses it (`plugins/<plural-kind>/<name>/`):
 #

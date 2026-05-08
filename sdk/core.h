@@ -38,16 +38,16 @@
  * Surface invariants:
  *  - No `gn_core_register_*` per-plugin entries. Hosts load plugins
  *    through `gn_core_load_plugin` with an explicit path + manifest
- *    hash, or compose static plugins at link time per
- *    `feedback_plugin_deployment_modes`. Plugin names never appear
- *    on the C ABI; a v1.x rename does not break any host.
+ *    hash, or compose static plugins at link time. Plugin names
+ *    never appear on the C ABI; a v1.x rename does not break any
+ *    host.
  *  - No auto-load from config schema; host loads plugins
  *    explicitly.
  *  - No typed extension accessors. Bindings own the typed-wrapper
  *    layer in their own language; `gn_core_query_extension_checked`
  *    is the raw entry.
  *  - Manifest SHA-256 verification is mandatory on
- *    `gn_core_load_plugin` per `plugin-manifest.md`.
+ *    `gn_core_load_plugin` per `docs/contracts/plugin-manifest.en.md`.
  *
  * See `docs/contracts/core-c.en.md` for the full contract.
  */

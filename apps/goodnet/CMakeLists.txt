@@ -3,10 +3,9 @@
 # Single binary covers every operator-facing subcommand (run / config
 # validate / plugin hash / manifest gen / identity gen|show / version).
 # Flat dispatch — `git`-style two-token (`<binary> <subcommand>`),
-# never namespaced (no `goodnet identity gen`-as-its-own-binary). The
-# rationale follows `feedback_goodnet_no_orchestrator` + plan: shared
-# linkage of kernel/SDK, single PATH entry, no «which goodnet bin do
-# I have» systemd surprise.
+# never namespaced (no `goodnet identity gen`-as-its-own-binary).
+# Shared linkage of kernel/SDK, single PATH entry, no «which goodnet
+# bin do I have» systemd surprise.
 
 add_executable(goodnet
     main.cpp
