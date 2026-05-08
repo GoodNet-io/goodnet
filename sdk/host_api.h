@@ -629,6 +629,37 @@ typedef struct host_api_s {
                                        gn_conn_id_t conn,
                                        uint8_t out_hash[GN_HASH_BYTES]);
 
+    /* ── Capability TLV transport (capability-tlv.en.md) ─────────────────
+     *
+     * Plugins ship identity-bearing blobs (verifiable credentials,
+     * mDoc presentation responses, attestation chains) over the
+     * secured channel without minting a per-app msg_id. The kernel
+     * reserves `0x13` for the transport, prepends an 8-byte BE
+     * `expires_unix_ts` prefix, fans the bytes out to every
+     * subscriber on the receiver. Hard cap on blob size lives in
+     * `gn_limits_t::max_capability_blob_bytes` (default 16 KiB).
+     *
+     * `present_capability_blob` runs through the standard send
+     * path — kernel queue + drain + AEAD — so backpressure and
+     * security semantics are identical to a plugin-driven
+     * `host_api->send`.
+     *
+     * `subscribe_capability_blob` registers a receiver-side
+     * callback. `ud_destroy(user_data)` runs once on
+     * `unsubscribe(id)` or plugin teardown.
+     */
+    gn_result_t (*present_capability_blob)(void* host_ctx,
+                                            gn_conn_id_t conn,
+                                            const uint8_t* blob,
+                                            size_t size,
+                                            int64_t expires_unix_ts);
+
+    gn_result_t (*subscribe_capability_blob)(void* host_ctx,
+                                              gn_capability_blob_cb_t cb,
+                                              void* user_data,
+                                              void (*ud_destroy)(void*),
+                                              gn_subscription_id_t* out_id);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing

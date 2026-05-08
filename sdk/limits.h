@@ -117,12 +117,18 @@ typedef struct gn_limits_s {
      * §4 — same MINOR-compat shape as `max_counter_names`. */
     uint32_t max_subscriptions;
 
-    /* MUST be zero. Slot count `6` (uint32_t) follows the
+    /** Hard cap on a capability-blob payload (`identity.en.md` §8).
+     * Sender-side `present_capability_blob` rejects with
+     * `GN_ERR_PAYLOAD_TOO_LARGE` when set and the blob exceeds the
+     * cap; 0 disables the gate. Default 16 KiB. */
+    uint32_t max_capability_blob_bytes;
+
+    /* MUST be zero. Slot count `5` (uint32_t) follows the
      * operator-tunable family per `abi-evolution.md` §4 — limits
      * accumulate faster than vtable slots over the platform's
      * lifetime, and the wider tail keeps a MAJOR bump off this
      * surface. */
-    uint32_t _reserved[6];
+    uint32_t _reserved[5];
 } gn_limits_t;
 
 /* ── Default values ──────────────────────────────────────────────────────── */
@@ -147,6 +153,7 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP          4096u
 #define GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES            8192u
 #define GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS            256u
+#define GN_LIMITS_DEFAULT_MAX_CAPABILITY_BLOB_BYTES    (16u << 10)  /* 16 KiB */
 
 #ifdef __cplusplus
 } /* extern "C" */

@@ -757,16 +757,16 @@ constexpr std::uint64_t kSubChannelMask  =
 constexpr std::uint64_t kSubTokenMask    =
     (std::uint64_t{1} << kSubChannelShift) - 1;
 
+/// Channel tag for capability_blob subscriptions. Sits past the
+/// public `GN_SUBSCRIBE_*` enum values in the 4-bit field;
+/// kernel-internal — plugins never read the tag, they pass the
+/// id back through `unsubscribe`.
+constexpr std::uint64_t kCapabilityBlobChannel = 2;
+
 [[nodiscard]] constexpr std::uint64_t pack_subscription_id(
     gn_subscribe_channel_t channel, std::uint64_t token) noexcept {
     return (static_cast<std::uint64_t>(channel) << kSubChannelShift) |
            (token & kSubTokenMask);
-}
-
-[[nodiscard]] constexpr gn_subscribe_channel_t channel_of_id(
-    std::uint64_t id) noexcept {
-    return static_cast<gn_subscribe_channel_t>(
-        (id & kSubChannelMask) >> kSubChannelShift);
 }
 
 [[nodiscard]] constexpr std::uint64_t token_of_id(std::uint64_t id) noexcept {
@@ -1071,6 +1071,66 @@ gn_result_t thunk_get_handshake_hash(void* host_ctx,
     return GN_OK;
 }
 
+/* ── Capability TLV transport ──────────────────────────────────── */
+
+gn_result_t thunk_present_capability_blob(void* host_ctx,
+                                           gn_conn_id_t conn,
+                                           const std::uint8_t* blob,
+                                           std::size_t size,
+                                           std::int64_t expires_unix_ts) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (!blob && size > 0) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    /// Hard cap from operator config. Default 16 KiB; 0 disables.
+    const auto& limits = pc->kernel->limits();
+    if (limits.max_capability_blob_bytes != 0
+        && size > limits.max_capability_blob_bytes) {
+        pc->kernel->metrics().increment("drop.capability_blob_too_large");
+        return GN_ERR_PAYLOAD_TOO_LARGE;
+    }
+
+    /// Compose the wire payload: 8-byte BE expiry prefix + blob.
+    std::vector<std::uint8_t> wire(8 + size);
+    const auto u = static_cast<std::uint64_t>(expires_unix_ts);
+    wire[0] = static_cast<std::uint8_t>((u >> 56) & 0xFFu);
+    wire[1] = static_cast<std::uint8_t>((u >> 48) & 0xFFu);
+    wire[2] = static_cast<std::uint8_t>((u >> 40) & 0xFFu);
+    wire[3] = static_cast<std::uint8_t>((u >> 32) & 0xFFu);
+    wire[4] = static_cast<std::uint8_t>((u >> 24) & 0xFFu);
+    wire[5] = static_cast<std::uint8_t>((u >> 16) & 0xFFu);
+    wire[6] = static_cast<std::uint8_t>((u >>  8) & 0xFFu);
+    wire[7] = static_cast<std::uint8_t>( u        & 0xFFu);
+    if (size > 0) std::memcpy(wire.data() + 8, blob, size);
+
+    /// Route through the regular send path so backpressure and AEAD
+    /// invariants apply identically to plugin-driven sends.
+    return thunk_send(host_ctx, conn, kCapabilityBlobMsgId,
+                      wire.data(), wire.size());
+}
+
+gn_result_t thunk_subscribe_capability_blob(void* host_ctx,
+                                             gn_capability_blob_cb_t cb,
+                                             void* user_data,
+                                             void (*ud_destroy)(void*),
+                                             gn_subscription_id_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
+    *out_id = GN_INVALID_SUBSCRIPTION_ID;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    const auto bus_id = pc->kernel->capability_blob_bus().subscribe(
+        cb, user_data, ud_destroy);
+    if (bus_id == GN_INVALID_SUBSCRIPTION_ID) return GN_ERR_NULL_ARG;
+    /// Encode the channel tag in the top 4 bits so `unsubscribe`
+    /// routes back to the bus without naming the kind a second
+    /// time.
+    *out_id = (kCapabilityBlobChannel << kSubChannelShift)
+              | (bus_id & kSubTokenMask);
+    return GN_OK;
+}
+
 gn_result_t thunk_unsubscribe(void* host_ctx,
                                gn_subscription_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
@@ -1078,10 +1138,11 @@ gn_result_t thunk_unsubscribe(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
-    const auto channel = channel_of_id(id);
-    const auto token   = token_of_id(id);
+    const auto raw_channel =
+        (id & kSubChannelMask) >> kSubChannelShift;
+    const auto token = token_of_id(id);
 
-    switch (channel) {
+    switch (raw_channel) {
     case GN_SUBSCRIBE_CONN_STATE:
         pc->kernel->on_conn_event().unsubscribe(
             static_cast<signal::SignalChannel<ConnEvent>::Token>(token));
@@ -1090,8 +1151,13 @@ gn_result_t thunk_unsubscribe(void* host_ctx,
         pc->kernel->on_config_reload().unsubscribe(
             static_cast<signal::SignalChannel<signal::Empty>::Token>(token));
         return GN_OK;
+    case kCapabilityBlobChannel:
+        return pc->kernel->capability_blob_bus().unsubscribe(token)
+                   ? GN_OK
+                   : GN_ERR_NOT_FOUND;
+    default:
+        return GN_ERR_NOT_FOUND;
     }
-    return GN_ERR_NOT_FOUND;
 }
 
 gn_result_t thunk_for_each_connection(void* host_ctx,
@@ -1937,6 +2003,19 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                 }
                 continue;
             }
+            /// Capability blob (`identity.en.md` §8) — kernel-side
+            /// distribution. Inbound bytes carry a 8-byte
+            /// `expires_unix_ts` BE prefix followed by the blob
+            /// payload; the kernel hands the slice to every
+            /// subscriber registered via `subscribe_capability_blob`.
+            /// Plugins still drive sender-side via
+            /// `present_capability_blob` (kernel composes the prefix
+            /// + sends through the standard send path).
+            if (stamped.msg_id == kCapabilityBlobMsgId) {
+                pc->kernel->capability_blob_bus().on_inbound(
+                    conn, stamped.payload, stamped.payload_size);
+                continue;
+            }
             route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
         }
     }
@@ -1981,6 +2060,17 @@ gn_result_t thunk_inject(void* host_ctx,
         /// handler-registration.md §2a names the same set as
         /// unregisterable for symmetric reasons.
         if (is_reserved_system_msg_id(msg_id))
+            return GN_ERR_INVALID_ENVELOPE;
+        /// Identity-range msg ids carry user-level identity payloads
+        /// (rotation announces, capability blobs, 2FA challenges).
+        /// Bridge-style inject would let one plugin synthesise such
+        /// an event on another plugin's connection — the cross-plugin
+        /// trust boundary every identity proof relies on. Reject
+        /// alongside the hard-reserved set; legitimate identity
+        /// traffic flows through `host_api->send` (which keeps the
+        /// originating plugin's anchor) or the dedicated
+        /// `present_capability_blob` slot.
+        if (is_identity_range_msg_id(msg_id))
             return GN_ERR_INVALID_ENVELOPE;
         if (limits.max_payload_bytes != 0 &&
             size > limits.max_payload_bytes) {
@@ -2212,6 +2302,9 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.get_peer_user_pk        = &thunk_get_peer_user_pk;
     a.get_peer_device_pk      = &thunk_get_peer_device_pk;
     a.get_handshake_hash      = &thunk_get_handshake_hash;
+
+    a.present_capability_blob   = &thunk_present_capability_blob;
+    a.subscribe_capability_blob = &thunk_subscribe_capability_blob;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

@@ -65,6 +65,7 @@ gn_limits_t server_profile() noexcept {
     L.inject_rate_lru_cap         = GN_LIMITS_DEFAULT_INJECT_RATE_LRU_CAP;
     L.max_counter_names           = GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES;
     L.max_subscriptions           = GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS;
+    L.max_capability_blob_bytes   = GN_LIMITS_DEFAULT_MAX_CAPABILITY_BLOB_BYTES;
     return L;
 }
 

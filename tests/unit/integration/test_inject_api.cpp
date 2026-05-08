@@ -212,8 +212,11 @@ TEST(InjectExternal, PayloadOverLimitRejected) {
     const gn_conn_id_t src = h.make_source(peer_pk);
 
     std::vector<std::uint8_t> big(32, 0xAB);
+    /// msg_id 0x20 sits past the kernel's identity-range
+    /// reservation (`0x10..0x1F`) so the payload-size gate fires
+    /// instead of the inject-side identity-range reject.
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
-                                             /*msg_id*/ 0x10,
+                                             /*msg_id*/ 0x20,
                                              big.data(), big.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
 }

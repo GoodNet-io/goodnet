@@ -24,6 +24,7 @@
 #include <sdk/limits.h>
 
 #include "attestation_dispatcher.hpp"
+#include "capability_blob.hpp"
 #include "conn_event.hpp"
 #include "identity_set.hpp"
 #include "metrics_registry.hpp"
@@ -118,6 +119,9 @@ public:
     }
     [[nodiscard]] AttestationDispatcher& attestation_dispatcher() noexcept {
         return attestation_dispatcher_;
+    }
+    [[nodiscard]] CapabilityBlobBus& capability_blob_bus() noexcept {
+        return capability_blob_bus_;
     }
     [[nodiscard]] MetricsRegistry& metrics() noexcept { return metrics_; }
     [[nodiscard]] const MetricsRegistry& metrics() const noexcept {
@@ -252,6 +256,7 @@ private:
     /// fires the `Untrusted → Peer` upgrade once both halves of the
     /// mutual exchange complete.
     AttestationDispatcher                 attestation_dispatcher_;
+    CapabilityBlobBus                     capability_blob_bus_;
 
     /// Named-counter store the kernel maintains for built-in
     /// observability targets (`route.outcome.*`, `drop.*`,
