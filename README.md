@@ -1,104 +1,204 @@
 # GoodNet
 
-A platform for distributed networking. The kernel is minimal, the brand
-is the ecosystem, and a node joins by carrying a single binary and a
-keypair.
+A small networking kernel with pluggable transports, security
+providers, protocol layers, and handlers. Applications embed it
+as a library or run the standalone daemon. The C ABI between
+kernel and plugins is the only stable boundary; everything else
+is composition.
 
-## What it is
+The framing is Linux. The kernel does not know what TCP is, what
+Noise is, what an application is. It tracks logical connections,
+typed messages, public-key addresses, and registered handlers.
+Every transport, every cipher, every wire format lives in a
+plugin loaded through `dlopen` against a versioned C ABI.
 
-GoodNet provides a connection fabric where the address of a participant is
-its public key, every byte on the wire is encrypted by default, and the
-software a participant runs decides what messages mean. The platform itself
-is the **kernel** plus the **SDK** — everything else is built on top by
-independent plugins, each with its own license, repository, and release
-cadence.
-
-**The kernel knows four things:**
-
-1. Logical connections — `conn_id_t`, the file descriptor of the network.
-2. Typed messages — envelope of `sender_pk`, `receiver_pk`, `msg_id`, payload.
-3. Public keys as addresses — Ed25519, identity is the address.
-4. Handlers — userspace consumers, registered on `(protocol_id, msg_id)`.
-
-**The kernel does not know:**
-
-- How bits move — TCP, UDP, ICE, WebSocket, BLE, IPC are transport plugins.
-- How bytes are encrypted — Noise and TLS are security plugins.
-- What an application is — chat, files, sensors, games are handlers above.
-- Economics — relay payments, tokens, billing are policy, not kernel.
-
-## What you get
-
-The operational tax that grows with a distributed system — service mesh,
-mTLS termination, GeoDNS, etcd, sidecar mesh, configmaps — collapses into
-the kernel. Adding a node costs one binary and a keypair.
-
-**Three engineering bets:**
-
-- **Multi-path transport.** TCP + ICE + QUIC + WebSocket simultaneously per
-  connection. Automatic failover under 50 ms. Each path adds a digit of
-  availability — four paths reach 99.987%.
-- **Directed relay → direct.** Connections start through relay, upgrade to
-  direct P2P in roughly seven seconds once paths are discovered.
-- **DHT.** Around 4.6 hops at one million nodes; 400 entries per routing
-  table.
-
-## Status
-
-`v0.1.0` — early. Contracts are written first; code grows behind them.
-
-## Build
+## Quickstart
 
 ```bash
-nix develop      # gcc15, boost, libsodium, spdlog, nlohmann_json, gtest
-cfg && b         # cmake configure + build
-t                # ctest
+git clone https://github.com/GoodNet-io/goodnet.git
+cd goodnet
+nix run .#setup                # bootstrap mirrors + plugins
+nix run .#build -- release     # release build with LTO → build-release/
+nix run .#run -- demo          # two-node Noise-over-TCP, one message
 ```
 
-Or one-shot:
+Without Nix: gcc 15, libsodium, OpenSSL, asio, spdlog,
+gtest, rapidcheck, CMake 3.25 — install via your package manager,
+then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
-```bash
-nix run .#build
-nix run .#test
-```
+## What makes it different
+
+- **Multi-path transport.** Every transport runs concurrently. A
+  connection over TCP can migrate to ICE or IPC without the
+  application observing the seam. Per-transport scoring picks
+  the best path live.
+- **Relay → direct upgrade.** Connections start through a relay
+  when needed and walk themselves to a direct path within a few
+  seconds, against the receiver's NAT. The application sees a
+  single `conn_id` across the upgrade.
+- **Plugin-first ecosystem.** Transports, security providers,
+  protocol layers, and handlers are loadable shared objects
+  with their own git, their own license, their own release
+  cadence. The bundled set is a starting kit, not a sealed
+  monolith.
+- **C ABI stability across languages.** The kernel exposes one
+  surface — pointer + size, no STL across the boundary — so
+  bindings in Python, Rust, Go, Java land on the same
+  contract. Plugins written in different languages run in the
+  same process.
+
+## How it compares
+
+| | GoodNet | libp2p | WireGuard | Matrix |
+|---|---|---|---|---|
+| **Shape** | Kernel + C ABI | Library | Kernel module | Application (chat) |
+| **Transports** | All concurrent (multi-path) | One per conn | UDP only | Homeserver HTTP |
+| **Languages** | Any (C ABI) | Go/Rust/JS forks differ | C / kernel | Python/JS/Go |
+| **NAT** | Heartbeat-observed + AutoNAT + relay → direct | Manual relay | None | Homeserver pivots |
+| **Pluggable security** | Yes (Noise XX/IK, Null, TLS planned) | Yes (Noise) | No (Noise IK only) | TLS to homeserver |
+| **License** | GPL-2 + linking exception (strategic), MIT (periphery) | MIT/Apache | GPL-2 | Apache |
+
+## Performance
+
+Reference machine: i5-1235U, loopback, 16 KiB payloads, after
+the AEAD batch fix in `dev`. ChaCha20-Poly1305 via libsodium.
+
+| Scenario | Mean (5 runs) | Range |
+|---|---|---|
+| 1 conn, burst (1000 frames) | 7.05 Gbps | 5.1 – 9.0 |
+| 1 conn, sustained (5000 frames) | 6.01 Gbps | 5.7 – 6.3 |
+| 4 conns, sustained aggregate | 19.84 Gbps | 17.8 – 20.8 |
+| 8 conns, burst aggregate | 20.49 Gbps | 15.8 – 30.6 |
+
+Single connection sits at ~75 % of one core's libsodium
+ChaCha throughput (`perf record`: 42 % cycles in
+`chacha20_encrypt_bytes`, 30 % in `poly1305_blocks`). Multi-conn
+scales because the kernel's `CryptoWorkerPool` runs AEAD jobs
+in parallel across cores; each connection has its own asio
+strand and per-conn drain CAS.
+
+### vs WireGuard
+
+Same machine, same kernel, same ChaCha20-Poly1305. WireGuard
+runs through veth between two network namespaces; GoodNet runs
+on loopback TCP. iperf3 vs goodnet-bench, 5 s.
+
+| | Throughput |
+|---|---|
+| veth bridge (no crypto, baseline) | 80.4 Gbps |
+| WireGuard single tunnel (kernel, single-thread) | 4.94 Gbps |
+| **GoodNet single connection (userspace, multi-thread crypto)** | **6.01 Gbps** |
+| **GoodNet 4 connections aggregate** | **19.84 Gbps** |
+
+Notes: WireGuard's mainline data plane runs in a single softirq
+context, so encryption pins one CPU. GoodNet's `CryptoWorkerPool`
+distributes AEAD jobs across worker threads, which shows on this
+benchmark. On a real 10 Gbps NIC, the comparison shifts —
+WireGuard's zero-copy kernel path is hard to beat from
+userspace. This is loopback-only evidence.
+
+Reproduce: `nix run .#build -- release && build-release/bin/goodnet-bench 5000 16 4`.
 
 ## Architecture
 
+The kernel is eight subsystems at the same level: connection
+registry, signal bus, plugin manager, service resolver,
+session registry (security state), send-queue manager,
+extension registry, metrics exporter. None of them know the name
+of any specific plugin. The only entry points are the SDK
+contracts under [`docs/contracts/`](docs/contracts/), which the
+tree treats as authoritative — contracts change first, code
+catches up.
+
+Layout:
+
 ```
-┌────────────────────────────────────────────────────────────┐
-│ ┄ plugins ┄  Handlers (application logic — chat, files,   │
-│              relay, DHT, sync …)                          │
-├────────────────────────────────────────────────────────────┤
-│              Kernel — routing by (receiver_pk, msg_id)    │
-│              Multi-tenant. No knowledge of wire bytes.    │
-├────────────────────────────────────────────────────────────┤
-│ ┄ plugin ┄   Protocol Layer (one mandatory impl)          │
-│              gn_message_t envelope on the kernel side;    │
-│              GNET v1 framing on the wire.                 │
-├────────────────────────────────────────────────────────────┤
-│ ┄ plugins ┄  Security (Noise XX / IK / …)                 │
-├────────────────────────────────────────────────────────────┤
-│ ┄ plugins ┄  Transports (TCP, UDP, WebSocket, IPC, BLE …) │
-└────────────────────────────────────────────────────────────┘
-
-  Platform = kernel + SDK.   Plugins build independently against the SDK.
+core/        kernel and primitives
+sdk/         public C ABI (host_api, link, security, protocol, handler, ...)
+plugins/     bundled link / security / protocol / handler plugins
+apps/        goodnet daemon binary, gssh, demo
+examples/    bench harness, two-node demo
+docs/        contracts (authoritative), architecture (narrative), operator
+tests/       unit, integration, property, conformance
+dist/        example operator config + systemd unit
 ```
 
-Foreign protocols — HTTP, MQTT, raw TCP — ride inside the payload. Their
-specifications are not modified; the mesh artefact lives in exactly one
-layer, the GNET frame on the wire.
+Each plugin under `plugins/<kind>/<name>/` is a self-contained
+unit: own `CMakeLists.txt`, own `default.nix`, own git, own
+license. Loaded into the kernel via `PluginManager::load`
+against an SHA-256 manifest (`/etc/goodnet/plugins.json`).
 
-## Contracts
+## Running as a daemon
 
-The kernel↔plugin boundary is documented in `docs/contracts/`:
+`goodnet` is a multicall binary:
 
-- `protocol-layer.md` — envelope (`gn_message_t`) and `IProtocolLayer`
-- `gnet-protocol.md`  — GNET v1 wire format
+```bash
+goodnet identity gen --out /etc/goodnet/identity.bin
+goodnet manifest gen build/plugins/libgoodnet_*.so > plugins.json
+goodnet config validate dist/example/node.json
+goodnet run --config dist/example/node.json \
+            --manifest plugins.json \
+            --identity /etc/goodnet/identity.bin
+```
 
-Code follows contracts; contracts move first.
+A working operator setup with systemd unit and a sample
+`node.json` lives under [`dist/example/`](dist/example/). The
+operator guide is [`docs/operator/deployment.en.md`](docs/operator/deployment.en.md).
+
+## Status
+
+The tree carries release-candidate quality: every test green
+under Release, ASan, and TSan on the reference machine,
+contracts in `docs/contracts/` document the surface, and the
+operator binary boots end-to-end from a generated identity and
+a signed plugin manifest.
+
+Wire format, public C ABI, and plugin contracts are RC-frozen —
+each release-candidate iteration may break one of them in
+response to integration findings; the surface stabilises at the
+first plain `v1.0.0` tag without an `-rcN` suffix. The branch
+model is `dev` for development, `main` for releases (between
+tags `main` is quiet).
+
+## Documentation
+
+- [`docs/contracts/`](docs/contracts/) — authoritative
+  behavioural contracts. Start with [`host-api.en.md`](docs/contracts/host-api.en.md)
+  if you're embedding the kernel, [`link.en.md`](docs/contracts/link.en.md)
+  if you're writing a transport plugin.
+- [`docs/architecture/`](docs/architecture/) — narrative
+  explanation in Russian: routing, multi-path, wire protocol.
+- [`docs/operator/`](docs/operator/) — deployment, troubleshooting.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — development workflow,
+  branch model, audit pass.
+- [`SECURITY.md`](SECURITY.md) — threat model, reporting channel.
+- [`GOVERNANCE.md`](GOVERNANCE.md) — decision-making, contract
+  amendment process.
+
+Russian: see [`README.ru.md`](README.ru.md).
 
 ## License
 
-Kernel (`core/`) is GPL-2.0; SDK (`sdk/`) is MIT. Plugins are independent
-builds — each carries its own LICENSE in its directory.
-See `LICENSE` for the full breakdown.
+GPL-2.0 with linking exception for the strategic baseline:
+kernel, the bundled TCP / UDP / WS / Noise / Heartbeat plugins.
+The linking exception lets out-of-tree plugins ship under any
+license — the boundary is the C ABI, not the license. Periphery
+plugins (raw protocol, null security, IPC link) are MIT for
+ecosystem reach. The TLS plugin is Apache-2.0 for OpenSSL
+compatibility.
+
+The strategic licensing rationale is the same one Linux applied
+in 1991: GPL on the kernel keeps the substrate open, the linking
+exception keeps applications free. See [`LICENSE`](LICENSE) and
+each plugin's `LICENSE` file.
+
+## Not on this tree yet
+
+- Pre-built release binaries. Build from source through Nix or
+  the standard CMake path above.
+- Per-plugin GitHub repositories. The bundled plugins live
+  in-tree under `plugins/`; the org repos at
+  `goodnet-io/<kind>-<name>` come online when each plugin
+  extracts.
+- A registered domain. Documentation references the GitHub
+  organisation directly.

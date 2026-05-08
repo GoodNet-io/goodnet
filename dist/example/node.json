@@ -1,0 +1,38 @@
+{
+  // Reference node config for a public-internet GoodNet deployment.
+  // Drop into /etc/goodnet/node.json and adjust limits to taste.
+  // Every `limits.*` field has a built-in default per the active
+  // profile; only override the ones you intentionally want to bend.
+  // See `docs/contracts/config.md` for the full schema and
+  // `docs/install.md` for deployment guidance.
+
+  // Profile selects the per-field default baseline. v1 ships:
+  //   "embedded" — small device, ≤ 64 conns, no relay, low memory.
+  //   "server"   — public-internet node, default for systemd.
+  // Switch profiles by replacing this key; every unset limit then
+  // snaps to the new baseline.
+  "profile": "server",
+
+  // Logging. `log.level` filters the kernel logger overall;
+  // `log.console_level` filters the colored stdout sink only and
+  // overrides the build-aware default (Release pins WARN as a noise
+  // filter, Debug carries everything). Set both to "info" on a
+  // production Release deployment to see kernel startup markers.
+  // Add `log.file` for a rotating-file sink alongside the console.
+  // See `core/util/log_config.cpp` for the full key set.
+  "log": {
+    "level":         "info",
+    "console_level": "info"
+  },
+
+  // Limits override block. Most operators run with profile defaults;
+  // entries here are common overrides plus the cardinality cap from
+  // Wave 9.1 that has no per-profile default.
+  "limits": {
+    // Metrics cardinality (metrics.md §2.1). 0 disables; reject-new
+    // past cap bumps `metrics.cardinality_rejected`. 8192 covers a
+    // typical exporter scrape; tune up only if you've audited the
+    // actual counter names your plugins emit.
+    "max_counter_names": 8192
+  }
+}

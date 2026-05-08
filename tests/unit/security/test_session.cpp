@@ -1,0 +1,687 @@
+/// @file   tests/unit/security/test_session.cpp
+/// @brief  SecuritySession state machine + SessionRegistry map.
+
+#include <gtest/gtest.h>
+
+#include <core/registry/security.hpp>
+#include <core/security/session.hpp>
+
+#include <sdk/security.h>
+#include <sdk/types.h>
+
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
+#include <vector>
+
+namespace {
+
+using gn::core::SecurityEntry;
+using gn::core::SecuritySession;
+using gn::core::SecurityPhase;
+using gn::core::SessionRegistry;
+using gn::core::kFramePrefixBytes;
+
+/// Inline pass-through provider — handshake is a single no-op step,
+/// encrypt/decrypt copy plaintext to a fresh allocation paired with
+/// `free`. Mirrors the null security plugin's surface without needing
+/// a dlopen.
+struct FakeProvider {
+    int handshake_open_calls = 0;
+    int handshake_step_calls = 0;
+    int handshake_close_calls = 0;
+    int encrypt_calls = 0;
+    int decrypt_calls = 0;
+    bool complete_immediately = true;
+    /// Default mask: permit every class. Tests narrow this to drive
+    /// the stack-policy gate against specific connection trust.
+    std::uint32_t trust_mask = (1u << GN_TRUST_UNTRUSTED) |
+                                (1u << GN_TRUST_PEER)      |
+                                (1u << GN_TRUST_LOOPBACK)  |
+                                (1u << GN_TRUST_INTRA_NODE);
+
+    static std::uint32_t mask(void* self) {
+        return static_cast<FakeProvider*>(self)->trust_mask;
+    }
+
+    static gn_result_t open(void* self, gn_conn_id_t,
+                             gn_trust_class_t, gn_handshake_role_t,
+                             const std::uint8_t*, const std::uint8_t*,
+                             const std::uint8_t*,
+                             void** out_state) {
+        if (!out_state) return GN_ERR_NULL_ARG;
+        ++static_cast<FakeProvider*>(self)->handshake_open_calls;
+        *out_state = nullptr;
+        return GN_OK;
+    }
+
+    static gn_result_t step(void* self, void*,
+                             const std::uint8_t*, std::size_t,
+                             gn_secure_buffer_t* out) {
+        ++static_cast<FakeProvider*>(self)->handshake_step_calls;
+        if (out) {
+            out->bytes          = nullptr;
+            out->size           = 0;
+            out->free_user_data = nullptr;
+            out->free_fn        = nullptr;
+        }
+        return GN_OK;
+    }
+
+    static int complete(void* self, void*) {
+        return static_cast<FakeProvider*>(self)->complete_immediately ? 1 : 0;
+    }
+
+    static gn_result_t export_keys(void*, void*, gn_handshake_keys_t* out) {
+        if (!out) return GN_ERR_NULL_ARG;
+        std::memset(out, 0, sizeof(*out));
+        return GN_OK;
+    }
+
+    static void free_buf(void* /*user_data*/, std::uint8_t* p) { std::free(p); }
+
+    static gn_result_t copy_through(const std::uint8_t* in, std::size_t n,
+                                     gn_secure_buffer_t* out) {
+        if (!out) return GN_ERR_NULL_ARG;
+        if (n == 0) {
+            out->bytes          = nullptr;
+            out->size           = 0;
+            out->free_user_data = nullptr;
+            out->free_fn        = nullptr;
+            return GN_OK;
+        }
+        auto* heap = static_cast<std::uint8_t*>(std::malloc(n));
+        if (!heap) return GN_ERR_OUT_OF_MEMORY;
+        std::memcpy(heap, in, n);
+        out->bytes          = heap;
+        out->size           = n;
+        out->free_user_data = nullptr;
+        out->free_fn        = &FakeProvider::free_buf;
+        return GN_OK;
+    }
+
+    static gn_result_t encrypt(void* self, void*,
+                                const std::uint8_t* p, std::size_t n,
+                                gn_secure_buffer_t* out) {
+        ++static_cast<FakeProvider*>(self)->encrypt_calls;
+        return copy_through(p, n, out);
+    }
+
+    static gn_result_t decrypt(void* self, void*,
+                                const std::uint8_t* c, std::size_t n,
+                                gn_secure_buffer_t* out) {
+        ++static_cast<FakeProvider*>(self)->decrypt_calls;
+        return copy_through(c, n, out);
+    }
+
+    static void close(void* self, void*) {
+        ++static_cast<FakeProvider*>(self)->handshake_close_calls;
+    }
+};
+
+gn_security_provider_vtable_t make_vtable() {
+    gn_security_provider_vtable_t v{};
+    v.api_size              = sizeof(gn_security_provider_vtable_t);
+    v.handshake_open        = &FakeProvider::open;
+    v.handshake_step        = &FakeProvider::step;
+    v.handshake_complete    = &FakeProvider::complete;
+    v.export_transport_keys = &FakeProvider::export_keys;
+    v.encrypt               = &FakeProvider::encrypt;
+    v.decrypt               = &FakeProvider::decrypt;
+    v.handshake_close       = &FakeProvider::close;
+    v.allowed_trust_mask    = &FakeProvider::mask;
+    return v;
+}
+
+constexpr std::uint8_t kZeroSk[GN_PRIVATE_KEY_BYTES] = {};
+constexpr std::uint8_t kZeroPk[GN_PUBLIC_KEY_BYTES]  = {};
+
+SecurityEntry make_entry(FakeProvider& prov,
+                          const gn_security_provider_vtable_t& vt) {
+    return SecurityEntry{
+        .provider_id     = "fake",
+        .vtable          = &vt,
+        .self            = &prov,
+        .lifetime_anchor = {},
+    };
+}
+
+} // namespace
+
+// ── SecuritySession ──────────────────────────────────────────────────────
+
+TEST(SecuritySession, OpenInitialPhaseIsHandshake) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    EXPECT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    EXPECT_EQ(session.phase(), SecurityPhase::Handshake);
+    EXPECT_EQ(prov.handshake_open_calls, 1);
+}
+
+TEST(SecuritySession, AdvanceHandshakeTransitionsToTransportOnComplete) {
+    FakeProvider prov;
+    prov.complete_immediately = true;
+    auto vt = make_vtable();
+    SecuritySession session;
+    ASSERT_EQ(session.open(make_entry(prov, vt), 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> out_msg;
+    EXPECT_EQ(session.advance_handshake({}, out_msg), GN_OK);
+    EXPECT_EQ(session.phase(), SecurityPhase::Transport);
+    EXPECT_TRUE(out_msg.empty());
+}
+
+TEST(SecuritySession, AdvanceRejectedAfterTransition) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    ASSERT_EQ(session.open(make_entry(prov, vt), 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+    /// After completion further handshake calls return INVALID_ENVELOPE.
+    EXPECT_NE(session.advance_handshake({}, tmp), GN_OK);
+}
+
+TEST(SecuritySession, EncryptDecryptRoundTripInTransportPhase) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    ASSERT_EQ(session.open(make_entry(prov, vt), 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+
+    /// FakeProvider exports zeroed cipher keys, so the session's
+    /// inline-crypto seed declines and the encrypt/decrypt path
+    /// falls back to the vtable. The wire bytes carry the 2-byte
+    /// big-endian length prefix per `plugins/security/noise/docs/handshake.md`
+    /// §7 — `encrypt_transport` prepends, `decrypt_transport_stream`
+    /// strips.
+    const std::vector<std::uint8_t> plain{1, 2, 3, 4, 5};
+    std::vector<std::uint8_t> wire;
+    EXPECT_EQ(session.encrypt_transport(plain, wire), GN_OK);
+    ASSERT_EQ(wire.size(), kFramePrefixBytes + plain.size());
+    EXPECT_EQ((static_cast<std::uint16_t>(wire[0]) << 8) |
+               static_cast<std::uint16_t>(wire[1]),
+              plain.size());
+    EXPECT_EQ(std::vector<std::uint8_t>(
+                  wire.begin() + kFramePrefixBytes, wire.end()),
+              plain);
+    EXPECT_EQ(prov.encrypt_calls, 1);
+
+    /// Stream decrypt strips the prefix, slices the cipher, and
+    /// returns one plaintext per complete frame.
+    std::vector<std::vector<std::uint8_t>> back;
+    EXPECT_EQ(session.decrypt_transport_stream(wire, back), GN_OK);
+    ASSERT_EQ(back.size(), 1u);
+    EXPECT_EQ(back[0], plain);
+    EXPECT_EQ(prov.decrypt_calls, 1);
+}
+
+TEST(SecuritySession, EncryptRejectedDuringHandshake) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    ASSERT_EQ(session.open(make_entry(prov, vt), 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> out;
+    EXPECT_NE(session.encrypt_transport({}, out), GN_OK);
+    EXPECT_NE(session.decrypt_transport({}, out), GN_OK);
+}
+
+// ── Pending handshake queue (backpressure.md §8) ─────────────────────────
+
+namespace {
+
+void open_handshake_session(SecuritySession& session,
+                             FakeProvider& prov,
+                             const gn_security_provider_vtable_t& vt) {
+    EXPECT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+}
+
+}  // namespace
+
+TEST(SecuritySessionPending, EnqueueDuringHandshakeAccumulatesBytes) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
+
+    EXPECT_EQ(session.enqueue_pending({1, 2, 3}, /*cap*/ 0), GN_OK);
+    EXPECT_EQ(session.enqueue_pending({4, 5}, /*cap*/ 0), GN_OK);
+    EXPECT_EQ(session.pending_bytes(), 5u);
+}
+
+TEST(SecuritySessionPending, EnqueueRespectsHardCap) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
+
+    /// First enqueue fits under the cap; second pushes over and
+    /// must be rejected.
+    EXPECT_EQ(session.enqueue_pending(std::vector<std::uint8_t>(1024, 0xab),
+                                       /*cap*/ 1500),
+              GN_OK);
+    EXPECT_EQ(session.enqueue_pending(std::vector<std::uint8_t>(1024, 0xcd),
+                                       /*cap*/ 1500),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(session.pending_bytes(), 1024u);
+}
+
+TEST(SecuritySessionPending, EnqueueRejectedOutsideHandshake) {
+    FakeProvider prov;
+    prov.complete_immediately = true;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+    ASSERT_EQ(session.phase(), SecurityPhase::Transport);
+
+    EXPECT_EQ(session.enqueue_pending({1, 2, 3}, /*cap*/ 0),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(SecuritySessionPending, TakePendingDrainsAndResetsCounter) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
+
+    ASSERT_EQ(session.enqueue_pending({1, 2}, 0), GN_OK);
+    ASSERT_EQ(session.enqueue_pending({3, 4, 5}, 0), GN_OK);
+
+    auto drained = session.take_pending();
+    ASSERT_EQ(drained.size(), 2u);
+    EXPECT_EQ(drained[0], (std::vector<std::uint8_t>{1, 2}));
+    EXPECT_EQ(drained[1], (std::vector<std::uint8_t>{3, 4, 5}));
+    EXPECT_EQ(session.pending_bytes(), 0u);
+    /// Second call returns empty — `take_pending` is the destructive
+    /// drain.
+    EXPECT_TRUE(session.take_pending().empty());
+}
+
+TEST(SecuritySessionPending, CloseDropsBufferedBytes) {
+    FakeProvider prov;
+    prov.complete_immediately = false;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_handshake_session(session, prov, vt);
+
+    ASSERT_EQ(session.enqueue_pending({1, 2, 3}, 0), GN_OK);
+    EXPECT_EQ(session.pending_bytes(), 3u);
+
+    session.close();
+    EXPECT_EQ(session.pending_bytes(), 0u);
+    EXPECT_TRUE(session.take_pending().empty());
+}
+
+TEST(SecuritySession, CloseInvokesHandshakeCloseOnce) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    {
+        SecuritySession session;
+        ASSERT_EQ(session.open(make_entry(prov, vt), 1,
+                                GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                                std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                                std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                                std::span<const std::uint8_t>{}),
+                  GN_OK);
+        session.close();
+        EXPECT_EQ(prov.handshake_close_calls, 1);
+        session.close();  /// idempotent — handshake_close not called twice
+        EXPECT_EQ(prov.handshake_close_calls, 1);
+    }
+    /// Destruction after explicit close() does not call handshake_close again.
+    EXPECT_EQ(prov.handshake_close_calls, 1);
+}
+
+// ── SessionRegistry ──────────────────────────────────────────────────────
+
+TEST(SessionRegistry, CreateAndFindReturnsSameHandle) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SessionRegistry sessions;
+
+    gn_result_t rc = GN_OK;
+    auto a = sessions.create(
+        /*conn*/ 7, make_entry(prov, vt),
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+    ASSERT_EQ(rc, GN_OK);
+    ASSERT_NE(a, nullptr);
+    EXPECT_EQ(sessions.find(7).get(), a.get());
+    EXPECT_EQ(sessions.size(), 1u);
+}
+
+TEST(SessionRegistry, FindUnknownConnReturnsEmptyHandle) {
+    SessionRegistry sessions;
+    EXPECT_EQ(sessions.find(99), nullptr);
+}
+
+TEST(SessionRegistry, CreateRejectsDuplicateConn) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SessionRegistry sessions;
+
+    gn_result_t rc = GN_OK;
+    auto first = sessions.create(
+        /*conn*/ 11, make_entry(prov, vt),
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+    ASSERT_EQ(rc, GN_OK);
+    ASSERT_NE(first, nullptr);
+
+    /// Second `create()` with the same `conn` must fail. A silent
+    /// overwrite would orphan the existing session — borrowers
+    /// holding `shared_ptr` continue to encrypt against the old
+    /// keys while new callers see a freshly-keyed handshake;
+    /// payloads diverge.
+    auto second = sessions.create(
+        /*conn*/ 11, make_entry(prov, vt),
+        GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+    EXPECT_EQ(rc, GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(second, nullptr);
+    EXPECT_EQ(sessions.find(11).get(), first.get());
+    EXPECT_EQ(sessions.size(), 1u);
+}
+
+TEST(SessionRegistry, DestroyClearsAndCallsHandshakeClose) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SessionRegistry sessions;
+
+    gn_result_t rc = GN_OK;
+    (void)sessions.create(7, make_entry(prov, vt),
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}, rc);
+    ASSERT_EQ(rc, GN_OK);
+    sessions.destroy(7);
+    EXPECT_EQ(sessions.find(7), nullptr);
+    EXPECT_EQ(sessions.size(), 0u);
+    EXPECT_EQ(prov.handshake_close_calls, 1);
+}
+
+TEST(SessionRegistry, DestroyUnknownIsNoop) {
+    SessionRegistry sessions;
+    sessions.destroy(42);  /// must not crash; nothing to remove
+    EXPECT_EQ(sessions.size(), 0u);
+}
+
+TEST(SessionRegistry, CreateRefusedWhenTrustNotInProviderMask) {
+    /// Null-style provider: only LOOPBACK / INTRA_NODE permitted. A
+    /// caller that hands an UNTRUSTED conn to such a provider hits
+    /// the stack-policy gate before any handshake state is allocated.
+    FakeProvider prov;
+    prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    auto vt = make_vtable();
+    SessionRegistry sessions;
+
+    gn_result_t rc = GN_OK;
+    auto sess = sessions.create(
+        /*conn*/ 13, make_entry(prov, vt),
+        GN_TRUST_UNTRUSTED, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+
+    EXPECT_EQ(rc, GN_ERR_INVALID_ENVELOPE);
+    EXPECT_EQ(sess, nullptr);
+    EXPECT_EQ(sessions.size(), 0u);
+    /// Critically: the gate fires before `handshake_open` runs, so
+    /// the provider observed zero handshake-state allocations.
+    EXPECT_EQ(prov.handshake_open_calls, 0);
+}
+
+TEST(SessionRegistry, CreateAcceptsTrustClassInProviderMask) {
+    /// Same restrictive mask, but the conn is LOOPBACK — gate
+    /// permits.
+    FakeProvider prov;
+    prov.trust_mask = (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    auto vt = make_vtable();
+    SessionRegistry sessions;
+
+    gn_result_t rc = GN_OK;
+    auto sess = sessions.create(
+        /*conn*/ 14, make_entry(prov, vt),
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+        std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+        std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+        std::span<const std::uint8_t>{}, rc);
+
+    EXPECT_EQ(rc, GN_OK);
+    ASSERT_NE(sess, nullptr);
+    EXPECT_EQ(prov.handshake_open_calls, 1);
+}
+
+// ── Stream framing (backpressure.md §9 + handshake.md §7) ────────────────
+
+namespace {
+
+/// Build a wire frame `[u16 BE len][bytes]` for use with the
+/// pass-through FakeProvider (no encryption — the bytes _are_ the
+/// "ciphertext" the provider's `decrypt` will copy through).
+std::vector<std::uint8_t> wire_frame(std::span<const std::uint8_t> bytes) {
+    const auto len = static_cast<std::uint16_t>(bytes.size());
+    std::vector<std::uint8_t> frame(kFramePrefixBytes + bytes.size());
+    frame[0] = static_cast<std::uint8_t>((len >> 8) & 0xFF);
+    frame[1] = static_cast<std::uint8_t>(len        & 0xFF);
+    std::memcpy(frame.data() + kFramePrefixBytes, bytes.data(), bytes.size());
+    return frame;
+}
+
+void open_transport_session(SecuritySession& session,
+                             FakeProvider& prov,
+                             const gn_security_provider_vtable_t& vt) {
+    ASSERT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+}
+
+}  // namespace
+
+TEST(SecuritySessionStream, SplitsCoalescedFramesInOneCall) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// Three frames concatenated as one inbound chunk — the shape a
+    /// stream-class transport delivers when reads coalesce.
+    const std::vector<std::uint8_t> a{1, 2, 3};
+    const std::vector<std::uint8_t> b{4, 5, 6, 7};
+    const std::vector<std::uint8_t> c{8};
+    auto fa = wire_frame(a);
+    auto fb = wire_frame(b);
+    auto fc = wire_frame(c);
+
+    std::vector<std::uint8_t> chunk;
+    chunk.insert(chunk.end(), fa.begin(), fa.end());
+    chunk.insert(chunk.end(), fb.begin(), fb.end());
+    chunk.insert(chunk.end(), fc.begin(), fc.end());
+
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(chunk, out), GN_OK);
+    ASSERT_EQ(out.size(), 3u);
+    EXPECT_EQ(out[0], a);
+    EXPECT_EQ(out[1], b);
+    EXPECT_EQ(out[2], c);
+    EXPECT_EQ(prov.decrypt_calls, 3);
+}
+
+TEST(SecuritySessionStream, HandlesPartialLengthPrefix) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> body{0x10, 0x20, 0x30};
+    auto frame = wire_frame(body);
+
+    /// Feed one prefix byte; nothing decodes yet.
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data(), 1), out),
+              GN_OK);
+    EXPECT_TRUE(out.empty());
+    EXPECT_EQ(prov.decrypt_calls, 0);
+
+    /// Feed the rest of the frame; one plaintext drops out.
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data() + 1,
+                                                  frame.size() - 1),
+                  out),
+              GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], body);
+    EXPECT_EQ(prov.decrypt_calls, 1);
+}
+
+TEST(SecuritySessionStream, HandlesPartialBody) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> body(64, 0xAB);
+    auto frame = wire_frame(body);
+
+    /// Prefix + half body — partial, no plaintext.
+    const std::size_t half = kFramePrefixBytes + body.size() / 2;
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data(), half), out),
+              GN_OK);
+    EXPECT_TRUE(out.empty());
+
+    /// Tail completes one frame.
+    EXPECT_EQ(session.decrypt_transport_stream(
+                  std::span<const std::uint8_t>(frame.data() + half,
+                                                  frame.size() - half),
+                  out),
+              GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], body);
+}
+
+TEST(SecuritySessionStream, RejectsZeroLengthFrame) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// `[0x00 0x00]` — claims a zero-byte ciphertext, malformed
+    /// because the AEAD always carries a 16-byte tag.
+    const std::vector<std::uint8_t> bad{0x00, 0x00};
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(bad, out),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(SecuritySessionStream, BoundedByRecvBufferCap) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    /// Feed one chunk over the cap: returns LIMIT_REACHED before
+    /// the buffer mutates so the next call starts clean.
+    /// Default cap is the wire-format ceiling per
+    /// `kRecvBufferCapDefaultBytes`; FakeProvider doesn't tune,
+    /// so the test exercises the default path.
+    std::vector<std::uint8_t> garbage(
+        gn::core::kRecvBufferCapDefaultBytes + 1, 0xAA);
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(garbage, out),
+              GN_ERR_LIMIT_REACHED);
+}
+
+TEST(SecuritySessionStream, RecvBufferCapHonoursOpenParameter) {
+    /// Open with an explicit small cap (4 KiB total) — the
+    /// default ceiling is ~128 KiB, so a 4097-byte chunk under
+    /// this cap returns LIMIT_REACHED while the same chunk under
+    /// the default would not. The cap follows operator-tuned
+    /// `gn_limits_t::max_frame_bytes` per `backpressure.md` §9.
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    constexpr std::size_t kSmallCap = 4096;
+    ASSERT_EQ(session.open(make_entry(prov, vt), /*conn*/ 1,
+                            GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                            std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                            std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                            std::span<const std::uint8_t>{},
+                            kSmallCap),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(session.advance_handshake({}, tmp), GN_OK);
+
+    std::vector<std::uint8_t> oversized(kSmallCap + 1, 0xCD);
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(oversized, out),
+              GN_ERR_LIMIT_REACHED);
+}
+
+TEST(SecuritySessionStream, EncryptThenDecryptStreamRoundTrip) {
+    FakeProvider prov;
+    auto vt = make_vtable();
+    SecuritySession session;
+    open_transport_session(session, prov, vt);
+
+    const std::vector<std::uint8_t> plain{'h','e','l','l','o'};
+    std::vector<std::uint8_t> wire;
+    EXPECT_EQ(session.encrypt_transport(plain, wire), GN_OK);
+
+    std::vector<std::vector<std::uint8_t>> out;
+    EXPECT_EQ(session.decrypt_transport_stream(wire, out), GN_OK);
+    ASSERT_EQ(out.size(), 1u);
+    EXPECT_EQ(out[0], plain);
+}

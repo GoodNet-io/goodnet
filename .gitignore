@@ -6,11 +6,25 @@
 # Top-level project files
 !.gitignore
 !.envrc
+!.clang-tidy
 !flake.nix
 !flake.lock
 !CMakeLists.txt
+!Makefile
 !LICENSE
 !README.md
+!README.ru.md
+!CHANGELOG.md
+!SECURITY.md
+!CONTRIBUTING.md
+!CODE_OF_CONDUCT.md
+!GOVERNANCE.md
+
+# Git hooks (opt-in via `nix run .#install-hooks`)
+!.githooks/*
+
+# Editor configs
+!.vscode/*.json
 
 # Build / output dirs (re-block after top-level rules)
 build/
@@ -31,6 +45,13 @@ result-*
 # Docs
 !docs/**/*.md
 !docs/Doxyfile
+!docs/img/*.svg
+!docs/architecture.canvas
+
+# Diagram + math generators
+!tools/*.py
+!tools/math/*.py
+__pycache__/
 
 # CI
 !.github/**/*.yml
@@ -50,18 +71,47 @@ result-*
 !core/**/CMakeLists.txt
 !core/LICENSE
 
-# Plugins (in-tree development convenience)
-!plugins/**/*.cpp
-!plugins/**/*.hpp
-!plugins/**/*.h
-!plugins/**/*.json
-!plugins/**/CMakeLists.txt
-!plugins/**/default.nix
-!plugins/**/LICENSE
-!plugins/**/README.md
+# Plugins. The monorepo tracks the structural top-level
+# `plugins/CMakeLists.txt` plus everything under
+# `plugins/protocols/` (gnet + raw — both `add_library(... STATIC)`
+# linked into the kernel binary, so the kernel build genuinely
+# depends on their source). Loadable plugins under
+# `plugins/handlers/`, `plugins/links/`, `plugins/security/`
+# live in their own gits (one per plugin directory) and are
+# deliberately not tracked by the monorepo — the explicit
+# directory blocks below stop git from auto-registering each
+# nested `.git/` as a submodule when something runs
+# `git add -A` from the monorepo root.
+!plugins/CMakeLists.txt
+!plugins/protocols/**
+plugins/handlers/heartbeat/
+plugins/handlers/mycelium/
+plugins/links/tcp/
+plugins/links/udp/
+plugins/links/ws/
+plugins/links/ipc/
+plugins/links/tls/
+plugins/links/ice/
+plugins/security/noise/
+plugins/security/null/
+
+# bridges/cpp/ is the slot for the bridges-cpp repo — operator-side
+# C++ binding over `sdk/core.h`. Lives in its own git (mirror at
+# `~/.local/share/goodnet-mirrors/bridges-cpp.git`); the explicit
+# block stops git from auto-registering the nested `.git/` as a
+# submodule when something runs `git add -A` from the monorepo root.
+bridges/cpp/
+
+# tests/integration/ is the slot for the goodnet-integration-tests
+# repo — pulled by `install-plugins`, gitignored from the kernel
+# the same way as plugin slots so the nested .git stays invisible
+# to `git add -A`.
+tests/integration/
 
 # Tests
+!tests/**/*.c
 !tests/**/*.cpp
+!tests/**/*.h
 !tests/**/*.hpp
 !tests/**/*.conf
 !tests/**/CMakeLists.txt
@@ -72,3 +122,17 @@ result-*
 !examples/**/*.md
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
+
+# Apps (operator-facing CLI binaries)
+!apps/**/*.cpp
+!apps/**/*.hpp
+!apps/**/*.md
+!apps/**/CMakeLists.txt
+
+# Distribution artefacts (systemd units, example configs, packaging)
+!dist/**/*.service
+!dist/**/*.json
+!dist/**/*.md
+
+# manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
+manifesto/

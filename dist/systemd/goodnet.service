@@ -1,0 +1,68 @@
+# goodnet.service — systemd unit for the GoodNet node binary.
+#
+# Operators install this file at /etc/systemd/system/goodnet.service
+# (or the distro's equivalent), drop a `node.json` and `plugins.json`
+# into /etc/goodnet/, and run:
+#
+#     systemctl enable --now goodnet
+#
+# The unit runs the multicall binary's `run` subcommand. The `run`
+# subcommand orchestrates kernel + plugin load + identity load per
+# the manifest; see `apps/goodnet/subcommands/run.cpp` (ships in
+# Wave 8.1.b). Until then this unit fails fast with «not yet
+# implemented» — the file is here so packagers can pick it up.
+
+[Unit]
+Description=GoodNet network kernel
+Documentation=https://github.com/GoodNet-io/GoodNet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Pre-deploy validation. ExecStartPre cuts a malformed config off at
+# unit-start time rather than letting `run` crash mid-handshake.
+ExecStartPre=/usr/bin/goodnet config validate /etc/goodnet/node.json
+
+# Production entry. Both files are required; the unit fails fast if
+# either is missing or malformed.
+ExecStart=/usr/bin/goodnet run --config /etc/goodnet/node.json --manifest /etc/goodnet/plugins.json
+
+# Cooperative shutdown. The kernel polls `is_shutdown_requested`
+# from inside async callbacks (host-api.md §10) and exits early on
+# SIGTERM; 30s is generous for plugin drain.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+# A node failure is a configuration or plugin error — surface it
+# loudly through systemd rather than silent restarts. Operators who
+# want auto-restart override `Restart=` in a drop-in.
+Restart=no
+
+# Run as an unprivileged user. The package install script creates
+# `goodnet:goodnet` and chowns /etc/goodnet/ + /var/lib/goodnet/.
+User=goodnet
+Group=goodnet
+
+# State directory for any plugin that wants persistent state under
+# the kernel's lifecycle (DHT, sync, etc.). Per-plugin subdirs
+# materialise on first write.
+StateDirectory=goodnet
+StateDirectoryMode=0750
+
+# Hardening. The kernel does not need root, raw sockets, or the
+# host's namespace tree.
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,135 @@
+/// @file   core/kernel/metrics_registry.hpp
+/// @brief  Named-counter store the kernel maintains for built-in
+///         observability and that plugins can extend through the
+///         `host_api->emit_counter` slot.
+///
+/// Per `metrics.md` the kernel's counter surface is intentionally
+/// minimal: monotonic 64-bit counters keyed by a UTF-8 name. No
+/// labels, no gauges, no histograms — those compose out of an
+/// exporter plugin sitting on top of `iterate`. Keeping the
+/// kernel's surface small leaves the kernel agnostic of any wire
+/// format (Prometheus, OpenMetrics, statsd, ...) — that is policy
+/// and lives in plugins.
+///
+/// Two write paths share the same map:
+///   * `increment_route_outcome` / `increment_drop_reason` —
+///     kernel-side enums emitted at known dispatch sites; the
+///     name-mapping helpers stay inside the registry so the call
+///     sites do not have to remember the canonical strings;
+///   * `increment` — generic by-name path that backs the SDK
+///     `host_api->emit_counter` slot for plugin-side counters.
+///
+/// Reads happen through `iterate` (visitor-form) and `value`
+/// (single counter, mainly for tests). Both take a shared lock
+/// only briefly and never block writes for non-trivial duration.
+
+#pragma once
+
+#include <atomic>
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <shared_mutex>
+#include <string>
+#include <string_view>
+#include <unordered_map>
+
+#include <core/kernel/router.hpp>
+
+#include <sdk/metrics.h>
+#include <sdk/types.h>
+
+namespace gn::core {
+
+/// Thread-safe map of named monotonic counters.
+class MetricsRegistry {
+public:
+    MetricsRegistry();
+    MetricsRegistry(const MetricsRegistry&)            = delete;
+    MetricsRegistry& operator=(const MetricsRegistry&) = delete;
+
+    /// Bump the counter at @p name by one. Lazily creates the entry
+    /// on first hit; subsequent hits go through the shared-lock
+    /// fast path that never blocks a concurrent reader.
+    void increment(std::string_view name);
+
+    /// Bump a built-in `RouteOutcome` counter. The mapping from
+    /// enum → metric name lives inside this registry so the hot
+    /// dispatch path stays free of string-handling boilerplate.
+    void increment_route_outcome(RouteOutcome outcome);
+
+    /// Bump a built-in `gn_drop_reason_t` counter. Mirrors
+    /// `increment_route_outcome` for the drop-reason enum exported
+    /// to plugins through `sdk/types.h`.
+    void increment_drop_reason(gn_drop_reason_t reason);
+
+    /// Read a single counter. Returns 0 when @p name has no entry —
+    /// the kernel never auto-creates on read.
+    [[nodiscard]] std::uint64_t value(std::string_view name) const;
+
+    /// Walk every counter. The visitor receives `(name, value)`
+    /// pairs under a shared lock; the lock is held for the
+    /// duration of the call so the visitor must not re-enter the
+    /// registry.
+    void for_each(const std::function<void(std::string_view,
+                                            std::uint64_t)>& visitor) const;
+
+    /// C-ABI variant for the `host_api->iterate_counters` slot.
+    /// Returns the number of counters visited; stops early when the
+    /// visitor returns non-zero.
+    [[nodiscard]] std::size_t iterate(gn_counter_visitor_t visitor,
+                                       void* user_data) const;
+
+    /// Cardinality cap (`limits.md` §3a /
+    /// `metrics.md` §3.1). Zero disables the cap entirely.
+    /// Setting it to a non-zero value below the current
+    /// counter count keeps existing counters in place — the cap
+    /// only blocks **new** insertions on the slow path.
+    void set_max_counter_names(std::uint32_t cap) noexcept;
+
+private:
+    /// Heterogeneous hash + equality so the unordered_map's
+    /// transparent `find(string_view)` overload matches without
+    /// constructing a temporary `std::string`. The
+    /// `is_transparent` typedef on both is what teaches the
+    /// container to take the heterogeneous path.
+    struct StringHash {
+        using is_transparent = void;
+        [[nodiscard]] std::size_t operator()(std::string_view sv) const noexcept {
+            return std::hash<std::string_view>{}(sv);
+        }
+        [[nodiscard]] std::size_t operator()(const std::string& s) const noexcept {
+            return std::hash<std::string_view>{}(s);
+        }
+        [[nodiscard]] std::size_t operator()(const char* s) const noexcept {
+            return std::hash<std::string_view>{}(s);
+        }
+    };
+
+    using Slot = std::unique_ptr<std::atomic<std::uint64_t>>;
+    using Map  = std::unordered_map<std::string, Slot, StringHash,
+                                     std::equal_to<>>;
+
+    /// Transparent lookup keyed on `string_view` so the
+    /// shared-lock fast path stops one allocation short — the
+    /// caller's view does not have to widen into a `std::string`
+    /// just to perform a `find`.
+    [[nodiscard]] Map::const_iterator find(std::string_view name) const;
+
+    mutable std::shared_mutex mu_;
+    Map                       counters_;
+
+    /// Cardinality cap. Zero disables the check.
+    std::atomic<std::uint32_t> max_counter_names_{0};
+
+    /// Pointer to the atomic backing
+    /// `metrics.cardinality_rejected`. Pre-created in the
+    /// constructor so the slow-path reject branch increments
+    /// without an extra slot allocation under the writer lock.
+    /// The pointer is stable across rehashes — `unordered_map`
+    /// moves the `unique_ptr<atomic>` slot during a rehash but
+    /// the contained atomic stays at the same address.
+    std::atomic<std::uint64_t>* cardinality_rejected_ = nullptr;
+};
+
+}  // namespace gn::core

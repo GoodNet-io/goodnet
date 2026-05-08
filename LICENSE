@@ -1,38 +1,110 @@
 GoodNet — Licensing
 ====================
 
-The platform consists of the kernel and the SDK. They live under a single
-license model. Plugins are independent builds against the SDK and carry
-their own licenses; each plugin directory has its own LICENSE file.
+The platform consists of the kernel and the SDK. The kernel is GPL-2.0
+with a Linking Exception that releases the plugin boundary from
+copyleft propagation; the SDK is MIT. Plugins are independent builds
+and may carry any license — including proprietary — provided they
+interface with the kernel only through the stable C ABI defined in the
+SDK.
 
 
 Platform Components
 -------------------
 
-  Kernel  (core/)                    GNU General Public License v2.0 (GPL-2.0)
+  Kernel  (core/)                    GNU GPL-2.0 with Linking Exception
                                      →  core/LICENSE
 
   SDK     (sdk/, public headers)     MIT License
                                      →  sdk/LICENSE
 
+  Plugins (plugins/<kind>/<name>/)   Per-plugin LICENSE; see «Plugins»
+                                     below for the strategic-baseline
+                                     vs periphery split.
+
+
+Linking Exception (summary)
+---------------------------
+
+The full text lives in `core/LICENSE` and is part of the kernel's
+license. In one sentence:
+
+  Plugins that interface with the kernel only through `gn_plugin_descriptor`,
+  the five plugin entry points, and the vtable types declared in public
+  `sdk/` headers are not derivative works of the kernel — they may be
+  licensed under any terms (MIT, BSD, Apache 2.0, proprietary, …) and
+  linked statically or dynamically.
+
+What the exception does NOT cover:
+
+  - Modifications to the kernel itself (sources under `core/` and the
+    mandatory mesh-framing under `plugins/protocols/gnet/`). A modified
+    kernel must be redistributed under GPL-2.0.
+  - Plugins that reach past the SDK and reference internal kernel
+    symbols or `core/` headers directly. Such code is a derivative
+    work of the kernel and inherits GPL-2.0.
+
+The rationale: the kernel itself stays free in the strong sense, while
+the plugin layer is open to any business model — open-source ecosystem,
+commercial dual-license, embedded proprietary differentiation. This is
+the OpenJDK GPL-with-Classpath-Exception model, written explicitly so
+the legal status that Linux has lived with as a "gray area" for thirty
+years is unambiguous here.
+
 
 Plugins
 -------
 
-Plugins are independent builds. Each is licensed at the discretion of its
-authors. Common cases:
+Plugins are independent builds. Each carries its own LICENSE file in
+its directory. The Linking Exception above means any license is
+permitted for plugins that interface with the kernel only through the
+stable C ABI in the SDK.
 
-  - Open MIT plugins ship with the upstream tree under plugins/ as a
-    convenience for development; they remain independently licensed.
-  - Closed-source or commercial plugins live in their own repositories
-    and link against the installed SDK.
+In-tree licensing for the bundled plugins shipped in this repository:
 
-Loading a plugin at runtime through the stable C ABI does NOT trigger
-GPL copyleft on the kernel side: the boundary between kernel and plugin
-is the SDK, which is MIT and explicitly intended for cross-license use.
+  Strategic baseline — community-locked under GPL-2.0 with the same
+  Linking Exception as the kernel. The kernel's value as an
+  anti-enclosure platform depends on these layers staying free in
+  the strong sense; a fork must publish its modifications.
 
-To discover the license of a specific plugin, consult its own LICENSE file.
+    - plugins/protocols/gnet      .. GPL-2.0 + Linking Exception
+                                     (mandatory mesh framing)
+    - plugins/links/tcp           .. GPL-2.0 + Linking Exception
+    - plugins/links/udp           .. GPL-2.0 + Linking Exception
+    - plugins/links/ws            .. GPL-2.0 + Linking Exception
+                                     (web access bet — strategic)
+    - plugins/security/noise      .. GPL-2.0 + Linking Exception
+    - plugins/handlers/heartbeat  .. GPL-2.0 + Linking Exception
+                                     (canonical reference handler)
+
+  Periphery — permissive. Templates, debug providers, host-OS-tied
+  transports without strategic weight.
+
+    - plugins/security/null       .. MIT License
+                                     (loopback / IntraNode-only debug)
+    - plugins/protocols/raw       .. MIT License
+                                     (template; opaque-payload layer)
+    - plugins/links/ipc           .. MIT License
+                                     (local AF_UNIX socket)
+
+  OpenSSL-tied — Apache-2.0 to align with OpenSSL 3.x and avoid the
+  GPL-2 ↔ Apache-2.0 incompatibility on the link.
+
+    - plugins/links/tls           .. Apache-2.0 License
+
+Out-of-tree plugins choose freely; the Linking Exception applies
+regardless of the plugin's license, so a proprietary plugin loaded
+through the SDK does not contaminate the kernel binary.
+
+License compatibility detail: Apache-2.0 is incompatible with
+GPL-2.0 on a static-link boundary because of Apache's patent-
+retaliation clause. The Linking Exception releases the SDK boundary
+from that restriction for plugin loading; the OpenSSL-tied TLS
+plugin keeps Apache-2.0 internally so it can continue linking
+OpenSSL without an additional exception clause. See
+`docs/LICENSES.md` for the full compatibility matrix and the
+upstream-dependency licence audit.
 
 
-Copyright (c) 2026 GoodNet contributors (kernel + SDK).
-Plugins copyright their respective authors.
+Copyright (c) 2026 GoodNet Contributors (kernel + SDK + bundled
+plugins). Out-of-tree plugins copyright their respective authors.

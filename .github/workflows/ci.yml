@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  flake-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build (Debug) and run unit + integration tests
+        run: nix run .#test
+
+  asan-ubsan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: AddressSanitizer + UBSan
+        run: nix run .#test -- asan
+
+  tsan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: ThreadSanitizer
+        run: nix run .#test -- tsan
+
+  clang-tidy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+
+      - name: Configure (compile_commands.json)
+        run: |
+          nix develop --command bash -c '
+            cmake -B build -G Ninja \
+                  -DCMAKE_BUILD_TYPE=Debug \
+                  -DBUILD_TESTING=ON
+          '
+
+      # Strict mode: any clang-tidy diagnostic on a changed file fails
+      # the CI run. Greenfield codebase, no legacy debt to grandfather
+      # in; if a check is genuinely undesirable, the right fix is a
+      # `.clang-tidy` carve-out, not a per-file `// NOLINT`.
+      - name: clang-tidy on changed C++ files (strict)
+        run: |
+          nix develop --command bash -c '
+            set -euo pipefail
+            BASE_SHA="${{ github.event.pull_request.base.sha || github.event.before }}"
+            HEAD_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+            if [ -z "$BASE_SHA" ] || [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+              FILES=$(git diff-tree --no-commit-id --name-only -r "$HEAD_SHA" \
+                      | grep -E "\.(cpp|hpp|h|cc)$" || true)
+            else
+              FILES=$(git diff --name-only "$BASE_SHA".."$HEAD_SHA" \
+                      | grep -E "\.(cpp|hpp|h|cc)$" || true)
+            fi
+            if [ -z "$FILES" ]; then
+              echo "No C++ files changed; skipping clang-tidy."
+              exit 0
+            fi
+            echo "Linting (strict):"; echo "$FILES"
+            EXIT=0
+            for f in $FILES; do
+              [ -f "$f" ] || continue
+              clang-tidy --warnings-as-errors=* -p build "$f" || EXIT=1
+            done
+            exit $EXIT
+          '
