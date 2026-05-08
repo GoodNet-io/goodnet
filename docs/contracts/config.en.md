@@ -126,7 +126,7 @@ parser.
         // Metrics cardinality cap (metrics.md §2.1)
         "max_counter_names":             8192, // 0 disables; reject-new past cap, bumps `metrics.cardinality_rejected`
 
-        // Storage (sync.md, defer to v1.1 plugins)
+        // Storage caps (reserved for future sync / DHT plugins)
         "max_storage_table_entries":     10000,
         "max_storage_value_bytes":       65522
     },
