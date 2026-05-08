@@ -41,22 +41,25 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     /// inserters that share any subset of the locks.
     std::scoped_lock lock(s.mu, uri_mu_, pk_mu_);
 
-    if (s.records.contains(rec.id))             return GN_ERR_LIMIT_REACHED;
-    if (uri_index_.contains(rec.uri))           return GN_ERR_LIMIT_REACHED;
+    /// `conn_id` is kernel-allocated and never reused during runtime,
+    /// so a duplicate id under the shard map is a structural bug — keep
+    /// the rejection. URI and peer_pk indexes admit multiple conns per
+    /// key (multipath, parallel transport, aggregation): kernel-level
+    /// invariant is «one record per `conn_id`», not «one record per
+    /// peer or URI». Strategy plugins that want single-active-per-peer
+    /// discipline (sequential switch, channel upgrade) maintain their
+    /// own `peer_pk → list-of-conns` map per `architecture/multi-path.ru.md`
+    /// §«Идентичность connection поверх transport'а». Cross-session
+    /// identity protection moved entirely to
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.md` §5
+    /// step 7-8.
+    if (s.records.contains(rec.id)) return GN_ERR_LIMIT_REACHED;
 
-    /// `pk_index_` only carries authenticated peer keys. A pre-handshake
-    /// placeholder (the all-zero PublicKey link plugins pass at
-    /// `notify_connect` for the responder side and the pre-IK initiator
-    /// side) is treated as "no peer key yet" — many concurrent
-    /// responders coexist with the same placeholder without colliding.
-    /// The real peer key is published into the index once
-    /// `update_remote_pk` fires from the post-handshake propagate
-    /// path (registry.md §7a).
+    /// Placeholder zero pk skips the index — many pre-handshake
+    /// responders coexist on the kZeroPk; real peer key publishes
+    /// through `update_remote_pk` post-handshake.
     static const PublicKey kZeroPk{};
     const bool has_peer_pk = (rec.remote_pk != kZeroPk);
-    if (has_peer_pk && pk_index_.contains(rec.remote_pk)) {
-        return GN_ERR_LIMIT_REACHED;
-    }
 
     /// Re-check under the lock to close the race between the
     /// pre-lock load and a concurrent inserter that bumps the
@@ -72,8 +75,13 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
 
     s.records.emplace(id, std::make_shared<const ConnectionRecord>(std::move(rec)));
     s.counters.emplace(id, std::make_unique<AtomicCounters>());
-    uri_index_.emplace(uri, id);
-    if (has_peer_pk) pk_index_.emplace(pk, id);
+    /// `insert_or_assign` so a multi-conn-to-same-URI registration
+    /// last-writer-wins on the lookup index without rejecting the
+    /// underlying record. Both records remain findable through
+    /// `find_by_id`; `find_by_uri` returns the most recently
+    /// registered.
+    uri_index_.insert_or_assign(uri, id);
+    if (has_peer_pk) pk_index_.insert_or_assign(pk, id);
     live_count_.fetch_add(1, std::memory_order_relaxed);
 
     return GN_OK;
@@ -104,8 +112,19 @@ gn_result_t ConnectionRegistry::erase_with_index(gn_conn_id_t id) noexcept {
     const std::string uri = it->second->uri;
     const PublicKey   pk  = it->second->remote_pk;
 
-    uri_index_.erase(uri);
-    pk_index_.erase(pk);
+    /// Multi-conn-aware index erase: remove the entry only if it
+    /// still points to **this** id. A different conn that registered
+    /// the same URI / peer_pk later will have overwritten the index
+    /// (last-writer-wins); erasing unconditionally would orphan that
+    /// other conn's lookup.
+    if (auto uri_it = uri_index_.find(uri);
+        uri_it != uri_index_.end() && uri_it->second == id) {
+        uri_index_.erase(uri_it);
+    }
+    if (auto pk_it = pk_index_.find(pk);
+        pk_it != pk_index_.end() && pk_it->second == id) {
+        pk_index_.erase(pk_it);
+    }
     s.counters.erase(id);
     s.records.erase(it);
     live_count_.fetch_sub(1, std::memory_order_relaxed);
@@ -141,9 +160,17 @@ ConnectionRegistry::snapshot_and_erase(gn_conn_id_t id) noexcept {
 
     /// `snapshot` owns a copy of `uri` and `remote_pk` after the
     /// dereference, so the index erases below are safe even after
-    /// the shard erase drops the stored shared_ptr.
-    uri_index_.erase(snapshot.uri);
-    pk_index_.erase(snapshot.remote_pk);
+    /// the shard erase drops the stored shared_ptr. Same multi-
+    /// conn-aware guard as `erase_with_index` — only remove the
+    /// index entry if it points at **this** id.
+    if (auto uri_it = uri_index_.find(snapshot.uri);
+        uri_it != uri_index_.end() && uri_it->second == id) {
+        uri_index_.erase(uri_it);
+    }
+    if (auto pk_it = pk_index_.find(snapshot.remote_pk);
+        pk_it != pk_index_.end() && pk_it->second == id) {
+        pk_index_.erase(pk_it);
+    }
     s.counters.erase(id);
     s.records.erase(it);
     live_count_.fetch_sub(1, std::memory_order_relaxed);
@@ -217,23 +244,23 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
     const PublicKey old_pk = it->second->remote_pk;
     if (old_pk == new_pk) return GN_OK;  /// idempotent no-op
 
-    /// Reject `new_pk` already pointing at a different conn id —
-    /// either a registry collision (two responder connections from
-    /// the same peer at once) or an identity-collision attempt.
-    if (auto pk_it = pk_index_.find(new_pk);
-        pk_it != pk_index_.end() && pk_it->second != id) {
-        return GN_ERR_LIMIT_REACHED;
-    }
-
-    /// Placeholder zero pk is not in `pk_index_` (insert_with_index
-    /// skips zero pk on purpose), so the erase below is conditioned
-    /// on a non-zero `old_pk` to avoid touching unrelated entries
-    /// during an initiator key-rotation flow that lands a different
-    /// key. The new pk is inserted unconditionally — the duplicate
-    /// guard above already proved no other conn id holds it.
+    /// Multi-conn-aware: a `new_pk` already mapping to a different
+    /// conn is **valid** under the registry's multi-conn-per-peer
+    /// model — both conns coexist, the index simply points at the
+    /// most recently published one. Cross-session identity protection
+    /// (impostor with different `device_pk` claiming an existing
+    /// `peer_pk`) is enforced by
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.md`
+    /// §5 step 7-8, not by this registry.
     static const PublicKey kZeroPk{};
+    /// Old pk's index entry only points at `id` if no later conn
+    /// overwrote it; touch it conditionally so we don't orphan a
+    /// later conn's lookup.
     if (old_pk != kZeroPk) {
-        pk_index_.erase(old_pk);
+        if (auto pk_it = pk_index_.find(old_pk);
+            pk_it != pk_index_.end() && pk_it->second == id) {
+            pk_index_.erase(pk_it);
+        }
     }
     pk_index_.insert_or_assign(new_pk, id);
 

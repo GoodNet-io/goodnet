@@ -13,20 +13,37 @@
 
 ---
 
-## Один активный путь
+## Один активный путь — на уровне strategy plugin'а
 
-GoodNet ведёт по одному peer'у ровно одну запись в `ConnectionRegistry` с
-одной активной link-сессией и одной активной security-сессией. Поле
-`link_scheme` в `gn_endpoint_t` хранит имя транспорта, которым открыт
-этот путь; в любой момент времени запись отвечает на запросы по трём
-ключам — `conn_id`, `uri`, `remote_pk` — и все три указывают на один и
-тот же объект (см. [registry.md](../contracts/registry.en.md) §1).
+Идиома «один активный путь до peer'а» — это policy которую держит
+strategy plugin (sequential-switch, channel-upgrade, relay→direct
+upgrade), не **kernel invariant**. Ядро `ConnectionRegistry` admit'ит
+N записей к одному `peer_pk` параллельно: 4 TCP-conn'а к одному
+peer'у для aggregation, multipath-routing через разные URI, или
+connection-upgrade ladder где старый conn ещё жив пока новый
+закрепляется. Поле `link_scheme` в `gn_endpoint_t` хранит имя
+транспорта конкретного conn'а; `find_by_pk` возвращает «one of the
+conns matching peer_pk» — strategy plugin maintains свою
+`peer_pk → list-of-conns` таблицу для cross-conn discipline.
+
+Cross-scheme exclusion (нет TCP+ICE одновременно к одному peer'у)
+— тоже plugin-level rule, ядро это не enforces. Strategy
+`gn.float-send.<rtt-optimal/cost-aware/...>` решает какой scheme
+выбрать; sequential-switch держит «один активный path»; parallel-
+aggregation strategies держат N conn'ов одной scheme для
+load-distribution.
 
 Ни в коде ядра, ни в публичном `gn_endpoint_t` нет массива путей —
 никакого `paths_[]`, никакого «active path selector». Эта плоскость
 сознательно тонкая: ядро не выбирает между TCP и UDP, не считает RTT,
 не строит и не сравнивает «качества» путей. Плагин-владелец сценария
 делает это сам.
+
+Cross-session identity protection (impostor с другим device_pk
+claiming existing peer_pk) живёт на
+`attestation_dispatcher.peer_pin_map` per
+[`attestation.md`](../contracts/attestation.en.md) §5 step 7-8 —
+это primary security gate, не registry uniqueness.
 
 История миграций тоже plugin-side: если плагину нужно помнить, что час
 назад тот же peer был достижим через relay, он держит свою таблицу

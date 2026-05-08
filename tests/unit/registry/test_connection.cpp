@@ -155,7 +155,10 @@ TEST(ConnectionRegistry_Duplicate, IdRejectedAndAtomic) {
     EXPECT_EQ(reg.size(), 1u);
 }
 
-TEST(ConnectionRegistry_Duplicate, UriRejectedAndAtomic) {
+TEST(ConnectionRegistry_Duplicate, UriAdmitsMultiConn) {
+    /// Multi-conn-per-peer: kernel admits N records per URI per
+    /// `multi-path.ru.md`. The URI index becomes last-writer-wins;
+    /// both records remain findable through `find_by_id`.
     ConnectionRegistry reg;
     const gn_conn_id_t id1 = reg.alloc_id();
     const gn_conn_id_t id2 = reg.alloc_id();
@@ -165,15 +168,25 @@ TEST(ConnectionRegistry_Duplicate, UriRejectedAndAtomic) {
     ASSERT_EQ(reg.insert_with_index(make_record(id1, "tcp://shared", pk1)), GN_OK);
 
     EXPECT_EQ(reg.insert_with_index(make_record(id2, "tcp://shared", pk2)),
-              GN_ERR_LIMIT_REACHED);
+              GN_OK);
 
-    /// Atomicity: id2 / pk2 must NOT be visible.
-    EXPECT_EQ(reg.find_by_id(id2), nullptr);
-    EXPECT_EQ(reg.find_by_pk(pk2), nullptr);
-    EXPECT_EQ(reg.size(), 1u);
+    /// Both records observable through their own conn_ids.
+    EXPECT_NE(reg.find_by_id(id1), nullptr);
+    EXPECT_NE(reg.find_by_id(id2), nullptr);
+    EXPECT_EQ(reg.size(), 2u);
+
+    /// `find_by_uri` returns the most recently registered conn —
+    /// strategy plugins with cross-conn discipline build their own
+    /// peer-level lists.
+    auto by_uri = reg.find_by_uri("tcp://shared");
+    ASSERT_NE(by_uri, nullptr);
+    EXPECT_EQ(by_uri->id, id2);
 }
 
-TEST(ConnectionRegistry_Duplicate, PkRejectedAndAtomic) {
+TEST(ConnectionRegistry_Duplicate, PkAdmitsMultiConn) {
+    /// Multi-conn-per-peer: kernel admits N records per peer_pk.
+    /// Cross-session identity protection lives in
+    /// `attestation_dispatcher.peer_pin_map`, not in this index.
     ConnectionRegistry reg;
     const gn_conn_id_t id1 = reg.alloc_id();
     const gn_conn_id_t id2 = reg.alloc_id();
@@ -182,12 +195,20 @@ TEST(ConnectionRegistry_Duplicate, PkRejectedAndAtomic) {
     ASSERT_EQ(reg.insert_with_index(make_record(id1, "tcp://a", pk)), GN_OK);
 
     EXPECT_EQ(reg.insert_with_index(make_record(id2, "tcp://b", pk)),
-              GN_ERR_LIMIT_REACHED);
+              GN_OK);
 
-    /// Atomicity: id2 / "tcp://b" must NOT be visible.
-    EXPECT_EQ(reg.find_by_id(id2), nullptr);
-    EXPECT_EQ(reg.find_by_uri("tcp://b"), nullptr);
-    EXPECT_EQ(reg.size(), 1u);
+    /// Both records observable through their own conn_ids.
+    EXPECT_NE(reg.find_by_id(id1), nullptr);
+    EXPECT_NE(reg.find_by_id(id2), nullptr);
+    EXPECT_NE(reg.find_by_uri("tcp://a"), nullptr);
+    EXPECT_NE(reg.find_by_uri("tcp://b"), nullptr);
+    EXPECT_EQ(reg.size(), 2u);
+
+    /// `find_by_pk` returns the most recently registered conn for
+    /// that peer.
+    auto by_pk = reg.find_by_pk(pk);
+    ASSERT_NE(by_pk, nullptr);
+    EXPECT_EQ(by_pk->id, id2);
 }
 
 // ── erase ────────────────────────────────────────────────────────────────
@@ -734,10 +755,13 @@ TEST(ConnectionRegistry_UpdateRemotePk, IdempotentNoOp) {
     }
 }
 
-TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
-    /// Two connections, two distinct pks. Updating conn A's remote_pk
-    /// to match conn B's pk is rejected: the pk index would otherwise
-    /// silently overwrite the mapping for B and break find_by_pk.
+TEST(ConnectionRegistry_UpdateRemotePk, MultiConnUnderSamePk) {
+    /// Two connections claim the same peer_pk after handshake.
+    /// Multi-conn-per-peer model accepts both — kernel tracks them
+    /// independently by conn_id. `find_by_pk` returns the most
+    /// recently published conn; strategy plugins maintain
+    /// per-peer conn lists themselves. Cross-session identity
+    /// protection lives in `attestation_dispatcher.peer_pin_map`.
     ConnectionRegistry reg;
     const auto pk_a = make_pk(0xAAAA);
     const auto pk_b = make_pk(0xBBBB);
@@ -748,19 +772,21 @@ TEST(ConnectionRegistry_UpdateRemotePk, CollisionRejected) {
     ASSERT_EQ(reg.insert_with_index(
         make_record(id_b, "tcp://h:2", pk_b)), GN_OK);
 
-    EXPECT_EQ(reg.update_remote_pk(id_a, pk_b), GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(reg.update_remote_pk(id_a, pk_b), GN_OK);
 
-    /// Both records still resolve through their original keys.
-    auto by_a = reg.find_by_pk(pk_a);
-    auto by_b = reg.find_by_pk(pk_b);
-    ASSERT_NE(by_a, nullptr);
-    ASSERT_NE(by_b, nullptr);
-    if (by_a != nullptr) {
-        EXPECT_EQ(by_a->id, id_a);
-    }
-    if (by_b != nullptr) {
-        EXPECT_EQ(by_b->id, id_b);
-    }
+    /// Both records still resolve by id; peer_pk index now points
+    /// to the most recently updated conn (id_a in this case —
+    /// last-writer-wins).
+    auto fetched_a = reg.find_by_id(id_a);
+    auto fetched_b = reg.find_by_id(id_b);
+    ASSERT_NE(fetched_a, nullptr);
+    ASSERT_NE(fetched_b, nullptr);
+    EXPECT_EQ(fetched_a->remote_pk, pk_b);
+    EXPECT_EQ(fetched_b->remote_pk, pk_b);
+
+    auto by_pk = reg.find_by_pk(pk_b);
+    ASSERT_NE(by_pk, nullptr);
+    EXPECT_EQ(by_pk->id, id_a);
 }
 
 TEST(ConnectionRegistry_UpdateRemotePk, UnknownIdRejected) {
