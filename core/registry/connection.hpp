@@ -107,8 +107,17 @@ public:
     [[nodiscard]] std::optional<ConnectionRecord>
     snapshot_and_erase(gn_conn_id_t id) noexcept;
 
-    /// Snapshot lookup by id.
-    [[nodiscard]] std::optional<ConnectionRecord> find_by_id(gn_conn_id_t id) const;
+    /// Lookup by id — returns a `shared_ptr` snapshot of the
+    /// stored record so the hot path bumps a refcount instead of
+    /// deep-copying the record's `std::string uri` / `scheme`
+    /// fields. Mutating ops (`upgrade_trust`, `update_remote_pk`)
+    /// run copy-on-write under the shard lock so a reader
+    /// dereferencing the returned pointer never sees a torn write.
+    /// The pointed-to record carries the trust class, scheme, uri
+    /// and identity fields; per-connection counters live on the
+    /// separate `AtomicCounters` slot — `read_counters(id)` reads
+    /// them atomically.
+    [[nodiscard]] std::shared_ptr<const ConnectionRecord> find_by_id(gn_conn_id_t id) const;
 
     /// Promote a record's `trust` field through the policy gate from
     /// `sdk/trust.h`. Only `Untrusted → Peer` is a real transition;
@@ -145,11 +154,29 @@ public:
     [[nodiscard]] gn_result_t update_remote_pk(gn_conn_id_t id,
                                                 const PublicKey& new_pk) noexcept;
 
-    /// Snapshot lookup by URI string.
-    [[nodiscard]] std::optional<ConnectionRecord> find_by_uri(std::string_view uri) const;
+    /// Lookup by URI string — same shape as `find_by_id`.
+    [[nodiscard]] std::shared_ptr<const ConnectionRecord> find_by_uri(std::string_view uri) const;
 
-    /// Snapshot lookup by remote public key.
-    [[nodiscard]] std::optional<ConnectionRecord> find_by_pk(const PublicKey& pk) const;
+    /// Lookup by remote public key — same shape as `find_by_id`.
+    [[nodiscard]] std::shared_ptr<const ConnectionRecord> find_by_pk(const PublicKey& pk) const;
+
+    /// Atomic snapshot of the per-connection counters
+    /// (`add_inbound`, `add_outbound`, `set_pending_bytes`).
+    /// Zero-initialised when the id is missing — matches the
+    /// "lookup that always succeeds with default" shape the
+    /// `gn_endpoint_t` getter wants. Atomic loads are relaxed
+    /// because counter consumers (operator dashboards, status
+    /// rollups) tolerate eventual consistency on these
+    /// observability fields.
+    struct CounterSnapshot {
+        std::uint64_t bytes_in            = 0;
+        std::uint64_t bytes_out           = 0;
+        std::uint64_t frames_in           = 0;
+        std::uint64_t frames_out          = 0;
+        std::uint64_t pending_queue_bytes = 0;
+        std::uint64_t last_rtt_us         = 0;
+    };
+    [[nodiscard]] CounterSnapshot read_counters(gn_conn_id_t id) const noexcept;
 
     /// Number of records currently held.
     [[nodiscard]] std::size_t size() const noexcept;
@@ -157,10 +184,16 @@ public:
     /// Iterate every record under per-shard read locks. The visitor
     /// returns `true` to continue, `false` to stop. The visitor must
     /// not call back into mutating methods on this registry —
-    /// the shard locks are held for the duration. Per
+    /// the shard locks are held for the duration; in particular it
+    /// must not call `find_by_*`, `read_counters`, or any other
+    /// method that re-acquires the shard mutex (`std::shared_mutex`
+    /// recursion is undefined). The counter snapshot is passed
+    /// alongside each record so callers that need byte/frame totals
+    /// for status pages do not have to call back. Per
     /// `conn-events.md` §4.
     void for_each(
-        const std::function<bool(const ConnectionRecord&)>& visitor) const;
+        const std::function<bool(const ConnectionRecord&,
+                                  const CounterSnapshot&)>& visitor) const;
 
     /// Lock-free counter accessors — kernel thunks fold these into
     /// the inbound / outbound / backpressure paths so per-conn
@@ -203,7 +236,14 @@ private:
 
     struct Shard {
         mutable std::shared_mutex mu;
-        std::unordered_map<gn_conn_id_t, ConnectionRecord> records;
+        /// Records are stored behind `shared_ptr<const>` so
+        /// `find_by_*` returns a refcount bump instead of a deep
+        /// copy and mutating ops (trust upgrade, remote_pk
+        /// rotation) run copy-on-write — concurrent readers
+        /// observe the old or the new record atomically through
+        /// the map's shared_ptr replace, never a torn intermediate.
+        std::unordered_map<gn_conn_id_t,
+                            std::shared_ptr<const ConnectionRecord>> records;
         std::unordered_map<gn_conn_id_t,
                             std::unique_ptr<AtomicCounters>> counters;
     };

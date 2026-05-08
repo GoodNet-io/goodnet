@@ -121,7 +121,7 @@ TEST(ConnectionRegistry_Stress, ManyConcurrentInsertsAllSucceedDistinct) {
         for (int i = 0; i < kPerThread; ++i) {
             const auto pk = make_pk_stress(
                 seed_for(static_cast<std::size_t>(p), i));
-            EXPECT_TRUE(reg.find_by_pk(pk).has_value());
+            EXPECT_NE(reg.find_by_pk(pk), nullptr);
         }
     }
 }
@@ -246,7 +246,7 @@ TEST(ConnectionRegistry_Stress, FindRunsConcurrentlyWithMutations) {
             while (!stop.load(std::memory_order_relaxed)) {
                 const auto by_id = reg.find_by_id(stable_id);
                 const auto by_pk = reg.find_by_pk(stable_pk);
-                if (by_id.has_value() && by_pk.has_value()) {
+                if (by_id != nullptr && by_pk != nullptr) {
                     read_hits.fetch_add(1, std::memory_order_relaxed);
                 }
             }
@@ -267,7 +267,7 @@ TEST(ConnectionRegistry_Stress, FindRunsConcurrentlyWithMutations) {
     for (auto& th : readers) th.join();
 
     /// The stable record survives the churn.
-    EXPECT_TRUE(reg.find_by_id(stable_id).has_value());
+    EXPECT_NE(reg.find_by_id(stable_id), nullptr);
     /// The readers landed at least one observation while the storm
     /// was running. A zero count would mean the readers were starved
     /// out by the writer — itself worth flagging.

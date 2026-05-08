@@ -424,12 +424,17 @@ gn_result_t thunk_get_endpoint(void* host_ctx, gn_conn_id_t conn,
     std::memcpy(out->scheme, rec->scheme.data(), scheme_n);
     out->scheme[scheme_n] = '\0';
 
-    out->bytes_in            = rec->bytes_in;
-    out->bytes_out           = rec->bytes_out;
-    out->frames_in           = rec->frames_in;
-    out->frames_out          = rec->frames_out;
-    out->pending_queue_bytes = rec->pending_queue_bytes;
-    out->last_rtt_us         = rec->last_rtt_us;
+    /// Counters live on the per-id `AtomicCounters` block, not on
+    /// the shared record — `find_by_id` returns a `shared_ptr` ref
+    /// bump on the hot path so its bytes_in/out fields stay zero.
+    /// `read_counters` loads the live atomic values.
+    const auto counters = pc->kernel->connections().read_counters(conn);
+    out->bytes_in            = counters.bytes_in;
+    out->bytes_out           = counters.bytes_out;
+    out->frames_in           = counters.frames_in;
+    out->frames_out          = counters.frames_out;
+    out->pending_queue_bytes = counters.pending_queue_bytes;
+    out->last_rtt_us         = counters.last_rtt_us;
     return GN_OK;
 }
 
@@ -695,7 +700,8 @@ gn_result_t thunk_for_each_connection(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     pc->kernel->connections().for_each(
-        [visitor, user_data](const ConnectionRecord& rec) -> bool {
+        [visitor, user_data](const ConnectionRecord& rec,
+                              const ConnectionRegistry::CounterSnapshot& /*counters*/) -> bool {
             const auto rc_opt = safe_call_value<int>(
                 "for_each_connection.visitor",
                 visitor, user_data,

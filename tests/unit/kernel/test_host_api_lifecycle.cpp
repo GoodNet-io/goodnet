@@ -156,8 +156,8 @@ TEST(HostApiNotifyConnect, AcceptsConnectionInsideProtocolMask) {
     EXPECT_NE(conn, GN_INVALID_ID);
     EXPECT_EQ(k.connections().size(), 1u);
     auto fetched = k.connections().find_by_id(conn);
-    ASSERT_TRUE(fetched.has_value());
-    if (fetched.has_value()) {
+    ASSERT_NE(fetched, nullptr);
+    if (fetched != nullptr) {
         const auto& got = *fetched;
         EXPECT_EQ(got.trust, GN_TRUST_LOOPBACK);
         EXPECT_EQ(got.remote_pk[0], 0xAA);
@@ -191,7 +191,7 @@ TEST(HostApiNotifyDisconnect, SnapshotsTrustAndPkBeforeErase) {
 
     ASSERT_EQ(api.notify_disconnect(&ctx, conn, GN_OK), GN_OK);
 
-    EXPECT_FALSE(k.connections().find_by_id(conn).has_value());
+    EXPECT_EQ(k.connections().find_by_id(conn), nullptr);
 
     std::lock_guard lk(bag.mu);
     ASSERT_EQ(bag.events.size(), 2u);

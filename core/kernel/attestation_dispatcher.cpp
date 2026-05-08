@@ -318,7 +318,7 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
     /// the check — the pinning is keyed on the post-handshake
     /// mesh address, not the placeholder.
     if (auto conn_rec = kernel.connections().find_by_id(conn);
-        conn_rec.has_value()) {
+        conn_rec != nullptr) {
         const auto& peer_pk = conn_rec->remote_pk;
         if (gn_pk_is_zero(peer_pk.data()) == 0) {
             auto existing =
