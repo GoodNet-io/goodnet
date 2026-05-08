@@ -506,7 +506,8 @@ gn_result_t thunk_send(void* host_ctx,
         return GN_ERR_NOT_IMPLEMENTED;
     }
 
-    auto layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layers().find_by_protocol_id(
+        rec->protocol_id);
     if (!layer) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Outbound envelope: this node is the sender, `rec` is the
@@ -1768,14 +1769,28 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         }
     }
 
+    /// Resolve the protocol layer this connection routes through.
+    /// Empty scheme entries (in-tree fixtures that bypass
+    /// `register_link`) get the kernel default `gnet-v1` so the
+    /// dispatch sites resolve consistently.
+    std::string declared_protocol_id;
+    if (const auto link = pc->kernel->links().find_by_scheme(scheme);
+        link.has_value() && !link->protocol_id.empty()) {
+        declared_protocol_id = link->protocol_id;
+    } else {
+        declared_protocol_id = std::string{::gn::core::kDefaultProtocolId};
+    }
+
     /// Protocol-layer trust gate per `security-trust.md` §4: the
-    /// active layer declares which trust classes it may deframe;
-    /// reject the connection up front if the declared `trust` is
-    /// not in the layer's mask. The security-provider gate fires
-    /// later inside `SessionRegistry::create` against the security
-    /// mask. The reject increments the operator metric so a spike
-    /// in unauthorized trust classes is visible without strace.
-    if (auto layer = pc->kernel->protocol_layer(); layer != nullptr) {
+    /// link's declared layer states which trust classes it may
+    /// deframe; reject up front if the declared `trust` is not in
+    /// the layer's mask. The security-provider gate fires later
+    /// inside `SessionRegistry::create` against the security mask.
+    /// The reject increments the operator metric so a spike in
+    /// unauthorized trust classes is visible without strace.
+    if (auto layer = pc->kernel->protocol_layers().find_by_protocol_id(
+            declared_protocol_id);
+        layer != nullptr) {
         const std::uint32_t mask = layer->allowed_trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
@@ -1791,18 +1806,8 @@ gn_result_t thunk_notify_connect(void* host_ctx,
     rec.scheme = scheme;
     rec.trust = trust;
     rec.role  = role;
+    rec.protocol_id = std::move(declared_protocol_id);
     std::memcpy(rec.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
-
-    /// Stamp the protocol layer the link declared at registration.
-    /// Empty scheme entries (in-tree fixtures that bypass
-    /// `register_link`) get the kernel default `gnet-v1` so the
-    /// dispatch sites resolve consistently.
-    if (const auto link = pc->kernel->links().find_by_scheme(scheme);
-        link.has_value() && !link->protocol_id.empty()) {
-        rec.protocol_id = link->protocol_id;
-    } else {
-        rec.protocol_id = std::string{::gn::core::kDefaultProtocolId};
-    }
 
     const gn_result_t rc =
         pc->kernel->connections().insert_with_index(std::move(rec));
@@ -2059,7 +2064,8 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
         ctx.local_pk = *local;
     }
 
-    auto layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layers().find_by_protocol_id(
+        rec->protocol_id);
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     /// Loop over every plaintext the security session emitted, run
@@ -2196,7 +2202,8 @@ gn_result_t thunk_inject(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    auto layer = pc->kernel->protocol_layer();
+    auto layer = pc->kernel->protocol_layers().find_by_protocol_id(
+        rec->protocol_id);
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     const auto& limits = pc->kernel->limits();

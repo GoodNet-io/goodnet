@@ -17,9 +17,11 @@
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/plugin_context.hpp>
+#include <tests/util/protocol_setup.hpp>
 
 #include <plugins/protocols/gnet/protocol.hpp>
 
+#include <sdk/link.h>
 #include <sdk/security.h>
 #include <sdk/types.h>
 
@@ -110,12 +112,23 @@ public:
 }  // namespace
 
 TEST(TrustClassMetric, ProtocolGateBumpsCounterOnUntrustedConnect) {
-    /// The protocol-side gate at `host_api_builder.cpp:1067` has bumped
-    /// `drop.trust_class_mismatch` since Wave 6.1 but never had a
-    /// regression — coverage only by diagonal of the security-side
-    /// test below. This pins the protocol-side bump directly.
+    /// The protocol-side gate bumps `drop.trust_class_mismatch` when
+    /// the link's declared protocol layer rejects the connection's
+    /// trust class. Pin the bump directly: register a stub `tcp` link
+    /// that declares the strict layer, then notify_connect on
+    /// Untrusted hits the layer's mask and the counter increments.
     Kernel kernel;
-    kernel.set_protocol_layer(std::make_shared<StrictProtocolLayer>());
+    gn::test::util::register_default_protocol(
+        kernel, std::make_shared<StrictProtocolLayer>());
+
+    /// Register a stub link declaring "strict-v1" so notify_connect's
+    /// scheme→protocol_id resolution lands on the strict layer.
+    gn_link_vtable_t link_vt{};
+    link_vt.api_size = sizeof(gn_link_vtable_t);
+    gn_link_id_t link_id = GN_INVALID_LINK_ID;
+    ASSERT_EQ(kernel.links().register_link("tcp", "strict-v1",
+                                            &link_vt, nullptr, &link_id),
+              GN_OK);
 
     PluginContext ctx;
     ctx.plugin_name = "trust-test";
@@ -137,7 +150,8 @@ TEST(TrustClassMetric, ProtocolGateBumpsCounterOnUntrustedConnect) {
 
 TEST(TrustClassMetric, SecurityGateBumpsCounterOnUntrustedConnect) {
     Kernel kernel;
-    kernel.set_protocol_layer(std::make_shared<GnetProtocol>());
+    gn::test::util::register_default_protocol(
+        kernel, std::make_shared<GnetProtocol>());
     /// `notify_connect` skips the security path when no NodeIdentity
     /// is installed (`host_api_builder.cpp:1103`), and the gate then
     /// never fires. Generate a real identity; the provider's

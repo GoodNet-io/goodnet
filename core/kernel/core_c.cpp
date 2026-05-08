@@ -132,8 +132,18 @@ gn_result_t gn_core_init(gn_core_t* core) {
     core->kernel.identities().add(pk);
     core->kernel.set_node_identity(std::move(*identity));
 
-    core->protocol = std::make_shared<gn::plugins::gnet::GnetProtocol>();
-    core->kernel.set_protocol_layer(core->protocol);
+    /// Register the canonical mesh-framing layer. Plugin-supplied
+    /// alternatives (raw via gn_core_register_protocol; future ssh
+    /// plugin) coexist in the same registry.
+    core->protocol_gnet = std::make_shared<gn::plugins::gnet::GnetProtocol>();
+    gn::core::protocol_layer_id_t gnet_id =
+        gn::core::kInvalidProtocolLayerId;
+    if (const auto rc = core->kernel.protocol_layers().register_layer(
+            core->protocol_gnet, &gnet_id);
+        rc != GN_OK) {
+        core->init_done.store(false, std::memory_order_release);
+        return rc;
+    }
 
     walk_to_ready(core->kernel);
     return GN_OK;
@@ -487,6 +497,45 @@ gn_result_t gn_core_load_plugin(gn_core_t* core,
         /// host_api log slot would re-route through `safe_invoke`,
         /// adding latency for an already-failing path.
         gn::log::warn("core_c: load_plugin failed: {}", diagnostic);
+    }
+    return rc;
+}
+
+gn_result_t gn_core_load_plugins_batch(gn_core_t* core,
+                                        const char* const* so_paths,
+                                        const uint8_t* expected_sha256s,
+                                        size_t count) {
+    if (core == nullptr) return GN_ERR_NULL_ARG;
+    if (count == 0) return GN_OK;
+    if (so_paths == nullptr || expected_sha256s == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    /// Build a single manifest containing every requested entry, then
+    /// hand the full path list to `PluginManager::load` in one call.
+    /// Mirrors what `gn_core_load_plugin` does for a one-shot load,
+    /// but lets a non-C++ host populate the kernel with several
+    /// plugins (security + link + handler) without the
+    /// PluginManager-already-active gate firing on the second call.
+    gn::core::PluginManifest manifest;
+    std::vector<std::string> paths;
+    paths.reserve(count);
+    for (size_t i = 0; i < count; ++i) {
+        if (so_paths[i] == nullptr) return GN_ERR_NULL_ARG;
+        gn::core::PluginHash sha{};
+        std::memcpy(sha.data(), expected_sha256s + i * 32, 32);
+        manifest.add_entry(std::string(so_paths[i]), sha);
+        paths.emplace_back(so_paths[i]);
+    }
+
+    core->plugins.set_manifest(std::move(manifest));
+    core->plugins.set_manifest_required(true);
+
+    std::string diagnostic;
+    const gn_result_t rc = core->plugins.load(
+        std::span<const std::string>{paths}, &diagnostic);
+    if (rc != GN_OK && !diagnostic.empty()) {
+        gn::log::warn("core_c: load_plugins_batch failed: {}", diagnostic);
     }
     return rc;
 }

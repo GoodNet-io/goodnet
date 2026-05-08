@@ -212,7 +212,8 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
     std::memcpy(env.receiver_pk, rec->remote_pk.data(),
                 GN_PUBLIC_KEY_BYTES);
 
-    auto layer = kernel.protocol_layer();
+    auto layer = kernel.protocol_layers().find_by_protocol_id(
+        rec->protocol_id);
     if (layer == nullptr) return;
 
     gn_connection_context_t ctx{};

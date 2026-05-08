@@ -38,7 +38,7 @@
 struct gn_core_s {
     gn::core::Kernel                                  kernel;
     gn::core::PluginContext                           host_ctx;
-    std::shared_ptr<gn::plugins::gnet::GnetProtocol>  protocol;
+    std::shared_ptr<gn::plugins::gnet::GnetProtocol>  protocol_gnet;
     host_api_t                                        api{};
     gn::core::PluginManager                           plugins;
 

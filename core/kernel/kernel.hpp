@@ -43,6 +43,7 @@
 #include <core/registry/handler.hpp>
 #include <core/registry/security.hpp>
 #include <core/registry/link.hpp>
+#include <core/registry/protocol_layer.hpp>
 #include <core/registry/send_queue.hpp>
 #include <core/signal/signal_channel.hpp>
 
@@ -104,6 +105,12 @@ public:
     [[nodiscard]] HandlerRegistry&     handlers()    noexcept { return handlers_; }
     [[nodiscard]] ConnectionRegistry&  connections() noexcept { return connections_; }
     [[nodiscard]] LinkRegistry&        links()       noexcept { return links_; }
+    [[nodiscard]] ProtocolLayerRegistry& protocol_layers() noexcept {
+        return protocol_layers_;
+    }
+    [[nodiscard]] const ProtocolLayerRegistry& protocol_layers() const noexcept {
+        return protocol_layers_;
+    }
     [[nodiscard]] SendQueueManager&    send_queues() noexcept { return send_queues_; }
     [[nodiscard]] CryptoWorkerPool&    crypto_pool() noexcept { return crypto_pool_; }
     [[nodiscard]] SecurityRegistry&    security()    noexcept { return security_; }
@@ -127,15 +134,6 @@ public:
     [[nodiscard]] const MetricsRegistry& metrics() const noexcept {
         return metrics_;
     }
-
-    /// Mandatory mesh-framing layer per `protocol-layer.md` §4.
-    /// Set once before `Wire` phase; cannot be replaced afterwards.
-    /// Read returns a shared snapshot so the caller holds a strong
-    /// reference for the duration of its `frame`/`deframe` call —
-    /// concurrent `set_protocol_layer` cannot pull the layer out
-    /// from under an in-flight dispatch.
-    void set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept;
-    [[nodiscard]] std::shared_ptr<::gn::IProtocolLayer> protocol_layer() const noexcept;
 
     /// Read-only resource bounds per `limits.md` §2. Loaded once at
     /// startup; subsequent reload requires kernel restart.
@@ -219,6 +217,7 @@ private:
     HandlerRegistry      handlers_;
     ConnectionRegistry   connections_;
     LinkRegistry         links_;
+    ProtocolLayerRegistry protocol_layers_;
     SendQueueManager     send_queues_;
     /// Default-constructed pool spins up `hardware_concurrency()/2`
     /// workers per `CryptoWorkerPool` ctor; the kernel keeps one
@@ -231,11 +230,6 @@ private:
     Router               router_{identities_, handlers_};
     TimerRegistry        timers_;
 
-    /// Atomic-shared so concurrent `set_protocol_layer` and reads
-    /// from thunk paths do not race. The strong ref returned by
-    /// `protocol_layer()` extends the layer's lifetime past any
-    /// concurrent replacement.
-    std::atomic<std::shared_ptr<::gn::IProtocolLayer>> protocol_layer_;
     gn_limits_t                           limits_{};
     Config                                config_;
 

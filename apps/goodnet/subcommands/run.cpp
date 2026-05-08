@@ -9,11 +9,12 @@
 /// On signal: PluginManager.shutdown() drains in-flight async work
 /// before the process exits.
 ///
-/// gnet protocol is linked statically into the binary (it is the v1
-/// canonical mesh-framing layer; an out-of-tree protocol layer would
-/// override it through the kernel's `set_protocol_layer` from a host
-/// program, not through the manifest). Operators with a custom
-/// protocol layer build their own runner.
+/// gnet protocol is linked statically into the binary (it is the
+/// canonical mesh-framing layer; an out-of-tree protocol layer is
+/// registered alongside it through the kernel's
+/// `protocol_layers().register_layer(...)` from a host program,
+/// not through the manifest). Operators with a custom protocol
+/// layer build their own runner.
 
 #include "../subcommands.hpp"
 
@@ -197,7 +198,12 @@ int cmd_run(std::span<const std::string_view> args) {
 
     Kernel kernel;
     kernel.set_limits(cfg.limits());
-    kernel.set_protocol_layer(std::make_shared<GnetProtocol>());
+    {
+        gn::core::protocol_layer_id_t proto_id =
+            gn::core::kInvalidProtocolLayerId;
+        (void)kernel.protocol_layers().register_layer(
+            std::make_shared<GnetProtocol>(), &proto_id);
+    }
     kernel.identities().add(identity->device().public_key());
     kernel.set_node_identity(std::move(*identity));
 

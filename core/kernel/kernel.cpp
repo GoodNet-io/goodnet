@@ -42,14 +42,6 @@ Kernel::~Kernel() {
     timers_.shutdown();
 }
 
-void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
-    protocol_layer_.store(std::move(layer), std::memory_order_release);
-}
-
-std::shared_ptr<::gn::IProtocolLayer> Kernel::protocol_layer() const noexcept {
-    return protocol_layer_.load(std::memory_order_acquire);
-}
-
 void Kernel::set_limits(const gn_limits_t& limits) noexcept {
     limits_ = limits;
     if (limits_.max_timers != 0) {
