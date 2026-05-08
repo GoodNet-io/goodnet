@@ -660,6 +660,29 @@ typedef struct host_api_s {
                                               void (*ud_destroy)(void*),
                                               gn_subscription_id_t* out_id);
 
+    /* ── Identity rotation (identity.en.md §7) ──────────────────────────
+     *
+     * Announce a user-key rotation to every live peer. The kernel:
+     *   1. Generates a fresh user keypair (or, if @p new_user_pk
+     *      points at an existing sub-key public-key match, uses
+     *      that registered keypair — supports recovery and
+     *      multi-device onboarding flows).
+     *   2. Bumps the local rotation counter, signs a 150-byte
+     *      `RotationProof` against the **old** user_pk binding
+     *      `(new_user_pk, counter, valid_from)`.
+     *   3. Persists the new keypair + counter + history through
+     *      `NodeIdentity::save_to_file` if a path is bound.
+     *   4. Sends the proof on every live conn at trust >= Peer
+     *      under msg_id 0x12.
+     *
+     * Receivers verify the proof against the user_pk they already
+     * pinned, advance `peer_pin_map[remote_pk].user_pk`, and fire
+     * `GN_CONN_EVENT_IDENTITY_ROTATED` on the connection-event
+     * channel.
+     */
+    gn_result_t (*announce_rotation)(void* host_ctx,
+                                      int64_t valid_from_unix_ts);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing

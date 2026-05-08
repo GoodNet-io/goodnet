@@ -25,7 +25,16 @@ typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_DISCONNECTED       = 2, /**< notify_disconnect just fired */
     GN_CONN_EVENT_TRUST_UPGRADED     = 3, /**< Untrusted → Peer */
     GN_CONN_EVENT_BACKPRESSURE_SOFT  = 4, /**< pending_queue crossed *_high */
-    GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5  /**< pending_queue dropped below *_low */
+    GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5, /**< pending_queue dropped below *_low */
+    /** Peer announced a user_pk rotation (`identity.en.md` §7).
+     *  The pinned `user_pk` for `remote_pk` advanced to a new
+     *  value; subscribers update their connectivity-graph edges
+     *  without disconnecting the live transport. The new and old
+     *  user_pk values arrive through `_reserved[0]` and
+     *  `_reserved[1]` as `const uint8_t*` pointers valid for the
+     *  callback duration; `_reserved[2]` carries
+     *  `const uint64_t*` to the rotation counter. */
+    GN_CONN_EVENT_IDENTITY_ROTATED   = 6
 } gn_conn_event_kind_t;
 
 /**

@@ -389,6 +389,21 @@ gn_result_t ConnectionRegistry::pin_peer(
     return GN_OK;
 }
 
+gn_result_t ConnectionRegistry::apply_rotation(
+    const PublicKey& peer_pk,
+    const PublicKey& new_user_pk,
+    std::uint64_t    new_counter) noexcept {
+    std::unique_lock lock(pin_mu_);
+    auto it = peer_pin_map_.find(peer_pk);
+    if (it == peer_pin_map_.end()) return GN_ERR_NOT_FOUND;
+    if (new_counter <= it->second.rotation_counter) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    it->second.user_pk          = new_user_pk;
+    it->second.rotation_counter = new_counter;
+    return GN_OK;
+}
+
 std::optional<ConnectionRegistry::PeerPin>
 ConnectionRegistry::get_pinned_peer(const PublicKey& peer_pk) const {
     std::shared_lock lock(pin_mu_);

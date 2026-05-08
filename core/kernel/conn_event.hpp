@@ -22,6 +22,13 @@ struct ConnEvent {
     gn_trust_class_t     trust         = GN_TRUST_UNTRUSTED;
     PublicKey            remote_pk     {};
     std::uint64_t        pending_bytes = 0;
+    /// Kind-specific payload pointers. For `IDENTITY_ROTATED`:
+    /// `_reserved[0]` borrows the previous `user_pk` (32 bytes),
+    /// `_reserved[1]` the new `user_pk`, `_reserved[2]` a
+    /// `const std::uint64_t*` to the rotation counter. Pointers
+    /// borrow for the duration of the dispatch call. Other kinds
+    /// leave the slot zero.
+    void*                _reserved[4]  {};
 };
 
 } // namespace gn::core
