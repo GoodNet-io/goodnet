@@ -130,7 +130,10 @@ Spoofing предотвращён двумя гейтами:
    подделать произвольный `sender_pk`.
 
 `sender_pk == ZERO` — невалидное значение; kernel отклоняет на ingress
-с counter `metrics.dropped.zero_sender`.
+с counter `route.outcome.dropped_zero_sender` — drop происходит после
+deframe в routing pipeline'е, поэтому имя шарит namespace с остальными
+route-outcome counter'ами per
+[metrics.md §3](../contracts/metrics.en.md).
 
 ---
 

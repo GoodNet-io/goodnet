@@ -54,7 +54,8 @@ visitor on `iterate_counters` returns zero.
 ### 2.1 Cardinality cap
 
 The map is bounded by `gn_limits_t::max_counter_names` (default
-`8192`, `sdk/limits.h:131`). Past the cap, `emit_counter` on a
+`GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES = 8192` in `sdk/limits.h`).
+Past the cap, `emit_counter` on a
 **previously-unseen** name is rejected and bumps the
 always-present `metrics.cardinality_rejected` sentinel slot
 (pre-created at registry construction, so the counter is

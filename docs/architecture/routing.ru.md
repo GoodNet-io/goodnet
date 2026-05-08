@@ -196,11 +196,12 @@ size)`. Ядро находит запись соединения по `conn_id`
 ядро позовёт после того, как байты дойдут до security.
 
 Security-сессия принимает plaintext, шифрует AEAD, ставит 2-байтовый
-length-prefix и отдаёт байты транспорту. Транспорт ставит их в
-write-queue per-conn. Если очередь переполнена выше hard-cap —
-`host_api->send` возвращает `GN_BP_HARD_LIMIT`, и producer обязан
-откатиться, не повторять в tight-loop. См.
-[backpressure.md §3](../contracts/backpressure.en.md).
+length-prefix и отдаёт байты в kernel-side `SendQueueManager`. Из
+ring'а drainer'а выходит batch'ом через `link->send_batch` под
+`drain_scheduled` CAS — link plugin владеет writev'ом. Если pending
+bytes переходят hard-cap — `host_api->send` возвращает
+`GN_ERR_LIMIT_REACHED`, и producer обязан back-off'нуть, не повторять
+в tight-loop. См. [backpressure.md §3](../contracts/backpressure.en.md).
 
 Identity sources на исходящем пути:
 
@@ -286,7 +287,7 @@ Producer, пихающий байты в транспорт быстрее, че
 
 | Уровень | Триггер | Сигнал |
 |---|---|---|
-| Hard cap | bytes_buffered + payload > `pending_queue_bytes_hard` | `host_api->send` возвращает `GN_BP_HARD_LIMIT` |
+| Hard cap | pending_bytes + payload > `pending_queue_bytes_hard` | `host_api->send` возвращает `GN_ERR_LIMIT_REACHED` |
 | Soft watermark | bytes_buffered crosses `pending_queue_bytes_high` | event `BACKPRESSURE_SOFT` на conn-event channel |
 | Clear watermark | bytes_buffered drops below `pending_queue_bytes_low` | event `BACKPRESSURE_CLEAR` |
 

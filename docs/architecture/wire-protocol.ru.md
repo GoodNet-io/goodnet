@@ -75,8 +75,10 @@ broadcast и relay — из wire (см. флаги ниже).
 
 `receiver_pk = ZERO` означает broadcast. `sender_pk = ZERO`
 запрещён: envelope с нулевым отправителем дропается на ингрессе и
-учитывается в `metrics.dropped.zero_sender` per
-[protocol-layer.md §2.3](../contracts/protocol-layer.en.md).
+учитывается в `route.outcome.dropped_zero_sender` per
+[protocol-layer.md §2.3](../contracts/protocol-layer.en.md) —
+имя шарит routing-pipeline namespace, operator scrape'ит один префикс
+для всех drop'ов на dispatch chain.
 
 `msg_id` — per-protocol namespace. `0x00` — зарезервированный
 sentinel и отвергается при регистрации хендлера. `0x11` —
@@ -377,10 +379,11 @@ Maximum envelope payload — `limits.max_payload_bytes`,
 plugin до wire не доходит.
 
 Backpressure не инвалидирует frame-формат, но влияет на send-rate.
-Producer, получивший от `host_api->send` код `GN_BP_HARD_LIMIT`,
-обязан откатиться, не повторять в tight-loop. SOFT-watermark — это
-event на conn-event channel, advisory сигнал о том, что write-queue
-прошла high-mark per
+Producer, получивший от `host_api->send` код `GN_ERR_LIMIT_REACHED`,
+обязан back-off'нуть, не повторять в tight-loop — kernel-side
+`SendQueueManager` отказал на hard-cap'е, retry до drain'а ring'а
+получит тот же отказ. SOFT-watermark — это event на conn-event
+channel, advisory сигнал о том, что pending bytes прошли high-mark per
 [backpressure.md §3](../contracts/backpressure.en.md).
 
 Hard cap, soft и clear watermarks — не свойства wire-протокола, а

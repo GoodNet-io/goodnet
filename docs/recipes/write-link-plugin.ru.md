@@ -191,13 +191,28 @@ Hot-path требования (sdk/host_api.h §`notify_inbound_bytes`):
 ## 7. Шаг 5. `send` и backpressure
 
 `send(self, conn, bytes, size)` — outbound на конкретное соединение.
-Bytes borrowed на время вызова; link копирует во внутренний queue.
-Возвращает `gn_result_t`: `GN_OK` принят; `GN_ERR_LIMIT_REACHED` —
-queue past hard cap, sender обязан back-off'нуть. Hard-cap reject и
-soft-watermark уведомление — два разных surface'а: hard reject через
-return code (дискретный per-frame отказ), soft pressure через
-`notify_backpressure` (длительное состояние, sender реагирует
-заранее) per `backpressure.md` §3.
+Bytes borrowed на время вызова; link копирует в свой socket-side
+write buffer (asio strand или эквивалент). App-level pending bytes
+account и hard-cap reject — на стороне kernel'я через
+`SendQueueManager`, не на link'е: к моменту вызова link'a `send` /
+`send_batch` `host_api->send` уже прошёл queue check, kernel-side
+drainer выкладывает batch на link's writev. Link обязан:
+
+- Уважать single-writer per-conn: kernel CAS-сериализует drain'еры,
+  но link MUST сам serialise control-replies (ping/pong, close echo)
+  с teми же socket-FD per [`link.md` §4](../contracts/link.en.md).
+- Отдавать `GN_OK` если bytes accepted в socket buffer; на свой
+  internal hard cap (peer flood control replies past
+  `pending_queue_bytes_hard`) — disconnect, не возвращать
+  `LIMIT_REACHED` (это код для kernel-side queue, не link's
+  internal).
+- Эмитить `notify_backpressure(SOFT/CLEAR)` если link имеет
+  собственное окно зрения на write-buffer drain rate —
+  rising/falling edge per [`backpressure.md` §3](../contracts/backpressure.en.md).
+
+`gn_result_t` возвраты: `GN_OK` принят в socket-buffer;
+`GN_ERR_NOT_FOUND` нет такого conn'а; `GN_ERR_INVALID_STATE`
+disconnect в полёте.
 
 ```c
 static gn_result_t tcpx_send(void* self_v, gn_conn_id_t conn,
@@ -230,9 +245,10 @@ static gn_result_t tcpx_send_batch(void* self_v, gn_conn_id_t conn,
 ```
 
 Soft-edge → operator замедляется; hard-edge → ядро отбрасывает frame
-и эмить `drop.queue_hard_cap`. Tight-loop retry на `GN_ERR_LIMIT_REACHED`
-— контрактное нарушение: hard-cap дроп означает «sender обогнал
-drain rate», немедленный retry усугубляет, не лечит.
+и эмить `drop.queue_hard_cap` ещё до вызова link'a. Tight-loop retry
+на `GN_ERR_LIMIT_REACHED` от `host_api->send` — контрактное нарушение:
+hard-cap дроп означает «sender обогнал kernel drain rate», retry до
+drain'а ring'а получит тот же отказ.
 
 ---
 

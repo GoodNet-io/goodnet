@@ -533,7 +533,7 @@ The shipped unit does not pin specific ceilings; relevant knobs:
 | `LimitNOFILE=` | inherits | File descriptors. Set to `max_connections * 2 + 256` as a baseline; one fd per conn plus headroom for listeners and timers |
 | `MemoryMax=` | unlimited | Hard memory cap. Set to twice the steady-state RAM figure from §1 to give the kernel headroom under burst load |
 | `MemoryHigh=` | unlimited | Soft memory cap; kernel slows allocations under pressure rather than killing the process |
-| `TasksMax=` | inherits | Thread count cap. The kernel uses one worker per io_context plus the service executor; 256 covers any v1 deployment |
+| `TasksMax=` | inherits | Thread count cap. The kernel runs one service-executor thread plus a per-link plugin worker pool — TCP scales to `max(1, hardware_concurrency()/2)` workers, UDP / WS / IPC / TLS each pin one. On a 16-core box that adds up to ~9 link threads plus the service executor; 256 covers any v1 deployment with headroom |
 | `CPUQuota=` | unlimited | CPU cap as a percentage. Set to `<percent>%` on shared hosts where the kernel must not starve neighbours |
 
 A typical override file pinning these:
