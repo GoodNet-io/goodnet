@@ -228,6 +228,9 @@ void Session::start_read() {
 
 ## Cross-references
 
+- [`transports.ru.md`](./transports.ru.md) — общий гид по работе
+  с link plugin'ом: threading, send/recv, listen vs extension API,
+  регулярные грабли. Эта глава раскрывает teardown в деталях.
 - [`link.md` §9](../../contracts/link.en.md) — формальный контракт
   shutdown release
 - [`signal-channel.md`](../../contracts/signal-channel.en.md) — события,

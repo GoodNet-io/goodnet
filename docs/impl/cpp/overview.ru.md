@@ -165,6 +165,9 @@ gn_result_t _gn_link_send(void* self, gn_conn_id_t conn,
   out_user_data + out_free, vtable lifetime.
 - [concurrency](concurrency.ru.md) — teardown protocol, координация
   worker callback'ов и shutdown'а на caller thread.
+- [transports](transports.ru.md) — как работать с link plugin'ом:
+  threading, send/recv path'ы, listen vs extension API, регулярные
+  грабли.
 - [clock](clock.ru.md) — инъекция времени для тестируемости.
 - [cmake-integration](cmake-integration.ru.md) —
   `find_package(GoodNet)`, `add_plugin()`.
