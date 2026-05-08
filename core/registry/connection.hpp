@@ -16,12 +16,14 @@
 #include <memory>
 #include <optional>
 #include <shared_mutex>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
 
 #include <sdk/cpp/types.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/security.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
 
@@ -209,18 +211,36 @@ public:
     void set_pending_bytes(gn_conn_id_t id,
                            std::uint64_t bytes) noexcept;
 
-    /// Per-peer device-key pinning. A peer's `remote_pk` (mesh
-    /// address) maps to a `device_pk` (the attestation cert's
-    /// signing key) the first time the attestation dispatcher
-    /// accepts an envelope from that peer. Subsequent attestations
-    /// from the same peer must carry the same device_pk; a
+    /// Per-peer identity pinning. A peer's `remote_pk` (mesh
+    /// address — derived from `device_pk` only after the
+    /// composition decouple) maps to a `PeerPin` carrying the
+    /// device public key, the user public key learned from the
+    /// attestation cert, and the noise handshake hash from the
+    /// session that established the pin. Subsequent attestations
+    /// from the same peer must carry the same `device_pk`; a
     /// mismatch is an identity-change attempt and the dispatcher
     /// disconnects. The map outlives connection records so the
     /// pinning persists across reconnects.
-    [[nodiscard]] gn_result_t pin_device_pk(const PublicKey& peer_pk,
-                                             const PublicKey& device_pk) noexcept;
+    struct PeerPin {
+        PublicKey                       device_pk;
+        PublicKey                       user_pk;
+        std::array<std::uint8_t, GN_HASH_BYTES> handshake_hash{};
+    };
+
+    [[nodiscard]] gn_result_t pin_peer(
+        const PublicKey& peer_pk,
+        const PublicKey& device_pk,
+        const PublicKey& user_pk,
+        std::span<const std::uint8_t, GN_HASH_BYTES> handshake_hash) noexcept;
+
+    [[nodiscard]] std::optional<PeerPin>
+        get_pinned_peer(const PublicKey& peer_pk) const;
+
+    /// Convenience accessor for the device_pk slice — kept for
+    /// existing call sites in the attestation dispatcher.
     [[nodiscard]] std::optional<PublicKey>
         get_pinned_device_pk(const PublicKey& peer_pk) const;
+
     void clear_pinned_device_pk(const PublicKey& peer_pk) noexcept;
     [[nodiscard]] std::size_t pin_count() const noexcept;
 
@@ -261,7 +281,7 @@ private:
     std::unordered_map<PublicKey, gn_conn_id_t, PublicKeyHash> pk_index_;
 
     mutable std::shared_mutex pin_mu_;
-    std::unordered_map<PublicKey, PublicKey, PublicKeyHash> peer_pin_map_;
+    std::unordered_map<PublicKey, PeerPin, PublicKeyHash> peer_pin_map_;
 
     /// Monotonic id allocator. `GN_INVALID_ID == 0` is reserved, so
     /// the counter starts at 1.

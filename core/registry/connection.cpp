@@ -359,19 +359,42 @@ void ConnectionRegistry::set_pending_bytes(gn_conn_id_t id,
     it->second->pending_queue_bytes.store(bytes, std::memory_order_relaxed);
 }
 
-gn_result_t ConnectionRegistry::pin_device_pk(
-    const PublicKey& peer_pk, const PublicKey& device_pk) noexcept {
+gn_result_t ConnectionRegistry::pin_peer(
+    const PublicKey& peer_pk,
+    const PublicKey& device_pk,
+    const PublicKey& user_pk,
+    std::span<const std::uint8_t, GN_HASH_BYTES> handshake_hash) noexcept {
     std::unique_lock lock(pin_mu_);
     auto it = peer_pin_map_.find(peer_pk);
     if (it == peer_pin_map_.end()) {
-        peer_pin_map_.emplace(peer_pk, device_pk);
+        PeerPin pin;
+        pin.device_pk = device_pk;
+        pin.user_pk   = user_pk;
+        std::memcpy(pin.handshake_hash.data(), handshake_hash.data(),
+                    GN_HASH_BYTES);
+        peer_pin_map_.emplace(peer_pk, pin);
         return GN_OK;
     }
     /// Pin already present. Equality with the proposed device_pk is
-    /// idempotent success. Mismatch is rejected — the caller treats
-    /// the result as an identity-change attempt and disconnects.
-    if (it->second == device_pk) return GN_OK;
-    return GN_ERR_INVALID_ENVELOPE;
+    /// idempotent success — refresh the user_pk and handshake_hash
+    /// to the latest attestation's view. Mismatch on device_pk is
+    /// rejected — the caller treats the result as an identity-change
+    /// attempt and disconnects.
+    if (it->second.device_pk != device_pk) {
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+    it->second.user_pk = user_pk;
+    std::memcpy(it->second.handshake_hash.data(), handshake_hash.data(),
+                GN_HASH_BYTES);
+    return GN_OK;
+}
+
+std::optional<ConnectionRegistry::PeerPin>
+ConnectionRegistry::get_pinned_peer(const PublicKey& peer_pk) const {
+    std::shared_lock lock(pin_mu_);
+    auto it = peer_pin_map_.find(peer_pk);
+    if (it == peer_pin_map_.end()) return std::nullopt;
+    return it->second;
 }
 
 std::optional<PublicKey>
@@ -379,7 +402,7 @@ ConnectionRegistry::get_pinned_device_pk(const PublicKey& peer_pk) const {
     std::shared_lock lock(pin_mu_);
     auto it = peer_pin_map_.find(peer_pk);
     if (it == peer_pin_map_.end()) return std::nullopt;
-    return it->second;
+    return it->second.device_pk;
 }
 
 void ConnectionRegistry::clear_pinned_device_pk(

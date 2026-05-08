@@ -1023,6 +1023,54 @@ gn_result_t thunk_sign_local_by_id(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t thunk_get_peer_user_pk(void* host_ctx,
+                                    gn_conn_id_t conn,
+                                    std::uint8_t out_pk[GN_PUBLIC_KEY_BYTES]) {
+    if (!host_ctx || !out_pk) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_NOT_FOUND;
+
+    auto pin = pc->kernel->connections().get_pinned_peer(rec->remote_pk);
+    if (!pin) return GN_ERR_INVALID_STATE;
+    std::memcpy(out_pk, pin->user_pk.data(), GN_PUBLIC_KEY_BYTES);
+    return GN_OK;
+}
+
+gn_result_t thunk_get_peer_device_pk(void* host_ctx,
+                                      gn_conn_id_t conn,
+                                      std::uint8_t out_pk[GN_PUBLIC_KEY_BYTES]) {
+    if (!host_ctx || !out_pk) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_NOT_FOUND;
+
+    auto pin = pc->kernel->connections().get_pinned_peer(rec->remote_pk);
+    if (!pin) return GN_ERR_INVALID_STATE;
+    std::memcpy(out_pk, pin->device_pk.data(), GN_PUBLIC_KEY_BYTES);
+    return GN_OK;
+}
+
+gn_result_t thunk_get_handshake_hash(void* host_ctx,
+                                      gn_conn_id_t conn,
+                                      std::uint8_t out_hash[GN_HASH_BYTES]) {
+    if (!host_ctx || !out_hash) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_NOT_FOUND;
+
+    auto pin = pc->kernel->connections().get_pinned_peer(rec->remote_pk);
+    if (!pin) return GN_ERR_INVALID_STATE;
+    std::memcpy(out_hash, pin->handshake_hash.data(), GN_HASH_BYTES);
+    return GN_OK;
+}
+
 gn_result_t thunk_unsubscribe(void* host_ctx,
                                gn_subscription_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
@@ -2160,6 +2208,10 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.list_local_keys         = &thunk_list_local_keys;
     a.sign_local              = &thunk_sign_local;
     a.sign_local_by_id        = &thunk_sign_local_by_id;
+
+    a.get_peer_user_pk        = &thunk_get_peer_user_pk;
+    a.get_peer_device_pk      = &thunk_get_peer_device_pk;
+    a.get_handshake_hash      = &thunk_get_handshake_hash;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;
