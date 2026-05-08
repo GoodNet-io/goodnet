@@ -86,8 +86,7 @@ void copy_seed_out(const KeyPair& kp,
     if (!att) return std::unexpected(att.error());
     out.att_ = *att;
 
-    out.address_ = derive_address(out.user_.public_key(),
-                                   out.device_.public_key());
+    out.address_ = derive_address(out.device_.public_key());
     return out;
 }
 

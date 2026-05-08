@@ -43,30 +43,44 @@ suffix — is hidden inside the type; callers see opaque accessors.
 
 ## 3. Address derivation
 
-The mesh address is HKDF-SHA256 over the concatenation of
-`user_pk || device_pk`, scoped by a versioned salt:
+The mesh address is HKDF-SHA256 keyed on `device_pk` alone, scoped
+by a versioned salt:
 
 ```
-address = HKDF(salt = "goodnet/v1/address",
-               input  = user_pk || device_pk,
+address = HKDF(salt   = "goodnet/v1/device-address",
+               input  = device_pk,
                len    = 32)
 ```
 
 Properties:
 
-- **Pure** — same input pair always yields the same 32-byte
-  address; different pairs produce different addresses under
-  SHA-256 collision resistance.
-- **Versioned** — `kAddressDeriveSalt = "goodnet/v1/address"`. A
-  hypothetical v2 changes the salt rather than the input material
-  so a v1 peer cannot mistake a v2 derivation for one of its own.
+- **Pure** — same `device_pk` always yields the same 32-byte
+  address; different `device_pk` values produce different
+  addresses under SHA-256 collision resistance.
+- **Device-stable.** `user_pk` does **not** influence the mesh
+  address. Rotating the user keypair leaves every live mesh
+  address untouched and every live connection valid. Plugins
+  reach the user-level identity through
+  `host_api->get_peer_user_pk(conn)` (a separate API surface),
+  not by reading bits out of the mesh address.
+- **Versioned** — `kAddressDeriveSalt = "goodnet/v1/device-address"`.
+  Salt deliberately differs from the legacy `goodnet/v1/address`
+  so a v1-derived address (which mixed user_pk into the IKM)
+  never collides with a v1-decouple address from the same
+  device — peers reject the mismatch via attestation pin.
 - **One-way** — given an address there is no efficient way to
-  recover either component pk; rotating the device key produces a
-  new address.
+  recover the device public key; rotating the device key
+  produces a new address.
 
-Address rotation under the same user keypair therefore changes the
-address; this is the contract — peers must look up addresses by
-key, not cache them across rotations.
+User-level identity rotation does not move the mesh address. The
+mesh address moves only on **device replacement** — a freshly
+generated `device_pk` produces a new address, and peers see the
+transition as a new connection (handshake under the new address,
+attestation rebinds the user_pk). Apps maintaining
+**connectivity graphs by user_pk** therefore preserve all edges
+through user-key rotation; they re-bind edges to a new mesh
+address only on device replacement, where the move is the
+desired observable.
 
 ---
 

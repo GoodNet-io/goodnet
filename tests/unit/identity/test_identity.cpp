@@ -4,13 +4,16 @@
 /// Covers the four pieces of the two-component identity model:
 ///   - `KeyPair` — Ed25519 generate / from_seed / sign / verify, move
 ///     semantics with secret wipe on destruction.
-///   - `derive_address` — HKDF-SHA256 over `(user_pk, device_pk)` is
-///     deterministic and order-sensitive.
+///   - `derive_address` — HKDF-SHA256 keyed on `device_pk` only
+///     (device-stable; rotating user_pk must NOT change mesh
+///     address). Apps build user-level graphs through
+///     `host_api->get_peer_user_pk`, not by reading bits out of
+///     the address.
 ///   - `Attestation` — user-signed device cert; round-trips via
 ///     `to_bytes` / `from_bytes`; verify rejects expired or
 ///     wrong-user inputs.
 ///   - `NodeIdentity::generate` — produced address equals
-///     `derive_address(user.pk, device.pk)`.
+///     `derive_address(device.pk)`.
 
 #include <gtest/gtest.h>
 
@@ -186,49 +189,52 @@ TEST(KeyPair_Wipe, ExplicitWipeClearsPublicKey) {
 
 // ── derive_address ───────────────────────────────────────────────────────
 
-TEST(DeriveAddress, DeterministicForSameInputs) {
-    auto u = KeyPair::generate();
+TEST(DeriveAddress, DeterministicForSameDevice) {
     auto d = KeyPair::generate();
-    ASSERT_TRUE(u.has_value());
     ASSERT_TRUE(d.has_value());
 
-    auto a1 = derive_address(u->public_key(), d->public_key());
-    auto a2 = derive_address(u->public_key(), d->public_key());
+    auto a1 = derive_address(d->public_key());
+    auto a2 = derive_address(d->public_key());
     EXPECT_EQ(a1, a2);
 }
 
-TEST(DeriveAddress, OrderSensitive) {
-    /// Swapping user/device must produce a distinct address.
-    auto u = KeyPair::generate();
+TEST(DeriveAddress, IndependentOfUserPk) {
+    /// Decouple invariant: mesh_address depends on device_pk only,
+    /// so rotating user_pk must NOT change a peer's mesh address.
+    /// Apps building user-level connectivity graphs reach user_pk
+    /// through `host_api->get_peer_user_pk` (a separate surface),
+    /// not by reading bits out of the address. The API surface
+    /// itself enforces this — `derive_address` no longer takes
+    /// `user_pk`. This test exists as a regression marker so a
+    /// future refactor that re-introduces a user-key parameter
+    /// trips a fail; the invariant is checked by the type system.
     auto d = KeyPair::generate();
-    ASSERT_TRUE(u.has_value());
     ASSERT_TRUE(d.has_value());
-
-    auto a_ud = derive_address(u->public_key(), d->public_key());
-    auto a_du = derive_address(d->public_key(), u->public_key());
-    EXPECT_NE(a_ud, a_du);
+    static_assert(
+        std::is_invocable_r_v<::gn::PublicKey,
+                              decltype(&derive_address),
+                              const ::gn::PublicKey&>,
+        "derive_address must take only device_pk after decouple");
+    EXPECT_EQ(derive_address(d->public_key()),
+              derive_address(d->public_key()));
 }
 
-TEST(DeriveAddress, DistinctInputsProduceDistinctOutputs) {
-    auto u  = KeyPair::generate();
+TEST(DeriveAddress, DistinctDevicesProduceDistinctOutputs) {
     auto d1 = KeyPair::generate();
     auto d2 = KeyPair::generate();
-    ASSERT_TRUE(u.has_value());
     ASSERT_TRUE(d1.has_value());
     ASSERT_TRUE(d2.has_value());
 
-    auto a1 = derive_address(u->public_key(), d1->public_key());
-    auto a2 = derive_address(u->public_key(), d2->public_key());
+    auto a1 = derive_address(d1->public_key());
+    auto a2 = derive_address(d2->public_key());
     EXPECT_NE(a1, a2);
 }
 
-TEST(DeriveAddress, NonZeroOutputForNonZeroInputs) {
-    auto u = KeyPair::generate();
+TEST(DeriveAddress, NonZeroOutputForNonZeroInput) {
     auto d = KeyPair::generate();
-    ASSERT_TRUE(u.has_value());
     ASSERT_TRUE(d.has_value());
 
-    auto addr = derive_address(u->public_key(), d->public_key());
+    auto addr = derive_address(d->public_key());
     bool nonzero = false;
     for (auto b : addr) if (b) { nonzero = true; break; }
     EXPECT_TRUE(nonzero);
@@ -398,14 +404,15 @@ TEST(Attestation_Bytes, ParsedNegativeExpiryPreserved) {
 
 // ── NodeIdentity::generate ───────────────────────────────────────────────
 
-TEST(NodeIdentity_Generate, AddressMatchesDerivePair) {
+TEST(NodeIdentity_Generate, AddressMatchesDeriveDevice) {
     auto node = NodeIdentity::generate(kFarFuture);
     ASSERT_TRUE(node.has_value());
 
-    /// Address must equal derive_address(user_pk, device_pk) — this is
-    /// the consistency invariant the contract exposes.
-    auto expected = derive_address(node->user().public_key(),
-                                    node->device().public_key());
+    /// Address must equal derive_address(device_pk) — this is
+    /// the consistency invariant the contract exposes after the
+    /// user_pk decouple. user_pk travels through attestation,
+    /// not through the mesh address.
+    auto expected = derive_address(node->device().public_key());
     EXPECT_EQ(node->address(), expected);
 }
 
