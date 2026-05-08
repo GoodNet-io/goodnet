@@ -225,6 +225,11 @@ public:
         PublicKey                       device_pk;
         PublicKey                       user_pk;
         std::array<std::uint8_t, GN_HASH_BYTES> handshake_hash{};
+        /// Highest rotation counter seen for this peer's user_pk.
+        /// `apply_rotation` accepts only proofs whose counter is
+        /// strictly greater than the stored value — replays of
+        /// older valid proofs cannot promote the user_pk again.
+        std::uint64_t                   rotation_counter = 0;
     };
 
     [[nodiscard]] gn_result_t pin_peer(
@@ -235,6 +240,17 @@ public:
 
     [[nodiscard]] std::optional<PeerPin>
         get_pinned_peer(const PublicKey& peer_pk) const;
+
+    /// Apply a verified rotation proof: swap the pinned `user_pk`
+    /// to @p new_user_pk and bump the rotation counter to
+    /// @p new_counter. Returns `GN_ERR_NOT_FOUND` if no pin
+    /// exists (peer never attested), `GN_ERR_INVALID_ENVELOPE`
+    /// if @p new_counter is not strictly greater than the stored
+    /// value (anti-replay).
+    [[nodiscard]] gn_result_t apply_rotation(
+        const PublicKey& peer_pk,
+        const PublicKey& new_user_pk,
+        std::uint64_t    new_counter) noexcept;
 
     /// Convenience accessor for the device_pk slice — kept for
     /// existing call sites in the attestation dispatcher.

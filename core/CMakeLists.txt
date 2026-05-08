@@ -13,6 +13,7 @@ set(_goodnet_kernel_sources
     identity/attestation.cpp
     identity/node_identity.cpp
     identity/sub_key_registry.cpp
+    identity/rotation.cpp
     kernel/capability_blob.cpp
     registry/connection.cpp
     registry/extension.cpp

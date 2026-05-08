@@ -9,6 +9,7 @@
 #include <ctime>
 
 #include <core/identity/node_identity.hpp>
+#include <core/identity/rotation.hpp>
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
@@ -1071,6 +1072,99 @@ gn_result_t thunk_get_handshake_hash(void* host_ctx,
     return GN_OK;
 }
 
+/* ── Identity rotation announce ────────────────────────────────── */
+
+gn_result_t thunk_announce_rotation(void* host_ctx,
+                                     std::int64_t valid_from_unix_ts) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto current = pc->kernel->node_identity();
+    if (!current) return GN_ERR_INVALID_STATE;
+
+    /// Generate a fresh user keypair for the new identity. A
+    /// caller-supplied recovery key path lands as a follow-up; the
+    /// minimal slot mints a new keypair every announce.
+    auto new_user_kp = identity::KeyPair::generate();
+    if (!new_user_kp) return new_user_kp.error().code;
+
+    /// Clone the current identity and bump its rotation counter.
+    /// The clone is the candidate that will replace the kernel's
+    /// active NodeIdentity once we have signed the proof.
+    auto cloned = current->clone();
+    if (!cloned) return cloned.error().code;
+    const auto next_counter = cloned->bump_rotation_counter();
+
+    /// Sign the proof with the **old** user keypair. The old
+    /// public key is what every peer currently has pinned; the
+    /// new one inherits trust through the signed continuity.
+    auto proof = identity::sign_rotation(
+        current->user(), new_user_kp->public_key(),
+        next_counter, valid_from_unix_ts);
+    if (!proof) return proof.error().code;
+
+    /// Record the rotation in the cloned identity's history,
+    /// then swap the user keypair. Old keys live on through the
+    /// history entries in case future verifiers need to chase
+    /// the chain.
+    identity::RotationEntry entry{};
+    entry.prev_user_pk        = current->user().public_key();
+    entry.next_user_pk        = new_user_kp->public_key();
+    entry.counter             = next_counter;
+    entry.valid_from_unix_ts  = valid_from_unix_ts;
+    std::memcpy(entry.sig_by_prev.data(),
+                proof->data() + identity::kRotationProofSigOffset,
+                64);
+    cloned->push_rotation_history(entry);
+
+    /// Build a fresh NodeIdentity rooted on `new_user_kp` while
+    /// inheriting cloned's sub-keys, history, counter, and
+    /// reusing the device keypair. This keeps the device-derived
+    /// mesh address unchanged — the live transport survives.
+    auto device_kp = cloned->device().clone();
+    if (!device_kp) return device_kp.error().code;
+    auto rotated = identity::NodeIdentity::compose(
+        std::move(*new_user_kp), std::move(*device_kp),
+        cloned->attestation().expiry_unix_ts);
+    if (!rotated) return rotated.error().code;
+    /// Carry over sub-keys, rotation history (incl. new entry),
+    /// counter from cloned.
+    auto& dst_subs = rotated->sub_keys().entries_mut();
+    for (auto& e : cloned->sub_keys().entries_mut()) {
+        dst_subs.push_back(std::move(e));
+    }
+    while (rotated->rotation_counter() < next_counter) {
+        rotated->bump_rotation_counter();
+    }
+    for (const auto& h : cloned->rotation_history()) {
+        rotated->push_rotation_history(h);
+    }
+
+    /// Swap in the new identity. From this point on, signing with
+    /// `GN_KEY_PURPOSE_ROTATION_SIGN` uses the new private key.
+    pc->kernel->set_node_identity(std::move(*rotated));
+
+    /// Send the proof to every live conn at trust >= Peer. The
+    /// receiver-side intercepts msg_id 0x12 in
+    /// `notify_inbound_bytes` and routes through the rotation
+    /// handler.
+    auto live_conns = std::vector<gn_conn_id_t>{};
+    pc->kernel->connections().for_each(
+        [&live_conns](const ConnectionRecord& rec,
+                       const ConnectionRegistry::CounterSnapshot&) -> bool {
+            if (rec.trust >= GN_TRUST_PEER) {
+                live_conns.push_back(rec.id);
+            }
+            return false;  // continue
+        });
+    for (const auto conn : live_conns) {
+        (void)thunk_send(host_ctx, conn, kIdentityRotationMsgId,
+                         proof->data(), proof->size());
+    }
+    return GN_OK;
+}
+
 /* ── Capability TLV transport ──────────────────────────────────── */
 
 gn_result_t thunk_present_capability_blob(void* host_ctx,
@@ -2003,6 +2097,55 @@ gn_result_t thunk_notify_inbound_bytes(void* host_ctx,
                 }
                 continue;
             }
+            /// Identity rotation announce (`identity.en.md` §7).
+            /// Verify the 150-byte proof against the user_pk we
+            /// already pinned for this peer; on success advance
+            /// the pin and fire `IDENTITY_ROTATED` so apps that
+            /// build connectivity graphs by user_pk update edges
+            /// without disconnecting the live transport.
+            if (stamped.msg_id == kIdentityRotationMsgId) {
+                auto pin = pc->kernel->connections().get_pinned_peer(
+                    rec->remote_pk);
+                if (!pin) continue;
+                auto verified = identity::verify_rotation(
+                    std::span<const std::uint8_t>(
+                        stamped.payload, stamped.payload_size),
+                    pin->user_pk);
+                if (!verified) {
+                    pc->kernel->metrics().increment(
+                        "drop.rotation_bad_proof");
+                    continue;
+                }
+                if (pc->kernel->connections().apply_rotation(
+                        rec->remote_pk, verified->new_user_pk,
+                        verified->counter) != GN_OK) {
+                    pc->kernel->metrics().increment(
+                        "drop.rotation_replay");
+                    continue;
+                }
+                /// Heap-stable pointers for the conn-event
+                /// callback. The signal channel runs the callback
+                /// synchronously on the publishing thread, so
+                /// stack lifetime is enough — but we put the
+                /// pointers in `_reserved[0..2]` and the
+                /// subscribers borrow for the call duration.
+                ConnEvent ev{};
+                ev.kind      = GN_CONN_EVENT_IDENTITY_ROTATED;
+                ev.conn      = conn;
+                ev.trust     = rec->trust;
+                ev.remote_pk = rec->remote_pk;
+                ev._reserved[0] =
+                    const_cast<void*>(static_cast<const void*>(
+                        verified->prev_user_pk.data()));
+                ev._reserved[1] =
+                    const_cast<void*>(static_cast<const void*>(
+                        verified->new_user_pk.data()));
+                ev._reserved[2] =
+                    const_cast<void*>(static_cast<const void*>(
+                        &verified->counter));
+                pc->kernel->on_conn_event().fire(ev);
+                continue;
+            }
             /// Capability blob (`identity.en.md` §8) — kernel-side
             /// distribution. Inbound bytes carry a 8-byte
             /// `expires_unix_ts` BE prefix followed by the blob
@@ -2305,6 +2448,8 @@ host_api_t build_host_api(PluginContext& ctx) {
 
     a.present_capability_blob   = &thunk_present_capability_blob;
     a.subscribe_capability_blob = &thunk_subscribe_capability_blob;
+
+    a.announce_rotation         = &thunk_announce_rotation;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

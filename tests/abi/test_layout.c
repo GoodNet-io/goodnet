@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 472,
-               "host_api_t size pinned at 472");
+_Static_assert(sizeof(host_api_t) == 480,
+               "host_api_t size pinned at 480");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -222,8 +222,10 @@ _Static_assert(offsetof(host_api_t, present_capability_blob) == 392,
                "host_api_t::present_capability_blob offset pinned at 392");
 _Static_assert(offsetof(host_api_t, subscribe_capability_blob) == 400,
                "host_api_t::subscribe_capability_blob offset pinned at 400");
-_Static_assert(offsetof(host_api_t, _reserved) == 408,
-               "host_api_t::_reserved offset pinned at 408");
+_Static_assert(offsetof(host_api_t, announce_rotation) == 408,
+               "host_api_t::announce_rotation offset pinned at 408");
+_Static_assert(offsetof(host_api_t, _reserved) == 416,
+               "host_api_t::_reserved offset pinned at 416");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 
