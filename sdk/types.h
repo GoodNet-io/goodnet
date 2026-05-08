@@ -154,10 +154,10 @@ typedef enum gn_inject_layer_e {
  *
  * Per-kind expectations on `gn_register_meta_t`:
  *
- * | Kind                     | `name`                    | `msg_id` / `priority`                  | `protocol_id`                  | `vtable`                       | `self`                  |
- * |--------------------------|---------------------------|----------------------------------------|--------------------------------|--------------------------------|-------------------------|
- * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | ignored (zero it)              | `gn_handler_vtable_t*`         | per-handler instance    |
- * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | declares protocol layer        | `gn_link_vtable_t*`            | per-link instance       |
+ * | Kind                     | `name`                    | `msg_id` / `priority`                  | `namespace_id`                 | `protocol_id`                  | `vtable`                       | `self`                  |
+ * |--------------------------|---------------------------|----------------------------------------|--------------------------------|--------------------------------|--------------------------------|-------------------------|
+ * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | tenant scope (NULL = "default")| ignored (zero it)              | `gn_handler_vtable_t*`         | per-handler instance    |
+ * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | ignored (zero it)              | declares protocol layer        | `gn_link_vtable_t*`            | per-link instance       |
  */
 typedef enum gn_register_kind_e {
     GN_REGISTER_HANDLER = 0,
@@ -197,7 +197,22 @@ typedef struct gn_register_meta_s {
      * surfaces as `GN_ERR_NOT_FOUND` at the connection site.
      */
     const char*   protocol_id;     /**< LINK only; @borrowed for the call */
-    void*         _reserved[4];    /**< MUST be zero; see contract above */
+    /**
+     * HANDLER only: tenant namespace this handler registration scopes
+     * to. @borrowed for the call. NULL or empty selects the kernel
+     * default `"default"`. Two handlers registered against the same
+     * `(protocol_id, msg_id)` pair under different namespaces coexist
+     * without collision; envelope dispatch fans out across all
+     * namespaces' chains for the matching pair (handler-side
+     * isolation only — true tenant boundaries land with the WASM /
+     * socket-IPC plugin runtimes per the lifecycle roadmap).
+     * `Kernel::drain_namespace` walks the registry, unregisters every
+     * entry under the named namespace, and waits for the lifetime
+     * anchors to drain — operator-driven graceful tenant teardown.
+     * LINK kind reads this slot as zero.
+     */
+    const char*   namespace_id;    /**< HANDLER only; @borrowed for the call */
+    void*         _reserved[3];    /**< MUST be zero; see contract above */
 } gn_register_meta_t;
 
 /**
