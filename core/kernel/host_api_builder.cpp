@@ -225,17 +225,24 @@ void route_one_envelope(Kernel& kernel,
     }
 }
 
-/// Hand a batch of wire-frame buffers to the link plugin. `send_batch`
-/// is optional per `link.md` §4: a link declares it `nullptr` *or*
-/// returns `GN_ERR_NOT_IMPLEMENTED` to opt out, and the kernel falls
-/// through to the scalar `send` slot one frame at a time. A genuine
-/// batch failure (link's hard cap, transport tear-down) does not retry
-/// — the link plugin owns retry / disconnect policy on its own state.
-void send_link_batch(PluginContext*                                  pc,
-                     const LinkEntry&                                trans,
-                     gn_conn_id_t                                    conn,
-                     std::span<const std::vector<std::uint8_t>>      batch) noexcept {
-    if (batch.empty()) return;
+/// Hand a batch of wire-frame buffers to the link plugin and report
+/// the outcome. `send_batch` is optional per `link.md` §4: a link
+/// declares it `nullptr` *or* returns `GN_ERR_NOT_IMPLEMENTED` to
+/// opt out, and the kernel falls through to the scalar `send` slot
+/// one frame at a time.
+///
+/// Returns `GN_OK` when the link accepted the batch (or every frame
+/// of the scalar fallback). Returns `GN_ERR_LIMIT_REACHED` when the
+/// link signalled hard-cap rejection — drainer parks the batch as
+/// stalled and retries on the next claim with the **same wire
+/// bytes**, preserving the AEAD nonce sequence the receiver
+/// expects.
+[[nodiscard]] gn_result_t send_link_batch(
+    PluginContext*                                pc,
+    const LinkEntry&                              trans,
+    gn_conn_id_t                                  conn,
+    std::span<const std::vector<std::uint8_t>>    batch) noexcept {
+    if (batch.empty()) return GN_OK;
 
     std::vector<gn_byte_span_t> spans;
     spans.reserve(batch.size());
@@ -252,14 +259,44 @@ void send_link_batch(PluginContext*                                  pc,
             spans.data(), spans.size());
     }
     if (batch_rc == GN_ERR_NOT_IMPLEMENTED) {
+        /// Scalar fallback. Track aggregate result — if any frame
+        /// hits LIMIT_REACHED we surface that to the drainer so
+        /// the remaining frames stall together (preserving order
+        /// and nonce continuity for the receiver).
+        batch_rc = GN_OK;
+        std::size_t accepted = 0;
         for (const auto& frame : batch) {
-            (void)safe_call_result("link.send",
+            const auto rc = safe_call_result("link.send",
                 trans.vtable->send, trans.self, conn,
                 frame.data(), frame.size());
+            if (rc == GN_OK) {
+                ++accepted;
+                continue;
+            }
+            if (rc == GN_ERR_LIMIT_REACHED) {
+                batch_rc = GN_ERR_LIMIT_REACHED;
+                break;
+            }
+            /// Other failure (transport tear-down, etc.) — bytes
+            /// gone, link plugin owns retry / disconnect policy.
+            ++accepted;
         }
+        /// Report only the bytes the link accepted.
+        std::size_t accepted_bytes = 0;
+        for (std::size_t i = 0; i < accepted; ++i) {
+            accepted_bytes += batch[i].size();
+        }
+        if (accepted > 0) {
+            pc->kernel->connections().add_outbound(
+                conn, accepted_bytes, accepted);
+        }
+        return batch_rc;
     }
-    pc->kernel->connections().add_outbound(
-        conn, total_bytes, batch.size());
+    if (batch_rc == GN_OK) {
+        pc->kernel->connections().add_outbound(
+            conn, total_bytes, batch.size());
+    }
+    return batch_rc;
 }
 
 /// Drain a connection's send queue — claim has already been won via
@@ -292,6 +329,35 @@ void drain_send_queue(PluginContext*                            pc,
                       PerConnQueue&                             queue,
                       const std::shared_ptr<SecuritySession>&   session) noexcept {
     while (true) {
+        /// Stalled batch retry — wire frames the link rejected on
+        /// a previous claim. The drainer reattempts the **same
+        /// bytes** (already AEAD-encrypted with their reserved
+        /// nonces) so the receiver's nonce sequence stays gap-free.
+        /// `pending_bytes` carries those bytes in its accounting
+        /// while stalled (added back below on stall, subtracted
+        /// here on successful flush) so producers continue to
+        /// observe backpressure through `try_push`.
+        if (!queue.stalled_wire_batch.empty()) {
+            const gn_result_t rc = send_link_batch(
+                pc, trans, conn, queue.stalled_wire_batch);
+            if (rc == GN_OK) {
+                std::size_t cleared = 0;
+                for (const auto& f : queue.stalled_wire_batch) {
+                    cleared += f.size();
+                }
+                queue.pending_bytes.fetch_sub(
+                    cleared, std::memory_order_acq_rel);
+                queue.stalled_wire_batch.clear();
+                /// Fall through — try draining new frames.
+            } else {
+                /// Link still rejecting; halt. Producer's next
+                /// push claims drain again, retries.
+                queue.drain_scheduled.store(
+                    false, std::memory_order_release);
+                return;
+            }
+        }
+
         /// Plaintext path — only when the session has fast crypto
         /// active. A drained plain batch is encrypted in parallel
         /// through `CryptoWorkerPool` before it goes to the link.
@@ -302,14 +368,30 @@ void drain_send_queue(PluginContext*                            pc,
                 std::vector<std::vector<std::uint8_t>> wire_batch;
                 const gn_result_t rc = session->encrypt_batch_transport(
                     pc->kernel->crypto_pool(), plain_batch, wire_batch);
-                if (rc == GN_OK) {
-                    send_link_batch(pc, trans, conn, wire_batch);
+                if (rc != GN_OK) {
+                    /// Oversized cipher / session torn down between
+                    /// push and drain — bytes dropped, producer
+                    /// learns through `add_outbound` not advancing.
+                    continue;
                 }
-                /// On `rc != GN_OK` (oversized cipher, session torn
-                /// down between push and drain) the batch is dropped
-                /// — `pending_bytes` already decremented by the
-                /// drain. Producer learns through the `add_outbound`
-                /// counter not advancing.
+                const gn_result_t link_rc = send_link_batch(
+                    pc, trans, conn, wire_batch);
+                if (link_rc == GN_ERR_LIMIT_REACHED) {
+                    /// Park as stalled — same wire bytes (with
+                    /// reserved nonces) retried on next claim.
+                    /// Re-credit `pending_bytes` so producers
+                    /// see backpressure while the batch is held.
+                    std::size_t parked = 0;
+                    for (const auto& f : wire_batch) {
+                        parked += f.size();
+                    }
+                    queue.pending_bytes.fetch_add(
+                        parked, std::memory_order_acq_rel);
+                    queue.stalled_wire_batch = std::move(wire_batch);
+                    queue.drain_scheduled.store(
+                        false, std::memory_order_release);
+                    return;
+                }
                 continue;
             }
         }
@@ -317,15 +399,31 @@ void drain_send_queue(PluginContext*                            pc,
         /// Ciphertext path — bytes are wire-ready already.
         auto cipher_batch = queue.drain_batch();
         if (!cipher_batch.empty()) {
-            send_link_batch(pc, trans, conn, cipher_batch);
+            const gn_result_t rc = send_link_batch(
+                pc, trans, conn, cipher_batch);
+            if (rc == GN_ERR_LIMIT_REACHED) {
+                std::size_t parked = 0;
+                for (const auto& f : cipher_batch) {
+                    parked += f.size();
+                }
+                queue.pending_bytes.fetch_add(
+                    parked, std::memory_order_acq_rel);
+                queue.stalled_wire_batch = std::move(cipher_batch);
+                queue.drain_scheduled.store(
+                    false, std::memory_order_release);
+                return;
+            }
             continue;
         }
 
-        /// Both rings empty — clear flag and re-check for a pusher
-        /// that slipped a frame in between drain-empty and the flag
-        /// clear.
+        /// Both rings empty + no stalled batch — clear flag and
+        /// re-check for a pusher that slipped a frame in between
+        /// drain-empty and the flag clear.
         queue.drain_scheduled.store(false, std::memory_order_release);
-        if (!queue.has_frames() && !queue.has_plain()) return;
+        if (!queue.has_frames() && !queue.has_plain() &&
+            queue.stalled_wire_batch.empty()) {
+            return;
+        }
         bool exp = false;
         if (!queue.drain_scheduled.compare_exchange_strong(
                 exp, true, std::memory_order_acq_rel)) {
@@ -421,6 +519,16 @@ gn_result_t thunk_send(void* host_ctx,
     if (session != nullptr && session->fast_crypto_active()) {
         /// Push framed plaintext — drainer encrypts in batch.
         if (!queue->try_push_plain(std::move(*framed), SendPriority::Low)) {
+            /// Kernel queue full (often because a stalled wire
+            /// batch is still parked from a prior link rejection).
+            /// Producer back-off path doesn't naturally pump the
+            /// drain — claim drain CAS here so the stalled batch
+            /// gets retried even when no new bytes can land.
+            bool kicked = false;
+            if (queue->drain_scheduled.compare_exchange_strong(
+                    kicked, true, std::memory_order_acq_rel)) {
+                drain_send_queue(pc, *trans, conn, *queue, session);
+            }
             return GN_ERR_LIMIT_REACHED;
         }
     } else {
@@ -433,6 +541,11 @@ gn_result_t thunk_send(void* host_ctx,
             wire = std::move(*framed);
         }
         if (!queue->try_push(std::move(wire), SendPriority::Low)) {
+            bool kicked = false;
+            if (queue->drain_scheduled.compare_exchange_strong(
+                    kicked, true, std::memory_order_acq_rel)) {
+                drain_send_queue(pc, *trans, conn, *queue, session);
+            }
             return GN_ERR_LIMIT_REACHED;
         }
     }
@@ -1321,16 +1434,24 @@ gn_result_t thunk_notify_connect(void* host_ctx,
         }
 
         gn_result_t session_rc = GN_OK;
-        /// Per-session inbound buffer cap follows the operator's
-        /// `max_frame_bytes` so a deployment that tunes frame size
-        /// for memory footprint sees the SecuritySession's recv
-        /// cap shrink with it (default = 2 * max_frame_bytes +
-        /// kFramePrefixBytes per `backpressure.md` §9). A
-        /// zero-or-unset `max_frame_bytes` falls back to the
-        /// wire-format ceiling inside `SecuritySession::open`.
+        /// Per-session inbound buffer cap. Sized to absorb a full
+        /// drain batch from the peer's send-side
+        /// `CryptoWorkerPool` (`PerConnQueue::kDefaultDrainBatch`
+        /// frames × `max_frame_bytes` + headroom). With Phase 5
+        /// deferred encrypt the peer can dump up to
+        /// `drain_batch_size` frames into one wire `send_batch`;
+        /// receiver buffer must accept the burst before the
+        /// session decrypts and dispatches frames out, otherwise
+        /// `decrypt_transport_stream` returns `LIMIT_REACHED` to
+        /// `notify_inbound_bytes` and the link plugin's
+        /// `host_api_failures_` counter trips a disconnect after
+        /// 16 consecutive non-OK returns. Per `backpressure.md`
+        /// §9 — a zero or unset `max_frame_bytes` falls back to
+        /// the wire-format ceiling inside `SecuritySession::open`.
         const auto& limits   = pc->kernel->limits();
         const auto recv_cap  = limits.max_frame_bytes != 0
-            ? 2 * static_cast<std::size_t>(limits.max_frame_bytes)
+            ? PerConnQueue::kDefaultDrainBatch
+                * static_cast<std::size_t>(limits.max_frame_bytes)
                 + ::gn::core::kFramePrefixBytes
             : 0;
         (void)pc->kernel->sessions().create(

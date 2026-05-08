@@ -45,27 +45,13 @@ struct PerConnQueue {
     static constexpr std::size_t kDefaultQueueLimit = std::size_t{8} * 1024 * 1024;
     static constexpr std::size_t kDefaultDrainBatch = 64;
 
-    /// Live-tunable so `host_api->config_get` reload can retighten or
-    /// relax existing connections, not only newly created ones. Reads
-    /// on the producer hot path are relaxed because the values are
-    /// advisory bounds — a stale read defers the limit by a few frames.
-    std::atomic<std::size_t> max_bytes;
-    std::atomic<std::size_t> drain_batch_size;
-
-    std::atomic<std::size_t> pending_bytes{0};
-
-    /// Set during graceful close to block new pushes / drains.
-    std::atomic<bool> closing{false};
-
-    /// Drain serializer — at most one drain in flight per connection.
-    /// CAS-only, never blocks pushers.
-    std::atomic<bool> drain_scheduled{false};
-
-    /// Consumer spinlock — protects against concurrent direct calls
-    /// to `drain_batch`. In normal flow `drain_scheduled` already
-    /// gates concurrency; this is belt-and-braces for tests that
-    /// drive drain from multiple threads.
-    std::atomic_flag drain_lock_ = ATOMIC_FLAG_INIT;
+    /// Field order optimised against `clang-tidy` padding analysis —
+    /// large alignment members (`MpscRing` is 64-byte cache-aligned)
+    /// up front, small atomics packed after, the heap-managed
+    /// `stalled_wire_batch` vector before the byte-sized atomic
+    /// flags. Reordering the declarations changes neither runtime
+    /// semantics nor the public surface; documentation comments stay
+    /// next to each field.
 
     /// Encrypted-frame rings — used when the session has no
     /// fast-crypto path (loopback, null security) or when the
@@ -85,6 +71,46 @@ struct PerConnQueue {
     /// race-free across drainers.
     MpscRing<std::vector<std::uint8_t>> frames_plain_high;
     MpscRing<std::vector<std::uint8_t>> frames_plain_low;
+
+    /// Live-tunable so `host_api->config_get` reload can retighten or
+    /// relax existing connections, not only newly created ones. Reads
+    /// on the producer hot path are relaxed because the values are
+    /// advisory bounds — a stale read defers the limit by a few frames.
+    std::atomic<std::size_t> max_bytes;
+    std::atomic<std::size_t> drain_batch_size;
+
+    std::atomic<std::size_t> pending_bytes{0};
+
+    /// Wire frames that the link plugin's `send_batch` rejected on
+    /// the previous drain attempt — typically `GN_ERR_LIMIT_REACHED`
+    /// from a TCP plugin whose per-session write buffer is full
+    /// (`tcp.cpp:611-625`). The drainer that retries these on the
+    /// next claim sends the **same wire bytes** that were already
+    /// AEAD-encrypted with their reserved nonces, so the receiver's
+    /// nonce sequence stays gap-free. Until the stalled batch
+    /// drains successfully, the drainer halts new pulls — kernel
+    /// queue fills, producers see `GN_ERR_LIMIT_REACHED` per
+    /// `backpressure.md` §1, back-off naturally re-triggers drain
+    /// through subsequent push CAS attempts.
+    ///
+    /// Protected by `drain_lock_` (the same flag that gates ring
+    /// drains). Only the drainer (single-writer per conn via
+    /// `drain_scheduled` CAS) touches this — no readers, no
+    /// concurrent producers.
+    std::vector<std::vector<std::uint8_t>> stalled_wire_batch;
+
+    /// Set during graceful close to block new pushes / drains.
+    std::atomic<bool> closing{false};
+
+    /// Drain serializer — at most one drain in flight per connection.
+    /// CAS-only, never blocks pushers.
+    std::atomic<bool> drain_scheduled{false};
+
+    /// Consumer spinlock — protects against concurrent direct calls
+    /// to `drain_batch`. In normal flow `drain_scheduled` already
+    /// gates concurrency; this is belt-and-braces for tests that
+    /// drive drain from multiple threads.
+    std::atomic_flag drain_lock_ = ATOMIC_FLAG_INIT;
 
     explicit PerConnQueue(std::size_t limit = kDefaultQueueLimit,
                           std::size_t batch = kDefaultDrainBatch)
