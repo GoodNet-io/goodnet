@@ -48,8 +48,16 @@ so a pk-index lookup would either miss or hit the wrong conn.
 
 The single mutation operation `insert_with_index` carries the new
 record together with all three keys and updates the three indexes
-under one ordered lock acquisition. The operation **fails before any
-mutation** if any key would collide.
+under one ordered lock acquisition. The `conn_id` index is the
+only **uniqueness key** — kernel allocates `conn_id`s monotonically
+and never reuses them at runtime, so a duplicate id is a structural
+bug. The URI and peer_pk indexes admit multiple records sharing the
+same key (multi-path, parallel transport, aggregation): they're
+**lookup indexes**, not uniqueness keys. Cross-session identity
+protection (impostor with different `device_pk` claiming an existing
+`peer_pk`) lives on `attestation_dispatcher.peer_pin_map` per
+`attestation.md` §5 step 7-8 — a separate security gate, not a
+registry uniqueness check.
 
 Sequencing rules:
 
@@ -57,12 +65,23 @@ Sequencing rules:
    pk-index mutex in a fixed total order. The fixed order is the
    only deadlock-avoidance mechanism; concurrent inserts that need
    the same triple acquire it identically.
-2. Verify each index is free of the proposed key. If any is taken,
-   release all locks and return `GN_ERR_LIMIT_REACHED`. No partial
-   state is visible.
-3. Insert the record into the shard, point the URI index at it,
-   point the pk index at it.
+2. Reject if `conn_id` is already in the shard map (structural
+   bug — kernel never reuses ids at runtime). Release all locks
+   and return `GN_ERR_LIMIT_REACHED`.
+3. Insert the record into the shard, `insert_or_assign` the URI
+   index at it (last-writer-wins on duplicate URI), `insert_or_assign`
+   the pk index at it for non-zero `peer_pk` (last-writer-wins on
+   duplicate peer key).
 4. Release all locks.
+
+`find_by_uri` and `find_by_pk` return «one conn matching this key»;
+strategy plugins that need «all conns to peer X» maintain their own
+`peer_pk → list-of-conns` tables (see `architecture/multi-path.ru.md`
+§«Один активный путь — на уровне strategy plugin'а»). Erase paths
+(`erase_with_index`, `snapshot_and_erase`) only touch the URI/pk
+index entry if it still points at the conn being erased — multi-conn
+last-writer-wins semantics protect a co-resident conn's lookup from
+being orphaned by a sibling's teardown.
 
 The registry honours `gn_limits_t::max_connections` (`limits.md` §4a):
 when the live record count is already at the cap, the insert returns
