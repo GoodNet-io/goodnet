@@ -1,10 +1,9 @@
 /// @file   core/identity/derive.cpp
-/// @brief  HKDF-SHA256 address derivation implementation.
+/// @brief  HKDF-SHA256 device-address derivation implementation.
 
 #include "derive.hpp"
 
 #include <array>
-#include <cstring>
 
 #include <sodium.h>
 
@@ -13,25 +12,20 @@
 namespace gn::core::identity {
 
 ::gn::PublicKey derive_address(
-    const ::gn::PublicKey& user_pk,
     const ::gn::PublicKey& device_pk) noexcept {
 
-    /// Concatenate user_pk || device_pk as the HKDF input keying
-    /// material. Order matters — swapping yields a distinct address.
-    std::array<std::uint8_t, 64> ikm{};
-    std::memcpy(ikm.data(),                user_pk.data(),   GN_PUBLIC_KEY_BYTES);
-    std::memcpy(ikm.data() + GN_PUBLIC_KEY_BYTES,
-                device_pk.data(), GN_PUBLIC_KEY_BYTES);
-
-    /// HKDF-SHA256 extract+expand into a 32-byte address. libsodium
-    /// exposes both halves separately; we collapse them into a
-    /// single derive with empty info string.
+    /// HKDF-SHA256 extract+expand keyed on `device_pk` only. The
+    /// user_pk used to mix into the IKM in v1; rotating user_pk
+    /// then renamed every live conn out from under the application,
+    /// breaking long-term graph state. Decouple keeps mesh-address
+    /// device-stable and routes user identity through attestation
+    /// + `host_api->get_peer_user_pk` instead.
     std::array<std::uint8_t, crypto_kdf_hkdf_sha256_KEYBYTES> prk{};
     ::crypto_kdf_hkdf_sha256_extract(
         prk.data(),
         reinterpret_cast<const unsigned char*>(kAddressDeriveSalt),
         sizeof(kAddressDeriveSalt) - 1,
-        ikm.data(), ikm.size());
+        device_pk.data(), GN_PUBLIC_KEY_BYTES);
 
     ::gn::PublicKey out{};
     ::crypto_kdf_hkdf_sha256_expand(
@@ -39,8 +33,8 @@ namespace gn::core::identity {
         /* info */ nullptr, 0,
         prk.data());
 
-    /// Wipe the intermediate PRK; the IKM is just public keys, no
-    /// secret leakage.
+    /// Wipe the intermediate PRK. IKM is a public key — no secret
+    /// leakage to wipe — but the PRK is full HKDF state.
     ::sodium_memzero(prk.data(), prk.size());
     return out;
 }
