@@ -313,13 +313,13 @@ blob   := record record record …
 Оба `type` и `length` — big-endian. Blob — конкатенация записей без
 терминатора. Length=0 легален и обозначает пустой value.
 
-TLV-blob едет как payload application-сообщения с зарезервированным
-msg_id, **не** как отдельный wire-формат. Ядро само blob не парсит —
-плагины encode/decode'ят через header-only
-`sdk/cpp/capability_tlv.hpp` и шлют/принимают результат через
-обычный `host_api->send` + handler-vtable. Соответствующие host_api
-slot'ы для capability-обмена забронированы под v1.1 в зоне
-`_reserved[8]`; до тех пор передача идёт через прикладной msg_id.
+TLV-blob едет как payload application-сообщения с
+зарезервированным msg_id `0x13`, **не** как отдельный
+wire-формат. Ядро само blob не парсит — плагины encode/decode'ят
+через header-only `sdk/cpp/capability_tlv.hpp` и шлют/принимают
+через два host_api slot'а (`present_capability_blob`,
+`subscribe_capability_blob`). Семантика и hard cap живут в
+[capability-tlv.md](../contracts/capability-tlv.en.md).
 
 Reserved type ranges:
 

@@ -23,7 +23,7 @@ kernel sees them as interchangeable byte movers identified by a URI scheme.
 
 ## 2. C ABI
 
-Declared in `sdk/link.h` (Phase 3). Slot list:
+Declared in `sdk/link.h`. Slot list:
 
 | Slot | Direction | Notes |
 |---|---|---|
@@ -191,7 +191,7 @@ expands to `register_vtable(GN_REGISTER_LINK, &meta, …)`.
 ## 7. ConnectionContext accessors
 
 The protocol-layer plugin reads connection state through helper
-functions declared in `sdk/connection.h` (Phase 3). The C ABI surface:
+functions declared in `sdk/connection.h`. The C ABI surface:
 
 | Function | Returns |
 |---|---|

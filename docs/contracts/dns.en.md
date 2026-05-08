@@ -50,10 +50,10 @@ budget. An operator running an unattended daemon avoids the
 exposure entirely by shipping IP literals through configuration
 or letting a sidecar resolver write the configured URI.
 
-The deferred-to-v1.1 cancellation-token rewrite (per the rc1
-release notes) only buys the synchronous resolve a way out
-under load — not a different exposure surface. Pre-resolution
-remains the operator's lever.
+A future cancellation-token rewrite of the resolve call only
+buys the synchronous resolver a way out under load — not a
+different exposure surface. Pre-resolution remains the
+operator's lever.
 
 ---
 
