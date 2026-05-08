@@ -188,11 +188,13 @@ peer'а (см. [identity](../contracts/identity.en.md) §3).
 
 ### `expiry=0` в identity
 
-Sentinel «без срока истечения» — должен корректно обрабатываться
-после fix'а. Если узел отказывается стартовать с
-`GN_ERR_INTEGRITY_FAILED` именно на `expiry=0` — это регрессия
-ядра, не misconfiguration; downgrade или waiver через regen с
-конкретной датой как workaround.
+Sentinel «без срока истечения» — verify-путь пропускает проверку
+дедлайна для `expiry == 0` (per [identity](../contracts/identity.en.md)
+§4). `goodnet identity gen` без явного `--expiry` создаёт файл с
+`expiry=0` и его нормально загружают и старая, и новая версия
+ядра. Если на `expiry=0`-файле всё равно появляется
+`signature mismatch` — значит повреждены seed-байты, а не sentinel:
+лечится `goodnet identity gen --out /etc/goodnet/identity.bin`.
 
 ### Config reload не отрабатывает
 
