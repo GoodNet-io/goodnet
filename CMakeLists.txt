@@ -59,6 +59,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pch.cmake")
 # development convenience; production builds package each plugin separately.
 option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
+option(GOODNET_BUILD_BENCH            "Build the comprehensive bench suite (bench/)" OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
 
 # Build-acceleration toggles. Defaults pick the right path per build
@@ -187,6 +188,15 @@ endif()
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+# ── Benchmark suite ──────────────────────────────────────────────────────────
+# Opt-in via GOODNET_BUILD_BENCH. Pulls google-benchmark from the dev
+# shell; the suite covers per-plugin throughput / latency / handshake,
+# composition depth, and live comparisons vs mature solutions for the
+# UX / DX gap analysis the bench report exports.
+if(GOODNET_BUILD_BENCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/CMakeLists.txt")
+    add_subdirectory(bench)
 endif()
 
 # ── Install / find_package(GoodNet) support ──────────────────────────────────

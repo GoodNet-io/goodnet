@@ -113,7 +113,7 @@
         let
           stdenv = pkgs.gcc15Stdenv;
           coreBuildInputs = with pkgs; [
-            asio spdlog fmt nlohmann_json libsodium openssl
+            asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -420,7 +420,7 @@
           # plugin-side dev work is done in the plugin's own
           # `nix develop` shell.
           coreBuildInputs = with pkgs; [
-            asio spdlog fmt nlohmann_json libsodium openssl
+            asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];

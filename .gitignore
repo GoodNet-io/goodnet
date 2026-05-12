@@ -124,6 +124,14 @@ tests/integration/
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
 
+# Bench suite
+!bench/**/*.cpp
+!bench/**/*.hpp
+!bench/**/*.md
+!bench/**/*.sh
+!bench/**/CMakeLists.txt
+!bench/**/LICENSE
+
 # Apps (operator-facing CLI binaries)
 !apps/**/*.cpp
 !apps/**/*.hpp
