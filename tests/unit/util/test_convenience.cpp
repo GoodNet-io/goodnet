@@ -12,7 +12,6 @@
 
 #include <cstdint>
 #include <span>
-#include <vector>
 
 #include <sdk/cpp/convenience.hpp>
 

@@ -14,6 +14,7 @@
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
 #include "connection_context.hpp"
@@ -614,6 +615,91 @@ gn_result_t thunk_send(void* host_ctx,
     /// When CAS lost — another caller is already draining and our
     /// frame goes out as part of their next batch.
     return GN_OK;
+}
+
+/* ── Peer-pk-level send (DX Tier 3 / Slice 9-KERNEL) ──────────────
+ *
+ * Walks the connection registry collecting every live conn that
+ * targets @p peer_pk, asks the registered `gn.strategy.*` extension
+ * to pick one, and dispatches through `thunk_send`. When no strategy
+ * is registered OR exactly one conn matches, falls through to the
+ * single candidate directly — strategies are an optional plugin
+ * family, not a kernel hard dependency.
+ */
+gn_result_t thunk_send_to(void* host_ctx,
+                          const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                          uint32_t msg_id,
+                          const uint8_t* payload,
+                          size_t payload_size) {
+    if (!host_ctx || !peer_pk) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    /// Collect every live conn that targets this peer.
+    /// `for_each` holds shard locks for the visitor's duration —
+    /// the visitor MUST NOT call `find_by_*` or `read_counters`
+    /// (registry.md §4 lock-recursion ban); the visitor gets the
+    /// `CounterSnapshot` alongside the record exactly for this case.
+    PublicKey target;
+    std::memcpy(target.data(), peer_pk, GN_PUBLIC_KEY_BYTES);
+
+    std::vector<gn_path_sample_t> candidates;
+    pc->kernel->connections().for_each(
+        [&target, &candidates](
+            const ConnectionRecord& rec,
+            const ConnectionRegistry::CounterSnapshot& snap)
+            -> bool {
+            if (rec.remote_pk != target) return true;  // continue
+            gn_path_sample_t s{};
+            s.conn          = rec.id;
+            s.rtt_us        = snap.last_rtt_us;
+            s.loss_pct_x100 = 0;   // not yet exposed by kernel
+            s.caps          = 0;   // future: link cap snapshot
+            candidates.push_back(s);
+            return true;
+        });
+
+    if (candidates.empty()) return GN_ERR_NOT_FOUND;
+
+    /// Single candidate — bypass strategy lookup entirely. Common
+    /// path: most peers have exactly one transport.
+    if (candidates.size() == 1) {
+        return thunk_send(host_ctx, candidates[0].conn,
+                           msg_id, payload, payload_size);
+    }
+
+    /// Multi-conn: look up the registered strategy. Convention is
+    /// exactly one active strategy per node; ambiguous registration
+    /// returns `GN_ERR_LIMIT_REACHED` so the operator notices.
+    auto strategies =
+        pc->kernel->extensions().query_prefix("gn.strategy.");
+    if (strategies.empty()) {
+        /// No strategy registered — fall back to first candidate.
+        /// Plugin tests for `send_to` without a strategy still work.
+        return thunk_send(host_ctx, candidates[0].conn,
+                           msg_id, payload, payload_size);
+    }
+    if (strategies.size() > 1) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    const auto& entry = strategies.front();
+    const auto* api =
+        static_cast<const gn_strategy_api_t*>(entry.vtable);
+    if (!api || !api->pick_conn ||
+        api->api_size < sizeof(gn_strategy_api_t)) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+
+    gn_conn_id_t chosen = GN_INVALID_ID;
+    const gn_result_t rc = api->pick_conn(
+        api->ctx, peer_pk,
+        candidates.data(), candidates.size(),
+        &chosen);
+    if (rc != GN_OK) return rc;
+    if (chosen == GN_INVALID_ID) return GN_ERR_NOT_FOUND;
+
+    return thunk_send(host_ctx, chosen, msg_id, payload, payload_size);
 }
 
 gn_result_t thunk_find_conn_by_pk(void* host_ctx,
@@ -2479,6 +2565,8 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.subscribe_capability_blob = &thunk_subscribe_capability_blob;
 
     a.announce_rotation         = &thunk_announce_rotation;
+
+    a.send_to                   = &thunk_send_to;
 
     /// Other slots remain NULL; plugins guard with GN_API_HAS.
     return a;

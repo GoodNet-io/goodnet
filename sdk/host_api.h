@@ -683,6 +683,34 @@ typedef struct host_api_s {
     gn_result_t (*announce_rotation)(void* host_ctx,
                                       int64_t valid_from_unix_ts);
 
+    /**
+     * @brief Peer-pk-level outbound send. Walks every live conn to
+     *        @p peer_pk, queries the registered `gn.strategy.<name>`
+     *        extension's `pick_conn`, and dispatches through the
+     *        chosen conn's `send` path. DX Tier 3 / Slice 9-KERNEL
+     *        sugar — closes the "must `find_conn_by_pk` + `send` by
+     *        hand" boilerplate documented in the 2026-05-12 audit.
+     *
+     * Single-candidate fast path: when only one conn targets
+     * @p peer_pk, dispatches directly without strategy lookup. When
+     * no strategy is registered the function still works on the
+     * single-candidate path and falls back to "first conn" on multi-
+     * candidate sets — strategies are an optional plugin family.
+     *
+     * Returns the underlying `send` result. Maps:
+     *   - `GN_ERR_NOT_FOUND`         no live conn to peer_pk
+     *   - `GN_ERR_LIMIT_REACHED`     more than one `gn.strategy.*`
+     *                                 extension registered
+     *     (convention: exactly one active strategy per node)
+     *   - whatever `gn_strategy_api_t::pick_conn` returns on its
+     *     own error paths (e.g. strategy refuses to pick).
+     */
+    gn_result_t (*send_to)(void* host_ctx,
+                            const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                            uint32_t msg_id,
+                            const uint8_t* payload,
+                            size_t payload_size);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing

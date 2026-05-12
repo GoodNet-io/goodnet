@@ -282,6 +282,22 @@ typedef struct gn_link_api_s {
                                       gn_subscription_id_t token);
 
     /**
+     * @brief Bound TCP port of the active composer-listen acceptor.
+     *
+     * Composer plugins (WSS, TLS, ICE) often need the ephemeral port
+     * the L1 acceptor settled on after a `tcp://host:0`-style listen
+     * — both to publish back to the kernel for `notify_connect` URIs
+     * and to surface through their own `listen_port()` API for tests.
+     * Returns @ref GN_ERR_INVALID_STATE when no composer-listen is
+     * currently active, or @ref GN_ERR_NOT_IMPLEMENTED on baseline
+     * links that do not run a composer acceptor.
+     *
+     * @param out_port @borrowed caller-allocated; on success holds the
+     *                 bound port in host byte order.
+     */
+    gn_result_t (*composer_listen_port)(void* ctx, uint16_t* out_port);
+
+    /**
      * @brief Plugin self pointer. Pass-through to every slot's first
      *        argument. Set by the producing plugin before
      *        `register_extension`.

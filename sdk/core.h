@@ -426,6 +426,37 @@ GN_EXPORT gn_result_t gn_core_load_plugin(
     const uint8_t expected_sha256[32]);
 
 /**
+ * @brief Load several plugins in one call.
+ *
+ * Equivalent to {@link gn_core_load_plugin} but accepts an array of
+ * paths and SHA-256 digests so a non-C++ host (Java FFM, Python,
+ * Rust) can ship a security provider + link plugin + handler in
+ * one batch — the PluginManager-active gate that fires on a second
+ * `gn_core_load_plugin` does not apply. The kernel composes a
+ * single-manifest pass and runs the same integrity check the
+ * one-shot path uses.
+ *
+ * @param core              Kernel handle returned by gn_core_create().
+ * @param so_paths          @borrowed array of @p count NUL-terminated
+ *                          strings.
+ * @param expected_sha256s  @borrowed flat buffer of @p count × 32
+ *                          bytes — the i-th plugin's digest sits at
+ *                          {@code &expected_sha256s[i * 32]}.
+ * @param count             Number of entries; @c 0 returns @c GN_OK
+ *                          without touching kernel state.
+ *
+ * @return `GN_OK` on success; the same error codes
+ *         {@link gn_core_load_plugin} can return on integrity / link
+ *         / version failures, plus `GN_ERR_NULL_ARG` if any path
+ *         pointer is NULL.
+ */
+GN_EXPORT gn_result_t gn_core_load_plugins_batch(
+    gn_core_t* core,
+    const char* const* so_paths,
+    const uint8_t* expected_sha256s,
+    size_t count);
+
+/**
  * @brief Unload a previously loaded plugin by name.
  *
  * Walks the shutdown sequence per `plugin-lifetime.md` §4 (publish

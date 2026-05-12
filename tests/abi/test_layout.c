@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 480,
-               "host_api_t size pinned at 480");
+_Static_assert(sizeof(host_api_t) == 488,
+               "host_api_t size pinned at 488 (added send_to slot 2026-05-12 Slice 9-KERNEL)");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -224,8 +224,10 @@ _Static_assert(offsetof(host_api_t, subscribe_capability_blob) == 400,
                "host_api_t::subscribe_capability_blob offset pinned at 400");
 _Static_assert(offsetof(host_api_t, announce_rotation) == 408,
                "host_api_t::announce_rotation offset pinned at 408");
-_Static_assert(offsetof(host_api_t, _reserved) == 416,
-               "host_api_t::_reserved offset pinned at 416");
+_Static_assert(offsetof(host_api_t, send_to) == 416,
+               "host_api_t::send_to offset pinned at 416 (Slice 9-KERNEL)");
+_Static_assert(offsetof(host_api_t, _reserved) == 424,
+               "host_api_t::_reserved offset pinned at 424");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 
@@ -497,8 +499,8 @@ _Static_assert(offsetof(gn_link_stats_t, active_connections) == 32,
 _Static_assert(offsetof(gn_link_stats_t, _reserved) == 40,
                "gn_link_stats_t::_reserved offset pinned at 40");
 
-_Static_assert(sizeof(gn_link_api_t) == 136,
-               "gn_link_api_t size pinned at 136 (post accept-bus reshape)");
+_Static_assert(sizeof(gn_link_api_t) == 144,
+               "gn_link_api_t size pinned at 144 (post composer-listen-port reshape)");
 _Static_assert(offsetof(gn_link_api_t, api_size) == 0,
                "gn_link_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_link_api_t, get_stats) == 8,
@@ -523,7 +525,9 @@ _Static_assert(offsetof(gn_link_api_t, subscribe_accept) == 80,
                "gn_link_api_t::subscribe_accept offset pinned at 80");
 _Static_assert(offsetof(gn_link_api_t, unsubscribe_accept) == 88,
                "gn_link_api_t::unsubscribe_accept offset pinned at 88");
-_Static_assert(offsetof(gn_link_api_t, ctx) == 96,
-               "gn_link_api_t::ctx offset pinned at 96");
-_Static_assert(offsetof(gn_link_api_t, _reserved) == 104,
-               "gn_link_api_t::_reserved offset pinned at 104");
+_Static_assert(offsetof(gn_link_api_t, composer_listen_port) == 96,
+               "gn_link_api_t::composer_listen_port offset pinned at 96");
+_Static_assert(offsetof(gn_link_api_t, ctx) == 104,
+               "gn_link_api_t::ctx offset pinned at 104");
+_Static_assert(offsetof(gn_link_api_t, _reserved) == 112,
+               "gn_link_api_t::_reserved offset pinned at 112");

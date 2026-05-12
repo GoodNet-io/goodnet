@@ -107,6 +107,70 @@ public:
         return Subscription(api, id);
     }
 
+    /// Event-typed conn-state subscribers — sugar over
+    /// `on_conn_state` that pre-filters by `kind` so the lambda
+    /// signature only carries fields relevant to that event. Wraps
+    /// the `match (ev.kind) { ... }` boilerplate plugins write today.
+    using ConnectedFn = std::function<void(gn_conn_id_t,
+                                            const gn_conn_event_t&)>;
+    using DisconnectedFn = std::function<void(gn_conn_id_t)>;
+    using TrustUpgradedFn = std::function<void(gn_conn_id_t,
+                                                 gn_trust_class_t)>;
+    using BackpressureFn  = std::function<void(gn_conn_id_t, bool soft)>;
+
+    /// Fires only on `GN_CONN_EVENT_CONNECTED`. Lambda receives the
+    /// new conn id and the full event (for trust class, role, etc.).
+    [[nodiscard]] static Subscription
+    on_connected(const host_api_t* api, ConnectedFn fn) {
+        if (!fn) return {};
+        return on_conn_state(api,
+            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+                if (ev.kind == GN_CONN_EVENT_CONNECTED) cb(ev.conn, ev);
+            });
+    }
+
+    /// Fires only on `GN_CONN_EVENT_DISCONNECTED`. Lambda receives
+    /// just the conn id — the rest of the event is irrelevant on a
+    /// closed conn.
+    [[nodiscard]] static Subscription
+    on_disconnected(const host_api_t* api, DisconnectedFn fn) {
+        if (!fn) return {};
+        return on_conn_state(api,
+            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+                if (ev.kind == GN_CONN_EVENT_DISCONNECTED) cb(ev.conn);
+            });
+    }
+
+    /// Fires only on `GN_CONN_EVENT_TRUST_UPGRADED`. Lambda receives
+    /// the conn id and the new trust class.
+    [[nodiscard]] static Subscription
+    on_trust_upgraded(const host_api_t* api, TrustUpgradedFn fn) {
+        if (!fn) return {};
+        return on_conn_state(api,
+            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+                if (ev.kind == GN_CONN_EVENT_TRUST_UPGRADED) {
+                    cb(ev.conn, ev.trust);
+                }
+            });
+    }
+
+    /// Fires on both `GN_CONN_EVENT_BACKPRESSURE_SOFT` (soft=true)
+    /// and `GN_CONN_EVENT_BACKPRESSURE_CLEAR` (soft=false). One
+    /// subscription covers both half-events — pair them in the
+    /// caller's state machine.
+    [[nodiscard]] static Subscription
+    on_backpressure(const host_api_t* api, BackpressureFn fn) {
+        if (!fn) return {};
+        return on_conn_state(api,
+            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+                if (ev.kind == GN_CONN_EVENT_BACKPRESSURE_SOFT) {
+                    cb(ev.conn, /*soft=*/true);
+                } else if (ev.kind == GN_CONN_EVENT_BACKPRESSURE_CLEAR) {
+                    cb(ev.conn, /*soft=*/false);
+                }
+            });
+    }
+
     /// Subscribe to `subscribe_capability_blob`. Returns a null
     /// handle if the slot is unset (the kernel build dropped the
     /// blob bus) or the kernel rejected the registration.

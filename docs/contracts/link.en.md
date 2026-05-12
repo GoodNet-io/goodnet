@@ -243,6 +243,7 @@ composition (WSS-over-TCP, TLS-over-TCP, ICE-over-UDP):
 | Composer | `connect` | consumer → producer | open an L1 conn whose lifecycle the consumer owns |
 | Composer | `subscribe_data` / `unsubscribe_data` | consumer → producer | install a pull-style receive callback for L2 framing |
 | Composer | `subscribe_accept` / `unsubscribe_accept` | consumer → producer | accept-bus: fires once per accepted L1 conn on composer-`listen` |
+| Composer | `composer_listen_port` | consumer → producer | read back the ephemeral L1 port after `composer_listen("...:0")` so a composer (WS / WSS / ICE) can surface a non-zero `listen_port()` to its own callers |
 
 Steady slots are functional in every baseline plugin in v1.0.x. The
 composer slots are reserved for the L2 family — WSS, TLS, ICE — and

@@ -153,6 +153,18 @@ public:
         return GN_OK;
     }
 
+    /// Query bound port of the active composer-listen acceptor. Used
+    /// by composer plugins (WSS / TLS / ICE) to surface the underlying
+    /// L1's ephemeral port through their own `listen_port()` after a
+    /// `tcp://host:0`-style listen. Returns 0 when no composer-listen
+    /// is active or the carrier link does not expose one.
+    [[nodiscard]] std::uint16_t listen_port() const noexcept {
+        if (!vt_ || !vt_->composer_listen_port) return 0;
+        std::uint16_t port = 0;
+        if (vt_->composer_listen_port(vt_->ctx, &port) != GN_OK) return 0;
+        return port;
+    }
+
     /// Install an accept-bus subscriber. Multiple `on_accept` calls
     /// stack — every subscriber is fired for every accept.
     [[nodiscard]] gn_result_t on_accept(AcceptFn fn) {

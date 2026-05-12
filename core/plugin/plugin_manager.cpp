@@ -3,7 +3,7 @@
 
 #include "plugin_manager.hpp"
 
-#include <dlfcn.h>
+#include "dl_compat.hpp"
 
 #ifdef __linux__
 #include <fcntl.h>

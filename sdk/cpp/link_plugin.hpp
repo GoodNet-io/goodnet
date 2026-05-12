@@ -178,6 +178,18 @@ template <class T>
     }
 }
 
+template <class T>
+[[nodiscard]] gn_result_t composer_listen_port_dispatch(
+    T& link, std::uint16_t* out_port) noexcept {
+    if constexpr (requires { link.composer_listen_port(out_port); }) {
+        return link.composer_listen_port(out_port);
+    } else {
+        (void)link;
+        if (out_port) *out_port = 0;
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
@@ -346,6 +358,14 @@ template <class T>
                 _gn_link_of(ctx), token);                                      \
         } catch (...) { return GN_ERR_NULL_ARG; }                              \
     }                                                                          \
+    gn_result_t _gn_link_ext_listen_port(                                      \
+        void* ctx, std::uint16_t* out_port) noexcept {                         \
+        if (!ctx || !out_port) return GN_ERR_NULL_ARG;                         \
+        try {                                                                  \
+            return ::gn::sdk::detail::composer_listen_port_dispatch(           \
+                _gn_link_of(ctx), out_port);                                   \
+        } catch (...) { return GN_ERR_NULL_ARG; }                              \
+    }                                                                          \
                                                                                \
     void _gn_link_install_ext(_gn_link_instance_t* inst) noexcept {                \
         auto& v = inst->extension_vtable;                                      \
@@ -362,6 +382,7 @@ template <class T>
         v.unsubscribe_data = &_gn_link_ext_unsubscribe;                          \
         v.subscribe_accept   = &_gn_link_ext_subscribe_accept;                   \
         v.unsubscribe_accept = &_gn_link_ext_unsubscribe_accept;                 \
+        v.composer_listen_port = &_gn_link_ext_listen_port;                      \
         v.ctx = inst;                                                          \
         std::memcpy(inst->extension_name_buf,                                  \
                     _gn_link_extension_prefix,                                   \
