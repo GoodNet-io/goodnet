@@ -48,6 +48,8 @@ endfunction()
 
 if(TARGET goodnet_tcp_objects)
     goodnet_add_bench(bench_tcp plugins/bench_tcp.cpp goodnet_tcp_objects)
+    goodnet_add_bench(bench_tcp_scale plugins/bench_tcp_scale.cpp
+                       goodnet_tcp_objects)
 endif()
 
 if(TARGET goodnet_udp_objects)
