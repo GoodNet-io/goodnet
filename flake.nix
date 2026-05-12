@@ -114,6 +114,12 @@
           stdenv = pkgs.gcc15Stdenv;
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            # External bench baselines — iperf3 for raw TCP/UDP
+            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
+            # All three stage cleanly in the dev shell so
+            # bench/comparison/runners/run_all.sh works out of the
+            # box; libwebrtc / nginx-quic remain Docker-only.
+            iperf3 socat
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -421,6 +427,12 @@
           # `nix develop` shell.
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            # External bench baselines — iperf3 for raw TCP/UDP
+            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
+            # All three stage cleanly in the dev shell so
+            # bench/comparison/runners/run_all.sh works out of the
+            # box; libwebrtc / nginx-quic remain Docker-only.
+            iperf3 socat
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];

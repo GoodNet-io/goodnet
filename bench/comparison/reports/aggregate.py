@@ -68,6 +68,9 @@ def parse_comparison(j, out):
         return
     if "metric" in j and "p50" in j:
         out.setdefault("single_stack", []).append(j)
+        return
+    if "metric" in j and "bytes_per_sec" in j:
+        out.setdefault("throughput_stack", []).append(j)
 
 
 def main(argv):
@@ -108,7 +111,7 @@ def main(argv):
         out.append("")
 
     if singles := aggregated.get("single_stack"):
-        out.append("## Cross-implementation comparison")
+        out.append("## Cross-implementation latency / handshake")
         out.append("")
         out.append("| Stack | Metric | Mean | P50 | P99 |")
         out.append("|---|---|---|---|---|")
@@ -116,6 +119,27 @@ def main(argv):
             out.append(f"| {s.get('stack','?')} | {s.get('metric','?')} | "
                        f"{fmt_ns(s.get('mean'))} | {fmt_ns(s.get('p50'))} | "
                        f"{fmt_ns(s.get('p99'))} |")
+        out.append("")
+
+    if tputs := aggregated.get("throughput_stack"):
+        out.append("## Cross-implementation throughput")
+        out.append("")
+        out.append("| Stack | Metric | Throughput | Detail |")
+        out.append("|---|---|---|---|")
+        for t in tputs:
+            bps = t.get("bytes_per_sec", 0)
+            detail_parts = []
+            if "duration_s" in t:
+                detail_parts.append(f"{t['duration_s']} s")
+            if "lost_percent" in t:
+                detail_parts.append(f"{t['lost_percent']}% lost")
+            if "retransmits" in t:
+                detail_parts.append(f"{t['retransmits']} retr")
+            if "payload_size" in t:
+                detail_parts.append(f"{t['payload_size']}B × {t.get('iterations','?')}")
+            detail = ", ".join(detail_parts) if detail_parts else "—"
+            out.append(f"| {t.get('stack','?')} | {t.get('metric','?')} | "
+                       f"{fmt_bytes_per_sec(bps)} | {detail} |")
         out.append("")
 
     if tables := aggregated.get("tables"):
