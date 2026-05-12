@@ -67,6 +67,25 @@ inter-process xprocess / inter-host LAN) and a **cross-impl**
 dimension that drives the same payload matrix through external
 baselines.
 
+### Measurement shape: send-only vs echo vs handshake
+
+Each bench fixture is one of three shapes. Mixing them in a single
+table — "GoodNet 1.6 GiB/s vs libp2p 250 MiB/s" — is the apples-
+to-oranges trap this section exists to flag.
+
+| Shape | Hot-loop body | Reads | Compares with |
+|---|---|---|---|
+| `Throughput` | `client.send(payload)` only | Send-side syscall + plugin overhead, no response | iperf3 raw send |
+| `EchoRoundtrip` | `client.send → server.send_back → client.read` | Full stack overhead both directions + 1 RTT | rust-libp2p, iroh, browser data-channel |
+| `HandshakeTime` | Set up fresh connection, no traffic | Crypto + control-plane cost only | OpenSSL `s_client` handshake |
+
+Rust P2P stacks expose echo + handshake; iperf3 exposes
+send-only. GoodNet exposes all three (`Throughput`,
+`EchoRoundtrip`, `HandshakeTime` fixtures per plugin where the
+fixture race is fixed). The aggregator never crosses shapes
+in a single table — see `## Echo round-trip — side-by-side` for
+the round-trip cross-impl matrix.
+
 Resource counters surfaced per bench:
 
 ```
@@ -111,6 +130,14 @@ crypto-only cost, not the round-trip differential.
 
 ### Cross-implementation throughput
 
+Two flavours of "throughput", measured separately. **Don't mix them
+in a single mental comparison** — that's the one mistake this section
+exists to prevent.
+
+**Send-only (one-way).** Application produces bytes as fast as the
+transport accepts them; no acknowledgements at the application layer.
+This is what `iperf3` and GoodNet `*Fixture/Throughput` measure.
+
 | Stack | Metric | Throughput |
 |---|---|---|
 | **iperf3 raw TCP** | TCP single-stream | **7.23 GiB/s ≈ 62 Gb/s** |
@@ -122,21 +149,53 @@ iperf3 is **kernel TCP in a tight loop, no plugin overhead**. The
 gap to GoodNet UDP (≈ 5×) is the composition + asio-strand +
 allocator budget — see § "Where the cost goes" below.
 
+**Round-trip echo (two-way).** Client sends, server reflects, client
+waits for the echo, repeat. Includes plugin-stack overhead in **both**
+directions plus one full RTT per byte returned. This is what the
+mature Rust P2P stacks (libp2p, iroh) measure, and what GoodNet
+`*Fixture/EchoRoundtrip` measures for fair compare.
+
+| Stack | Metric | Throughput @ 8 KiB |
+|---|---|---|
+| **GoodNet WS echo** | WS over TCP loopback | **130 MiB/s** |
+| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 118 MiB/s |
+| iroh 0.32 echo | QUIC + TLS 1.3 | 90 MiB/s |
+
+| Stack | Metric | Throughput @ 64 KiB |
+|---|---|---|
+| **GoodNet WS echo** | WS over TCP loopback | **219 MiB/s** |
+| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 249 MiB/s |
+| iroh 0.32 echo | QUIC + TLS 1.3 | 195 MiB/s |
+
+GoodNet leads on 8 KiB (frame overhead amortised), libp2p edges
+ahead on 64 KiB (yamux's long-substream design wins when stream-open
+cost is rare). iroh trails because the bench uses `open_bi()` per
+round (RPC-style), so each 65 KiB payload pays one stream-open +
+close overhead — symmetric with how applications actually use iroh.
+
+Full payload sweep + handshake numbers live in
+`bench/reports/<sha>.md` under **`## Echo round-trip — side-by-side`**.
+
 ### DX LOC — hello-world echo
 
 | Stack | Client + Server LOC | Ratio vs GoodNet |
 |---|---|---|
 | **GoodNet** | **43** (24 + 19) | 1 × |
+| iroh (single-file echo) | 71 | 1.7 × |
+| rust-libp2p (single-file echo) | 107 | 2.5 × |
 | libuv (raw TCP echo) | 121 (50 + 71) | 2.8 × |
 | OpenSSL `sslecho` (TLS) | 648 (single TU, both halves) | 15 × |
 | libssh examples | 658 (server side; client demo absent) | 15 × |
 
-Numbers are raw source lines with comments + blank lines stripped,
-counted from each stack's canonical upstream "hello echo" example
-(committed as a symlink in `~/.cache/goodnet-bench-refs/`). The
-GoodNet number comes from
-[`examples/hello-echo/`](../../examples/hello-echo/) using
-`gn::sdk::connect_to` + `Subscription::on_data`.
+Numbers are raw source lines with comments + blank lines stripped.
+GoodNet and the C stacks count from each upstream's canonical
+"hello echo" example (committed as symlinks in
+`~/.cache/goodnet-bench-refs/`). The Rust P2P numbers count the
+in-tree echo benches at `bench/comparison/p2p/{libp2p,iroh}-echo/
+src/main.rs` — full round-trip echo, same shape as
+[`examples/hello-echo/`](../../examples/hello-echo/). Upstream
+rust-libp2p doesn't ship a canonical echo example (the closest is
+`examples/ping/`, ~34 LOC — but it's not an echo).
 
 ## Where the cost goes
 

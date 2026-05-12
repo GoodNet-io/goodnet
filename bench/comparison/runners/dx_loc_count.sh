@@ -11,8 +11,13 @@ set -euo pipefail
 
 count_lines() {
     local path="$1"
+    # Follow symlinks (setup scripts symlink upstream examples into
+    # the cache). Skip blank lines + `//` line comments — same rule
+    # for C and Rust sources so the rows are comparable.
+    if [[ -L "$path" ]]; then
+        path=$(readlink -f "$path")
+    fi
     if [[ -f "$path" ]]; then
-        # Strip blank lines + // comments + /* */ blocks.
         awk '!/^[[:space:]]*$/ && !/^[[:space:]]*\/\//' "$path" | wc -l
     else
         echo 0
@@ -42,15 +47,28 @@ libssh_client=$(count_lines "$cache/libssh/exec_client.c")
 libssh_server=$(count_lines "$cache/libssh/exec_server.c")
 libssh_total=$((libssh_client + libssh_server))
 
+# Rust P2P stacks: count our in-tree echo bench sources rather
+# than upstream `examples/`. Upstream rust-libp2p does not ship a
+# canonical echo example (only `ping` — different shape, not a
+# fair compare with the C echo demos counted above). The in-tree
+# `bench/comparison/p2p/{libp2p,iroh}-echo/src/main.rs` are full
+# round-trip echos that match GoodNet's hello-echo semantics line
+# for line.
+root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+libp2p_rs_total=$(count_lines "$root/bench/comparison/p2p/libp2p-echo/src/main.rs")
+iroh_total=$(count_lines "$root/bench/comparison/p2p/iroh-echo/src/main.rs")
+
 cat <<EOF
 {
   "metric": "dx_loc_hello_world_echo",
   "rows": [
-    {"stack": "goodnet",  "client": $gn_client,      "server": $gn_server,      "total": $gn_total},
-    {"stack": "openssl",  "client": $openssl_client, "server": $openssl_server, "total": $openssl_total},
-    {"stack": "libuv",    "client": $libuv_client,   "server": $libuv_server,   "total": $libuv_total},
-    {"stack": "libssh",   "client": $libssh_client,  "server": $libssh_server,  "total": $libssh_total}
+    {"stack": "goodnet",     "client": $gn_client,      "server": $gn_server,      "total": $gn_total},
+    {"stack": "openssl",     "client": $openssl_client, "server": $openssl_server, "total": $openssl_total},
+    {"stack": "libuv",       "client": $libuv_client,   "server": $libuv_server,   "total": $libuv_total},
+    {"stack": "libssh",      "client": $libssh_client,  "server": $libssh_server,  "total": $libssh_total},
+    {"stack": "rust-libp2p", "client": 0,               "server": $libp2p_rs_total, "total": $libp2p_rs_total},
+    {"stack": "iroh",        "client": 0,               "server": $iroh_total,      "total": $iroh_total}
   ],
-  "note": "lower is better; raw LOC counted (comments + blank lines stripped) from each stack's canonical hello-echo example"
+  "note": "lower is better; raw LOC counted (comments + blank lines stripped) from each stack's canonical hello-echo example. rust stacks ship single-file examples (server column is the whole file, client=0)"
 }
 EOF

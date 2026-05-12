@@ -13,6 +13,7 @@ Inputs can be either:
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -97,6 +98,53 @@ def main(argv):
             parse_comparison(j, aggregated)
 
     out = [f"# Benchmark report — {args.commit_sha}", ""]
+
+    # ── Side-by-side echo round-trip ─────────────────────────────────
+    #
+    # Pivots `*Fixture/EchoRoundtrip/<payload>` gbench rows AND
+    # libp2p / iroh runner tables into a single matrix where rows
+    # are payload sizes and columns are stacks. Lets the reader see
+    # GoodNet vs libp2p vs iroh at the same payload without scrolling
+    # between per-stack sections below.
+    echo_re = re.compile(
+        r"^(?P<plug>Udp|Ws)Fixture/EchoRoundtrip/(?P<sz>\d+)/")
+    by_payload: dict[int, dict[str, float]] = {}
+    for r in aggregated.get("perf", []):
+        m = echo_re.match(r.get("case", ""))
+        if not m or not r.get("throughput_bps"):
+            continue
+        sz = int(m.group("sz"))
+        col = f"GoodNet {m.group('plug').upper()}"
+        by_payload.setdefault(sz, {})[col] = float(r["throughput_bps"])
+    for tbl in aggregated.get("tables", []):
+        if tbl.get("metric") not in (
+                "libp2p_echo_throughput", "iroh_echo_throughput"):
+            continue
+        for row in tbl.get("rows", []):
+            sz = row.get("payload")
+            bps = row.get("bytes_per_sec", 0)
+            if not isinstance(sz, (int, float)) or not bps:
+                continue
+            col = row.get("stack", "?")
+            by_payload.setdefault(int(sz), {})[col] = float(bps)
+    if by_payload:
+        stacks = ["GoodNet UDP", "GoodNet WS", "libp2p", "iroh"]
+        out.append("## Echo round-trip — side-by-side")
+        out.append("")
+        out.append("_loopback, round-trip bytes/sec at the application_")
+        out.append("_layer; one-way send-only numbers live in "
+                   "`## GoodNet plugin matrix` (`Throughput`) and "
+                   "`## Cross-implementation throughput` (iperf3)._")
+        out.append("")
+        out.append("| Payload | " + " | ".join(stacks) + " |")
+        out.append("|---|" + "---|" * len(stacks))
+        for sz in sorted(by_payload):
+            cells = [f"{sz} B"]
+            for col in stacks:
+                v = by_payload[sz].get(col)
+                cells.append(fmt_bytes_per_sec(v) if v else "—")
+            out.append("| " + " | ".join(cells) + " |")
+        out.append("")
 
     if perf := aggregated.get("perf"):
         out.append("## GoodNet plugin matrix")

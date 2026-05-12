@@ -38,21 +38,40 @@ the in-process number is what the plugin overhead alone costs.
 ## External baselines
 
 `bench/comparison/` contains shell drivers for mature
-implementations the report compares against. Run via:
+implementations the report compares against:
+
+| Stack | Setup | Runner | Compares against |
+|---|---|---|---|
+| iperf3 (raw TCP/UDP) | `setup/02_iperf3.sh` | `runners/iperf3_{tcp,udp}.sh` | `*Fixture/Throughput` (send-only) |
+| openssl s_client | `setup/01_openssl.sh` + `05_openssl_demos.sh` | `runners/tls_handshake.sh` | `TlsFixture/HandshakeTime` |
+| socat (AF_UNIX) | (built-in) | `runners/socat_unix.sh` | `IpcFixture/Throughput` |
+| libuv / libssh | `setup/03_libuv.sh` + `04_libssh.sh` | (DX LOC only) | `dx_loc_hello_world_echo` |
+| **rust-libp2p 0.55** | `setup/06_libp2p_rs.sh` | `runners/libp2p_rs.sh` | `*Fixture/EchoRoundtrip` |
+| **iroh 0.32** | `setup/07_iroh.sh` | `runners/iroh.sh` | `*Fixture/EchoRoundtrip` |
+
+Rust P2P baselines run echo round-trip — sources в
+`bench/comparison/p2p/` (см. README там); setup is opt-in (~5 min
+first-time cargo build + ~300 MB transitive deps). `run_all.sh`
+graceful-no-op'ит если бинари не собраны.
+
+Run via:
 
 ```bash
-# One-shot setup
+# One-shot setup (per baseline you want)
 ./bench/comparison/setup/01_openssl.sh
 ./bench/comparison/setup/02_iperf3.sh
+./bench/comparison/setup/06_libp2p_rs.sh   # opt-in
+./bench/comparison/setup/07_iroh.sh        # opt-in
 
 # Run + aggregate
 ./bench/comparison/runners/run_all.sh
 ```
 
-Output: `bench/reports/<commit-sha>.md` — a single markdown table
-that interleaves GoodNet numbers with the matching baseline
-(iperf3 for TCP/UDP throughput, openssl s_client for TLS
-handshake, socat for AF_UNIX echo, etc.).
+Output: `bench/reports/<commit-sha>.md` — markdown отчёт. Самая
+наглядная секция — **`## Echo round-trip — side-by-side`**:
+pivoted таблица где payload-size это строки, а GoodNet UDP/WS /
+libp2p / iroh — колонки, чтобы глаз видел сравнение в одной
+clavicle без скроллинга между секциями.
 
 ## What's not measured (yet)
 
