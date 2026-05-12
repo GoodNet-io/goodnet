@@ -39,55 +39,56 @@ using namespace std::chrono_literals;
 /// TcpLink. Tears down between benchmarks so handshake numbers
 /// are unaffected by warm sockets.
 struct TcpFixture : public ::benchmark::Fixture {
+    /// google-benchmark calls the benchmark body MULTIPLE TIMES on
+    /// the SAME fixture to converge on iteration counts; each call
+    /// re-running listen + connect would stack 2N conns into the
+    /// shared stub. Do the loopback bring-up exactly once and
+    /// guard with `loopback_ready`.
     void SetUp(::benchmark::State&) override {
-        server = std::make_shared<TcpLink>();
-        client = std::make_shared<TcpLink>();
-        server->set_host_api(&server_kernel.api);
-        client->set_host_api(&client_kernel.api);
+        if (loopback_ready) return;
+        link = std::make_shared<TcpLink>();
+        link->set_host_api(&kernel.api);
+        if (link->listen("tcp://127.0.0.1:0") != GN_OK) return;
+        const auto port = link->listen_port();
+        if (port == 0) return;
+        (void)link->connect("tcp://127.0.0.1:" + std::to_string(port));
+        /// Wait for both sides on the same stub.
+        if (!::gn::sdk::test::wait_for(
+                [&] { return kernel.stub.connects.load() >= 2; }, 2s)) {
+            return;
+        }
+        if (!::gn::sdk::test::wait_for(
+                [&] {
+                    return link->stats().active_connections >= 2;
+                }, 1s)) {
+            return;
+        }
+        {
+            std::lock_guard lk(kernel.stub.mu);
+            for (std::size_t i = 0; i < kernel.stub.conns.size(); ++i) {
+                if (kernel.stub.roles[i] == GN_ROLE_INITIATOR) {
+                    initiator_conn = kernel.stub.conns[i];
+                    break;
+                }
+            }
+        }
+        loopback_ready = (initiator_conn != GN_INVALID_ID);
     }
 
     void TearDown(::benchmark::State&) override {
-        client->shutdown();
-        server->shutdown();
-        server.reset();
-        client.reset();
+        if (!loopback_ready && !link) return;
+        if (link) link->shutdown();
+        link.reset();
+        loopback_ready = false;
+        initiator_conn = GN_INVALID_ID;
     }
 
-    /// Race-free handshake: server starts listening on an OS-assigned
-    /// port (`tcp://127.0.0.1:0`), the bench reads it via
-    /// `notify_inbound_bytes` arrival on the client side, then
-    /// drives the loop.
-    bool open_loopback(std::uint16_t* server_port) {
-        const auto rc = server->listen("tcp://127.0.0.1:0");
-        if (rc != GN_OK) return false;
-        /// TcpLink writes the assigned port through the host_api
-        /// notify_connect path on accept. The fixture polls
-        /// `connects.load()` to learn the listening side is up;
-        /// real port discovery needs a small helper because the
-        /// existing surface only surfaces it via composer
-        /// surface. For simplicity the bench fixture uses a
-        /// fixed port and retries.
-        *server_port = pick_loopback_port();
-        return true;
-    }
-
-    /// Find a free loopback port via a one-shot listen. Fixture's
-    /// own server then re-listens on the discovered port. The race
-    /// window is tiny but real — production benches should prefer
-    /// the kernel's `composer_listen_port` introspection where
-    /// available.
-    static std::uint16_t pick_loopback_port() {
-        /// Conservative range, avoiding well-known + ephemeral
-        /// pool overlap. Each bench process picks once so port
-        /// reuse across runs is best-effort.
-        static std::atomic<std::uint16_t> next{19500};
-        return next.fetch_add(1, std::memory_order_relaxed);
-    }
-
-    BenchKernel              server_kernel;
-    BenchKernel              client_kernel;
-    std::shared_ptr<TcpLink> server;
-    std::shared_ptr<TcpLink> client;
+    BenchKernel              kernel;
+    std::shared_ptr<TcpLink> link;
+    std::shared_ptr<TcpLink>& server = link;
+    std::shared_ptr<TcpLink>& client = link;
+    gn_conn_id_t             initiator_conn = GN_INVALID_ID;
+    bool                     loopback_ready = false;
 };
 
 // ── Throughput ────────────────────────────────────────────────────
@@ -96,43 +97,40 @@ BENCHMARK_DEFINE_F(TcpFixture, Throughput)(::benchmark::State& state) {
     const std::size_t payload_size = static_cast<std::size_t>(state.range(0));
     const auto payload = make_payload(payload_size);
 
-    std::uint16_t port = 0;
-    if (!open_loopback(&port)) {
-        state.SkipWithError("listen failed");
+    if (!loopback_ready) {
+        state.SkipWithError("loopback setup failed");
         return;
     }
-
-    /// Listen + connect race: TcpLink's notify_connect is the
-    /// signal. Wait up to 1s; otherwise skip — slow CI shouldn't
-    /// hang the harness.
-    server->listen("tcp://127.0.0.1:" + std::to_string(port));
-    client->connect("tcp://127.0.0.1:" + std::to_string(port));
-    if (!::gn::sdk::test::wait_for(
-            [&] { return client_kernel.stub.connects.load() >= 1; }, 1s)) {
-        state.SkipWithError("handshake timeout");
-        return;
-    }
-    gn_conn_id_t client_conn;
-    {
-        std::lock_guard lk(client_kernel.stub.mu);
-        client_conn = client_kernel.stub.conns.front();
-    }
+    const gn_conn_id_t client_conn = initiator_conn;
 
     ResourceCounters res;
     res.snapshot_start();
+    std::size_t sent_ok = 0;
+    gn_result_t last_err = GN_OK;
     for (auto _ : state) {
-        const auto rc = client->send(client_conn,
+        gn_result_t rc = client->send(client_conn,
             std::span<const std::uint8_t>(payload));
-        if (rc != GN_OK) {
-            state.SkipWithError("send failed mid-loop");
-            break;
+        if (rc == GN_OK) {
+            ++sent_ok;
+        } else {
+            last_err = rc;
+            /// Yield once per failed send so the kernel write
+            /// pump can drain the per-conn queue. Per-iteration
+            /// retries blow up wall-time for high-throughput
+            /// payloads so a single yield is a reasonable
+            /// compromise.
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
         }
     }
     res.snapshot_end();
+    state.counters["last_err"] = static_cast<double>(last_err);
 
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(sent_ok) *
         static_cast<std::int64_t>(payload_size));
+    state.counters["sent_ok"] = static_cast<double>(sent_ok);
+    state.counters["sent_skip"] =
+        static_cast<double>(state.iterations() - sent_ok);
     report_resources(state, res);
 }
 
@@ -150,34 +148,24 @@ BENCHMARK_DEFINE_F(TcpFixture, LatencyRoundtrip)(::benchmark::State& state) {
     const std::size_t payload_size = static_cast<std::size_t>(state.range(0));
     const auto payload = make_payload(payload_size);
 
-    std::uint16_t port = 0;
-    if (!open_loopback(&port)) {
-        state.SkipWithError("listen failed");
+    if (!loopback_ready) {
+        state.SkipWithError("loopback setup failed");
         return;
     }
-    server->listen("tcp://127.0.0.1:" + std::to_string(port));
-    client->connect("tcp://127.0.0.1:" + std::to_string(port));
-    if (!::gn::sdk::test::wait_for(
-            [&] { return client_kernel.stub.connects.load() >= 1; }, 1s)) {
-        state.SkipWithError("handshake timeout");
-        return;
-    }
-    gn_conn_id_t client_conn;
-    gn_conn_id_t server_conn;
+    gn_conn_id_t client_conn = initiator_conn;
+    gn_conn_id_t server_conn = GN_INVALID_ID;
     {
-        std::lock_guard lk(client_kernel.stub.mu);
-        client_conn = client_kernel.stub.conns.front();
+        std::lock_guard lk(kernel.stub.mu);
+        for (std::size_t i = 0; i < kernel.stub.conns.size(); ++i) {
+            if (kernel.stub.roles[i] == GN_ROLE_RESPONDER) {
+                server_conn = kernel.stub.conns[i];
+                break;
+            }
+        }
     }
-    /// Server-side conn id arrives via the server kernel's
-    /// notify_connect; wait for it before driving the loop.
-    if (!::gn::sdk::test::wait_for(
-            [&] { return server_kernel.stub.connects.load() >= 1; }, 1s)) {
-        state.SkipWithError("server-side connect missing");
+    if (server_conn == GN_INVALID_ID) {
+        state.SkipWithError("no responder conn found");
         return;
-    }
-    {
-        std::lock_guard lk(server_kernel.stub.mu);
-        server_conn = server_kernel.stub.conns.front();
     }
 
     RoundTripMeter meter;
@@ -187,13 +175,13 @@ BENCHMARK_DEFINE_F(TcpFixture, LatencyRoundtrip)(::benchmark::State& state) {
     for (auto _ : state) {
         const auto t0 = std::chrono::steady_clock::now();
         const std::size_t inbound_before =
-            server_kernel.stub.inbound.size();
+            kernel.stub.inbound.size();
         (void)client->send(client_conn,
             std::span<const std::uint8_t>(payload));
         if (!::gn::sdk::test::wait_for(
                 [&] {
-                    std::lock_guard lk(server_kernel.stub.mu);
-                    return server_kernel.stub.inbound.size() > inbound_before;
+                    std::lock_guard lk(kernel.stub.mu);
+                    return kernel.stub.inbound.size() > inbound_before;
                 }, 1s)) {
             state.SkipWithError("inbound timeout");
             break;
@@ -228,15 +216,19 @@ BENCHMARK_DEFINE_F(TcpFixture, HandshakeTime)(::benchmark::State& state) {
         BenchKernel server_k, client_k;
         fresh_server->set_host_api(&server_k.api);
         fresh_client->set_host_api(&client_k.api);
-        const auto port = pick_loopback_port();
-        const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
         state.ResumeTiming();
 
         const auto t0 = std::chrono::steady_clock::now();
-        if (fresh_server->listen(uri) != GN_OK) {
+        if (fresh_server->listen("tcp://127.0.0.1:0") != GN_OK) {
             state.SkipWithError("listen failed");
             break;
         }
+        const auto port = fresh_server->listen_port();
+        if (port == 0) {
+            state.SkipWithError("listen_port == 0");
+            break;
+        }
+        const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
         if (fresh_client->connect(uri) != GN_OK) {
             state.SkipWithError("connect failed");
             break;
