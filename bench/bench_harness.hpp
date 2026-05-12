@@ -99,8 +99,13 @@ private:
 };
 
 /// Resource sampler — read `getrusage` + `/proc/self/statm` deltas
-/// across a benchmark body so the report can surface CPU time and
-/// peak resident-set growth alongside throughput.
+/// across a benchmark body so the report can surface CPU time,
+/// page-fault counts, context switches, and resident-set growth
+/// alongside throughput. The getrusage fields together are the
+/// closest userspace proxy for "what did this bench actually cost
+/// the system" — allocation count (minor faults), real I/O
+/// (major faults + block ops), and scheduler pressure (vcsw /
+/// ivcsw) all read from the same syscall.
 class ResourceCounters {
 public:
     void snapshot_start() {
@@ -123,12 +128,66 @@ public:
         return tv_delta_us(before_.ru_stime, after_.ru_stime);
     }
 
-    /// Peak RSS delta (KiB) — positive means the bench grew RSS,
-    /// negative means it shrank (the kernel reclaimed pages during
-    /// the window).
+    /// Total CPU microseconds (user + sys). Compare against
+    /// wall-time to see how parallel the bench actually was —
+    /// `cpu_total_us > wall_us` means worker threads kicked in;
+    /// `cpu_total_us < wall_us` means the bench spent time
+    /// blocked or sleeping.
+    [[nodiscard]] std::uint64_t cpu_total_us() const noexcept {
+        return user_us() + system_us();
+    }
+
+    /// Peak RSS delta (KiB). Positive = bench grew RSS, negative =
+    /// kernel reclaimed pages during the window. Note: `/proc/self/
+    /// statm` reads the CURRENT RSS, not a window max — a bench
+    /// that allocated 1 GB then freed it would show RSS delta = 0.
+    /// For an alloc-proxy with finer granularity see `minor_faults`.
     [[nodiscard]] std::int64_t rss_kb_delta() const noexcept {
         return static_cast<std::int64_t>(rss_kb_end_)
              - static_cast<std::int64_t>(rss_kb_start_);
+    }
+
+    /// Minor page faults during the window — getrusage's
+    /// `ru_minflt`. Each fresh page mapped via malloc / mmap that
+    /// doesn't hit disk costs one minor fault. Closest userspace
+    /// proxy for "how many fresh pages did this bench touch", which
+    /// in turn approximates the heap-allocation count.
+    [[nodiscard]] std::uint64_t minor_faults() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_minflt - before_.ru_minflt);
+    }
+
+    /// Major page faults — `ru_majflt`. Each one hits disk; on a
+    /// well-warmed bench this should be 0. Non-zero = the bench's
+    /// working set spilled out of cache or the kernel paged
+    /// something in.
+    [[nodiscard]] std::uint64_t major_faults() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_majflt - before_.ru_majflt);
+    }
+
+    /// Voluntary context switches — `ru_nvcsw`. The thread gave up
+    /// its slice (waiting on a mutex, condvar, io_context post,
+    /// sleep). High count = lots of synchronisation; low count =
+    /// the bench stayed on-CPU.
+    [[nodiscard]] std::uint64_t vol_ctx_switches() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_nvcsw - before_.ru_nvcsw);
+    }
+
+    /// Involuntary context switches — `ru_nivcsw`. The kernel
+    /// preempted the thread (slice expired, higher-priority task
+    /// arrived). High count = bench saturated CPU and got
+    /// time-sliced.
+    [[nodiscard]] std::uint64_t inv_ctx_switches() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_nivcsw - before_.ru_nivcsw);
+    }
+
+    /// Block I/O — `ru_inblock` + `ru_oublock`. Disk-bound benches
+    /// (config reload, plugin dlopen, certificate parse from PEM)
+    /// surface here; pure-CPU + memory benches stay at 0.
+    [[nodiscard]] std::uint64_t block_io_in() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_inblock - before_.ru_inblock);
+    }
+    [[nodiscard]] std::uint64_t block_io_out() const noexcept {
+        return static_cast<std::uint64_t>(after_.ru_oublock - before_.ru_oublock);
     }
 
 private:
@@ -185,9 +244,16 @@ inline void report_latency(::benchmark::State& s, RoundTripMeter& m) {
 }
 
 inline void report_resources(::benchmark::State& s, const ResourceCounters& r) {
-    s.counters["cpu_user_us"]  = static_cast<double>(r.user_us());
-    s.counters["cpu_sys_us"]   = static_cast<double>(r.system_us());
-    s.counters["rss_kb_delta"] = static_cast<double>(r.rss_kb_delta());
+    s.counters["cpu_user_us"]    = static_cast<double>(r.user_us());
+    s.counters["cpu_sys_us"]     = static_cast<double>(r.system_us());
+    s.counters["cpu_total_us"]   = static_cast<double>(r.cpu_total_us());
+    s.counters["rss_kb_delta"]   = static_cast<double>(r.rss_kb_delta());
+    s.counters["minor_faults"]   = static_cast<double>(r.minor_faults());
+    s.counters["major_faults"]   = static_cast<double>(r.major_faults());
+    s.counters["vol_ctx_sw"]     = static_cast<double>(r.vol_ctx_switches());
+    s.counters["inv_ctx_sw"]     = static_cast<double>(r.inv_ctx_switches());
+    s.counters["block_io_in"]    = static_cast<double>(r.block_io_in());
+    s.counters["block_io_out"]   = static_cast<double>(r.block_io_out());
 }
 
 }  // namespace gn::bench
