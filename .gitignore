@@ -130,6 +130,8 @@ tests/integration/
 !bench/**/*.md
 !bench/**/*.sh
 !bench/**/*.py
+!bench/**/*.rs
+!bench/**/*.toml
 !bench/**/CMakeLists.txt
 !bench/**/LICENSE
 

@@ -11,7 +11,8 @@
 set -euo pipefail
 
 duration="${1:-3}"
-bin="${GN_BENCH_P2P_DIR:-/tmp/p2p-bench}/target/release/iroh-echo"
+root="$(git rev-parse --show-toplevel 2>/dev/null || echo .)"
+bin="${GN_BENCH_P2P_DIR:-$root/build-release/p2p-bench}/target/release/iroh-echo"
 
 if [[ ! -x "$bin" ]]; then
     cat <<EOF

@@ -65,12 +65,13 @@ fi
 # baselines for the EchoRoundtrip fixtures in bench_udp / bench_ws.
 # Setup scripts build the binaries into $GN_BENCH_P2P_DIR; the
 # runners no-op gracefully if the bins are absent.
-if [[ -x "${GN_BENCH_P2P_DIR:-/tmp/p2p-bench}/target/release/libp2p-echo" ]]; then
+p2p_root="${GN_BENCH_P2P_DIR:-$(pwd)/build-release/p2p-bench}/target/release"
+if [[ -x "$p2p_root/libp2p-echo" ]]; then
     echo "  libp2p (rust) echo..."
     bench/comparison/runners/libp2p_rs.sh 3 > "$tmp/libp2p_rs.json" \
         2>/dev/null || true
 fi
-if [[ -x "${GN_BENCH_P2P_DIR:-/tmp/p2p-bench}/target/release/iroh-echo" ]]; then
+if [[ -x "$p2p_root/iroh-echo" ]]; then
     echo "  iroh (rust) echo..."
     bench/comparison/runners/iroh.sh 3 > "$tmp/iroh.json" \
         2>/dev/null || true
