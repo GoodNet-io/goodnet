@@ -35,9 +35,12 @@ import yaml  # noqa: E402
 
 from livedoc import (  # noqa: E402
     abi_extract,
+    config_keys,
     inventory,
     markdown_inject,
+    metrics_catalog,
     renderers,
+    rfc_coverage,
     roadmap_status,
 )
 
@@ -55,6 +58,13 @@ def step_roadmap() -> None:
     roadmap_status.write()
 
 
+def step_catalogs() -> None:
+    """Refresh fact-files that grep the source tree directly."""
+    metrics_catalog.write()
+    config_keys.write()
+    rfc_coverage.write()
+
+
 def _load_facts() -> dict:
     """Load every fact file into a single dict for the renderers."""
     out = {}
@@ -66,7 +76,7 @@ def _load_facts() -> dict:
 def _build_regions(facts: dict) -> dict[str, str]:
     """Pre-render every named region body keyed by marker name."""
     plugins = inventory.discover_all()
-    return {
+    regions = {
         "host_api_summary":       renderers.host_api_summary(facts["host_api"]),
         "host_api_slots":         renderers.host_api_slots(facts["host_api"]),
         "host_api_size":          renderers.abi_size(facts["host_api"]),
@@ -86,7 +96,52 @@ def _build_regions(facts: dict) -> dict[str, str]:
         "link_carriers_list":     renderers.link_carriers_list(
                                        plugins["links"]),
         "plugin_inventory":       renderers.plugin_inventory(plugins),
+        "metrics_catalog_table":  renderers.metrics_catalog_table(
+                                       facts.get("metrics_catalog", {})),
+        "config_keys_table":      renderers.config_keys_table(
+                                       facts.get("config_keys", {})),
+        "rfc_coverage_table":     renderers.rfc_coverage_table(
+                                       facts.get("rfc_coverage", {})),
     }
+    # Diagram embeds — one marker per SVG. Captions short enough to
+    # land under the image without scrolling. Add new SVGs here so
+    # any prose doc can embed them via <!-- livedoc:embed_<name> -->.
+    embed_specs = {
+        "architecture":          "Kernel ABI surface, registries, and the eight plugin slots.",
+        "kernel_fsm":            "Kernel lifecycle: created → started → stopped → destroyed.",
+        "connection_fsm":        "Per-connection state machine through handshake to ready.",
+        "connection_lifecycle":  "End-to-end conn lifetime: link → noise → attestation → ready.",
+        "message_inbound":       "Inbound envelope path from socket bytes to handler dispatch.",
+        "message_outbound":      "Outbound envelope path from host_api->send to wire bytes.",
+        "noise_handshake":       "Noise XX three-message handshake with key derivation steps.",
+        "security_pipeline":     "Security pipeline: dial → notify_connect → Noise → attestation → trust upgrade.",
+        "dispatch_chain":        "Handler priority chain and propagation control.",
+        "sharded_registry":      "Sharded registry layout: per-shard mutex + lock-free lookup.",
+        "cas_backpressure":      "Backpressure CAS loop for per-connection drain scheduling.",
+        "dlopen_pipeline":       "Plugin dlopen pipeline: discover → load → init → register.",
+        "plugin_separation":     "Plugin process / git boundary — each plugin in its own checkout.",
+        "c_cpp_bridging":        "C ABI ↔ C++ implementation bridging across the SDK boundary.",
+        "nonce_window":          "Anti-replay nonce window in the Noise transport phase.",
+        "signal_bus":            "Signal-bus fanout for OFFER / ANSWER / EOC.",
+        "extension_query":       "Extension query path: query_extension_checked → vtable handoff.",
+        "host_api_kinds":        "host_api_t KIND-tagged register/unregister discipline.",
+        "composer_extension":    "Composer surface dispatch via bit-63 kComposerIdBit on conn-id.",
+        "turn_stream_framing":   "TURN-over-TCP / TLS 16-bit length-prefix framing path.",
+        "quic_carrier_dispatch": "QUIC carrier scheme detect: 64-hex → ICE, else → UDP.",
+        "handler_kinds":         "Four vtable families: handler, link, security, link-extension.",
+        "link_carriers":         "Link plugin family overview discovered from plugins/links/.",
+    }
+    for name, caption in embed_specs.items():
+        regions[f"embed_{name}"] = renderers.embed_diagram(
+            name, caption=caption,
+        )
+    # Per-plugin page bodies — one per discovered plugin. Marker
+    # name is `plugin_page_<kind>_<name>`.
+    for kind, entries in plugins.items():
+        for entry in entries:
+            marker = f"plugin_page_{kind}_{entry['name']}"
+            regions[marker] = renderers.plugin_page(entry, kind=kind)
+    return regions
 
 
 def step_inject() -> list[Path]:
@@ -116,6 +171,7 @@ def step_diagrams() -> None:
 def run_all() -> list[Path]:
     step_abi()
     step_roadmap()
+    step_catalogs()
     step_diagrams()
     return step_inject()
 
@@ -168,6 +224,8 @@ def main(argv: list[str]) -> int:
     p.add_argument("--all", action="store_true")
     p.add_argument("--abi", action="store_true")
     p.add_argument("--roadmap", action="store_true")
+    p.add_argument("--catalogs", action="store_true",
+                   help="metrics + config keys + RFC coverage")
     p.add_argument("--diagrams", action="store_true")
     p.add_argument("--inject", action="store_true")
     p.add_argument("--check", action="store_true")
@@ -176,13 +234,16 @@ def main(argv: list[str]) -> int:
     if a.check:
         return run_check()
 
-    if not any([a.all, a.abi, a.roadmap, a.diagrams, a.inject]):
+    if not any([a.all, a.abi, a.roadmap, a.catalogs,
+                a.diagrams, a.inject]):
         a.all = True
 
     if a.all or a.abi:
         step_abi()
     if a.all or a.roadmap:
         step_roadmap()
+    if a.all or a.catalogs:
+        step_catalogs()
     if a.all or a.diagrams:
         step_diagrams()
     if a.all or a.inject:

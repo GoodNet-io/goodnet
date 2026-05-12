@@ -184,3 +184,152 @@ def abi_size(facts: dict) -> str:
         f"{GENERATED_NOTE}\n\n"
         f"`{struct}` — **{n_slots} named slots** + `{n_res}` reserved."
     )
+
+
+# ── Metrics + config catalogs ───────────────────────────────────────
+
+def metrics_catalog_table(facts: dict) -> str:
+    """Table of counters discovered by emit_counter grep."""
+    rows = facts.get("counters") or []
+    if not rows:
+        return f"{GENERATED_NOTE}\n\n_No counters discovered._"
+    lines = [GENERATED_NOTE, ""]
+    lines.append(f"_{len(rows)} counter name(s) emitted across the tree._")
+    lines.append("")
+    lines.append("| Counter | Family | Emitted from |")
+    lines.append("|---|---|---|")
+    for c in rows:
+        srcs = c.get("sources", [])
+        # Collapse to unique file paths to keep the cell readable.
+        files = sorted({s["file"] for s in srcs})
+        cells = ", ".join(
+            f"[`{f}`](../../{f})" for f in files[:4]
+        )
+        if len(files) > 4:
+            cells += f" + {len(files) - 4} more"
+        lines.append(f"| `{c['name']}` | {c['family']} | {cells} |")
+    return "\n".join(lines)
+
+
+def config_keys_table(facts: dict) -> str:
+    """Table of config keys read via gn_config_get_*."""
+    rows = facts.get("keys") or []
+    if not rows:
+        return f"{GENERATED_NOTE}\n\n_No config keys discovered._"
+    by_family: dict[str, list[dict]] = {}
+    for k in rows:
+        by_family.setdefault(k.get("family", "misc"), []).append(k)
+    lines = [GENERATED_NOTE, ""]
+    lines.append(f"_{len(rows)} config key(s) read by core / plugins, "
+                 f"grouped by family._")
+    lines.append("")
+    for fam in sorted(by_family):
+        lines.append(f"### `{fam}` keys")
+        lines.append("")
+        lines.append("| Key | Type | Reader |")
+        lines.append("|---|---|---|")
+        for k in by_family[fam]:
+            first = (k.get("sources") or [{}])[0]
+            f = first.get("file", "")
+            line = first.get("line", "")
+            anchor = f"[`{f}#L{line}`](../../{f}#L{line})" if f else "—"
+            lines.append(f"| `{k['name']}` | `{k['type']}` | {anchor} |")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+# ── RFC coverage ────────────────────────────────────────────────────
+
+_RFC_STATUS_BADGE = {
+    "full":     "✓ full",
+    "partial":  "🚧 partial",
+    "planned":  "○ planned",
+    "out":      "— out of scope",
+}
+
+
+def rfc_coverage_table(facts: dict) -> str:
+    """Hand-curated RFC implementation map."""
+    rows = facts.get("rfcs") or []
+    if not rows:
+        return f"{GENERATED_NOTE}\n\n_No RFC coverage entries._"
+    by_area: dict[str, list[dict]] = {}
+    for r in rows:
+        by_area.setdefault(r.get("area", "misc"), []).append(r)
+    lines = [GENERATED_NOTE, ""]
+    for area in sorted(by_area):
+        lines.append(f"### {area}")
+        lines.append("")
+        lines.append("| RFC | Title | Status | Implementation |")
+        lines.append("|---|---|---|---|")
+        for r in by_area[area]:
+            badge = _RFC_STATUS_BADGE.get(r.get("status", "planned"), "—")
+            impl = r.get("implementation", "")
+            if impl.startswith("plugins/") or impl.startswith("core/"):
+                impl_md = f"[`{impl}`](../../{impl})"
+            else:
+                impl_md = impl
+            lines.append(
+                f"| [RFC {r['rfc']}]"
+                f"(https://datatracker.ietf.org/doc/html/rfc{r['rfc']}) "
+                f"| {r.get('title','—')} | {badge} | {impl_md} |"
+            )
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+# ── Diagram embedder ────────────────────────────────────────────────
+
+def embed_diagram(name: str, *, caption: str | None = None,
+                  alt: str | None = None) -> str:
+    """Embed an SVG from docs/img/<name>.svg by markdown image ref.
+
+    The caption renders as an italic line beneath the image so a
+    reader scanning the doc gets a one-line synopsis without
+    clicking through to the SVG.
+    """
+    img_alt = alt or name.replace("_", " ")
+    body = [
+        GENERATED_NOTE,
+        "",
+        f"![{img_alt}](../img/{name}.svg)",
+    ]
+    if caption:
+        body.append("")
+        body.append(f"_{caption}_")
+    return "\n".join(body)
+
+
+# ── Per-plugin page renderer ────────────────────────────────────────
+
+def plugin_page(plugin: dict, *, kind: str) -> str:
+    """Render a single plugin's auto-page from an inventory entry."""
+    name = plugin.get("name", "?")
+    path = plugin.get("path", "?")
+    notes = plugin.get("notes", "")
+    lines = [
+        GENERATED_NOTE,
+        "",
+        f"**Kind:** {kind}",
+        f"**Source tree:** [`{path}`](../../{path})",
+        f"**Slot:** `gn.link.{name}`" if kind == "links"
+        else f"**Slot:** `{name}`",
+    ]
+    if kind == "links":
+        schemes = plugin.get("schemes") or []
+        if schemes:
+            lines.append("**URI schemes:** "
+                         + ", ".join(f"`{s}`" for s in schemes))
+        composer = "yes" if plugin.get("composer") else "no"
+        lines.append(f"**Composer surface:** {composer}")
+    lines.append("")
+    if notes:
+        lines.append(f"_{notes}_")
+        lines.append("")
+    lines.append("## Source")
+    lines.append("")
+    lines.append(f"This page summarises [`{path}/README.md`](../../{path}/README.md). "
+                 f"For build instructions, configure flags, and contract details "
+                 f"open the plugin's own README directly.")
+    return "\n".join(lines)
+

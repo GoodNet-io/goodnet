@@ -1,0 +1,18 @@
+counters:
+- name: drop.queue_hard_cap
+  family: drop
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ipc/ipc.cpp
+    line: 551
+  - file: plugins/links/ipc/ipc.cpp
+    line: 579
+  - file: plugins/links/tcp/tcp.cpp
+    line: 726
+  - file: plugins/links/tcp/tcp.cpp
+    line: 766
+  - file: plugins/links/tls/tls.cpp
+    line: 774
+  - file: plugins/links/tls/tls.cpp
+    line: 812

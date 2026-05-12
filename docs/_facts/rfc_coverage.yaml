@@ -1,0 +1,85 @@
+rfcs:
+- rfc: 8445
+  title: Interactive Connectivity Establishment (ICE)
+  area: ICE / NAT traversal
+  status: full
+  implementation: plugins/links/ice
+  notes: Triggered Checks §7.3.1.4, Regular Nomination §8.1.1 (aggressive via ice.aggressive_nomination),
+    full controlled/controlling state machine.
+- rfc: 5389
+  title: Session Traversal Utilities for NAT (STUN)
+  area: ICE / NAT traversal
+  status: full
+  implementation: plugins/links/ice
+  notes: Including §7.2.2 16-bit length-prefix framing for STUN-over-TCP / TLS.
+- rfc: 5766
+  title: Traversal Using Relays around NAT (TURN)
+  area: ICE / NAT traversal
+  status: full
+  implementation: plugins/links/ice
+  notes: ChannelBind / ChannelData fast path §11, allocation, permissions, Send-Indication
+    fallback.
+- rfc: 8838
+  title: Trickle ICE for SDP
+  area: ICE / NAT traversal
+  status: partial
+  implementation: plugins/links/ice
+  notes: End-of-candidates marker §10 signalled via OFFER_EOC / ANSWER_EOC; full SDP
+    integration out of scope (kernel uses a key-exchange-based offer/answer, not SDP).
+- rfc: 8305
+  title: Happy Eyeballs Version 2
+  area: ICE / NAT traversal
+  status: partial
+  implementation: plugins/links/ice
+  notes: Dual-family pre-fire in begin_checks; full DNS-stage staggering not relevant
+    — ICE works with already-resolved candidates.
+- rfc: 8899
+  title: Packetization Layer Path MTU Discovery for Datagram Transports
+  area: ICE / NAT traversal
+  status: planned
+  implementation: plugins/links/ice
+  notes: Config knob ice.path_mtu in place; probe-based discovery tracked in ROADMAP.
+- rfc: 8085
+  title: UDP Usage Guidelines
+  area: ICE / NAT traversal
+  status: full
+  implementation: plugins/links/ice
+  notes: Pacing + consent-freshness compliant; verified in unit tests.
+- rfc: 7748
+  title: Elliptic Curves for Security (Curve25519, Curve448)
+  area: Noise / cryptography
+  status: full
+  implementation: plugins/security/noise
+  notes: X25519 ECDH via libsodium; aligned with the Noise spec.
+- rfc: 7693
+  title: BLAKE2 Crypto Hash and MAC
+  area: Noise / cryptography
+  status: full
+  implementation: plugins/security/noise
+  notes: Used for Noise CipherState init via libsodium.
+- rfc: 9000
+  title: QUIC — A UDP-Based Multiplexed and Secure Transport
+  area: QUIC
+  status: partial
+  implementation: plugins/links/quic
+  notes: 'ngtcp2-backed; works over plain UDP carrier. Carrier scheme detect: 64-hex
+    peer-pk → gn.link.ice carrier (route detection only, end-to-end handshake over
+    ICE nominated pair tracked in ROADMAP).'
+- rfc: 8446
+  title: TLS 1.3
+  area: TLS
+  status: full
+  implementation: plugins/links/tls
+  notes: OpenSSL backend; TLS 1.3 minimum pinned in plugins/links/tls.
+- rfc: 6455
+  title: The WebSocket Protocol
+  area: WebSocket
+  status: full
+  implementation: plugins/links/ws
+  notes: Server + client framing including masking, control frames, close codes.
+- rfc: 5389
+  title: STUN — Short-Term Credential (alias)
+  area: WebSocket
+  status: out
+  implementation: ''
+  notes: Not applicable to ws transport; listed once under ICE.
