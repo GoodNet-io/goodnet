@@ -137,3 +137,4 @@ tests/integration/
 
 # manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
 manifesto/
+plugins/strategies/
