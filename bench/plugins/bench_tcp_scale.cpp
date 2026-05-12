@@ -114,6 +114,17 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
         static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size));
     state.counters["conns"] = static_cast<double>(conn_count);
+    /// Memory-scaling axis: per-conn RSS growth so the report can
+    /// flag super-linear footprint as the conn count climbs. Divide
+    /// by `conn_count` so the column reads as KiB / conn rather
+    /// than aggregate; 0 when the kernel has not allocated any
+    /// fresh pages during the window (typically the small-conn
+    /// rows).
+    if (conn_count > 0) {
+        state.counters["rss_per_conn_kb"] =
+            static_cast<double>(res.rss_kb_delta())
+            / static_cast<double>(conn_count);
+    }
     report_resources(state, res);
 }
 
@@ -121,6 +132,7 @@ BENCHMARK_REGISTER_F(TcpScaleFixture, ConnectionCountScale)
     ->Arg(1)
     ->Arg(10)
     ->Arg(100)
+    ->Arg(1000)  // requires ulimit -n 4096+; see bench/README.md
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
