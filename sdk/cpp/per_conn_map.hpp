@@ -97,6 +97,14 @@ public:
         impl_->m.erase(conn);
     }
 
+    /// Drop every entry. Does NOT fire the disconnect handler — use
+    /// when the caller wants the entire map reset (e.g., handler
+    /// shutdown / test-isolation reset).
+    void clear() {
+        std::lock_guard lk(impl_->mu);
+        impl_->m.clear();
+    }
+
     [[nodiscard]] std::size_t size() const noexcept {
         std::lock_guard lk(impl_->mu);
         return impl_->m.size();
