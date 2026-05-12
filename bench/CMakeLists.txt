@@ -54,6 +54,35 @@ if(TARGET goodnet_udp_objects)
     goodnet_add_bench(bench_udp plugins/bench_udp.cpp goodnet_udp_objects)
 endif()
 
-# Composition + comparison benches arrive in follow-ups; the harness
-# library is the foundation. Per-plugin TCP / UDP land first as the
-# canonical templates the rest copy.
+if(TARGET goodnet_ipc_objects)
+    goodnet_add_bench(bench_ipc plugins/bench_ipc.cpp goodnet_ipc_objects)
+endif()
+
+# TLS bench rides over a TCP carrier so its target links both objects.
+# OpenSSL is pulled in through the TLS plugin's transitive deps.
+if(TARGET goodnet_tls_objects AND TARGET goodnet_tcp_objects)
+    add_executable(bench_tls plugins/bench_tls.cpp)
+    target_link_libraries(bench_tls PRIVATE
+        goodnet_bench_harness
+        goodnet_tls_objects
+        goodnet_tcp_objects
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_tls PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+# QUIC / WS / DTLS / ICE benches follow the same pattern as TLS once
+# the rest of the comprehensive matrix lands. Composition stacks
+# (Noise-over-QUIC, WSS-over-TLS) layer N+1 plugins behind their own
+# bench binaries so the report can decompose per-layer overhead.
+
+# Cross-implementation comparison binaries live under bench/comparison/
+# but ship as shell scripts wrapping curl / openssl s_client / etc.
+# rather than C++ — see bench/comparison/README.md for the harness
+# layout that drives both GoodNet and reference stacks through the
+# same payload matrix.

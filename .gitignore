@@ -129,6 +129,7 @@ tests/integration/
 !bench/**/*.hpp
 !bench/**/*.md
 !bench/**/*.sh
+!bench/**/*.py
 !bench/**/CMakeLists.txt
 !bench/**/LICENSE
 
