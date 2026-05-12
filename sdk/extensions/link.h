@@ -28,6 +28,7 @@
 #include <stdint.h>
 
 #include <sdk/abi.h>
+#include <sdk/conn_events.h>  /* gn_subscription_id_t for accept-bus */
 #include <sdk/link.h>
 #include <sdk/types.h>
 
@@ -105,6 +106,22 @@ typedef void (*gn_link_data_cb_t)(
     size_t         size);
 
 /**
+ * @brief Accept-side callback for composer plugins.
+ *
+ * Fires once per L1 connection a composer-listen acceptor admits.
+ * The composer typically responds by installing a data callback for
+ * @p new_conn (via @ref gn_link_api_t::subscribe_data) and starting
+ * its own handshake (HTTP upgrade for WSS, TLS ClientHello, ICE STUN,
+ * ...). `peer_uri` is the canonical URI of the remote peer
+ * (`tcp://host:port`, `udp://host:port`, ...) for logging /
+ * trust-class derivation; `@borrowed` for the call duration.
+ */
+typedef void (*gn_link_accept_cb_t)(
+    void*          user_data,
+    gn_conn_id_t   new_conn,
+    const char*    peer_uri);
+
+/**
  * @brief Vtable surfaced under `gn.link.<scheme>`.
  *
  * `ctx` is the plugin's `self` pointer; every entry takes it as the
@@ -117,11 +134,15 @@ typedef void (*gn_link_data_cb_t)(
  *     (TCP, IPC, UDP) against the kernel-managed connection set.
  *
  *   * **Composer** — `listen`, `connect`, `subscribe_data`,
- *     `unsubscribe_data`. Reserved for layer-2 composition where the
- *     composer plugin owns the conn lifecycle independent of the
- *     kernel's `notify_connect` flow. Baseline links return
+ *     `unsubscribe_data`, `subscribe_accept`, `unsubscribe_accept`.
+ *     Reserved for layer-2 composition where the composer plugin
+ *     owns the conn lifecycle independent of the kernel's
+ *     `notify_connect` flow. Baseline links return
  *     `GN_ERR_NOT_IMPLEMENTED` until the corresponding L2 link
  *     (WSS, TLS, ICE) lands and the contract is exercised end-to-end.
+ *     `subscribe_accept` lets the composer learn about each inbound
+ *     conn the L1 acceptor admits, so it can install per-conn data
+ *     subscriptions and run its own handshake.
  *
  * Implementations always provide every slot to keep the C ABI table
  * shape stable; an unimplemented slot returns `GN_ERR_NOT_IMPLEMENTED`
@@ -227,6 +248,38 @@ typedef struct gn_link_api_s {
      *        Returns @ref GN_OK no-op when no subscription was active.
      */
     gn_result_t (*unsubscribe_data)(void* ctx, gn_conn_id_t conn);
+
+    /**
+     * @brief Install an accept-side callback fired once per L1 conn
+     *        the composer-`listen` acceptor admits. Returns
+     *        @ref GN_ERR_NOT_IMPLEMENTED on links that don't expose a
+     *        composer-listen surface.
+     *
+     * Multiple subscribers may register at once; each fire visits every
+     * subscriber under the producer's accept strand. The token returned
+     * in @p out_token is opaque and must be passed back to @ref
+     * unsubscribe_accept to remove the subscription.
+     *
+     * @param cb        @borrowed function pointer; the plugin keeps it
+     *                  alive until `unsubscribe_accept` returns for the
+     *                  matching token.
+     * @param user_data @borrowed under the same lifetime as @p cb;
+     *                  pass-through on every callback invocation.
+     * @param out_token @borrowed caller-allocated; the plugin writes
+     *                  the subscription token on success.
+     */
+    gn_result_t (*subscribe_accept)(void* ctx,
+                                    gn_link_accept_cb_t cb,
+                                    void* user_data,
+                                    gn_subscription_id_t* out_token);
+
+    /**
+     * @brief Remove the accept-bus subscription identified by
+     *        @p token. Returns @ref GN_OK no-op when the token is
+     *        unknown.
+     */
+    gn_result_t (*unsubscribe_accept)(void* ctx,
+                                      gn_subscription_id_t token);
 
     /**
      * @brief Plugin self pointer. Pass-through to every slot's first

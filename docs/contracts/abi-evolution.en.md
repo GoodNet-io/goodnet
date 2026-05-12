@@ -180,6 +180,7 @@ without `git log`-archaeology.
 |---|---|---|---|
 | 2026-05-08 | `gn_register_meta_t` | additive: new `const char* protocol_id` slot before existing `_reserved[4]` (LINK kind declares mesh-framing layer); reserved tail unchanged | `feat/protocol-layer-registry` |
 | 2026-05-09 | `gn_register_meta_t` | promoted `_reserved[3] → const char* namespace_id` before remaining `_reserved[3]` (HANDLER kind declares tenant scope) | `feat/lifecycle-namespaces` |
+| 2026-05-12 | `gn_link_api_t` | inline reshape: two new slots `subscribe_accept` / `unsubscribe_accept` inserted before `ctx` (composer accept-bus); `_reserved[4]` tail unchanged; sizeof grows 120 → 136 bytes — covered by api_size versioning | `feat/link-bus-and-dsl-core` |
 
 ---
 

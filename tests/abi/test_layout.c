@@ -497,8 +497,8 @@ _Static_assert(offsetof(gn_link_stats_t, active_connections) == 32,
 _Static_assert(offsetof(gn_link_stats_t, _reserved) == 40,
                "gn_link_stats_t::_reserved offset pinned at 40");
 
-_Static_assert(sizeof(gn_link_api_t) == 120,
-               "gn_link_api_t size pinned at 120");
+_Static_assert(sizeof(gn_link_api_t) == 136,
+               "gn_link_api_t size pinned at 136 (post accept-bus reshape)");
 _Static_assert(offsetof(gn_link_api_t, api_size) == 0,
                "gn_link_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_link_api_t, get_stats) == 8,
@@ -519,7 +519,11 @@ _Static_assert(offsetof(gn_link_api_t, subscribe_data) == 64,
                "gn_link_api_t::subscribe_data offset pinned at 64");
 _Static_assert(offsetof(gn_link_api_t, unsubscribe_data) == 72,
                "gn_link_api_t::unsubscribe_data offset pinned at 72");
-_Static_assert(offsetof(gn_link_api_t, ctx) == 80,
-               "gn_link_api_t::ctx offset pinned at 80");
-_Static_assert(offsetof(gn_link_api_t, _reserved) == 88,
-               "gn_link_api_t::_reserved offset pinned at 88");
+_Static_assert(offsetof(gn_link_api_t, subscribe_accept) == 80,
+               "gn_link_api_t::subscribe_accept offset pinned at 80");
+_Static_assert(offsetof(gn_link_api_t, unsubscribe_accept) == 88,
+               "gn_link_api_t::unsubscribe_accept offset pinned at 88");
+_Static_assert(offsetof(gn_link_api_t, ctx) == 96,
+               "gn_link_api_t::ctx offset pinned at 96");
+_Static_assert(offsetof(gn_link_api_t, _reserved) == 104,
+               "gn_link_api_t::_reserved offset pinned at 104");

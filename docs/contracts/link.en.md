@@ -242,6 +242,7 @@ composition (WSS-over-TCP, TLS-over-TCP, ICE-over-UDP):
 | Composer | `listen` | consumer → producer | bind without engaging `notify_connect` |
 | Composer | `connect` | consumer → producer | open an L1 conn whose lifecycle the consumer owns |
 | Composer | `subscribe_data` / `unsubscribe_data` | consumer → producer | install a pull-style receive callback for L2 framing |
+| Composer | `subscribe_accept` / `unsubscribe_accept` | consumer → producer | accept-bus: fires once per accepted L1 conn on composer-`listen` |
 
 Steady slots are functional in every baseline plugin in v1.0.x. The
 composer slots are reserved for the L2 family — WSS, TLS, ICE — and
@@ -250,6 +251,37 @@ first L2 composer plugin lands and the contract is exercised
 end-to-end. Implementations always provide every slot pointer;
 unimplemented behaviour surfaces through the return code, never
 through a NULL slot.
+
+### Accept-bus flow
+
+A composer that owns an L2 protocol on top of an L1 stream typically
+uses both halves of the composer surface together:
+
+  1. `query_extension_checked("gn.link.<L1>", GN_EXT_LINK_VERSION, ...)`
+     to grab the producer's `gn_link_api_t*`.
+  2. `subscribe_accept(ctx, accept_cb, ud, &token)` *before*
+     `listen` so the consumer can't miss the first inbound conn.
+  3. `listen(ctx, "<L1>://host:port")` — the producer opens the L1
+     acceptor; every accept fires every registered `accept_cb` once
+     with the freshly-allocated `gn_conn_id_t` and the peer URI.
+  4. From inside `accept_cb`, install `subscribe_data(conn, ...)`
+     and start the L2 handshake (HTTP upgrade for WSS, ClientHello
+     for TLS, STUN binding for ICE-on-UDP).
+  5. On graceful or peer-initiated teardown call `close(conn, 0)` and
+     `unsubscribe_data(conn)`; on plugin shutdown call
+     `unsubscribe_accept(token)` to stop the accept fan-out.
+
+The producer must invoke every subscriber on every accept under a
+serializing strand so two callbacks on the same conn never run
+concurrently. `unsubscribe_*` waits for any in-flight callback on the
+target token / conn to drain before returning, so the consumer can
+safely release captured state immediately after.
+
+For the C++ SDK, `gn::sdk::LinkCarrier` (in
+`sdk/cpp/link_carrier.hpp`) packages the full flow into a RAII
+handle: `query` returns a `std::optional<LinkCarrier>`,
+`on_accept` / `on_data` take `std::function` lambdas, and the dtor
+drops every subscription.
 
 The plugin returns its `(name, vtable)` pair from the two
 `extension_*` slots in §2; the kernel publishes them through
