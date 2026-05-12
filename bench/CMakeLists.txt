@@ -76,10 +76,62 @@ if(TARGET goodnet_tls_objects AND TARGET goodnet_tcp_objects)
     )
 endif()
 
-# QUIC / WS / DTLS / ICE benches follow the same pattern as TLS once
-# the rest of the comprehensive matrix lands. Composition stacks
-# (Noise-over-QUIC, WSS-over-TLS) layer N+1 plugins behind their own
-# bench binaries so the report can decompose per-layer overhead.
+if(TARGET goodnet_ws_objects AND TARGET goodnet_tcp_objects)
+    add_executable(bench_ws plugins/bench_ws.cpp)
+    target_link_libraries(bench_ws PRIVATE
+        goodnet_bench_harness
+        goodnet_ws_objects
+        goodnet_tcp_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_ws PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+if(TARGET goodnet_quic_objects AND TARGET goodnet_udp_objects)
+    add_executable(bench_quic plugins/bench_quic.cpp)
+    target_link_libraries(bench_quic PRIVATE
+        goodnet_bench_harness
+        goodnet_quic_objects
+        goodnet_udp_objects
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_quic PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+if(TARGET goodnet_tls_objects AND TARGET goodnet_udp_objects)
+    add_executable(bench_dtls plugins/bench_dtls.cpp)
+    target_link_libraries(bench_dtls PRIVATE
+        goodnet_bench_harness
+        goodnet_tls_objects
+        goodnet_udp_objects
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_dtls PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+# ICE composer bench rides a UDP carrier; without real ICE
+# nomination signaling between two stacks in-process it can only
+# measure carrier surface overhead. Future bench adds a mock
+# signaling channel.
+
+# Composition stacks (Noise-over-QUIC, WSS-over-TLS) land in a
+# follow-up — bench/composition/ for the dedicated suite that
+# layers N+1 plugins so the report can decompose per-layer
+# overhead.
 
 # Cross-implementation comparison binaries live under bench/comparison/
 # but ship as shell scripts wrapping curl / openssl s_client / etc.
