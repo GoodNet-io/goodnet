@@ -161,6 +161,25 @@ if(TARGET goodnet_ws_objects AND TARGET goodnet_tls_objects
     )
 endif()
 
+# Noise pattern handshake + transport AEAD benches — direct against
+# the noise plugin's HandshakeState/CipherState. No sockets,
+# isolates pure crypto cost (handshake DH + HKDF + AEAD).
+if(TARGET goodnet_noise_objects)
+    add_executable(bench_noise composition/bench_noise.cpp)
+    target_link_libraries(bench_noise PRIVATE
+        goodnet_bench_harness
+        goodnet_noise_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    target_include_directories(bench_noise PRIVATE
+        ${CMAKE_SOURCE_DIR}/plugins/security/noise)
+    set_target_properties(bench_noise PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
 # Strategy plugin bench — picker dispatch overhead under varying
 # candidate-set size. The float_send_rtt plugin lives outside the
 # kernel tree (its own git repo under plugins/strategies/), so the
