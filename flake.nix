@@ -465,7 +465,15 @@
               gdb
               gnumake
               doxygen graphviz
-              (python3.withPackages (ps: [ ps.graphviz ]))
+              # python3 — graphviz drives diagram rendering; libclang
+              # parses sdk/*.h for the livedoc fact extractor; pyyaml
+              # serialises the fact files that gen_diagrams + canvas
+              # consume.
+              (python3.withPackages (ps: [
+                ps.graphviz
+                ps.libclang
+                ps.pyyaml
+              ]))
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 
             # Welcome message points at the `nix run` apps so callers

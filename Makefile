@@ -13,7 +13,7 @@
         test test-asan test-tsan test-all \
         run demo goodnet node \
         plugin-new plugin-pull plugin-install plugin-update \
-        docs \
+        docs livedoc livedoc-check \
         clean
 
 help:
@@ -47,6 +47,8 @@ help:
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs             Doxygen API ref + diagrams + canvas"
+	@echo "  make livedoc          refresh source-derived facts + injections"
+	@echo "  make livedoc-check    fail if working tree drifts from sources"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean            remove build*/ and result/ symlinks"
@@ -110,6 +112,17 @@ plugin-update:
 # Documentation
 docs:
 	nix run .#docs
+
+# Livedoc — refresh source-derived facts + diagrams + canvas +
+# inject into narrative markdown. Idempotent; commit the diff to
+# keep docs in sync with the working tree.
+livedoc:
+	nix develop --command python3 tools/livedoc.py --all
+
+# Same as `livedoc` but exits non-zero if the working tree drifts
+# from what the generator would produce. Useful as a CI gate.
+livedoc-check:
+	nix develop --command python3 tools/livedoc.py --check
 
 # Maintenance
 clean:

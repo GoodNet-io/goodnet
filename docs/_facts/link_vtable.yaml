@@ -1,0 +1,70 @@
+struct: gn_link_vtable_s
+header: sdk/link.h
+named_slots: 9
+reserved_slots: 4
+families:
+  misc:
+  - scheme
+  - listen
+  - connect
+  - send
+  - send_batch
+  - disconnect
+  - extension_name
+  - extension_vtable
+  - destroy
+slots:
+- name: scheme
+  signature: const char * (*)(void *)
+  file: sdk/link.h
+  line: 47
+  family: misc
+  doc: lowercase scheme.
+- name: listen
+  signature: gn_result_t (*)(void *, const char *)
+  file: sdk/link.h
+  line: 56
+  family: misc
+  doc: accepting connections matching the scheme.
+- name: connect
+  signature: gn_result_t (*)(void *, const char *)
+  file: sdk/link.h
+  line: 66
+  family: misc
+  doc: an outbound connection.
+- name: send
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t)
+  file: sdk/link.h
+  line: 74
+  family: misc
+  doc: a frame on an existing connection.
+- name: send_batch
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const gn_byte_span_t *, size_t)
+  file: sdk/link.h
+  line: 87
+  family: misc
+  doc: a scatter-gather batch atomically on one connection.
+- name: disconnect
+  signature: gn_result_t (*)(void *, gn_conn_id_t)
+  file: sdk/link.h
+  line: 95
+  family: misc
+  doc: a connection.
+- name: extension_name
+  signature: const char * (*)(void *)
+  file: sdk/link.h
+  line: 107
+  family: misc
+  doc: extension surface (stats, runtime tweaks).
+- name: extension_vtable
+  signature: const void * (*)(void *)
+  file: sdk/link.h
+  line: 113
+  family: misc
+  doc: vtable pointer; valid while the plugin is
+- name: destroy
+  signature: void (*)(void *)
+  file: sdk/link.h
+  line: 119
+  family: misc
+  doc: down.

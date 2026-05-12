@@ -47,10 +47,19 @@ result-*
 !docs/Doxyfile
 !docs/img/*.svg
 !docs/architecture.canvas
+# Livedoc fact extracts — diff-friendly YAML produced from sdk/*.h
+# and plugin trees by `tools/livedoc.py`. Committed so the rendered
+# markdown stays accurate without operators having to run the
+# generator themselves.
+!docs/_facts/*.yaml
 
 # Diagram + math generators
 !tools/*.py
 !tools/math/*.py
+# Livedoc package — abi_extract, renderers, roadmap resolver,
+# inventory walker, plus the YAML feature map.
+!tools/livedoc/*.py
+!tools/livedoc/*.yaml
 __pycache__/
 
 # CI

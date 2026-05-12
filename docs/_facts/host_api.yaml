@@ -1,0 +1,314 @@
+struct: host_api_s
+header: sdk/host_api.h
+named_slots: 40
+reserved_slots: 8
+families:
+  Capability TLV transport (capability-tlv.en.md):
+  - present_capability_blob
+  - subscribe_capability_blob
+  Channel subscription (conn-events.md / config.md authoritative):
+  - subscribe_conn_state
+  - subscribe_config_reload
+  - unsubscribe
+  Configuration:
+  - config_get
+  Connection iteration:
+  - for_each_connection
+  - notify_backpressure
+  Cooperative cancellation (plugin-lifetime.md §8):
+  - is_shutdown_requested
+  Extension API:
+  - query_extension_checked
+  - register_extension
+  - unregister_extension
+  Foreign-payload injection:
+  - inject
+  - kick_handshake
+  Identity primitives (identity.en.md §5):
+  - register_local_key
+  - delete_local_key
+  - list_local_keys
+  - sign_local
+  - sign_local_by_id
+  Identity rotation (identity.en.md §7):
+  - announce_rotation
+  - send_to
+  Limits read access:
+  - limits
+  Link-side notifications:
+  - notify_connect
+  - notify_inbound_bytes
+  - notify_disconnect
+  Messaging:
+  - send
+  - disconnect
+  Metrics (metrics.md):
+  - emit_counter
+  - iterate_counters
+  Peer identity readers (identity.en.md §5):
+  - get_peer_user_pk
+  - get_peer_device_pk
+  - get_handshake_hash
+  Registry queries:
+  - find_conn_by_pk
+  - get_endpoint
+  Security registration:
+  - register_security
+  - unregister_security
+  Service executor (timer.md is the authoritative spec):
+  - set_timer
+  - cancel_timer
+  Universal handler / link registration:
+  - register_vtable
+  - unregister_vtable
+slots:
+- name: send
+  signature: gn_result_t (*)(void *, gn_conn_id_t, uint32_t, const uint8_t *, size_t)
+  file: sdk/host_api.h
+  line: 75
+  family: Messaging
+  doc: an envelope on an existing connection.
+- name: disconnect
+  signature: gn_result_t (*)(void *, gn_conn_id_t)
+  file: sdk/host_api.h
+  line: 81
+  family: Messaging
+  doc: Close a connection.
+- name: register_vtable
+  signature: gn_result_t (*)(void *, gn_register_kind_t, const gn_register_meta_t
+    *, const void *, void *, uint64_t *)
+  file: sdk/host_api.h
+  line: 108
+  family: Universal handler / link registration
+  doc: a handler or link vtable with the kernel.
+- name: unregister_vtable
+  signature: gn_result_t (*)(void *, uint64_t)
+  file: sdk/host_api.h
+  line: 120
+  family: Universal handler / link registration
+  doc: a registration.
+- name: find_conn_by_pk
+  signature: gn_result_t (*)(void *, const uint8_t[32], gn_conn_id_t *)
+  file: sdk/host_api.h
+  line: 127
+  family: Registry queries
+  doc: and a connection id, or GN_ERR_NOT_FOUND.
+- name: get_endpoint
+  signature: gn_result_t (*)(void *, gn_conn_id_t, gn_endpoint_t *)
+  file: sdk/host_api.h
+  line: 134
+  family: Registry queries
+  doc: ''
+- name: query_extension_checked
+  signature: gn_result_t (*)(void *, const char *, uint32_t, const void **)
+  file: sdk/host_api.h
+  line: 164
+  family: Extension API
+  doc: up an extension vtable by name with a major-version
+- name: register_extension
+  signature: gn_result_t (*)(void *, const char *, uint32_t, const void *)
+  file: sdk/host_api.h
+  line: 180
+  family: Extension API
+  doc: a vtable under  with a major.minor
+- name: unregister_extension
+  signature: gn_result_t (*)(void *, const char *)
+  file: sdk/host_api.h
+  line: 189
+  family: Extension API
+  doc: the registration.
+- name: config_get
+  signature: gn_result_t (*)(void *, const char *, gn_config_value_type_t, size_t,
+    void *, void **, void (**)(void *, void *))
+  file: sdk/host_api.h
+  line: 246
+  family: Configuration
+  doc: a value out of the live config document.
+- name: limits
+  signature: const gn_limits_t * (*)(void *)
+  file: sdk/host_api.h
+  line: 260
+  family: Limits read access
+  doc: pointer to the live limits struct; valid for the
+- name: notify_connect
+  signature: gn_result_t (*)(void *, const uint8_t[32], const char *, gn_trust_class_t,
+    gn_handshake_role_t, gn_conn_id_t *)
+  file: sdk/host_api.h
+  line: 299
+  family: Link-side notifications
+  doc: announces a fully-established connection.
+- name: notify_inbound_bytes
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t)
+  file: sdk/host_api.h
+  line: 314
+  family: Link-side notifications
+  doc: pushes received bytes for kernel processing.
+- name: notify_disconnect
+  signature: gn_result_t (*)(void *, gn_conn_id_t, gn_result_t)
+  file: sdk/host_api.h
+  line: 325
+  family: Link-side notifications
+  doc: announces a connection close.
+- name: register_security
+  signature: gn_result_t (*)(void *, const char *, const struct gn_security_provider_vtable_s
+    *, void *)
+  file: sdk/host_api.h
+  line: 342
+  family: Security registration
+  doc: a security provider with the kernel.
+- name: unregister_security
+  signature: gn_result_t (*)(void *, const char *)
+  file: sdk/host_api.h
+  line: 347
+  family: Security registration
+  doc: ''
+- name: inject
+  signature: gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, uint32_t, const
+    uint8_t *, size_t)
+  file: sdk/host_api.h
+  line: 377
+  family: Foreign-payload injection
+  doc: plugins inject foreign-system bytes into the mesh
+- name: kick_handshake
+  signature: gn_result_t (*)(void *, gn_conn_id_t)
+  file: sdk/host_api.h
+  line: 397
+  family: Foreign-payload injection
+  doc: the local side of a security handshake into action.
+- name: set_timer
+  signature: gn_result_t (*)(void *, uint32_t, gn_task_fn_t, void *, gn_timer_id_t
+    *)
+  file: sdk/host_api.h
+  line: 413
+  family: Service executor (timer.md is the authoritative spec)
+  doc: a one-shot callback after  ms.
+- name: cancel_timer
+  signature: gn_result_t (*)(void *, gn_timer_id_t)
+  file: sdk/host_api.h
+  line: 423
+  family: Service executor (timer.md is the authoritative spec)
+  doc: a pending timer.
+- name: subscribe_conn_state
+  signature: gn_result_t (*)(void *, gn_conn_state_cb_t, void *, void (*)(void *),
+    gn_subscription_id_t *)
+  file: sdk/host_api.h
+  line: 444
+  family: Channel subscription (conn-events.md / config.md authoritative)
+  doc: to the connection-event channel.
+- name: subscribe_config_reload
+  signature: gn_result_t (*)(void *, gn_config_reload_cb_t, void *, void (*)(void
+    *), gn_subscription_id_t *)
+  file: sdk/host_api.h
+  line: 459
+  family: Channel subscription (conn-events.md / config.md authoritative)
+  doc: to the config-reload channel.
+- name: unsubscribe
+  signature: gn_result_t (*)(void *, gn_subscription_id_t)
+  file: sdk/host_api.h
+  line: 471
+  family: Channel subscription (conn-events.md / config.md authoritative)
+  doc: a subscription.
+- name: for_each_connection
+  signature: gn_result_t (*)(void *, gn_conn_visitor_t, void *)
+  file: sdk/host_api.h
+  line: 481
+  family: Connection iteration
+  doc: every currently-registered connection under a
+- name: notify_backpressure
+  signature: gn_result_t (*)(void *, gn_conn_id_t, gn_conn_event_kind_t, uint64_t)
+  file: sdk/host_api.h
+  line: 499
+  family: Connection iteration
+  doc: a backpressure transition for  — soft
+- name: emit_counter
+  signature: void (*)(void *, const char *)
+  file: sdk/host_api.h
+  line: 521
+  family: Metrics (metrics.md)
+  doc: the kernel-side counter at  by one.
+- name: iterate_counters
+  signature: uint64_t (*)(void *, gn_counter_visitor_t, void *)
+  file: sdk/host_api.h
+  line: 532
+  family: Metrics (metrics.md)
+  doc: every registered counter;  is invoked
+- name: is_shutdown_requested
+  signature: int32_t (*)(void *)
+  file: sdk/host_api.h
+  line: 556
+  family: Cooperative cancellation (plugin-lifetime.md §8)
+  doc: once the kernel begins teardown for this plugin.
+- name: register_local_key
+  signature: gn_result_t (*)(void *, gn_key_purpose_t, const char *, gn_key_id_t *)
+  file: sdk/host_api.h
+  line: 582
+  family: Identity primitives (identity.en.md §5)
+  doc: ''
+- name: delete_local_key
+  signature: gn_result_t (*)(void *, gn_key_id_t)
+  file: sdk/host_api.h
+  line: 587
+  family: Identity primitives (identity.en.md §5)
+  doc: ''
+- name: list_local_keys
+  signature: gn_result_t (*)(void *, gn_key_descriptor_t *, size_t, size_t *)
+  file: sdk/host_api.h
+  line: 590
+  family: Identity primitives (identity.en.md §5)
+  doc: ''
+- name: sign_local
+  signature: gn_result_t (*)(void *, gn_key_purpose_t, const uint8_t *, size_t, uint8_t[64])
+  file: sdk/host_api.h
+  line: 595
+  family: Identity primitives (identity.en.md §5)
+  doc: ''
+- name: sign_local_by_id
+  signature: gn_result_t (*)(void *, gn_key_id_t, const uint8_t *, size_t, uint8_t[64])
+  file: sdk/host_api.h
+  line: 600
+  family: Identity primitives (identity.en.md §5)
+  doc: ''
+- name: get_peer_user_pk
+  signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
+  file: sdk/host_api.h
+  line: 620
+  family: Peer identity readers (identity.en.md §5)
+  doc: ''
+- name: get_peer_device_pk
+  signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
+  file: sdk/host_api.h
+  line: 624
+  family: Peer identity readers (identity.en.md §5)
+  doc: ''
+- name: get_handshake_hash
+  signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
+  file: sdk/host_api.h
+  line: 628
+  family: Peer identity readers (identity.en.md §5)
+  doc: ''
+- name: present_capability_blob
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)
+  file: sdk/host_api.h
+  line: 651
+  family: Capability TLV transport (capability-tlv.en.md)
+  doc: ''
+- name: subscribe_capability_blob
+  signature: gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void
+    *), gn_subscription_id_t *)
+  file: sdk/host_api.h
+  line: 657
+  family: Capability TLV transport (capability-tlv.en.md)
+  doc: ''
+- name: announce_rotation
+  signature: gn_result_t (*)(void *, int64_t)
+  file: sdk/host_api.h
+  line: 683
+  family: Identity rotation (identity.en.md §7)
+  doc: ''
+- name: send_to
+  signature: gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *,
+    size_t)
+  file: sdk/host_api.h
+  line: 708
+  family: Identity rotation (identity.en.md §7)
+  doc: outbound send.
