@@ -18,10 +18,21 @@ mkdir -p bench/reports
 echo "=== GoodNet plugin matrix ==="
 for b in bench_tcp bench_udp bench_ipc bench_ws bench_tls bench_dtls \
          bench_quic bench_ice bench_wss_over_tls; do
-    if [[ -x "build/bench/$b" ]]; then
-        echo "  running $b..."
+    # Prefer Release-build binaries when available. Debug runs
+    # through the same syscalls and gets within ~5% on throughput
+    # benches but skews crypto-heavy numbers (Noise handshake) by
+    # 5-10%. The Release path is build-release/bench/<b>; falls
+    # back to plain build/bench/<b> when the Release tree is absent.
+    binary=""
+    if [[ -x "build-release/bench/$b" ]]; then
+        binary="build-release/bench/$b"
+    elif [[ -x "build/bench/$b" ]]; then
+        binary="build/bench/$b"
+    fi
+    if [[ -n "$binary" ]]; then
+        echo "  running $binary..."
         /usr/bin/env -i HOME="$HOME" PATH="/run/current-system/sw/bin:/usr/bin" \
-            build/bench/"$b" \
+            "$binary" \
             --benchmark_min_time=0.3s \
             --benchmark_format=json 2>/dev/null \
             > "$tmp/$b.json" || echo "  $b failed (continuing)"

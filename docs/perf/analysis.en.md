@@ -28,6 +28,26 @@ this in the header. **All numbers are loopback** unless explicitly
 labelled inter-host. A real 10 Gbps NIC shifts the comparison;
 this document does not yet pretend to have those numbers.
 
+### Build configuration
+
+**Bench binaries are built in Release mode** (`-DCMAKE_BUILD_TYPE=Release`).
+The default `nix run .#build` produces Debug — the test suite uses
+that flavour to keep the inner loop fast on iteration. Debug runs
+through the same syscalls so throughput benches (syscall-bound,
+not compute-bound) come within ±5 % of Release; crypto-heavy
+benches (Noise handshake / AEAD) slow by 5–10 % in Debug. The
+[reproduce](#how-to-reproduce) section below builds Release
+explicitly so the numbers are comparable against `iperf3` (Release)
+and other published baselines.
+
+### Run-to-run variability
+
+CPU frequency scaling + ambient system load mean a single bench
+run swings ±10–15 % on this hardware. The numbers below are taken
+from the most recent aggregated report under `bench/reports/`; for
+a release announcement we run the suite three times and quote the
+median.
+
 ## Methodology
 
 Six measurement axes (full table in
@@ -214,10 +234,11 @@ recipe.
 git clone https://github.com/goodnet-io/goodnet.git
 cd goodnet
 
-# Build with bench (opt-in)
+# Build with bench (Release — see Build configuration above)
 nix develop --command \
-    cmake -B build -DGOODNET_BUILD_BENCH=ON
-nix develop --command cmake --build build --target \
+    cmake -B build-release -DCMAKE_BUILD_TYPE=Release \
+                           -DGOODNET_BUILD_BENCH=ON
+nix develop --command cmake --build build-release --target \
     bench_tcp bench_udp bench_ipc bench_ws bench_tls \
     bench_dtls bench_quic bench_ice bench_wss_over_tls \
     bench_tcp_scale bench_noise
