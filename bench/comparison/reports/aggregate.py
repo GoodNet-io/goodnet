@@ -79,8 +79,15 @@ def main(argv):
 
     aggregated = {}
     for path in args.inputs:
-        with open(path) as f:
-            j = json.load(f)
+        try:
+            with open(path) as f:
+                content = f.read().strip()
+            if not content:
+                continue
+            j = json.loads(content)
+        except (json.JSONDecodeError, OSError) as e:
+            print(f"warn: skipping {path}: {e}", file=sys.stderr)
+            continue
         if "benchmarks" in j:
             parse_gbench(j, aggregated)
         else:

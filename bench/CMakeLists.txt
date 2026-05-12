@@ -123,15 +123,58 @@ if(TARGET goodnet_tls_objects AND TARGET goodnet_udp_objects)
     )
 endif()
 
-# ICE composer bench rides a UDP carrier; without real ICE
-# nomination signaling between two stacks in-process it can only
-# measure carrier surface overhead. Future bench adds a mock
-# signaling channel.
+if(TARGET goodnet_ice_objects AND TARGET goodnet_udp_objects)
+    add_executable(bench_ice plugins/bench_ice.cpp)
+    target_link_libraries(bench_ice PRIVATE
+        goodnet_bench_harness
+        goodnet_ice_objects
+        goodnet_udp_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_ice PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
 
-# Composition stacks (Noise-over-QUIC, WSS-over-TLS) land in a
-# follow-up — bench/composition/ for the dedicated suite that
-# layers N+1 plugins so the report can decompose per-layer
-# overhead.
+# Composition stacks — depth-3 WSS-over-TLS-over-TCP measures the
+# overhead of stacking three composer plugins versus the per-layer
+# numbers from bench_tcp / bench_tls / bench_ws.
+if(TARGET goodnet_ws_objects AND TARGET goodnet_tls_objects
+   AND TARGET goodnet_tcp_objects)
+    add_executable(bench_wss_over_tls composition/bench_wss_over_tls.cpp)
+    target_link_libraries(bench_wss_over_tls PRIVATE
+        goodnet_bench_harness
+        goodnet_ws_objects
+        goodnet_tls_objects
+        goodnet_tcp_objects
+        OpenSSL::SSL
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_wss_over_tls PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+# Strategy plugin bench — picker dispatch overhead under varying
+# candidate-set size. The float_send_rtt plugin lives outside the
+# kernel tree (its own git repo under plugins/strategies/), so the
+# bench is opt-in via GOODNET_BENCH_STRATEGIES so a tree without
+# the plugin sub-checkout doesn't fail configure.
+if(GOODNET_BENCH_STRATEGIES AND TARGET goodnet_float_send_rtt_objects)
+    add_executable(bench_float_send_rtt strategy/bench_float_send_rtt.cpp)
+    target_link_libraries(bench_float_send_rtt PRIVATE
+        goodnet_bench_harness
+        goodnet_float_send_rtt_objects
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_float_send_rtt PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
 
 # Cross-implementation comparison binaries live under bench/comparison/
 # but ship as shell scripts wrapping curl / openssl s_client / etc.
