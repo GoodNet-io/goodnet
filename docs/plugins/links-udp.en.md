@@ -10,6 +10,7 @@
 **Slot:** `gn.link.udp`
 **URI schemes:** `udp`
 **Composer surface:** yes
+**Tests:** 21 cases in [`plugins/links/udp/tests`](../../plugins/links/udp/tests)
 
 _UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to_
 

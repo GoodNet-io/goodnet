@@ -8,6 +8,7 @@
 **Kind:** security
 **Source tree:** [`plugins/security/noise`](../../plugins/security/noise)
 **Slot:** `noise`
+**Tests:** 50 cases in [`plugins/security/noise/tests`](../../plugins/security/noise/tests)
 
 _Noise XX security provider for GoodNet. Pattern_
 

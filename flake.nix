@@ -468,11 +468,13 @@
               # python3 — graphviz drives diagram rendering; libclang
               # parses sdk/*.h for the livedoc fact extractor; pyyaml
               # serialises the fact files that gen_diagrams + canvas
-              # consume.
+              # consume; pytest runs the livedoc unit suite under
+              # tests/livedoc/.
               (python3.withPackages (ps: [
                 ps.graphviz
                 ps.libclang
                 ps.pyyaml
+                ps.pytest
               ]))
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 

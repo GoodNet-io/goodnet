@@ -10,6 +10,7 @@
 **Slot:** `gn.link.quic`
 **URI schemes:** `quic`
 **Composer surface:** yes
+**Tests:** 11 cases in [`plugins/links/quic/tests`](../../plugins/links/quic/tests)
 
 ## Source
 

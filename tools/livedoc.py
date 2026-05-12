@@ -42,6 +42,7 @@ from livedoc import (  # noqa: E402
     renderers,
     rfc_coverage,
     roadmap_status,
+    test_inventory,
 )
 
 
@@ -63,6 +64,7 @@ def step_catalogs() -> None:
     metrics_catalog.write()
     config_keys.write()
     rfc_coverage.write()
+    test_inventory.write()
 
 
 def _load_facts() -> dict:
@@ -102,7 +104,12 @@ def _build_regions(facts: dict) -> dict[str, str]:
                                        facts.get("config_keys", {})),
         "rfc_coverage_table":     renderers.rfc_coverage_table(
                                        facts.get("rfc_coverage", {})),
+        "test_inventory_table":   renderers.test_inventory_table(
+                                       facts.get("test_inventory", {})),
     }
+    test_counts = (facts.get("test_inventory") or {}).get(
+        "by_plugin", {},
+    )
     # Diagram embeds — one marker per SVG. Captions short enough to
     # land under the image without scrolling. Add new SVGs here so
     # any prose doc can embed them via <!-- livedoc:embed_<name> -->.
@@ -136,11 +143,15 @@ def _build_regions(facts: dict) -> dict[str, str]:
             name, caption=caption,
         )
     # Per-plugin page bodies — one per discovered plugin. Marker
-    # name is `plugin_page_<kind>_<name>`.
+    # name is `plugin_page_<kind>_<name>`. Test count comes from
+    # the inventory `by_plugin` map.
     for kind, entries in plugins.items():
         for entry in entries:
             marker = f"plugin_page_{kind}_{entry['name']}"
-            regions[marker] = renderers.plugin_page(entry, kind=kind)
+            key = f"{kind}/{entry['name']}"
+            regions[marker] = renderers.plugin_page(
+                entry, kind=kind, test_count=test_counts.get(key, 0),
+            )
     return regions
 
 

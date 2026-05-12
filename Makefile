@@ -13,7 +13,7 @@
         test test-asan test-tsan test-all \
         run demo goodnet node \
         plugin-new plugin-pull plugin-install plugin-update \
-        docs livedoc livedoc-check \
+        docs livedoc livedoc-check livedoc-test \
         clean
 
 help:
@@ -49,6 +49,7 @@ help:
 	@echo "  make docs             Doxygen API ref + diagrams + canvas"
 	@echo "  make livedoc          refresh source-derived facts + injections"
 	@echo "  make livedoc-check    fail if working tree drifts from sources"
+	@echo "  make livedoc-test     unit tests for the livedoc tooling"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean            remove build*/ and result/ symlinks"
@@ -123,6 +124,10 @@ livedoc:
 # from what the generator would produce. Useful as a CI gate.
 livedoc-check:
 	nix develop --command python3 tools/livedoc.py --check
+
+# Unit test suite for the livedoc Python tooling itself.
+livedoc-test:
+	nix develop --command python3 -m pytest tests/livedoc -v
 
 # Maintenance
 clean:

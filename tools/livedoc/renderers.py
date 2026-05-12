@@ -300,10 +300,45 @@ def embed_diagram(name: str, *, caption: str | None = None,
     return "\n".join(body)
 
 
+# ── Test inventory ──────────────────────────────────────────────────
+
+def test_inventory_table(facts: dict) -> str:
+    """Per-tree table of gtest / rapidcheck case counts."""
+    groups = facts.get("groups") or []
+    if not groups:
+        return f"{GENERATED_NOTE}\n\n_No test trees discovered._"
+    total = facts.get("total", sum(g.get("count", 0) for g in groups))
+    lines = [
+        GENERATED_NOTE,
+        "",
+        f"_{total} test cases across {len(groups)} tree(s)._",
+        "",
+        "| Tree | Cases | Files |",
+        "|---|---:|---:|",
+    ]
+    for g in groups:
+        tree = g.get("tree", "?")
+        if tree.startswith("plugins/"):
+            link = f"[`{tree}`](../../{tree})"
+        elif tree == "kernel":
+            link = "[`tests/`](../../tests)"
+        else:
+            link = f"`{tree}`"
+        lines.append(
+            f"| {link} | {g.get('count', 0)} | {g.get('files', 0)} |"
+        )
+    return "\n".join(lines)
+
+
 # ── Per-plugin page renderer ────────────────────────────────────────
 
-def plugin_page(plugin: dict, *, kind: str) -> str:
-    """Render a single plugin's auto-page from an inventory entry."""
+def plugin_page(plugin: dict, *, kind: str,
+                test_count: int | None = None) -> str:
+    """Render a single plugin's auto-page from an inventory entry.
+
+    If `test_count` is supplied, an extra **Tests:** line surfaces
+    the count from `docs/_facts/test_inventory.yaml`.
+    """
     name = plugin.get("name", "?")
     path = plugin.get("path", "?")
     notes = plugin.get("notes", "")
@@ -322,6 +357,14 @@ def plugin_page(plugin: dict, *, kind: str) -> str:
                          + ", ".join(f"`{s}`" for s in schemes))
         composer = "yes" if plugin.get("composer") else "no"
         lines.append(f"**Composer surface:** {composer}")
+    if test_count is not None:
+        if test_count > 0:
+            lines.append(
+                f"**Tests:** {test_count} cases in "
+                f"[`{path}/tests`](../../{path}/tests)"
+            )
+        else:
+            lines.append("**Tests:** none in plugin tree")
     lines.append("")
     if notes:
         lines.append(f"_{notes}_")

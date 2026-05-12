@@ -10,6 +10,7 @@
 **Slot:** `gn.link.tcp`
 **URI schemes:** `tcp`
 **Composer surface:** yes
+**Tests:** 14 cases in [`plugins/links/tcp/tests`](../../plugins/links/tcp/tests)
 
 _TCP transport for GoodNet. Listens on an `tcp://host:port` URI,_
 

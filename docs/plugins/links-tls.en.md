@@ -10,6 +10,7 @@
 **Slot:** `gn.link.tls`
 **URI schemes:** `tls`
 **Composer surface:** yes
+**Tests:** 21 cases in [`plugins/links/tls/tests`](../../plugins/links/tls/tests)
 
 _TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the_
 

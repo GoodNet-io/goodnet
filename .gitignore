@@ -125,6 +125,9 @@ tests/integration/
 !tests/**/*.hpp
 !tests/**/*.conf
 !tests/**/CMakeLists.txt
+# Python-side unit suite for tools/livedoc/.
+!tests/**/*.py
+!pytest.ini
 
 # Examples
 !examples/**/*.cpp

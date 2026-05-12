@@ -8,6 +8,7 @@
 **Kind:** security
 **Source tree:** [`plugins/security/null`](../../plugins/security/null)
 **Slot:** `null`
+**Tests:** 18 cases in [`plugins/security/null/tests`](../../plugins/security/null/tests)
 
 _Loopback / IntraNode pass-through security provider. Used on_
 

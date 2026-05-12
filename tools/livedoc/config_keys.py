@@ -40,6 +40,10 @@ _KEY_RE = re.compile(
 
 
 def _grep_lines() -> list[tuple[str, int, str]]:
+    paths = [p for p in ("core", "plugins", "apps")
+             if (REPO_ROOT / p).is_dir()]
+    if not paths:
+        return []
     cmd = [
         "grep", "-rIn",
         "--include=*.cpp", "--include=*.hpp",
@@ -47,7 +51,7 @@ def _grep_lines() -> list[tuple[str, int, str]]:
         "--exclude-dir=.git", "--exclude-dir=build",
         "--exclude-dir=build-release", "--exclude-dir=tests",
         "gn_config_get_",
-        "core", "plugins", "apps",
+        *paths,
     ]
     try:
         r = subprocess.run(

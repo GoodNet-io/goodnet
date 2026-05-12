@@ -8,6 +8,7 @@
 **Kind:** handlers
 **Source tree:** [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat)
 **Slot:** `heartbeat`
+**Tests:** 11 cases in [`plugins/handlers/heartbeat/tests`](../../plugins/handlers/heartbeat/tests)
 
 _Two-way liveness check between connected peers. Emits PING on_
 

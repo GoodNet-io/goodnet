@@ -10,6 +10,7 @@
 **Slot:** `gn.link.ws`
 **URI schemes:** `ws`
 **Composer surface:** yes
+**Tests:** 13 cases in [`plugins/links/ws/tests`](../../plugins/links/ws/tests)
 
 _WebSocket transport for GoodNet. Wraps a `ws://host:port/path`_
 
