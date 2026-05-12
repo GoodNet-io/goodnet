@@ -194,6 +194,39 @@ in 1991: GPL on the kernel keeps the substrate open, the linking
 exception keeps applications free. See [`LICENSE`](LICENSE) and
 each plugin's `LICENSE` file.
 
+## Benchmarks
+
+The bench tree under [`bench/`](bench/) measures GoodNet on six
+orthogonal axes (payload size, conn count, concurrency,
+per-plugin, composition depth, strategy) plus a cross-implementation
+comparison axis that runs each baseline (iperf3 raw TCP/UDP, socat
+AF_UNIX echo, openssl s_server TLS handshake) through the same
+payload matrix and surfaces UX/DX gaps via a hello-world LOC
+count.
+
+```bash
+# Build the suite (opt-in)
+nix develop --command cmake -B build -DGOODNET_BUILD_BENCH=ON
+nix develop --command cmake --build build --target bench_tcp bench_udp \
+    bench_ipc bench_tls bench_ws bench_quic bench_dtls bench_ice \
+    bench_wss_over_tls bench_tcp_scale
+
+# Stage external baselines (one-shot)
+./bench/comparison/setup/01_openssl.sh
+./bench/comparison/setup/02_iperf3.sh
+./bench/comparison/setup/03_libuv.sh
+./bench/comparison/setup/04_libssh.sh
+./bench/comparison/setup/05_openssl_demos.sh
+
+# Run everything + generate report
+./bench/comparison/runners/run_all.sh
+ls bench/reports/
+```
+
+Frozen reference numbers live under [`bench/reports/`](bench/reports/);
+methodology + the six measurement axes are documented in
+[`bench/README.md`](bench/README.md).
+
 ## Not on this tree yet
 
 - Pre-built release binaries. Build from source through Nix or
