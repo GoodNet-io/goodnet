@@ -153,12 +153,14 @@ contracts in `docs/contracts/` document the surface, and the
 operator binary boots end-to-end from a generated identity and
 a signed plugin manifest.
 
-Wire format, public C ABI, and plugin contracts are RC-frozen —
-each release-candidate iteration may break one of them in
-response to integration findings; the surface stabilises at the
-first plain `v1.0.0` tag without an `-rcN` suffix. The branch
-model is `dev` for development, `main` for releases (between
-tags `main` is quiet).
+Wire format, public C ABI, and plugin contracts are **not** yet
+frozen — RC iterations may reshape any of them in response to
+integration findings. The reshape window in
+[`docs/contracts/abi-evolution.en.md`](docs/contracts/abi-evolution.en.md)
+§3b stays open through the rc cycle and closes only on the plain
+`v1.0.0` tag without an `-rcN` suffix. The branch model is `dev`
+for development, `main` for releases (between tags `main` is
+quiet).
 
 ## Documentation
 

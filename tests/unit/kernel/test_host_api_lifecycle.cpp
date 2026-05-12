@@ -27,12 +27,14 @@
 
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <tests/util/protocol_setup.hpp>
 #include <core/kernel/plugin_context.hpp>
 
 #include <sdk/conn_events.h>
 #include <sdk/cpp/protocol_layer.hpp>
 #include <sdk/cpp/types.hpp>
 #include <sdk/host_api.h>
+#include <sdk/link.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
 
@@ -111,7 +113,17 @@ public:
 
 TEST(HostApiNotifyConnect, RejectsConnectionOutsideProtocolMask) {
     Kernel k;
-    k.set_protocol_layer(std::make_shared<LoopbackOnlyProtocol>());
+    gn::test::util::register_default_protocol(
+        k, std::make_shared<LoopbackOnlyProtocol>());
+    /// Register a stub `tcp` link declaring "test-loopback-only" so
+    /// notify_connect's scheme→protocol_id resolution lands on the
+    /// loopback-only layer.
+    gn_link_vtable_t link_vt{};
+    link_vt.api_size = sizeof(gn_link_vtable_t);
+    gn_link_id_t link_id = GN_INVALID_LINK_ID;
+    ASSERT_EQ(k.links().register_link("tcp", "test-loopback-only",
+                                        &link_vt, nullptr, &link_id),
+              GN_OK);
     auto ctx = make_transport_ctx(k);
     auto api = build_host_api(ctx);
 
@@ -137,7 +149,14 @@ TEST(HostApiNotifyConnect, RejectsConnectionOutsideProtocolMask) {
 
 TEST(HostApiNotifyConnect, AcceptsConnectionInsideProtocolMask) {
     Kernel k;
-    k.set_protocol_layer(std::make_shared<LoopbackOnlyProtocol>());
+    gn::test::util::register_default_protocol(
+        k, std::make_shared<LoopbackOnlyProtocol>());
+    gn_link_vtable_t link_vt{};
+    link_vt.api_size = sizeof(gn_link_vtable_t);
+    gn_link_id_t link_id = GN_INVALID_LINK_ID;
+    ASSERT_EQ(k.links().register_link("tcp", "test-loopback-only",
+                                        &link_vt, nullptr, &link_id),
+              GN_OK);
     auto ctx = make_transport_ctx(k);
     auto api = build_host_api(ctx);
 

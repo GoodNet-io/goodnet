@@ -7,8 +7,10 @@
 #include <core/util/log_config.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <string>
+#include <thread>
 
 namespace gn::core {
 
@@ -42,12 +44,37 @@ Kernel::~Kernel() {
     timers_.shutdown();
 }
 
-void Kernel::set_protocol_layer(std::shared_ptr<::gn::IProtocolLayer> layer) noexcept {
-    protocol_layer_.store(std::move(layer), std::memory_order_release);
-}
+std::size_t Kernel::drain_namespace(std::string_view ns_id,
+                                     std::chrono::milliseconds deadline) {
+    /// Step 1: snapshot the lifetime anchors **before** unregister so
+    /// the spin-wait waits on the in-flight set, not on whatever
+    /// happens to remain after the registry has been mutated.
+    auto anchors = handlers_.collect_anchors_by_namespace(ns_id);
 
-std::shared_ptr<::gn::IProtocolLayer> Kernel::protocol_layer() const noexcept {
-    return protocol_layer_.load(std::memory_order_acquire);
+    /// Step 2: atomic registry erase. Bumps generation for each row.
+    const std::size_t removed = handlers_.drain_by_namespace(ns_id);
+
+    /// Step 3: spin-wait — same shape as
+    /// `PluginManager::drain_anchor`. A weak_ptr expires when the
+    /// last shared_ptr copy (in dispatch snapshots, in-flight
+    /// pipelines) drops. Polling stays cheap because in-flight
+    /// dispatches finish on the order of microseconds; the cap
+    /// prevents an outright stuck wait.
+    using clock = std::chrono::steady_clock;
+    const auto end = clock::now() + deadline;
+    while (clock::now() < end) {
+        bool all_gone = true;
+        for (const auto& weak : anchors) {
+            if (!weak.expired()) {
+                all_gone = false;
+                break;
+            }
+        }
+        if (all_gone) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds{1});
+    }
+
+    return removed;
 }
 
 void Kernel::set_limits(const gn_limits_t& limits) noexcept {

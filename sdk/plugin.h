@@ -102,7 +102,14 @@ typedef enum gn_plugin_kind_e {
     GN_PLUGIN_KIND_HANDLER   = 2,
     GN_PLUGIN_KIND_SECURITY  = 3,
     GN_PLUGIN_KIND_PROTOCOL  = 4,
-    GN_PLUGIN_KIND_BRIDGE    = 5
+    GN_PLUGIN_KIND_BRIDGE    = 5,
+    /**
+     * Multi-path strategy plugins. Register a `gn.strategy.<name>`
+     * extension exposing `pick_conn` / `on_path_event` slots.
+     * Kernel queries the extension when an outbound message has
+     * multiple eligible connections to the same peer.
+     */
+    GN_PLUGIN_KIND_STRATEGY  = 6
 } gn_plugin_kind_t;
 
 /**

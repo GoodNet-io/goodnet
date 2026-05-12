@@ -49,10 +49,14 @@ typedef struct host_api_s {
 
     /* ── Universal handler / link registration ─────────────────────── */
     /* `kind` selects the family; `meta` carries the per-family fields */
-    /* (handler: name=protocol_id + msg_id + priority; link: name=URI  */
-    /* scheme). The id encodes the kind in its top 4 bits so           */
-    /* `unregister_vtable(id)` routes back to the right registry       */
-    /* without naming the kind a second time.                          */
+    /* (handler: name=protocol_id + msg_id + priority + namespace_id;  */
+    /* link: name=URI scheme + protocol_id). The id encodes the kind   */
+    /* in its top 4 bits so `unregister_vtable(id)` routes back to the */
+    /* right registry without naming the kind a second time.           */
+    /* HANDLER `meta->namespace_id` is `@borrowed`; NULL/empty selects */
+    /* the kernel default `"default"`. See handler-registration.en.md  */
+    /* §2 for the full namespace contract and Kernel::drain_namespace  */
+    /* for graceful tenant teardown.                                   */
     gn_result_t (*register_vtable)(void* host_ctx,
                                     gn_register_kind_t kind,
                                     const gn_register_meta_t* meta,

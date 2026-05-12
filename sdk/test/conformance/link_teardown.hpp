@@ -46,6 +46,7 @@
 #include <thread>
 #include <vector>
 
+#include <sdk/extensions/link.h>
 #include <sdk/host_api.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -66,6 +67,17 @@ struct ConformanceHost {
     std::thread::id             main_tid{};
     std::atomic<int>            on_main_disconnects{0};
     std::atomic<gn_conn_id_t>   next_id{1};
+
+    /// Optional L1 carrier extension surface for composer plugins
+    /// (WS, WSS, ICE — anything that layers onto another link).
+    /// `LinkTraits::install_carrier(host)` populates these before
+    /// `make_api()` so the produced host_api can route
+    /// `query_extension_checked("gn.link.<scheme>")` back to the L1
+    /// link the composer needs. Baseline plugins leave the trio
+    /// nullptr / empty and the thunk returns @ref GN_ERR_NOT_FOUND.
+    std::shared_ptr<void>      carrier_storage;
+    const gn_link_api_t*       carrier_vtable = nullptr;
+    std::string                carrier_scheme;
 
     static gn_result_t s_notify_connect(void* host_ctx,
                                          const std::uint8_t* /*remote_pk*/,
@@ -101,14 +113,38 @@ struct ConformanceHost {
 
     static gn_result_t s_kick(void*, gn_conn_id_t) { return GN_OK; }
 
+    static gn_result_t s_query_extension(void* host_ctx,
+                                           const char* name,
+                                           std::uint32_t version,
+                                           const void** out) {
+        if (!out) return GN_ERR_NULL_ARG;
+        *out = nullptr;
+        auto* h = static_cast<ConformanceHost*>(host_ctx);
+        if (h->carrier_vtable == nullptr ||
+            h->carrier_scheme.empty() ||
+            version != GN_EXT_LINK_VERSION) {
+            return GN_ERR_NOT_FOUND;
+        }
+        std::string expected;
+        expected.reserve(sizeof(GN_EXT_LINK_PREFIX) - 1 +
+                          h->carrier_scheme.size());
+        expected.append(GN_EXT_LINK_PREFIX,
+                         sizeof(GN_EXT_LINK_PREFIX) - 1);
+        expected.append(h->carrier_scheme);
+        if (std::string_view{name} != expected) return GN_ERR_NOT_FOUND;
+        *out = h->carrier_vtable;
+        return GN_OK;
+    }
+
     host_api_t make_api() {
         host_api_t api{};
-        api.api_size              = sizeof(host_api_t);
-        api.host_ctx              = this;
-        api.notify_connect        = &s_notify_connect;
-        api.notify_inbound_bytes  = &s_notify_inbound;
-        api.notify_disconnect     = &s_notify_disconnect;
-        api.kick_handshake        = &s_kick;
+        api.api_size                 = sizeof(host_api_t);
+        api.host_ctx                 = this;
+        api.notify_connect           = &s_notify_connect;
+        api.notify_inbound_bytes     = &s_notify_inbound;
+        api.notify_disconnect        = &s_notify_disconnect;
+        api.kick_handshake           = &s_kick;
+        api.query_extension_checked  = &s_query_extension;
         return api;
     }
 };
@@ -156,6 +192,13 @@ TYPED_TEST_P(LinkTeardownConformance, ShutdownReleasesEverySession) {
 
     ConformanceHost host;
     host.main_tid = std::this_thread::get_id();
+    /// Optional carrier wiring — composer plugins implement
+    /// `install_carrier(host)` to register their L1 (TCP / TLS / UDP)
+    /// vtable. Baseline plugins skip the hook and the
+    /// query-extension thunk returns NOT_FOUND.
+    if constexpr (requires { Traits::install_carrier(host); }) {
+        Traits::install_carrier(host);
+    }
     auto api = host.make_api();
 
     auto server = Traits::make();

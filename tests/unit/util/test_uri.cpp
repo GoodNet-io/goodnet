@@ -9,7 +9,6 @@
 #include <core/util/uri_query.hpp>
 
 #include <array>
-#include <cstdint>
 #include <string>
 
 namespace {

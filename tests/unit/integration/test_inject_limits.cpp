@@ -18,6 +18,7 @@
 #include <core/kernel/connection_context.hpp>
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
+#include <tests/util/protocol_setup.hpp>
 #include <core/kernel/plugin_context.hpp>
 #include <core/registry/connection.hpp>
 
@@ -42,7 +43,7 @@ struct InjectHarness {
     host_api_t                    api{};
 
     InjectHarness() {
-        kernel->set_protocol_layer(proto);
+        gn::test::util::register_default_protocol(*kernel, proto);
         plugin_ctx.plugin_name = "inject-limits-test";
         plugin_ctx.kind        = GN_PLUGIN_KIND_HANDLER;
         plugin_ctx.kernel      = kernel.get();
@@ -316,7 +317,9 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
 // tokens against a misconfiguration.
 
 TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
-    /// Standalone harness that deliberately skips `set_protocol_layer`.
+    /// Standalone harness that deliberately skips registering a
+    /// protocol layer; the kernel surfaces NOT_IMPLEMENTED before
+    /// the rate-limit bucket is consulted.
     Kernel kernel;
     PluginContext plugin_ctx;
     plugin_ctx.plugin_name = "inject-noproto-test";
@@ -354,7 +357,7 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
     /// token. If the previous call drained it, the next call surfaces
     /// LIMIT_REACHED — which fails this assertion.
     auto proto = std::make_shared<GnetProtocol>();
-    kernel.set_protocol_layer(proto);
+    gn::test::util::register_default_protocol(kernel, proto);
     EXPECT_EQ(api.inject(api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
                           kMsgId, payload, sizeof(payload)),
               GN_OK);

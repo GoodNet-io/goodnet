@@ -92,6 +92,7 @@ plugins/links/ws/
 plugins/links/ipc/
 plugins/links/tls/
 plugins/links/ice/
+plugins/links/quic/
 plugins/security/noise/
 plugins/security/null/
 

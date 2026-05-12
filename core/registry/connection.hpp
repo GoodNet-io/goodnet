@@ -27,6 +27,8 @@
 #include <sdk/trust.h>
 #include <sdk/types.h>
 
+#include "protocol_layer.hpp"
+
 namespace gn::core {
 
 /// Hash specialisation for PublicKey suitable for unordered_map. Public
@@ -50,6 +52,17 @@ struct ConnectionRecord {
     gn_trust_class_t   trust        = GN_TRUST_UNTRUSTED;
     gn_handshake_role_t role        = GN_ROLE_INITIATOR;
     std::string        scheme;
+
+    /// Mesh-framing layer this connection routes through. Stamped at
+    /// `notify_connect` time from the matching `LinkEntry::protocol_id`.
+    /// Per `protocol-layer.md` §4 the kernel uses this id to look up
+    /// the active layer in `ProtocolLayerRegistry` for every dispatch
+    /// site (`send`, `notify_inbound_bytes`, `inject`). Default-init
+    /// to the canonical `gnet-v1` so test fixtures that insert records
+    /// directly (bypassing `notify_connect`) route through the same
+    /// layer the kernel registers at startup. An unregistered id
+    /// surfaces as `GN_ERR_NOT_IMPLEMENTED` at the dispatch site.
+    std::string        protocol_id  = std::string{kDefaultProtocolId};
 
     /// Relay capability: when set, the protocol layer accepts inbound
     /// frames carrying EXPLICIT_SENDER / EXPLICIT_RECEIVER (relay or

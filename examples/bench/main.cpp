@@ -133,7 +133,9 @@ struct Node {
     PluginManager                   plugins{kernel};
 
     explicit Node(std::string name) {
-        kernel.set_protocol_layer(proto);
+        gn::core::protocol_layer_id_t proto_id =
+            gn::core::kInvalidProtocolLayerId;
+        (void)kernel.protocol_layers().register_layer(proto, &proto_id);
 
         if (auto ident = gn::core::identity::NodeIdentity::generate(0)) {
             kernel.identities().add(ident->device().public_key());
@@ -150,7 +152,7 @@ struct Node {
 
         gn_link_id_t tid = GN_INVALID_ID;
         if (kernel.links().register_link(
-                "tcp", &kTcpVtable, tcp.get(), &tid) != GN_OK) {
+                "tcp", "", &kTcpVtable, tcp.get(), &tid) != GN_OK) {
             std::cerr << "[demo] register_link(tcp) failed\n";
             std::exit(1);
         }

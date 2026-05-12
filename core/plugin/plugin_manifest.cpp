@@ -12,6 +12,10 @@
 
 #include <unistd.h>
 
+#ifdef _WIN32
+#include <io.h>
+#endif
+
 #include <nlohmann/json.hpp>
 #include <sodium.h>
 
@@ -140,7 +144,20 @@ PluginManifest::sha256_of_fd(int fd) noexcept {
     std::array<std::uint8_t, kReadChunkBytes> buffer{};
     off_t off = 0;
     while (true) {
+#ifdef _WIN32
+        /// mingw lacks `pread`; ucrt offers `_lseeki64` + `_read`.
+        /// The fd here belongs to one-shot manifest verification
+        /// (`open` → `sha256_of_fd` → `dlopen`) so the absence of
+        /// pread's "leaves seek alone" guarantee does not matter —
+        /// dlopen reopens by `/proc/self/fd/N` on Linux only.
+        if (::_lseeki64(fd, static_cast<__int64>(off), SEEK_SET) == -1) {
+            return std::nullopt;
+        }
+        const int n = ::_read(fd, buffer.data(),
+            static_cast<unsigned>(buffer.size()));
+#else
         const ssize_t n = ::pread(fd, buffer.data(), buffer.size(), off);
+#endif
         if (n < 0) return std::nullopt;
         if (n == 0) break;
         crypto_hash_sha256_update(&state, buffer.data(),

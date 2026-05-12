@@ -5,6 +5,7 @@
 - [Что считается built-in](#что-считается-built-in)
 - [gn.heartbeat](#gnheartbeat)
 - [gn.link.\<scheme\>](#gnlinkscheme)
+- [gn.strategy.\<name\>](#gnstrategyname)
 - [Future extensions (TBD)](#future-extensions-tbd)
 - [Plugin author convention](#plugin-author-convention)
 - [Cross-references](#cross-references)
@@ -296,6 +297,49 @@ Reserved-bits в `flags` (биты выше шестого) и хвост `_rese
 в `gn_link_caps_t` / `gn_link_stats_t` оставлены ровно для того,
 чтобы добавить новые флаги или новый счётчик в minor-релизе без
 bump'а major'а.
+
+---
+
+## gn.strategy.\<name\>
+
+Каркас для strategy plugins, выбирающих исходящий conn из набора
+живых соединений к одному peer'у. Контракт описан в
+`sdk/extensions/strategy.h`; SDK-side macro `GN_STRATEGY_PLUGIN`
+из `sdk/cpp/strategy_plugin.hpp` собирает thunk'и автоматически.
+
+**Имена.** `gn.strategy.<plugin-name>` — например
+`gn.strategy.rtt-optimal`, `gn.strategy.cost-aware` (last не
+landed). Каждый strategy plugin регистрируется под собственным
+именем; kernel-side dispatch (когда landed, Слайс 9-KERNEL)
+выберет одну активную strategy на узел по operator-config'у.
+
+**API-сводка.** vtable `gn_strategy_api_t`:
+
+| Слот | Назначение |
+|---|---|
+| `pick_conn` | выбрать conn_id из массива `gn_path_sample_t` кандидатов для peer'а |
+| `on_path_event` | snapshot path-events (CONN_UP/DOWN, RTT_UPDATE, LOSS_DETECTED, CAPABILITY_REFRESH) |
+| `ctx` | self-pointer плагина |
+
+`gn_path_sample_t` карьерит conn_id + smoothed RTT (микросекунды)
++ loss percentage (×100) + capability flags.
+
+Что отличает `gn.strategy.*` от reserved-под-будущее
+`gn.float-send.*` (раздел [Future extensions](#future-extensions-tbd)):
+
+| Family | Send pipe | Conn map | Когда использовать |
+|---|---|---|---|
+| `gn.strategy.*` | kernel | kernel | простой picker, kernel-mediated routing |
+| `gn.float-send.*` | plugin | plugin | rich behaviours — cache, retry, fallback |
+
+`gn.float-send.*` может построиться поверх `gn.strategy.*` как
+обёртка, добавляющая send pipe + per-peer state. Pre-v1 — только
+`gn.strategy.*` shipped.
+
+**Reference impl.** `plugins/strategies/float_send_rtt/`
+регистрирует `gn.strategy.rtt-optimal` (v1.0). Минимум-RTT picker
+с EWMA α=1/8, hysteresis 0.75x, encrypted-path tie-breaker
+в пределах ±5 % RTT band.
 
 ---
 

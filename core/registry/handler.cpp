@@ -10,7 +10,8 @@
 
 namespace gn::core {
 
-gn_result_t HandlerRegistry::register_handler(std::string_view           protocol_id,
+gn_result_t HandlerRegistry::register_handler(std::string_view           namespace_id,
+                                              std::string_view           protocol_id,
                                               std::uint32_t              msg_id,
                                               std::uint8_t               priority,
                                               const gn_handler_vtable_t* vtable,
@@ -40,10 +41,18 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
         return GN_ERR_INVALID_ENVELOPE;
     }
 
+    /// Empty / NULL namespace_id resolves to the kernel default.
+    /// Pre-namespace plugins zero-init `gn_register_meta_t` so
+    /// `meta->namespace_id == NULL` lands here as `"default"`.
+    std::string namespace_str = namespace_id.empty()
+        ? std::string{kDefaultHandlerNamespace}
+        : std::string{namespace_id};
+
     const std::size_t cap = max_chain_length_.load(std::memory_order_relaxed);
 
     HandlerEntry entry;
     entry.id              = next_id_.fetch_add(1, std::memory_order_relaxed);
+    entry.namespace_id    = namespace_str;
     entry.protocol_id     = std::string{protocol_id};
     entry.msg_id          = msg_id;
     entry.priority        = priority;
@@ -53,7 +62,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           protoco
     entry.lifetime_anchor = std::move(lifetime_anchor);
     entry.plugin_name     = std::string{plugin_name};
 
-    Key key{entry.protocol_id, msg_id};
+    Key key{namespace_str, entry.protocol_id, msg_id};
 
     std::unique_lock lock(mu_);
 
@@ -112,11 +121,26 @@ gn_result_t HandlerRegistry::unregister_handler(gn_handler_id_t id) noexcept {
 
 std::vector<HandlerEntry> HandlerRegistry::lookup(std::string_view protocol_id,
                                                   std::uint32_t    msg_id) const {
-    Key key{std::string{protocol_id}, msg_id};
+    /// Fan out across every namespace registered for the
+    /// (protocol_id, msg_id) pair. Per `handler-registration.md`
+    /// the merged chain is sorted by (priority desc, insertion_seq
+    /// asc) so a router treats the result identically to the
+    /// pre-namespace single-chain world.
     std::shared_lock lock(mu_);
-    auto it = chains_.find(key);
-    if (it == chains_.end()) return {};
-    return it->second;  // value-type copy is the snapshot
+    std::vector<HandlerEntry> merged;
+    for (const auto& [k, chain] : chains_) {
+        if (k.protocol_id == protocol_id && k.msg_id == msg_id) {
+            merged.insert(merged.end(), chain.begin(), chain.end());
+        }
+    }
+    if (merged.size() > 1) {
+        std::sort(merged.begin(), merged.end(),
+            [](const HandlerEntry& a, const HandlerEntry& b) {
+                if (a.priority != b.priority) return a.priority > b.priority;
+                return a.insertion_seq < b.insertion_seq;
+            });
+    }
+    return merged;
 }
 
 HandlerRegistry::LookupResult HandlerRegistry::lookup_with_generation(
@@ -128,14 +152,66 @@ HandlerRegistry::LookupResult HandlerRegistry::lookup_with_generation(
     /// `generation()` read would slip an in-between bump past the
     /// caller — making the returned counter unreliable for mid-walk
     /// stale-detection.
-    Key key{std::string{protocol_id}, msg_id};
     std::shared_lock lock(mu_);
     LookupResult out;
     out.generation = generation_.load(std::memory_order_acquire);
-    if (auto it = chains_.find(key); it != chains_.end()) {
-        out.chain = it->second;
+    for (const auto& [k, chain] : chains_) {
+        if (k.protocol_id == protocol_id && k.msg_id == msg_id) {
+            out.chain.insert(out.chain.end(), chain.begin(), chain.end());
+        }
+    }
+    if (out.chain.size() > 1) {
+        std::sort(out.chain.begin(), out.chain.end(),
+            [](const HandlerEntry& a, const HandlerEntry& b) {
+                if (a.priority != b.priority) return a.priority > b.priority;
+                return a.insertion_seq < b.insertion_seq;
+            });
     }
     return out;
+}
+
+std::size_t HandlerRegistry::drain_by_namespace(std::string_view ns) noexcept {
+    std::unique_lock lock(mu_);
+    std::size_t removed = 0;
+
+    /// Two-pass: collect the keys whose namespace matches, then
+    /// erase. erase_if on the map mid-iteration is fine but the
+    /// by_id_ map needs the same per-entry erasures, so doing the
+    /// match in one pass keeps the by_id_ updates aligned.
+    std::vector<gn_handler_id_t> ids_to_drop;
+    for (auto chain_it = chains_.begin(); chain_it != chains_.end();) {
+        if (chain_it->first.namespace_id == ns) {
+            for (const auto& entry : chain_it->second) {
+                ids_to_drop.push_back(entry.id);
+            }
+            chain_it = chains_.erase(chain_it);
+        } else {
+            ++chain_it;
+        }
+    }
+
+    for (auto id : ids_to_drop) {
+        if (by_id_.erase(id) == 1) {
+            ++removed;
+            generation_.fetch_add(1, std::memory_order_acq_rel);
+        }
+    }
+    return removed;
+}
+
+std::vector<std::weak_ptr<void>>
+HandlerRegistry::collect_anchors_by_namespace(std::string_view ns) const {
+    std::shared_lock lock(mu_);
+    std::vector<std::weak_ptr<void>> anchors;
+    for (const auto& [key, chain] : chains_) {
+        if (key.namespace_id != ns) continue;
+        for (const auto& entry : chain) {
+            if (entry.lifetime_anchor) {
+                anchors.emplace_back(entry.lifetime_anchor);
+            }
+        }
+    }
+    return anchors;
 }
 
 void HandlerRegistry::set_max_chain_length(std::size_t cap) noexcept {

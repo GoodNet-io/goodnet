@@ -190,6 +190,20 @@ parse_uri(std::string_view uri) {
     return out;
 }
 
+/// Strict variant: same parse as `parse_uri` PLUS scheme validation.
+/// Every transport plugin today writes
+/// `if (parts->scheme != "tcp") return GN_ERR_INVALID_ENVELOPE;`
+/// — `parse_uri_strict("tcp://h:1", "tcp")` bakes that check in.
+/// Returns `nullopt` on either malformed URI or scheme mismatch.
+[[nodiscard]] inline std::optional<UriParts>
+parse_uri_strict(std::string_view uri,
+                  std::string_view expected_scheme) noexcept {
+    auto parts = parse_uri(uri);
+    if (!parts) return std::nullopt;
+    if (parts->scheme != expected_scheme) return std::nullopt;
+    return parts;
+}
+
 /// Look up the value of a named query parameter without allocating.
 /// Returns an empty view when the key is absent or the query has no
 /// `=` separator on the relevant pair.
