@@ -208,8 +208,8 @@ private:
         FILE* f = std::fopen("/proc/self/statm", "r");
         if (!f) return 0;
         unsigned long size_pages = 0, rss_pages = 0;
-        const int n = std::fscanf(f, "%lu %lu", &size_pages, &rss_pages);
-        std::fclose(f);
+        const int n = std::fscanf(f, "%lu %lu", &size_pages, &rss_pages);  // NOLINT(cert-err34-c)
+        (void)std::fclose(f);
         if (n < 2) return 0;
         return static_cast<std::uint64_t>(rss_pages)
              * static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE))

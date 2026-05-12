@@ -155,7 +155,18 @@ def main(argv):
                 out.append("| " + " | ".join(cols) + " |")
                 out.append("|" + "---|" * len(cols))
                 for r in rows:
-                    out.append("| " + " | ".join(str(r.get(c, "")) for c in cols) + " |")
+                    cells = []
+                    for c in cols:
+                        v = r.get(c, "")
+                        if c == "bytes_per_sec" and isinstance(v, (int, float)) and v > 0:
+                            cells.append(fmt_bytes_per_sec(v))
+                        elif c == "handshake_ms" and isinstance(v, (int, float)) and v > 0:
+                            cells.append(f"{v:.2f} ms")
+                        elif c == "payload" and isinstance(v, (int, float)):
+                            cells.append(f"{int(v)} B")
+                        else:
+                            cells.append(str(v))
+                    out.append("| " + " | ".join(cells) + " |")
             out.append("")
 
     Path(args.output).write_text("\n".join(out))
