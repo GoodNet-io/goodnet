@@ -268,12 +268,25 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, BackpressureSlowConsumer)
     /// on the bench kernel's host_api builder.
     server_kernel.stub.inbound_sleep_us.store(50,
         std::memory_order_release);
+    /// Long-running stress: drop inbound payloads on the floor.
+    /// Storing each delivered frame in `kernel.stub.inbound` would
+    /// make the stub itself leak ~total-bytes-sent (millions of
+    /// 4 KiB chunks → multi-GiB RSS that masks the actual
+    /// per-conn-queue footprint we're trying to measure).
+    server_kernel.stub.inbound_discard_payload.store(true,
+        std::memory_order_release);
+    client_kernel.stub.inbound_discard_payload.store(true,
+        std::memory_order_release);
 
     const auto port = reserve_port();
     const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
     if (server->listen(uri) != GN_OK) {
         state.SkipWithError("listen failed");
         server_kernel.stub.inbound_sleep_us.store(0,
+            std::memory_order_release);
+        server_kernel.stub.inbound_discard_payload.store(false,
+            std::memory_order_release);
+        client_kernel.stub.inbound_discard_payload.store(false,
             std::memory_order_release);
         return;
     }
@@ -322,21 +335,33 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, BackpressureSlowConsumer)
         });
     }
 
+    /// Drive the bench window for a fixed duration (default 2s)
+    /// so the throttled consumer has time to build queue depth.
+    /// `GN_BENCH_DURATION_S` env var overrides — used by stress
+    /// runs that want sustained-load metrics over minutes.
+    auto window = std::chrono::seconds{2};
+    if (const char* env = std::getenv("GN_BENCH_DURATION_S")) {
+        try {
+            window = std::chrono::seconds{std::stoi(env)};
+        } catch (const std::exception& e) {
+            (void)std::fprintf(stderr,
+                "[bench_tcp_scale] ignoring bad GN_BENCH_DURATION_S=%s: %s\n",
+                env, e.what());
+        }
+    }
     const auto t0 = std::chrono::steady_clock::now();
     for ([[maybe_unused]] auto _ : state) {  // NOLINT(clang-analyzer-deadcode.DeadStores)
-        /// Drive the bench window for a fixed 2s so the throttled
-        /// consumer actually has time to build queue depth. Without
-        /// this the gbench `Iterations(1)` body returns after a
-        /// nanosecond and the producer threads never get to fill
-        /// the bounded queue; the resulting `bp_ratio` and
-        /// `rss_peak_kb_delta` would be meaningless.
-        std::this_thread::sleep_for(2s);
+        std::this_thread::sleep_for(window);
         ::benchmark::DoNotOptimize(ok_sends.load(std::memory_order_relaxed));
     }
     const auto t1 = std::chrono::steady_clock::now();
     stop.store(true, std::memory_order_release);
     for (auto& w : workers) w.join();
     server_kernel.stub.inbound_sleep_us.store(0,
+        std::memory_order_release);
+    server_kernel.stub.inbound_discard_payload.store(false,
+        std::memory_order_release);
+    client_kernel.stub.inbound_discard_payload.store(false,
         std::memory_order_release);
 
     const auto elapsed_s =

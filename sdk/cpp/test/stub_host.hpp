@@ -83,6 +83,15 @@ struct LinkStub {
     /// every other test that uses this stub.
     std::atomic<int>                       inbound_sleep_us{0};
 
+    /// When true, `on_inbound` ONLY bumps the counter and skips
+    /// the payload copy into `inbound`. Required for long-running
+    /// stress benches that emit millions of frames — without this
+    /// the stub's vector grows by `total-bytes-sent`, reading like
+    /// a multi-GiB leak in RSS reports. The fast tests + assertion
+    /// suites leave this false (default) so existing
+    /// `last_payload` / `inbound[idx]` accesses keep working.
+    std::atomic<bool>                      inbound_discard_payload{false};
+
     static gn_result_t on_connect(
         void* host_ctx,
         const std::uint8_t /*remote_pk*/[GN_PUBLIC_KEY_BYTES],
@@ -107,7 +116,8 @@ struct LinkStub {
                                    const std::uint8_t* bytes,
                                    std::size_t size) {
         auto* h = static_cast<LinkStub*>(host_ctx);
-        {
+        if (!h->inbound_discard_payload.load(
+                std::memory_order_acquire)) {
             std::lock_guard lk(h->mu);
             h->inbound.emplace_back(bytes, bytes + size);
             h->inbound_owners.push_back(conn);
