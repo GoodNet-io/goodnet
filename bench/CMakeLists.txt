@@ -199,22 +199,51 @@ endif()
 
 # ── Real-mode (production-shape) bench (A.2) ──────────────────────────
 #
-# Boots a real `gn::core::Kernel` + production plugins (Noise security
-# + gnet protocol + the transport plugins) and measures the operator-
-# facing send / recv path. Slice A.2 lands the scaffold with cases
-# marked SkipWithError; the kernel-boot helper that drives them
-# arrives in the A.2-followup commit.
-add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
-target_link_libraries(bench_real_e2e PRIVATE
-    goodnet_bench_harness
-    benchmark::benchmark_main
-)
-set_target_properties(bench_real_e2e PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
-)
+# Boots a real `gn::core::Kernel` + production plugins (gnet protocol
+# layer linked statically + Noise security via dlopen + a transport
+# plugin via OBJECT lib) and measures the operator-facing
+# `host_api->send` round-trip. The Noise security provider keeps the
+# shared-object loading path the kernel uses in production; every
+# other piece links statically so the bench binary owns its own
+# kernel instance per process.
+if(TARGET goodnet_tcp_objects
+   AND TARGET goodnet_udp_objects
+   AND TARGET goodnet_ipc_objects
+   AND TARGET goodnet_security_noise)
+    add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
+    target_link_libraries(bench_real_e2e PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        GoodNet::protocol_gnet
+        goodnet_tcp_objects
+        goodnet_udp_objects
+        goodnet_ipc_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+        ${CMAKE_DL_LIBS}
+    )
+    add_dependencies(bench_real_e2e goodnet_security_noise)
+    target_compile_definitions(bench_real_e2e PRIVATE
+        "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    )
+    set_target_properties(bench_real_e2e PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
 
 # Cross-implementation comparison binaries live under bench/comparison/
 # but ship as shell scripts wrapping curl / openssl s_client / etc.
 # rather than C++ — see bench/comparison/README.md for the harness
 # layout that drives both GoodNet and reference stacks through the
 # same payload matrix.
+
+# ── Free-kernel showcase bench (track Б) ──────────────────────────────
+#
+# Demonstrates GoodNet-distinctive moves no other stack can reproduce:
+# multi-connect under one identity, runtime strategy-driven carrier
+# pick, post-handshake provider handoff PoC, multi-thread fanout,
+# carrier failover, mobility LAN shortcut. Drives the inline-crypto
+# downgrade seam (`SecuritySession::_test_clear_inline_crypto`) so
+# gated through GOODNET_BENCH_STRATEGIES.
+add_subdirectory(showcase)
