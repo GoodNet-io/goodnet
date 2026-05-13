@@ -52,10 +52,35 @@ namespace gn::bench {
 /// Test-fixture kernel: a `LinkStub` plus a `host_api_t` built from
 /// the SDK test helper. Plugins (TcpLink, UdpLink, ...) get
 /// `set_host_api(&api)` and run against the in-process stub.
+///
+/// The host_api also exposes a `limits` slot returning
+/// `s_limits` — a process-wide `gn_limits_t` storage that
+/// backpressure-aware bench fixtures
+/// (`bench_tcp_scale.cpp::BackpressureSlowConsumer`) set BEFORE
+/// the plugin reads it via `set_host_api`. Without this override
+/// `pending_queue_bytes_hard` stays zero and the per-conn queue
+/// grows unbounded, masking the backpressure path the bench is
+/// supposed to exercise. Process-wide rather than per-instance
+/// because the bench harness runs scenarios sequentially.
 struct BenchKernel {
     ::gn::sdk::test::LinkStub stub;
     host_api_t                api;
-    BenchKernel() : api(::gn::sdk::test::make_link_host_api(stub)) {}
+
+    BenchKernel() : api(::gn::sdk::test::make_link_host_api(stub)) {
+        api.limits = &BenchKernel::limits_thunk;
+    }
+
+    /// Storage for the shared `gn_limits_t`. Defined in a TU-local
+    /// inline static so multiple BenchKernel instances within the
+    /// same bench process see the same limits — that matches what
+    /// the real kernel does (one set of operator-config caps for
+    /// every plugin loaded in the process).
+    inline static gn_limits_t s_limits{};
+
+private:
+    static const gn_limits_t* limits_thunk(void* /*host_ctx*/) noexcept {
+        return &s_limits;
+    }
 };
 
 /// Round-trip timing collector. Latency samples are inserted via

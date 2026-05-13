@@ -231,6 +231,31 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, BackpressureSlowConsumer)
     const std::size_t payload_size   = 4096;
     const auto payload = make_payload(payload_size);
 
+    /// Set a 1 MiB per-connection hard cap on the kernel's pending
+    /// queue BEFORE the plugin's `set_host_api` cached the limits
+    /// in the fixture's SetUp. The fixture's `server` / `client`
+    /// were created in SetUp WITH the host_api carrying our
+    /// `BenchKernel::s_limits` thunk — that thunk reads the static
+    /// `s_limits` on every plugin call, so the override here takes
+    /// effect immediately. With the cap at zero (the default for
+    /// every other bench) the producer floods the queue with
+    /// gigabytes of buffered bytes and `back_pressure_hits`
+    /// remains zero, defeating the point of this fixture.
+    constexpr std::uint32_t k1MiB = 1u << 20;
+    BenchKernel::s_limits.pending_queue_bytes_low  = k1MiB / 2;
+    BenchKernel::s_limits.pending_queue_bytes_high = (k1MiB * 3) / 4;
+    BenchKernel::s_limits.pending_queue_bytes_hard = k1MiB;
+
+    /// `TcpLink::set_host_api` caches limits at call time. The
+    /// fixture's SetUp already constructed plugins under the
+    /// default zero-cap; recreate them now so they re-read
+    /// `s_limits` and the hard cap actually engages. Tear-down
+    /// then handles the new instances normally.
+    client = std::make_shared<TcpLink>();
+    server = std::make_shared<TcpLink>();
+    client->set_host_api(&client_kernel.api);
+    server->set_host_api(&server_kernel.api);
+
     ResourceCounters res;
     res.snapshot_start();
 
