@@ -60,44 +60,105 @@ then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
 ## Performance
 
-Reference machine: i5-1235U, loopback, 16 KiB payloads, after
-the AEAD batch fix in `dev`. ChaCha20-Poly1305 via libsodium.
+Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
+libsodium. Release build, median of 3 runs. Two measurement
+shapes are reported separately on purpose — see
+[`docs/perf/analysis.en.md`](docs/perf/analysis.en.md) §
+"Measurement shape" for the full discussion.
 
-| Scenario | Mean (5 runs) | Range |
-|---|---|---|
-| 1 conn, burst (1000 frames) | 7.05 Gbps | 5.1 – 9.0 |
-| 1 conn, sustained (5000 frames) | 6.01 Gbps | 5.7 – 6.3 |
-| 4 conns, sustained aggregate | 19.84 Gbps | 17.8 – 20.8 |
-| 8 conns, burst aggregate | 20.49 Gbps | 15.8 – 30.6 |
+**Real-mode** through the production stack (kernel + Noise XX
++ gnet protocol + transport plugin). What an operator-facing
+`api->send()` actually pays. `RealFixture*` cases in
+`bench_real_e2e`.
 
-Single connection sits at ~75 % of one core's libsodium
-ChaCha throughput (`perf record`: 42 % cycles in
-`chacha20_encrypt_bytes`, 30 % in `poly1305_blocks`). Multi-conn
-scales because the kernel's `CryptoWorkerPool` runs AEAD jobs
-in parallel across cores; each connection has its own asio
-strand and per-conn drain CAS.
+| Payload | TCP one-way | TCP echo RT | UDP one-way | IPC one-way | IPC echo RT |
+|---|---|---|---|---|---|
+| 64 B    | 22 μs / 2.3 MiB/s    | 36 μs / 2.9 MiB/s    | 18 μs / 2.8 MiB/s | 14 μs / 3.7 MiB/s    | 44 μs / 1.9 MiB/s |
+| 1 KiB   | 21 μs / 35 MiB/s     | 43 μs / 35 MiB/s     | 20 μs / 38 MiB/s  | 16 μs / 51 MiB/s     | 50 μs / 32 MiB/s |
+| 8 KiB   | 40 μs / 142 MiB/s    | 80 μs / 155 MiB/s    | —                 | 33 μs / 181 MiB/s    | 101 μs / 147 MiB/s |
+| 32 KiB  | 135 μs / 213 MiB/s   | 245 μs / 250 MiB/s   | —                 | 118 μs / 246 MiB/s   | 319 μs / 192 MiB/s |
+
+UDP caps at 1 KiB on the MTU floor (`udp.hpp::kDefaultMtu = 1200`).
+
+**Parody** through the link plugin only (`LinkStub` host_api,
+no security, no protocol). What the link layer alone can
+deliver to a downstream that drains as fast as the socket
+writes. `*Fixture/Throughput` cases.
+
+| Plugin | @ 64 B | @ 512–1200 B | Comment |
+|---|---|---|---|
+| UDP    | 113 MiB/s | 0.68–1.01 GiB/s (≈ **8.7 Gb/s** @ MTU) | composer + asio strand |
+| TCP    | tracked in `bench/reports/<sha>.md` | — | per-conn back-pressure already measured |
+
+The cost decomposition between parody and real-mode is what
+`bench/comparison/reports/aggregate.py` calls "the production
+stack overhead": gnet framing + Noise AEAD + protocol-layer
+dispatch + per-send envelope construction. On UDP @ MTU the
+parody/real gap is about 4× — that gap IS the operator-facing
+plugin model. See § "Free-kernel showcase" below for the things
+the kernel does in exchange.
 
 ### vs WireGuard
 
-Same machine, same kernel, same ChaCha20-Poly1305. WireGuard
-runs through veth between two network namespaces; GoodNet runs
-on loopback TCP. iperf3 vs goodnet-bench, 5 s.
+Same machine, same kernel, same ChaCha20-Poly1305 primitive.
+WireGuard is a kernel module: zero-copy data plane, single
+peer = single IP tunnel, no application-layer framing or
+routing. GoodNet is userspace: peer identities are public
+keys, every send carries a typed message envelope through a
+plugin pipeline. The two pay for different things.
 
-| | Throughput |
-|---|---|
-| veth bridge (no crypto, baseline) | 80.4 Gbps |
-| WireGuard single tunnel (kernel, single-thread) | 4.94 Gbps |
-| **GoodNet single connection (userspace, multi-thread crypto)** | **6.01 Gbps** |
-| **GoodNet 4 connections aggregate** | **19.84 Gbps** |
+| Surface | Throughput | What it carries |
+|---|---|---|
+| `veth` loopback (no crypto, kernel baseline)            | ~80 Gb/s | raw IP frames |
+| **GoodNet UDP parody @ MTU** (no crypto, no protocol)   | **8.7 Gb/s** | raw datagrams through link plugin |
+| **WireGuard single tunnel** (kernel, single-thread)     | **~4.9 Gb/s** | IP tunnel, ChaCha20-Poly1305 per packet |
+| **GoodNet IPC real @ 32 KiB** (kernel + Noise + gnet)   | **~2.0 Gb/s** | typed `gn_message_t` envelopes, peer-pk addressing |
+| **GoodNet TCP real @ 32 KiB** (kernel + Noise + gnet)   | **~1.7 Gb/s** | same, over TCP loopback |
 
-Notes: WireGuard's mainline data plane runs in a single softirq
-context, so encryption pins one CPU. GoodNet's `CryptoWorkerPool`
-distributes AEAD jobs across worker threads, which shows on this
-benchmark. On a real 10 Gbps NIC, the comparison shifts —
-WireGuard's zero-copy kernel path is hard to beat from
-userspace. This is loopback-only evidence.
+What the table shows. The link plugin alone (parody UDP) tops
+WireGuard because there's no crypto and no protocol framing in
+the path. With the production stack engaged (Noise XX + gnet
+protocol layer + per-message envelope construction in userspace),
+GoodNet pays 2–3× WireGuard's per-byte cost. That gap is the
+operator-facing plugin model — the price of every byte going
+through `host_api->send()`, framed by `gn.protocol.gnet`,
+AEAD-sealed in userspace, dispatched into a strand-per-conn
+write pump. WireGuard skips all five layers.
 
-Reproduce: `nix run .#build -- release && build-release/bin/goodnet-bench 5000 16 4`.
+What the table does not show. WireGuard delivers raw IP packets
+between two endpoints. It does not address peers by public key
+in the application layer, does not route by message id, does
+not let one peer have three concurrent transports under one
+identity, does not migrate carriers when a mobile device shifts
+networks, does not give a strategy plugin the slot to pick a
+path per send. Those are the moves the
+[`bench_showcase`](bench/showcase/README.md) binary
+demonstrates in six sections — capabilities the kernel does in
+exchange for the throughput tax above. WireGuard's architecture
+has no slot for any of them; libp2p / WebRTC / gRPC each only
+partially overlap.
+
+This is loopback-only evidence. On a real 10 Gb/s NIC, raw IP
+zero-copy still wins on throughput per CPU cycle — but on the
+exact same hardware that runs WireGuard, GoodNet runs every
+plugin it ships in userspace plus the application stack on top
+of WireGuard's surface. The two are doing different jobs.
+
+Reproduce:
+
+```sh
+nix run .#build -- release
+./build-release/bench/bench_real_e2e \
+    --benchmark_filter='RealFixture' \
+    --benchmark_min_time=1s --benchmark_repetitions=3
+./build-release/bench/bench_udp \
+    --benchmark_filter='Throughput' \
+    --benchmark_min_time=1s --benchmark_repetitions=3
+```
+
+Full numbers in [`bench/reports/<sha>.md` § "А. Comparable echo
+round-trip"](bench/reports/) and per-section showcase report at
+`bench/reports/showcase-<sha>.md`.
 
 ## Architecture
 
