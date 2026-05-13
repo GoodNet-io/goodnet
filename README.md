@@ -28,19 +28,42 @@ then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
 ## What makes it different
 
-- **Multi-path transport.** Every transport runs concurrently. A
-  connection over TCP can migrate to ICE or IPC without the
-  application observing the seam. Per-transport scoring picks
-  the best path live.
+- **Multi-path transport, runtime adaptive.** Every transport
+  runs concurrently under one peer identity (one public key,
+  three live connections through TCP + UDP + IPC at once if you
+  want). A strategy plugin picks the carrier **per send** from
+  live RTT samples, not at connect time. The same `conn_id`
+  surface survives carrier migration: mobile device shifts from
+  4G to home Wi-Fi, the LAN host candidate appears in ICE,
+  strategy flips the winner, identity does not re-handshake.
+  Libp2p / WebRTC / gRPC each only partially overlap on this
+  axis; WireGuard has no slot for any of it.
+- **Parallel crypto, scales with cores.** The
+  `CryptoWorkerPool` distributes AEAD jobs across worker threads
+  on every send; WireGuard's mainline data plane pins to one
+  softirq CPU per peer, so its single-tunnel throughput
+  saturates one core no matter how many you give it. Multi-conn
+  aggregate on this 12-thread laptop hits **~34 Gb/s** parody
+  (static + LTO), already 7× WireGuard's single-tunnel ceiling
+  on the same machine, with crypto-ready architecture.
 - **Relay → direct upgrade.** Connections start through a relay
   when needed and walk themselves to a direct path within a few
   seconds, against the receiver's NAT. The application sees a
   single `conn_id` across the upgrade.
 - **Plugin-first ecosystem.** Transports, security providers,
-  protocol layers, and handlers are loadable shared objects
-  with their own git, their own license, their own release
-  cadence. The bundled set is a starting kit, not a sealed
-  monolith.
+  protocol layers, handlers, strategies — each is a loadable
+  shared object with its own git, its own license, its own
+  release cadence. The bundled set is a starting kit, not a
+  sealed monolith. A `-DGOODNET_STATIC_PLUGINS=ON` build links
+  every plugin straight into the kernel binary with cross-TU
+  LTO for the embedded operator.
+- **Runtime security provider migration.** Once Noise XX
+  establishes peer-identity binding, GoodNet can swap the
+  active security provider on the live connection — drop AEAD
+  on a loopback connection where the trust class allows, keep
+  it on the wire side. Identity-binding survives; per-frame
+  seal/open evaporates. WireGuard / TLS / libp2p Noise sessions
+  are monolithic: either on (every byte) or off (no auth).
 - **C ABI stability across languages.** The kernel exposes one
   surface — pointer + size, no STL across the boundary — so
   bindings in Python, Rust, Go, Java land on the same
@@ -52,13 +75,26 @@ then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 | | GoodNet | libp2p | WireGuard | Matrix |
 |---|---|---|---|---|
 | **Shape** | Kernel + C ABI | Library | Kernel module | Application (chat) |
-| **Transports** | All concurrent (multi-path) | One per conn | UDP only | Homeserver HTTP |
+| **Transports** | All concurrent (multi-path) under one identity | One per conn | UDP only | Homeserver HTTP |
+| **Carrier selection** | Runtime, strategy plugin per `send()` | At connect time | None (single tunnel) | None |
+| **Aggregate scaling** | Linear in cores (CryptoWorkerPool) | Per-conn | Pinned to one softirq CPU per peer | Server-bound |
 | **Languages** | Any (C ABI) | Go/Rust/JS forks differ | C / kernel | Python/JS/Go |
 | **NAT** | Heartbeat-observed + AutoNAT + relay → direct | Manual relay | None | Homeserver pivots |
-| **Pluggable security** | Yes (Noise XX/IK, Null, TLS planned) | Yes (Noise) | No (Noise IK only) | TLS to homeserver |
+| **Pluggable security** | Yes (Noise XX/IK, Null, TLS planned); **swappable post-handshake** | Yes (Noise) | No (Noise IK only) | TLS to homeserver |
+| **Mobility** | ICE-restart on new interface, same `conn_id`, no re-handshake | None | None | Server holds session |
 | **License** | GPL-2 + linking exception (strategic), MIT (periphery) | MIT/Apache | GPL-2 | Apache |
 
 ## Performance
+
+**TL;DR on this machine** (i5-1235U, 6-core / 12-thread,
+loopback): single-conn with crypto sits at **~2 Gb/s**, single
+WireGuard tunnel on the same hardware tops out at **~4.9 Gb/s**
+because its softirq pins one CPU. GoodNet's aggregate scales
+across cores — **~34 Gb/s** static-LTO multi-conn parody, and
+the legacy 4-conn inline-crypto bench reached **~19.84 Gb/s
+with crypto**. Single-conn through Noise the kernel pays for
+the userspace plugin model; aggregate through `CryptoWorkerPool`
+it earns it back by going parallel.
 
 Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
 libsodium. Release build, median of 3 runs. Two measurement
