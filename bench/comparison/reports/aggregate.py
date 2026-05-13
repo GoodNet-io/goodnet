@@ -55,6 +55,28 @@ def parse_gbench(j, out):
             time = None
         time_ns = float(time) * scale if time else None
         error_msg = b.get("error_message") if b.get("error_occurred") else None
+        cpu_user = b.get("cpu_user_us")
+        cpu_sys  = b.get("cpu_sys_us")
+        cpu_total_us = (b.get("cpu_total_us")
+                        or ((cpu_user or 0) + (cpu_sys or 0)) or None)
+        iters = b.get("iterations")
+        # Derive ns of CPU time spent per byte of throughput. Useful
+        # for cross-payload comparisons because the absolute Gbps
+        # number scales with both link speed AND payload size; cpu/B
+        # isolates the per-byte cost the code path imposes.
+        #
+        # `cpu_total_us` is a delta from `getrusage(RUSAGE_SELF)`
+        # snapshots wrapping the WHOLE bench body (every iteration);
+        # `bytes_per_second` is normalised per-iteration time. So to
+        # match the units we need total bytes, which is
+        # `iterations × bytes_per_second × real_time_per_iter`. With
+        # `SetBytesProcessed(iterations × payload)` in the bench
+        # bodies this collapses to `iterations × payload`.
+        cpu_ns_per_byte = None
+        if cpu_total_us and bps and time_ns and iters:
+            total_bytes = float(bps) * float(time_ns) / 1e9 * float(iters)
+            if total_bytes > 0:
+                cpu_ns_per_byte = float(cpu_total_us) * 1e3 / total_bytes
         row = {
             "stack": "goodnet",
             "case":  name,
@@ -69,8 +91,10 @@ def parse_gbench(j, out):
             "vsz_peak_kb_delta": b.get("vsz_peak_kb_delta"),
             "sock_mem_kb_delta": b.get("sock_mem_kb_delta"),
             "minor_faults":      b.get("minor_faults"),
-            "cpu_user_us":       b.get("cpu_user_us"),
-            "cpu_sys_us":        b.get("cpu_sys_us"),
+            "cpu_user_us":       cpu_user,
+            "cpu_sys_us":        cpu_sys,
+            "cpu_total_us":      cpu_total_us,
+            "cpu_ns_per_byte":   cpu_ns_per_byte,
         }
         out.setdefault("perf", []).append(row)
 
@@ -134,6 +158,37 @@ def fmt_size_kib(n):
     return f"{kib/1024:.1f} MiB"
 
 
+def fmt_per_byte(n):
+    """Render a `ns of CPU per byte sent` rate. Sub-1ns values
+    print with one decimal so the reader can still distinguish the
+    raw-socket plugin (~0.4 ns/B) from a Noise-encrypted carrier
+    (~3-5 ns/B) at a glance."""
+    if n is None:
+        return "—"
+    try:
+        v = float(n)
+    except (TypeError, ValueError):
+        return "—"
+    if v <= 0:
+        return "—"
+    if v < 10:
+        return f"{v:.2f} ns/B"
+    if v < 1000:
+        return f"{v:.1f} ns/B"
+    return f"{v/1000:.2f} μs/B"
+
+
+# Bench `case` names that came from the in-process kernel + real
+# security/protocol stack are tagged with the `RealFixture/` prefix
+# (see `bench/plugins/bench_real_e2e.cpp`, plan §A.2). Anything
+# else is parody — link plugin + LinkStub, no security, no framing.
+_REAL_PREFIX = "RealFixture/"
+
+
+def is_real_row(row):
+    return row.get("case", "").startswith(_REAL_PREFIX)
+
+
 def main(argv):
     p = argparse.ArgumentParser()
     p.add_argument("commit_sha")
@@ -158,6 +213,102 @@ def main(argv):
             parse_comparison(j, aggregated)
 
     out = [f"# Benchmark report — {args.commit_sha}", ""]
+
+    # ── TL;DR cross-stack throughput at the canonical payload ────────
+    #
+    # One row per stack at 1024 B — the size every comparison runner
+    # measures and where libp2p / iroh tend to publish their own
+    # headline numbers. The reader who only wants the top-line
+    # "is GoodNet competitive?" answer gets it without scrolling
+    # through the per-stack matrices below.
+    #
+    # Rows assembled from THREE sources:
+    #   * gbench `*EchoRoundtrip/1024/...`  — GoodNet parody RTT
+    #   * gbench `*Throughput/1024/...`     — GoodNet parody one-way
+    #   * `tables` rows where `payload == 1024` — libp2p / iroh
+    #   * `throughput_stack` entries        — iperf3 baselines (no
+    #     payload axis; folded in as "≥ 1 KiB" since iperf3 picks its
+    #     own MTU-sized chunks)
+    canon_payload = 1024
+    tldr_rows: list[dict] = []
+    plug_re = re.compile(
+        r"^(?P<plug>Udp|Ws|Tcp|Ipc|Quic|Tls)Fixture/"
+        r"(?P<kind>EchoRoundtrip|Throughput)/(?P<sz>\d+)/")
+    for r in aggregated.get("perf", []):
+        m = plug_re.match(r.get("case", ""))
+        if not m or int(m.group("sz")) != canon_payload:
+            continue
+        if not r.get("throughput_bps"):
+            continue
+        kind = "echo-RTT" if m.group("kind") == "EchoRoundtrip" else "send-only"
+        shape = "real" if is_real_row(r) else "parody"
+        tldr_rows.append({
+            "stack":       f"GoodNet {m.group('plug').upper()}",
+            "shape":       shape,
+            "kind":        kind,
+            "throughput":  r["throughput_bps"],
+            "p50_ns":      r.get("p50_ns"),
+            "p99_ns":      r.get("p99_ns"),
+        })
+    for tbl in aggregated.get("tables", []):
+        if tbl.get("metric") not in (
+                "libp2p_echo_throughput", "iroh_echo_throughput"):
+            continue
+        for row in tbl.get("rows", []):
+            if int(row.get("payload", 0)) != canon_payload:
+                continue
+            bps = row.get("bytes_per_sec", 0)
+            if not bps:
+                continue
+            tldr_rows.append({
+                "stack":      row.get("stack", "?"),
+                "shape":      "real",  # libp2p/iroh measure full stack
+                "kind":       "echo-RTT",
+                "throughput": float(bps),
+                "p50_ns":     None,
+                "p99_ns":     None,
+            })
+    for t in aggregated.get("throughput_stack", []):
+        bps = t.get("bytes_per_sec", 0)
+        if not bps:
+            continue
+        # iperf3 is a raw-socket baseline — same shape as parody.
+        tldr_rows.append({
+            "stack":      t.get("stack", "?"),
+            "shape":      "parody",
+            "kind":       t.get("metric", "throughput"),
+            "throughput": float(bps),
+            "p50_ns":     None,
+            "p99_ns":     None,
+        })
+    if tldr_rows:
+        # Sort: real first, then parody; within each, by throughput
+        # descending. Reader sees the production-shape numbers at
+        # the top of the table, with the upper-bound parody rows
+        # below for context.
+        tldr_rows.sort(
+            key=lambda r: (r["shape"] != "real", -r["throughput"]))
+        out.append(f"## TL;DR — {canon_payload} B payload, all stacks")
+        out.append("")
+        out.append(f"_Headline throughput across every stack the bench "
+                   f"runner observed at the canonical {canon_payload}-byte "
+                   f"payload. `shape` = `real` for production-equivalent "
+                   f"stacks (libp2p TCP+Noise+Yamux, iroh TLS1.3+QUIC, "
+                   f"GoodNet `RealFixture/...`) and `parody` for raw-"
+                   f"transport baselines (iperf3, GoodNet plugin matrix "
+                   f"without security/protocol). Compare same-shape rows "
+                   f"only — a `real` vs `parody` delta IS the cost of "
+                   f"running the production stack, not a stack quality "
+                   f"signal._")
+        out.append("")
+        out.append("| Stack | Shape | Kind | Throughput | P50 RTT | P99 RTT |")
+        out.append("|---|---|---|---|---|---|")
+        for r in tldr_rows:
+            out.append(
+                f"| {r['stack']} | `{r['shape']}` | {r['kind']} | "
+                f"{fmt_bytes_per_sec(r['throughput'])} | "
+                f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} |")
+        out.append("")
 
     # ── Side-by-side echo round-trip ─────────────────────────────────
     #
@@ -206,48 +357,95 @@ def main(argv):
             out.append("| " + " | ".join(cells) + " |")
         out.append("")
 
-    if perf := aggregated.get("perf"):
-        out.append("## Parody — GoodNet plugin matrix (raw transport, "
-                   "no security, no protocol layer)")
-        out.append("")
-        out.append("_**Shape**: bench fixtures wire the link plugin to a "
-                   "test stub `host_api` — no security provider is "
-                   "registered, no protocol layer frames the bytes. "
-                   "Numbers are the upper-bound the plugin can deliver "
-                   "to a downstream that drains as fast as the link "
-                   "writes. Compare against `iperf3` rows below (also "
-                   "no security, no framing) for a fair stack-by-stack "
-                   "delta. For the production-shape numbers see the "
-                   "`## Real` section once `bench_real_e2e` lands (plan "
-                   "§A.2)._")
-        out.append("")
-        out.append("_Memory deltas: `RSS Δ` = `VmRSS_end − VmRSS_start` "
-                   "(current; allocator `madvise(MADV_DONTNEED)` masks "
-                   "bursts that returned). `RSS Peak Δ` = `VmHWM_end − "
-                   "VmHWM_start` (high-water-mark; catches bursts). "
-                   "`VSZ Peak Δ` = same for VmPeak (virtual address "
-                   "space, includes mmap'd-but-untouched). `Sock Mem Δ` = "
-                   "kernel TCP+UDP+FRAG buffers from "
-                   "`/proc/net/sockstat` (system-wide; bench attribution "
-                   "via window-delta — every other socket on a quiet "
-                   "test machine stays at steady state)._")
-        out.append("")
-        out.append("| Case | Time | Throughput | P50 lat | P99 lat | "
-                   "RSS Δ | RSS Peak Δ | VSZ Peak Δ | Sock Mem Δ | "
-                   "Minor Faults |")
-        out.append("|---|---|---|---|---|---|---|---|---|---|")
-        for r in perf:
-            tput = fmt_bytes_per_sec(r["throughput_bps"]) if r["throughput_bps"] else "-"
+    def emit_perf_table(rows, shape_label):
+        out.append("| Case | Time | Throughput | CPU/B | P50 lat | "
+                   "P99 lat | RSS Δ | RSS Peak Δ | VSZ Peak Δ | "
+                   "Sock Mem Δ | Minor Faults |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        for r in rows:
+            tput = (fmt_bytes_per_sec(r["throughput_bps"])
+                    if r["throughput_bps"] else "-")
             mf = r.get("minor_faults")
             mf_str = f"{int(mf):,}" if mf is not None and mf > 0 else "—"
-            out.append(f"| {r['case']} | {fmt_ns(r['time_ns'])} | {tput} | "
-                       f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} | "
-                       f"{fmt_kb(r.get('rss_kb_delta'))} | "
-                       f"{fmt_kb(r.get('rss_peak_kb_delta'))} | "
-                       f"{fmt_kb(r.get('vsz_peak_kb_delta'))} | "
-                       f"{fmt_kb(r.get('sock_mem_kb_delta'))} | "
-                       f"{mf_str} |")
+            # Strip the `RealFixture/` prefix from the case name in
+            # the Real table so a reader scanning the column gets
+            # `TcpEcho/1024` not `RealFixture/TcpEcho/1024` repeated.
+            case = r["case"]
+            if shape_label == "real" and case.startswith(_REAL_PREFIX):
+                case = case[len(_REAL_PREFIX):]
+            out.append(
+                f"| {case} | {fmt_ns(r['time_ns'])} | {tput} | "
+                f"{fmt_per_byte(r.get('cpu_ns_per_byte'))} | "
+                f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} | "
+                f"{fmt_kb(r.get('rss_kb_delta'))} | "
+                f"{fmt_kb(r.get('rss_peak_kb_delta'))} | "
+                f"{fmt_kb(r.get('vsz_peak_kb_delta'))} | "
+                f"{fmt_kb(r.get('sock_mem_kb_delta'))} | "
+                f"{mf_str} |")
         out.append("")
+
+    if perf := aggregated.get("perf"):
+        parody_rows = [r for r in perf if not is_real_row(r)]
+        real_rows   = [r for r in perf if is_real_row(r)]
+
+        if parody_rows:
+            out.append("## Parody — GoodNet plugin matrix (raw transport, "
+                       "no security, no protocol layer)")
+            out.append("")
+            out.append("_**Shape**: bench fixtures wire the link plugin to "
+                       "a test stub `host_api` — no security provider is "
+                       "registered, no protocol layer frames the bytes. "
+                       "Numbers are the upper-bound the plugin can deliver "
+                       "to a downstream that drains as fast as the link "
+                       "writes. Compare against `iperf3` rows below (also "
+                       "no security, no framing) for a fair stack-by-stack "
+                       "delta. For production-shape numbers compare to the "
+                       "`## Real` section (`RealFixture/...` cases) — "
+                       "the delta IS the cost of the production stack._")
+            out.append("")
+            out.append("_`CPU/B` = CPU-nanoseconds per byte sent, derived "
+                       "from getrusage user+sys time and effective "
+                       "throughput. Compare across rows at the same "
+                       "payload size: per-byte cost is the dimension that "
+                       "stays meaningful when the absolute Gbps number "
+                       "moves with link speed or packet size._")
+            out.append("")
+            out.append("_Memory deltas: `RSS Δ` = `VmRSS_end − VmRSS_start` "
+                       "(current; allocator `madvise(MADV_DONTNEED)` masks "
+                       "bursts that returned). `RSS Peak Δ` = `VmHWM_end − "
+                       "VmHWM_start` (high-water-mark; catches bursts). "
+                       "`VSZ Peak Δ` = same for VmPeak (virtual address "
+                       "space, includes mmap'd-but-untouched). "
+                       "`Sock Mem Δ` = kernel TCP+UDP+FRAG buffers from "
+                       "`/proc/net/sockstat` (system-wide; bench "
+                       "attribution via window-delta — every other socket "
+                       "on a quiet test machine stays at steady state)._")
+            out.append("")
+            emit_perf_table(parody_rows, "parody")
+
+        if real_rows:
+            out.append("## Real — production-shape echo "
+                       "(kernel + security + protocol)")
+            out.append("")
+            out.append("_**Shape**: bench fixtures boot a real kernel, "
+                       "load the matching security provider "
+                       "(`gn.security.noise` for peer trust, "
+                       "`gn.security.null` for loopback per StackRegistry), "
+                       "and frame bytes through `gn.protocol.gnet`. Numbers "
+                       "match the cost an operator-facing `send()` actually "
+                       "incurs in production — compare against "
+                       "`rust-libp2p` (Noise XX + Yamux) and `iroh` "
+                       "(TLS 1.3 + QUIC) rows in `## Cross-implementation "
+                       "throughput` below for a fair real-vs-real "
+                       "stack-quality signal._")
+            out.append("")
+            out.append("_Per-byte cost in this section reflects the full "
+                       "send path: protocol framing + AEAD encrypt + "
+                       "link write. Subtract the same-payload row from "
+                       "`## Parody` above to isolate the security + "
+                       "protocol overhead._")
+            out.append("")
+            emit_perf_table(real_rows, "real")
 
     if singles := aggregated.get("single_stack"):
         out.append("## Cross-implementation latency / handshake")
