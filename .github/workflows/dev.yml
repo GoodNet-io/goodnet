@@ -20,41 +20,9 @@ jobs:
       - name: Build (Release) and run tests
         run: nix run .#test
 
-  clang-tidy:
-    # Mirror of the gate on `ci.yml` so non-main branches lint their
-    # own diff before merging. Push-event runs against HEAD^; PR-event
-    # against the base branch.
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-        with:
-          use-flakehub: false
-      - name: Build (Debug, emits compile_commands.json)
-        run: nix run .#build --
-      - name: Collect changed C/C++ files
-        id: changed
-        run: |
-          if [ -n "${{ github.base_ref }}" ]; then
-            base="origin/${{ github.base_ref }}"
-            git fetch origin "${{ github.base_ref }}" --depth=1
-          else
-            base="HEAD^"
-          fi
-          files=$(git diff --name-only --diff-filter=ACMR "$base"...HEAD \
-                    | grep -E '\.(cpp|hpp|h|cc)$' || true)
-          {
-            echo 'files<<EOF'
-            printf '%s\n' "$files"
-            echo 'EOF'
-          } >> "$GITHUB_OUTPUT"
-      - name: Run clang-tidy on changed files
-        if: steps.changed.outputs.files != ''
-        run: |
-          printf '%s\n' '${{ steps.changed.outputs.files }}' \
-            | xargs -P 4 -I{} nix develop --command \
-                clang-tidy --quiet --warnings-as-errors='*' -p build {}
+# Dev branch is intentionally minimum-friction: only the test gate
+# runs. clang-tidy lives in `.githooks/pre-commit` (installable via
+# `nix run .#setup`) so the diagnostic loop stays at commit time, not
+# CI time. Plugin-verify matrix and the ice-3node Docker harness only
+# run on main (`ci.yml`); release artefacts only build on tag push
+# (`release.yml`).
