@@ -504,6 +504,131 @@ def main(argv):
             out.append("")
             emit_perf_table(real_rows, "real")
 
+            # ── Cost decomposition: parody → real overhead ──────────
+            #
+            # For every plugin family present in BOTH shapes, pair
+            # the rows at the canonical payload and surface the
+            # delta as a percentage. Hides the rest of the matrix
+            # noise — the reader gets one row per plugin showing
+            # the cost of switching from raw-transport to the full
+            # production stack.
+            #
+            # Pair heuristic: case name's plugin prefix (everything
+            # up to the first `/`). RealFixture/TcpEcho/1024 pairs
+            # against TcpFixture/EchoRoundtrip/1024 (or .../Throughput).
+            # We pick the FASTEST parody row at the canonical
+            # payload so the overhead reflects "production cost vs
+            # plugin's headline number," not "production cost vs an
+            # echo path that already paid a round-trip tax."
+            def _plugin_family(case: str) -> str:
+                """Extract `TCP` / `UDP` / `WS` etc. from the case name.
+                Parody cases use `TcpFixture/.../...`; real-mode cases
+                use `RealFixture/TcpEcho/...`. Both reduce to the same
+                family by taking the leading camelcase word (e.g. `Tcp`)
+                of the first path segment that follows the optional
+                `RealFixture/` prefix."""
+                stripped = case[len(_REAL_PREFIX):] \
+                    if case.startswith(_REAL_PREFIX) else case
+                head = stripped.split("/", 1)[0]
+                # Strip the `Fixture` / `Bench` suffix gbench bodies use.
+                for suffix in ("Fixture", "Bench"):
+                    if head.endswith(suffix):
+                        head = head[: -len(suffix)]
+                # Real-mode case names append the workload after the
+                # plugin name (`TcpEcho`, `UdpSend`). Trim everything
+                # after the first secondary capital letter so the
+                # parody `Tcp` and real `TcpEcho` both reduce to `TCP`.
+                if head:
+                    first = head[0]
+                    cut = len(head)
+                    for i in range(1, len(head)):
+                        if head[i].isupper():
+                            cut = i
+                            break
+                    head = (first + head[1:cut]).rstrip()
+                return head.upper()
+
+            def _payload_size(case: str):
+                """Pull the `/<size>/` integer out of the case name."""
+                parts = case.split("/")
+                for p in parts:
+                    if p.isdigit():
+                        n = int(p)
+                        if 32 <= n <= 1024 * 1024:
+                            return n
+                return None
+
+            parody_at = {}
+            for r in parody_rows:
+                if not r["throughput_bps"]:
+                    continue
+                fam = _plugin_family(r["case"])
+                sz = _payload_size(r["case"])
+                if sz != canon_payload:
+                    continue
+                cur = parody_at.get(fam)
+                if cur is None or r["throughput_bps"] > cur["throughput_bps"]:
+                    parody_at[fam] = r
+
+            decomp_rows = []
+            for r in real_rows:
+                if not r["throughput_bps"]:
+                    continue
+                if _payload_size(r["case"]) != canon_payload:
+                    continue
+                fam = _plugin_family(r["case"])
+                p = parody_at.get(fam)
+                if p is None:
+                    continue
+                pthru = float(p["throughput_bps"])
+                rthru = float(r["throughput_bps"])
+                if pthru <= 0:
+                    continue
+                overhead_pct = (rthru - pthru) / pthru * 100.0
+                pcpu = p.get("cpu_ns_per_byte")
+                rcpu = r.get("cpu_ns_per_byte")
+                cpu_delta = None
+                if pcpu is not None and rcpu is not None:
+                    cpu_delta = rcpu - pcpu
+                decomp_rows.append({
+                    "family":   fam,
+                    "parody":   pthru,
+                    "real":     rthru,
+                    "overhead": overhead_pct,
+                    "cpu_p":    pcpu,
+                    "cpu_r":    rcpu,
+                    "cpu_d":    cpu_delta,
+                })
+            if decomp_rows:
+                out.append(f"## Cost decomposition — production overhead at "
+                           f"{canon_payload} B payload")
+                out.append("")
+                out.append("_For each plugin family present in both shapes, "
+                           "the row pairs the FASTEST parody measurement at "
+                           "this payload against the matching real-mode row "
+                           "and surfaces the cost of running through the "
+                           "production stack (security + protocol + "
+                           "kernel dispatch). `Overhead` is signed — "
+                           "negative means real-mode is slower than parody "
+                           "by that percentage, which is the expected "
+                           "direction. `Δ CPU/B` is the per-byte CPU cost "
+                           "the production layers add on top of raw "
+                           "transport._")
+                out.append("")
+                out.append("| Plugin | Parody | Real | Overhead | CPU/B parody | CPU/B real | Δ CPU/B |")
+                out.append("|---|---|---|---|---|---|---|")
+                for d in decomp_rows:
+                    sign = "+" if d["overhead"] >= 0 else ""
+                    out.append(
+                        f"| {d['family']} | "
+                        f"{fmt_bytes_per_sec(d['parody'])} | "
+                        f"{fmt_bytes_per_sec(d['real'])} | "
+                        f"{sign}{d['overhead']:.1f}% | "
+                        f"{fmt_per_byte(d['cpu_p'])} | "
+                        f"{fmt_per_byte(d['cpu_r'])} | "
+                        f"{fmt_per_byte(d['cpu_d']) if d['cpu_d'] else '—'} |")
+                out.append("")
+
     if singles := aggregated.get("single_stack"):
         out.append("## Cross-implementation latency / handshake")
         out.append("")
