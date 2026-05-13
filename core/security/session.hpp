@@ -232,6 +232,30 @@ public:
         return pending_bytes_.load(std::memory_order_relaxed);
     }
 
+    /// Bench-only seam: zero `inline_crypto_` keys + flip its
+    /// `seeded_` flag so subsequent `encrypt_transport` /
+    /// `decrypt_transport` fall through to the provider vtable
+    /// (`gn.security.null` is copy-through). This emulates the
+    /// production post-handshake Noise→Null handoff that v1.x will
+    /// expose through a kernel-driven `SessionRegistry::downgrade_*`
+    /// API; the bench needs the number now to ship the showcase
+    /// section.
+    ///
+    /// **Fails closed** at runtime unless the environment variable
+    /// `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` is set. Production
+    /// code never sets that env var — accidental link of the
+    /// bench's showcase binary into a production runner is
+    /// observable and refuses to mutate session state. The unit
+    /// test `tests/unit/security/test_inline_downgrade_gate.cpp`
+    /// pins this contract.
+    ///
+    /// Returns `GN_ERR_INVALID_STATE` when the env var is absent or
+    /// the session isn't in `Transport` phase, `GN_OK` on success.
+    /// Idempotent — calling twice on a session whose inline crypto
+    /// is already cleared is a no-op `GN_OK` (the second call sees
+    /// `seeded_=false` and just returns).
+    [[nodiscard]] gn_result_t _test_clear_inline_crypto();
+
 private:
     /// Borrowed; the strong reference in `security_anchor_` keeps
     /// the provider's `.so` mapped while this pointer is live.
