@@ -140,6 +140,12 @@
             # standalone plugin default.nix inherits it through
             # goodnet-core's propagatedBuildInputs.
             sqlite
+            # c-ares for handler-dns upstream resolution (D-DNS.4).
+            # Kernel doesn't link c-ares; same convenience pattern
+            # as sqlite — in-tree dev gets pkg-config libcares
+            # without a second devShell, standalone plugin builds
+            # inherit it through propagatedBuildInputs.
+            c-ares
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -473,6 +479,12 @@
             # standalone plugin default.nix inherits it through
             # goodnet-core's propagatedBuildInputs.
             sqlite
+            # c-ares for handler-dns upstream resolution (D-DNS.4).
+            # Kernel doesn't link c-ares; same convenience pattern
+            # as sqlite — in-tree dev gets pkg-config libcares
+            # without a second devShell, standalone plugin builds
+            # inherit it through propagatedBuildInputs.
+            c-ares
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
