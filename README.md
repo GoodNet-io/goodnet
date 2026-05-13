@@ -110,12 +110,15 @@ pay for different things.
 
 | Surface | Throughput | Parallelism | What it carries |
 |---|---|---|---|
-| `veth` loopback baseline (no crypto, `iperf3 -P 8`)        | **~80 Gb/s**  | 8 streams, kernel splice + `MSG_ZEROCOPY` | raw IP frames |
-| **GoodNet UDP parody, 8 parallel processes, no crypto**    | **~28 Gb/s**  | 8 procs × 1 strand each | raw datagrams through link plugin |
-| **GoodNet UDP parody single conn, no crypto**              | **~8.7 Gb/s** | one asio strand                          | raw datagrams through link plugin |
-| **WireGuard single tunnel, kernel, with crypto**           | **~4.9 Gb/s** | one softirq CPU pinned                   | IP tunnel, ChaCha20-Poly1305 per packet |
-| **GoodNet IPC real @ 32 KiB, with crypto**                 | **~2.0 Gb/s** | one strand, single conn                  | typed `gn_message_t` envelopes, peer-pk addressing |
-| **GoodNet TCP real @ 32 KiB, with crypto**                 | **~1.7 Gb/s** | one strand, single conn                  | same, over TCP loopback |
+| `veth` loopback baseline (no crypto, `iperf3 -P 8`)              | **~80 Gb/s**  | 8 streams, kernel splice + `MSG_ZEROCOPY` | raw IP frames |
+| **GoodNet UDP parody, static + LTO, 8 parallel procs, no crypto** | **~34 Gb/s** | 8 procs × 1 strand each, plugin calls inlined | raw datagrams through link plugin |
+| **GoodNet UDP parody, dynamic, 8 parallel procs, no crypto**     | **~28 Gb/s**  | 8 procs × 1 strand each | raw datagrams through link plugin |
+| **GoodNet UDP parody single conn, static + LTO, no crypto**      | **~8.1 Gb/s** | one asio strand, plugin calls inlined | raw datagrams through link plugin |
+| **GoodNet UDP parody single conn, dynamic, no crypto**           | **~8.7 Gb/s** | one asio strand | raw datagrams through link plugin |
+| **WireGuard single tunnel, kernel, with crypto**                 | **~4.9 Gb/s** | one softirq CPU pinned | IP tunnel, ChaCha20-Poly1305 per packet |
+| GoodNet Noise transport (encrypt+decrypt round, single-thread)   | ~1.7 Gb/s     | one thread, libsodium ChaCha20-Poly1305 | seal + open in a tight loop, no I/O |
+| **GoodNet IPC real @ 32 KiB, dynamic, with crypto**              | **~2.0 Gb/s** | one strand, single conn | typed `gn_message_t` envelopes, peer-pk addressing |
+| **GoodNet TCP real @ 32 KiB, dynamic, with crypto**              | **~1.7 Gb/s** | one strand, single conn | same, over TCP loopback |
 
 **Two reads of the table.**
 
@@ -131,24 +134,44 @@ userspace plugin model on this hardware.
 *Aggregate.* WireGuard's single tunnel cannot saturate more
 than one CPU regardless of how many cores you give it. GoodNet's
 `CryptoWorkerPool` distributes AEAD jobs across worker threads,
-so multi-conn aggregate scales near-linearly: 8 parallel
+so multi-conn aggregate scales near-linearly. 8 parallel
 no-crypto UDP processes hit **~28 Gb/s** on this 12-thread
-laptop, and per the legacy 4-connection inline-crypto bench in
+laptop with the dynamic-plugin build (`.so` dispatched through
+the `gn_link_vtable_t`); the same configuration under
+`-DGOODNET_STATIC_PLUGINS=ON -DGOODNET_USE_LTO=ON` (static-linked
+plugins with cross-TU LTO inlining the vtable calls into the
+hot path) reaches **~34 Gb/s** — about 20 % better aggregate.
+Per the legacy 4-connection inline-crypto bench in
 [`docs/perf/analysis.en.md`](docs/perf/analysis.en.md), the
 encrypted multi-conn path reached **19.84 Gb/s** — already 4×
 the WireGuard single-tunnel ceiling, on the same machine, with
 crypto.
+
+*Crypto floor.* Pure libsodium ChaCha20-Poly1305 in a tight
+loop, single-thread, encrypt+decrypt round at 64 KiB measures
+~1.7 Gb/s per worker thread. The `CryptoWorkerPool` runs by
+default at `hardware_concurrency()/2` workers, so the
+**theoretical** pure-crypto pool ceiling on this 12-thread
+laptop is ~10 Gb/s before any I/O. Add `CryptoWorkerPool::run_batch`
+on a batched send pipeline and the real per-conn number sits
+between the single-thread floor and that pool ceiling depending
+on how many in-flight frames the conn has to amortise the strand
+dispatch over.
 
 **Why 80 Gb/s is the kernel-only ceiling.** The veth baseline
 comes from `iperf3 -P 8` doing `splice()` and `MSG_ZEROCOPY` —
 the kernel hands packets between network namespaces without
 ever materialising a user-space buffer. Any userspace plugin
 pattern pays a syscall + memcpy per `write()`. The roof for
-userspace without zero-copy on this hardware is somewhere
-between 30 Gb/s (no crypto, multi-conn) and 40 Gb/s with an
-`io_uring` backend; both are deferred. `nix run .#build --
-release` and `nix run .#test -- asan` keep the harness moving
-on Release performance work toward that ceiling.
+userspace without zero-copy on this hardware is the ~34 Gb/s
+the static+LTO multi-conn parody bench above already shows;
+beyond that needs `io_uring` + `MSG_ZEROCOPY` on the same
+pipeline (deferred work). The single-conn numbers do not benefit
+from LTO because the bottleneck is the per-`send()` syscall +
+asio strand hop, not plugin-boundary dispatch — those have
+fixed kernel cost. LTO + static linkage pay off where the
+plugin-boundary calls repeat at scale: cross-conn in the
+aggregate row.
 
 **What WireGuard does not do, at all.** It delivers raw IP
 packets between two endpoints. It does not address peers by
@@ -166,6 +189,8 @@ partially overlap.
 Reproduce:
 
 ```sh
+# Dynamic-plugin release build (default; the noise plugin's .so
+# is dlopen'd by bench_real_e2e + bench_showcase)
 nix run .#build -- release
 
 # Real-mode echo, with crypto, single conn
@@ -178,9 +203,27 @@ nix run .#build -- release
     --benchmark_filter='Throughput' \
     --benchmark_min_time=1s --benchmark_repetitions=3
 
-# Multi-process aggregate (no-crypto upper bound on this box)
+# Multi-process aggregate (no-crypto upper bound, dynamic)
 for i in $(seq 1 8); do
     ./build-release/bench/bench_udp \
+        --benchmark_filter='Throughput/1200' \
+        --benchmark_min_time=2s &
+done
+wait
+
+# Static + LTO build (plugins linked into the kernel, cross-TU
+# inlining of every plugin-boundary call). Tests + dlopen-based
+# benches are off because the noise plugin no longer produces an
+# .so. Run the same parody multi-process aggregate to read the
+# LTO advantage.
+cmake -B build-static-lto -DCMAKE_BUILD_TYPE=Release \
+    -DGOODNET_BUILD_BENCH=ON -DGOODNET_BUILD_TESTS=OFF \
+    -DGOODNET_STATIC_PLUGINS=ON -DGOODNET_USE_LTO=ON
+nix develop --command cmake --build build-static-lto \
+    --target bench_udp -j8
+
+for i in $(seq 1 8); do
+    ./build-static-lto/bench/bench_udp \
         --benchmark_filter='Throughput/1200' \
         --benchmark_min_time=2s &
 done

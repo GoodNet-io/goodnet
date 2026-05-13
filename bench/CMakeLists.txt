@@ -206,10 +206,16 @@ endif()
 # shared-object loading path the kernel uses in production; every
 # other piece links statically so the bench binary owns its own
 # kernel instance per process.
-if(TARGET goodnet_tcp_objects
+if(NOT GOODNET_STATIC_PLUGINS
+   AND TARGET goodnet_tcp_objects
    AND TARGET goodnet_udp_objects
    AND TARGET goodnet_ipc_objects
    AND TARGET goodnet_security_noise)
+    # The bench dlopens the noise plugin's `.so` at runtime — that
+    # target doesn't produce a shared object under GOODNET_STATIC_PLUGINS
+    # (everything is linked into the kernel binary instead). Skip the
+    # bench entirely in static builds; the static plugin layout is
+    # exercised by the regular kernel binary via `goodnet run`.
     add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
     target_link_libraries(bench_real_e2e PRIVATE
         goodnet_bench_harness

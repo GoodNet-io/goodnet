@@ -19,6 +19,18 @@ if(NOT GOODNET_BENCH_STRATEGIES)
     return()
 endif()
 
+if(GOODNET_STATIC_PLUGINS)
+    # bench_showcase dlopens the noise plugin's `.so` at runtime,
+    # which doesn't exist under static linkage. Static builds
+    # exercise the same paths through the kernel binary directly;
+    # the dlopen-based showcase shape is dynamic-only.
+    message(STATUS
+        "bench_showcase: skipped (GOODNET_STATIC_PLUGINS=ON; the "
+        "showcase dlopens noise at runtime, only the dynamic-plugin "
+        "build configuration produces the required .so)")
+    return()
+endif()
+
 if(NOT TARGET goodnet_float_send_rtt_objects)
     message(STATUS
         "bench_showcase: skipped (goodnet_float_send_rtt_objects "
