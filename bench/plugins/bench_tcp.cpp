@@ -51,10 +51,22 @@ struct TcpFixture : public ::benchmark::Fixture {
         if (link->listen("tcp://127.0.0.1:0") != GN_OK) return;
         const auto port = link->listen_port();
         if (port == 0) return;
+        /// Snapshot the per-run connect counter baseline. google-benchmark
+        /// invokes the fixture multiple times (warmup + real run); the
+        /// stub's `connects` / `conns` accumulate across runs since the
+        /// kernel.stub field is part of the fixture instance. Comparing
+        /// against the baseline picks up only the NEW connects from this
+        /// listen+connect pair.
+        const int connects_before = kernel.stub.connects.load();
+        const std::size_t conns_before = [&] {
+            std::lock_guard lk(kernel.stub.mu);
+            return kernel.stub.conns.size();
+        }();
         (void)link->connect("tcp://127.0.0.1:" + std::to_string(port));
-        /// Wait for both sides on the same stub.
         if (!::gn::sdk::test::wait_for(
-                [&] { return kernel.stub.connects.load() >= 2; }, 2s)) {
+                [&] {
+                    return kernel.stub.connects.load() - connects_before >= 2;
+                }, 2s)) {
             return;
         }
         if (!::gn::sdk::test::wait_for(
@@ -63,9 +75,15 @@ struct TcpFixture : public ::benchmark::Fixture {
                 }, 1s)) {
             return;
         }
+        /// Pick the initiator from this run's new entries (indices
+        /// past `conns_before`). Iterating from index 0 would grab
+        /// the leftover INITIATOR id from the previous fixture run,
+        /// whose session is already torn down — `send(stale_id)`
+        /// returns GN_ERR_NOT_FOUND.
         {
             std::lock_guard lk(kernel.stub.mu);
-            for (std::size_t i = 0; i < kernel.stub.conns.size(); ++i) {
+            for (std::size_t i = conns_before;
+                 i < kernel.stub.conns.size(); ++i) {
                 if (kernel.stub.roles[i] == GN_ROLE_INITIATOR) {
                     initiator_conn = kernel.stub.conns[i];
                     break;
@@ -107,7 +125,7 @@ BENCHMARK_DEFINE_F(TcpFixture, Throughput)(::benchmark::State& state) {
     res.snapshot_start();
     std::size_t sent_ok = 0;
     gn_result_t last_err = GN_OK;
-    for (auto _ : state) {
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT(clang-analyzer-deadcode.DeadStores)
         gn_result_t rc = client->send(client_conn,
             std::span<const std::uint8_t>(payload));
         if (rc == GN_OK) {
@@ -130,7 +148,7 @@ BENCHMARK_DEFINE_F(TcpFixture, Throughput)(::benchmark::State& state) {
         static_cast<std::int64_t>(payload_size));
     state.counters["sent_ok"] = static_cast<double>(sent_ok);
     state.counters["sent_skip"] =
-        static_cast<double>(state.iterations() - sent_ok);
+        static_cast<double>(static_cast<std::size_t>(state.iterations()) - sent_ok);
     report_resources(state, res);
 }
 
@@ -154,9 +172,13 @@ BENCHMARK_DEFINE_F(TcpFixture, LatencyRoundtrip)(::benchmark::State& state) {
     }
     gn_conn_id_t client_conn = initiator_conn;
     gn_conn_id_t server_conn = GN_INVALID_ID;
+    /// Walk newest-first — the latest RESPONDER entry pairs with
+    /// the INITIATOR captured this run. Iterating from index 0
+    /// would surface a leftover RESPONDER id from a prior fixture
+    /// run whose session is already gone.
     {
         std::lock_guard lk(kernel.stub.mu);
-        for (std::size_t i = 0; i < kernel.stub.conns.size(); ++i) {
+        for (auto i = kernel.stub.conns.size(); i-- > 0;) {
             if (kernel.stub.roles[i] == GN_ROLE_RESPONDER) {
                 server_conn = kernel.stub.conns[i];
                 break;
@@ -172,7 +194,7 @@ BENCHMARK_DEFINE_F(TcpFixture, LatencyRoundtrip)(::benchmark::State& state) {
     ResourceCounters res;
     res.snapshot_start();
 
-    for (auto _ : state) {
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT(clang-analyzer-deadcode.DeadStores)
         const auto t0 = std::chrono::steady_clock::now();
         const std::size_t inbound_before =
             kernel.stub.inbound.size();
@@ -209,7 +231,7 @@ BENCHMARK_REGISTER_F(TcpFixture, LatencyRoundtrip)
 // ── Handshake time ────────────────────────────────────────────────
 
 BENCHMARK_DEFINE_F(TcpFixture, HandshakeTime)(::benchmark::State& state) {
-    for (auto _ : state) {
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT(clang-analyzer-deadcode.DeadStores)
         state.PauseTiming();
         auto fresh_server = std::make_shared<TcpLink>();
         auto fresh_client = std::make_shared<TcpLink>();
