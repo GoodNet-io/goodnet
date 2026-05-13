@@ -1,35 +1,35 @@
 /**
  * @file   sdk/extensions/dns.h
- * @brief  Extension vtable: `gn.dns` — distributed key-value
- *         database surfaced as a system handler. Brings the legacy
- *         `goodnetd-dns` surface forward as a v1 handler plugin.
+ * @brief  Extension vtable: `gn.dns` — typed DNS service backed by
+ *         the `gn.handler.store` plugin's KV primitive.
  *
- * The legacy `apps/store` layer was a routing layer that doubled
- * as a full key-value DB: TTL'd records, prefix queries, subscribe-
- * and-notify on write, and bulk sync across nodes by
- * `since_timestamp` watermark. This extension exposes that surface
- * as the `gn.dns` handler plugin.
+ * The handler exposes typed resource-record operations (A / AAAA /
+ * SRV / TXT / PTR / CNAME / NS / MX) over a three-tier resolver
+ * cascade: local store → cached upstream → c-ares upstream. Other
+ * plugins reach the surface through this extension; `link-ice`
+ * uses it to expand `stun:<hostname>` configs via SRV lookups.
  *
- * The plugin owns a pluggable `IDnsBackend` (memory for the
- * reference; sqlite + DHT + Redis planned) and a wire dispatcher
- * that maps the seven `DNS_*` envelope types onto the backend.
- * Local callers reach the same surface through the in-process
- * extension vtable below — no wire framing, no conn-id needed.
+ * Storage is delegated — this extension never carries `put` / `get`
+ * slots for raw bytes. Those live on `gn.store` if a caller needs
+ * untyped KV access. See `docs/contracts/dns.md` for the wire
+ * surface, `docs/contracts/store.md` for the storage primitive.
  *
  * @par Not the SDK hostname resolver
  * `sdk/cpp/dns.hpp` is an unrelated header — that one rewrites
  * `tcp://example.com:443` URIs into IP literals at connect time
  * (see `docs/contracts/hostname-resolver.md`). Same word, different
- * concept: this header is the networked KV DB surface; that one
- * is a pure-function URI rewrite. Both keep the name because the
- * legacy `goodnetd-dns` binary covered the same conceptual
+ * concept: this header is the networked record-DB surface; that
+ * one is a pure-function URI rewrite. Both keep the name because
+ * the legacy `goodnetd-dns` binary covered the same conceptual
  * territory either way.
  *
  * @par msg_id allocation
- * The handler subscribes to `0x0600..0x0606` under `protocol_id`
- * `"gnet-v1"`. These ids are outside the kernel-reserved
- * `0x10..0x1F` range (see `system-handlers.md` §2); plugin
- * registration is unrestricted.
+ * The handler subscribes to `0x0610..0x0616` under `protocol_id`
+ * `"gnet-v1"` (see plugin-side `dns.hpp::kMsg*` constants). The
+ * block sits next to the legacy `0x0600..0x0606` range that
+ * `gn.handler.store` keeps so a node hosting both plugins routes
+ * unambiguously by `msg_id`. These ids are outside the kernel-
+ * reserved `0x10..0x1F` range (see `system-handlers.md` §2).
  */
 #ifndef GOODNET_SDK_EXTENSIONS_DNS_H
 #define GOODNET_SDK_EXTENSIONS_DNS_H
@@ -47,60 +47,72 @@ extern "C" {
 /** Stable extension identifier. Unchanged across minor releases. */
 #define GN_EXT_DNS          "gn.dns"
 
-/** v1.0.0 — initial release. */
+/** v1.0.0 — initial typed-API release. The earlier KV-style shape
+ *  shipped as 0x00010000 in handler-dns 1.0.0-rc0 (`015c287`) was
+ *  never published because the throwaway plugin checkpoint did not
+ *  register an extension. This release reuses the version number;
+ *  consumers can assume the typed shape below as the v1 contract.
+ */
 #define GN_EXT_DNS_VERSION  0x00010000u
 
-/** Hard cap on key length. Backends MAY enforce a smaller cap. */
-#define GN_DNS_KEY_MAX_LEN     256u
+/** Hard cap on a single DNS name (one label-sequence on the wire).
+ *  RFC 1035 §2.3.4. */
+#define GN_DNS_NAME_MAX_LEN    255u
 
-/** Hard cap on value length (64 KiB). Widened to size_t so a
- *  `size() > GN_DNS_VALUE_MAX_LEN` check stays within the same
- *  promoted type clang-tidy's `bugprone-implicit-widening-of-
- *  multiplication-result` accepts. */
-#define GN_DNS_VALUE_MAX_LEN  ((size_t)(64u * 1024u))
+/** Hard cap on a record's wire-encoded rdata. 64 KiB matches the
+ *  upper bound for any RR type defined in RFC 1035 / RFC 3596. */
+#define GN_DNS_RDATA_MAX_LEN   ((size_t)(64u * 1024u))
 
-/** Maximum records returned from a single prefix / since query. */
+/** Maximum records returned from a single `resolve` call. */
 #define GN_DNS_QUERY_MAX_RESULTS  256u
 
 /**
- * @brief Query mode for `get` / `subscribe` calls.
+ * @brief Numeric resource-record type identifiers matching the
+ *        IANA DNS-parameters registry. Names line up with the
+ *        plugin-side `gn::handler::dns::RrType` enum.
  */
-typedef enum gn_dns_query_e {
-    GN_DNS_QUERY_EXACT  = 0,  /**< key matches verbatim */
-    GN_DNS_QUERY_PREFIX = 1,  /**< key prefix sweep, up to `max_results` */
-    GN_DNS_QUERY_SINCE  = 2   /**< all records newer than `since_us` (sync) */
-} gn_dns_query_t;
+typedef enum gn_dns_rrtype_e {
+    GN_DNS_RR_A     = 1,
+    GN_DNS_RR_NS    = 2,
+    GN_DNS_RR_CNAME = 5,
+    GN_DNS_RR_PTR   = 12,
+    GN_DNS_RR_MX    = 15,
+    GN_DNS_RR_TXT   = 16,
+    GN_DNS_RR_AAAA  = 28,
+    GN_DNS_RR_SRV   = 33
+} gn_dns_rrtype_t;
 
 /**
- * @brief Event kind delivered to `subscribe` callbacks.
- */
-typedef enum gn_dns_event_e {
-    GN_DNS_EVENT_PUT    = 0,  /**< new or overwritten record */
-    GN_DNS_EVENT_DELETE = 1   /**< record removed */
-} gn_dns_event_t;
-
-/**
- * @brief One record stored under a key.
+ * @brief One typed DNS record emitted by `resolve` or installed
+ *        through `put_record`. The `rdata` buffer carries the
+ *        per-type wire body (4 bytes for A, 16 for AAAA, an
+ *        RFC 2782 SRV body for SRV, etc.); consumers parse it
+ *        with the matching codec in the plugin tree's
+ *        `dns_records.{hpp,cpp}`.
  *
- * All bytes are owned by the backend during the callback; consumers
- * that need to retain `key` / `value` past the call must copy.
+ * All pointer fields are `@borrowed` for the duration of the call
+ * that delivered them. Consumers that need to retain the data
+ * past the call must copy.
  */
 typedef struct gn_dns_record_s {
-    const char*    key;            /**< NUL-terminated UTF-8 key */
-    size_t         key_len;        /**< key length excluding NUL */
-    const uint8_t* value;          /**< value bytes */
-    size_t         value_len;      /**< value length */
-    uint64_t       timestamp_us;   /**< unix microseconds of last write */
-    uint64_t       ttl_s;          /**< 0 = permanent; else expiry seconds */
-    uint8_t        flags;          /**< user-defined; opaque to the backend */
+    uint16_t       type;          /**< gn_dns_rrtype_t value */
+    uint16_t       _pad;          /**< zero; reserved */
+    const char*    name;          /**< borrowed; not necessarily NUL-terminated */
+    size_t         name_len;
+    const uint8_t* rdata;         /**< borrowed; per-type wire body */
+    size_t         rdata_len;
+    uint32_t       ttl_s;         /**< 0 = permanent (operator-curated) */
+    uint64_t       timestamp_us;  /**< wall-clock of last refresh */
+    uint8_t        flags;         /**< user-defined; opaque to the resolver */
+    uint8_t        _pad2[7];
 } gn_dns_record_t;
 
 /**
- * @brief Subscriber callback. Borrowed `record` valid for the call.
+ * @brief Emit-callback shape used by `resolve`. The resolver
+ *        invokes the callback once per record produced by the
+ *        cascade.
  */
-typedef void (*gn_dns_event_cb_t)(void* user_data,
-                                  gn_dns_event_t event,
-                                  const gn_dns_record_t* record);
+typedef void (*gn_dns_emit_cb_t)(void* user, const gn_dns_record_t* record);
 
 /**
  * @brief Vtable surfaced as the `gn.dns` extension.
@@ -108,75 +120,53 @@ typedef void (*gn_dns_event_cb_t)(void* user_data,
  * Versioned with @ref GN_EXT_DNS_VERSION. Begins with `api_size`
  * for size-prefix evolution per `abi-evolution.md` §3.
  *
- * The `ctx` field carries the handler's `self` pointer; every entry
- * receives it as its first argument.
+ * The `ctx` field carries the handler's `self` pointer; every
+ * entry receives it as its first argument.
  */
 typedef struct gn_dns_api_s {
     uint32_t api_size;          /**< sizeof(gn_dns_api_t) at producer build time */
 
     /**
-     * @brief Insert or overwrite `(key, value)`.
+     * @brief Resolve (name, type) through the cascade. The emit
+     *        callback fires once per record; the resolver
+     *        guarantees the records share the `(name, type)` of
+     *        the query. Returns the number of records delivered,
+     *        clamped at `min(max_results, GN_DNS_QUERY_MAX_RESULTS)`.
      *
-     * @return 0 on success, -1 on invalid arg / size cap, -2 on backend error.
+     * @param ctx         the handler's self pointer from `ctx`.
+     * @param name        @borrowed during the call.
+     * @param type        one of @ref gn_dns_rrtype_t.
+     * @param max_results 0 means "no caller cap" — the resolver
+     *                    still bounds the result at `GN_DNS_QUERY_MAX_RESULTS`.
      */
-    int (*put)(void* ctx,
-               const char* key, size_t key_len,
-               const uint8_t* value, size_t value_len,
-               uint64_t ttl_s, uint8_t flags);
+    int (*resolve)(void* ctx,
+                   const char* name, size_t name_len,
+                   uint16_t type,
+                   uint32_t max_results,
+                   gn_dns_emit_cb_t emit, void* emit_user);
 
     /**
-     * @brief Look up the record with exact key match.
+     * @brief Install a typed record. The plugin writes it into the
+     *        `gn.handler.store` backing under the `<type>/<name>`
+     *        store-key shape. Returns 0 on success, -1 on bad
+     *        args, -2 on backend error.
      *
-     * @param out_record @borrowed during the call. NULL when not found.
-     * @return 0 on hit, -1 on miss, -2 on invalid arg.
+     * @param ttl_s 0 marks the record permanent (no auto-eviction).
+     * @param flags caller-defined; opaque to the resolver.
      */
-    int (*get)(void* ctx,
-               const char* key, size_t key_len,
-               gn_dns_record_t* out_record);
+    int (*put_record)(void* ctx,
+                      const char* name, size_t name_len,
+                      uint16_t type,
+                      const uint8_t* rdata, size_t rdata_len,
+                      uint32_t ttl_s, uint8_t flags);
 
     /**
-     * @brief Sweep records by prefix / since-timestamp.
-     *
-     * Calls @p cb once per match, in undefined order. Returns the
-     * number of records delivered (clamped to @p max_results, which
-     * itself is capped at `GN_DNS_QUERY_MAX_RESULTS`).
+     * @brief Drop a typed record. Returns 0 on success (record
+     *        existed), -1 on miss, -2 on bad args / no backend.
      */
-    int (*query)(void* ctx,
-                 gn_dns_query_t mode,
-                 const char* key, size_t key_len,
-                 uint64_t since_us,
-                 uint32_t max_results,
-                 void (*emit)(void* user, const gn_dns_record_t*),
-                 void* emit_user);
-
-    /**
-     * @brief Remove the record with exact key match.
-     *
-     * @return 0 on deletion, -1 if absent, -2 on invalid arg.
-     */
-    int (*del)(void* ctx, const char* key, size_t key_len);
-
-    /**
-     * @brief Subscribe to PUT / DELETE on a key (exact or prefix).
-     *
-     * Returned token must be passed to `unsubscribe`; tokens are
-     * never reused after release. Returns 0 on a NULL out token.
-     */
-    uint64_t (*subscribe)(void* ctx,
-                          gn_dns_query_t mode,
-                          const char* key, size_t key_len,
-                          gn_dns_event_cb_t cb,
-                          void* user_data);
-
-    /** Release a subscription token. No-op for unknown tokens. */
-    void (*unsubscribe)(void* ctx, uint64_t token);
-
-    /**
-     * @brief Purge expired records.
-     *
-     * @return number of records removed.
-     */
-    uint64_t (*cleanup_expired)(void* ctx);
+    int (*delete_record)(void* ctx,
+                         const char* name, size_t name_len,
+                         uint16_t type);
 
     void* ctx;
     void* _reserved[4];
