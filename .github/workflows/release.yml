@@ -96,6 +96,46 @@ jobs:
             goodnet-*-linux-${{ matrix.arch.triple }}.tar.gz
             goodnet-*-linux-${{ matrix.arch.triple }}.tar.gz.sha256
 
+  build-windows:
+    # Windows MVP cross-build via `pkgs.pkgsCross.mingwW64` from a
+    # Linux runner. Single static-plugin `goodnet.exe` + the mingw
+    # runtime DLLs (libstdc++, libgcc, libwinpthread, libsodium,
+    # spdlog, fmt). Native MSVC build remains a follow-up — mingw
+    # cross is enough to ship a working binary today, and the
+    # Linux-host derivation cohabits with the existing nix cache
+    # path.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Cross-build Windows via mingw
+        run: nix build .#goodnet-windows --print-build-logs
+      - name: Bundle Windows zip
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p release-windows
+          cp -L result/bin/*.exe release-windows/
+          cp -L result/bin/*.dll release-windows/
+          cd release-windows
+          # `zip -r` from a stock ubuntu runner; no nix shell needed.
+          zip -r "../goodnet-${TAG}-windows-x86_64.zip" .
+      - name: Generate SHA-256
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          sha256sum "goodnet-${TAG}-windows-x86_64.zip" \
+            > "goodnet-${TAG}-windows-x86_64.zip.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release-x86_64
+          path: |
+            goodnet-*-windows-x86_64.zip
+            goodnet-*-windows-x86_64.zip.sha256
+
   build-docker:
     # `nix build .#docker-static` produces a deterministic tarball
     # via dockerTools.buildLayeredImage. `docker load -i` swallows
@@ -165,12 +205,16 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   release:
-    needs: [build-linux, build-docker, changelog]
+    needs: [build-linux, build-windows, build-docker, changelog]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           pattern: linux-release-*
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: windows-release-*
           merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
@@ -180,6 +224,8 @@ jobs:
             goodnet-*-linux-x86_64.tar.gz.sha256
             goodnet-*-linux-aarch64.tar.gz
             goodnet-*-linux-aarch64.tar.gz.sha256
+            goodnet-*-windows-x86_64.zip
+            goodnet-*-windows-x86_64.zip.sha256
           body: ${{ needs.changelog.outputs.notes }}
           # `generate_release_notes` would re-fetch GitHub's
           # auto-summary on top — skip, we supply the changelog above.

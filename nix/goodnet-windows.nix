@@ -14,6 +14,44 @@
 
 let
   cross = pkgs.pkgsCross.mingwW64;
+
+  # `nixpkgs` declares `asio.meta.platforms` as `unix` only — but
+  # asio is header-only (its build only ships POSIX-flavoured
+  # `examples/`, none of which we consume), so for mingw we strip
+  # the example build entirely and just install the headers. The
+  # kernel's CMake hits `ASIO_STANDALONE` via `target_compile_
+  # definitions(asio::asio INTERFACE ASIO_STANDALONE)` (root
+  # CMakeLists.txt), so only the include path matters.
+  asio-win = (cross.asio.overrideAttrs (old: {
+    # Skip the upstream Makefile's POSIX-only `examples/`. The
+    # package treats those as part of the `all` target; mingw
+    # cross-builds trip on `posix::stream_descriptor` references.
+    buildPhase   = "true";
+    installPhase = ''
+      runHook preInstall
+      mkdir -p $out/include $out/lib/pkgconfig
+      # nixpkgs asio sets `sourceRoot = "source/asio"` so the build
+      # cwd is the `asio/` subdir of the unpacked tree; include
+      # tree is reachable as `include/`.
+      cp -r include/asio.hpp include/asio $out/include/
+      cat > $out/lib/pkgconfig/asio.pc <<EOF
+      prefix=$out
+      exec_prefix=$out
+      libdir=$out/lib
+      includedir=$out/include
+
+      Name: asio
+      Description: asio header-only library (mingw cross subset)
+      Version: ${old.version}
+      Cflags: -I$out/include
+      EOF
+      runHook postInstall
+    '';
+  })).overrideAttrs (old: {
+    meta = old.meta // {
+      platforms = old.meta.platforms ++ pkgs.lib.platforms.windows;
+    };
+  });
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-windows";
@@ -37,14 +75,34 @@ cross.stdenv.mkDerivation {
   # the regular nixpkgs `asio` works through the cross stdenv. The
   # mingw stub of libsodium / spdlog / fmt / nlohmann_json /
   # pthreads is what gets linked into goodnet.exe.
-  buildInputs = with cross; [
-    asio
-    spdlog
-    fmt
+  buildInputs = [
+    asio-win
+    # spdlog upstream builds + runs its own utests by default. The
+    # tests touch MSVC-only `_dupenv_s` which mingw's binutils
+    # doesn't resolve. The library itself compiles fine; only the
+    # tests trip. Disable the test target so the cross-build
+    # produces just the libs we link against.
+    (cross.spdlog.overrideAttrs (old: {
+      cmakeFlags = (old.cmakeFlags or []) ++ [
+        "-DSPDLOG_BUILD_TESTS=OFF"
+        "-DSPDLOG_BUILD_EXAMPLE=OFF"
+      ];
+      doCheck = false;
+    }))
+    # fmt: same — skip tests so a mingw cross stays focused on the
+    # library artefact.
+    (cross.fmt.overrideAttrs (old: {
+      cmakeFlags = (old.cmakeFlags or []) ++ [
+        "-DFMT_TEST=OFF"
+        "-DFMT_DOC=OFF"
+      ];
+      doCheck = false;
+    }))
+  ] ++ (with cross; [
     nlohmann_json
     libsodium
     windows.pthreads
-  ];
+  ]);
 
   cmakeFlags = [
     "-DCMAKE_BUILD_TYPE=Release"
@@ -80,6 +138,11 @@ cross.stdenv.mkDerivation {
 
   meta = {
     description = "GoodNet kernel cross-built for Windows x86_64 (mingw-w64).";
-    platforms   = pkgs.lib.platforms.linux;
+    # `meta.platforms` is checked against `hostPlatform` (the target),
+    # not the build host. The flake gates this attribute under
+    # `isLinux` so it only appears for Linux build hosts; once visible
+    # the derivation produces a Windows PE, so the runtime platforms
+    # are `pkgs.lib.platforms.windows`.
+    platforms = pkgs.lib.platforms.windows;
   };
 }

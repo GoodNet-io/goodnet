@@ -71,6 +71,24 @@ jobs:
         working-directory: ${{ matrix.plugin.path }}
         run: nix build .#default --print-build-logs
 
+  windows-cross-build:
+    # Smoke test for the mingw cross-build path so a regression
+    # touching POSIX-vs-Win32 #ifdefs on main surfaces before the
+    # next release tag. Build-only (no test execute) — there is no
+    # Windows runner in the test gate. The release.yml `build-
+    # windows` job runs the same recipe on tag push to produce the
+    # shipped `.zip`.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Cross-build Windows via mingw
+        run: nix build .#goodnet-windows --print-build-logs
+
   ice-3node:
     # Docker-compose harness that exercises the four NAT scenarios
     # the link-ice plugin needs to survive (full_cone, symmetric_relay,

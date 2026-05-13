@@ -87,8 +87,9 @@ function(add_plugin NAME)
     )
 
     # Size optimisation for shared output. Static builds inherit the
-    # kernel's flags via the OBJECT-library link.
-    if(NOT GOODNET_STATIC_PLUGINS AND NOT APPLE)
+    # kernel's flags via the OBJECT-library link. Windows (mingw) link
+    # uses LLD/BFD without `--gc-sections` for COFF, so skip there.
+    if(NOT GOODNET_STATIC_PLUGINS AND NOT APPLE AND NOT WIN32)
         target_compile_options(${NAME} PRIVATE -Os -ffunction-sections -fdata-sections)
         target_link_options(${NAME}    PRIVATE -Wl,--gc-sections)
     endif()

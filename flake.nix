@@ -196,6 +196,15 @@
           docker-static = import ./nix/docker.nix {
             inherit pkgs goodnet-core;
           };
+
+          # Windows MVP cross-build via mingw-w64. Static-plugin
+          # single-`goodnet.exe` with the lean bundle (TCP + UDP +
+          # Noise + Null + heartbeat). Linux-host-only — pkgsCross
+          # runs on Linux and emits Windows PE; no native MSVC path
+          # is wired yet.
+          goodnet-windows = import ./nix/goodnet-windows.nix {
+            inherit pkgs;
+          };
         });
 
       apps = forAllSystems (system: pkgs:

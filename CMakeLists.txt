@@ -39,6 +39,14 @@ add_compile_options(
     # location of the source tree.
     "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
 
+# mingw defaults `off_t` to 32-bit. `core/plugin/plugin_manifest.cpp`
+# static-asserts `sizeof(off_t) >= 8` so the manifest fd-digest path
+# works on >2 GiB plugin binaries. `_FILE_OFFSET_BITS=64` lifts the
+# typedef to 64-bit across the platform headers.
+if(WIN32)
+    add_compile_definitions(_FILE_OFFSET_BITS=64)
+endif()
+
 # spdlog compile-time level ceiling. Release strips TRACE and DEBUG
 # call sites entirely; Debug compiles every level. The ceiling is
 # read by the SPDLOG_LOGGER_* macros at the call site, so the
@@ -125,7 +133,15 @@ find_package(fmt    REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
-find_package(OpenSSL REQUIRED)
+# OpenSSL is consumed by TLS/QUIC/WS/ICE plugins. On Windows mingw
+# cross-builds we skip those plugins (see plugins/CMakeLists.txt),
+# so OpenSSL itself is optional at the root level. Linux configures
+# always discover it — the plugins fail at link if it's missing.
+if(WIN32)
+    find_package(OpenSSL)
+else()
+    find_package(OpenSSL REQUIRED)
+endif()
 # Standalone Asio ships only a pkg-config file in nixpkgs; wrap it
 # into an alias `asio::asio` so target_link_libraries reads the same
 # as if the library shipped a CMake config. ASIO_STANDALONE switches

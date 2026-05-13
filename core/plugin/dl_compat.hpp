@@ -12,6 +12,13 @@
 #define GOODNET_CORE_PLUGIN_DL_COMPAT_HPP
 
 #ifdef _WIN32
+// `<windows.h>` pulls in the legacy `<winsock.h>` by default. Asio's
+// `socket_types.hpp` requires `<winsock2.h>` and trips on the legacy
+// header being present. WIN32_LEAN_AND_MEAN tells the SDK headers to
+// skip winsock.h; asio still gets to drag in winsock2.h on its own.
+#  ifndef WIN32_LEAN_AND_MEAN
+#    define WIN32_LEAN_AND_MEAN
+#  endif
 #  include <windows.h>
 #  include <cstdio>
 
