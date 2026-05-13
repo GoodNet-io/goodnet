@@ -361,6 +361,67 @@ def main(argv):
             out.append("| " + " | ".join(cells) + " |")
         out.append("")
 
+    # ── Handshake cost summary ─────────────────────────────────────
+    #
+    # Pivot every `*HandshakeTime/...` case across plugins (TCP,
+    # TLS, QUIC, DTLS today; future Noise / Wireguard would land
+    # here too). Connection setup latency is a separate cost
+    # dimension from steady-state throughput — operators with
+    # connection-churn workloads (Lambda-style, mobile reconnects)
+    # care about it more than they care about per-byte rate.
+    #
+    # `lat_p50_ns` / `lat_p99_ns` are populated by the per-plugin
+    # fixtures that drive a fresh listener + connect for every
+    # iteration. The raw `time_ns` falls back to the gbench
+    # `real_time` when the fixture didn't pin a P50 explicitly.
+    hs_re = re.compile(
+        r"^(?P<plug>[A-Z][a-z]+)Fixture/(?:Handshake|HandshakeTime)(?:/|$)")
+    hs_rows = []
+    for r in aggregated.get("perf", []):
+        m = hs_re.match(r.get("case", ""))
+        if not m:
+            continue
+        plug = m.group("plug").upper()
+        hs_rows.append({
+            "stack":   f"GoodNet {plug}",
+            "time_ns": r.get("p50_ns") or r.get("time_ns"),
+            "p99_ns":  r.get("p99_ns"),
+            "case":    r["case"],
+        })
+    # Pick up cross-impl handshake numbers too — openssl s_client
+    # baseline emits one row through `single_stack`.
+    for s in aggregated.get("single_stack", []):
+        if "handshake" not in s.get("metric", "").lower():
+            continue
+        hs_rows.append({
+            "stack":   s.get("stack", "?"),
+            "time_ns": s.get("p50") or s.get("mean"),
+            "p99_ns":  s.get("p99"),
+            "case":    s.get("metric", "?"),
+        })
+    if hs_rows:
+        hs_rows.sort(key=lambda r: (r["time_ns"] or float("inf")))
+        out.append("## Handshake cost — fresh connection setup time")
+        out.append("")
+        out.append("_The connect → first-handler-byte round trip "
+                   "for each transport. TCP is the bare three-way "
+                   "(SYN / SYN-ACK / ACK); TLS adds the 1-RTT "
+                   "handshake on top; QUIC bakes the crypto into the "
+                   "first flight; DTLS is the UDP variant of TLS. "
+                   "Operators serving connection-churn workloads "
+                   "(short-lived RPC, mobile reconnect storms) "
+                   "weight this column heavier than steady-state "
+                   "throughput. Sorted ascending by P50._")
+        out.append("")
+        out.append("| Stack | Case | P50 | P99 |")
+        out.append("|---|---|---|---|")
+        for r in hs_rows:
+            out.append(
+                f"| {r['stack']} | `{r['case']}` | "
+                f"{fmt_ns(r['time_ns'])} | "
+                f"{fmt_ns(r['p99_ns'])} |")
+        out.append("")
+
     def emit_perf_table(rows, shape_label):
         out.append("| Case | Time | Throughput | CPU/B | P50 lat | "
                    "P99 lat | RSS Δ | RSS Peak Δ | VSZ Peak Δ | "
