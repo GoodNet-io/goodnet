@@ -64,8 +64,8 @@ what lets the kernel permit `null+raw` stacks per
 `security-trust.md` §4.
 
 A link plugin that accepts hostname URIs runs the resolution
-through `dns.md` §2's `resolve_uri_host` at `connect` /
-`listen` time. Per `dns.md` §1a the operator-facing recommendation
+through `hostname-resolver.md` §2's `resolve_uri_host` at `connect` /
+`listen` time. Per `hostname-resolver.md` §1a the operator-facing recommendation
 is to pre-resolve hostnames before configuring the kernel —
 production deployments should hand IP literals through; the
 hostname path is for dev / test convenience and inherits the OS

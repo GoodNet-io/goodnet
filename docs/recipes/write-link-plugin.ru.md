@@ -100,7 +100,7 @@ static const char* tcpx_scheme(void* self) {
 Парсинг URI делает ядро через [uri.md](../contracts/uri.en.md). Authority-
 часть link разбирает сам: `tcp+x://[::1]:9000`, `tcp+x://192.0.2.5:443`.
 Если link принимает hostname-формы — резолвинг идёт через
-`resolve_uri_host` (`dns.md` §2); operator'ам рекомендуется
+`resolve_uri_host` (`hostname-resolver.md` §2); operator'ам рекомендуется
 pre-resolve'ить hostnames до конфига и передавать IP литералы.
 
 ---

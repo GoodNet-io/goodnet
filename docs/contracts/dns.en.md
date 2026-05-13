@@ -1,131 +1,240 @@
-# Contract: DNS resolution
+# Contract: DNS handler
 
-**Status:** active · v1
-**Owner:** every transport plugin that accepts hostnames in its URI
-**Last verified:** 2026-04-28
-**Stability:** v1.x; the helper signature is locked, the resolver
-backend may swap.
+**Status:** active · v1.0.0-rc1
+**Owner:** `plugins/handlers/dns/`
+**Last verified:** 2026-05-13
+**Stability:** v1.x; wire layout below is locked, the `IDnsBackend`
+              backend interface may grow new methods through
+              size-prefix evolution.
+
+> Not to be confused with [`hostname-resolver.md`](hostname-resolver.en.md),
+> the SDK helper that rewrites `tcp://example.com:443` into an IP
+> literal at connect time. That helper resolves URI hosts; this
+> handler is a networked TTL'd key-value database that nodes use
+> to publish + discover records. The name reflects the surface
+> the legacy `goodnetd-dns` binary exposed.
 
 ---
 
 ## 1. Purpose
 
-`uri.md` §1 declares that the URI parser is pure string work — no
-DNS lookup, no decoding. The connect path that turns a
-`connect("tcp://example.com:443")` into a `notify_connect` needs
-the hostname turned into an IP literal before it reaches the
-registry, so:
+A distributed, TTL'd key-value database surfaced as a system
+handler. Nodes publish records under string keys and other nodes
+subscribe + sync them. The legacy `apps/store` layer (a routing
+layer that doubled as a KV store with prefix queries, subscribe-
+and-notify on writes, and multi-node sync) is brought forward as
+a v1 handler plugin so an operator can let nodes publish + observe
+small records — peer descriptors, service announcements,
+capability advertisements, metrics — without standing up an
+external DB.
 
-1. The connection-registry URI index keys are stable across
-   resolver changes (a host that resolves to two IPs over time
-   produces a single registry entry per active connection, not
-   one per A/AAAA record).
-2. Cached `?peer=<hex>` keys keyed by `host:port` line up with
-   the `ip:port` the transport reports back through
-   `notify_connect`. Without resolution the connect path's stash
-   misses on the on-connect callback, the cached peer pk is
-   dropped, and Noise IK silently falls back to a fresh handshake
-   or fails outright.
-
-The resolver helper exists to make hostname → IP-literal
-conversion uniform across transports without smuggling DNS into
-either the URI parser (`uri.md`) or the kernel C ABI (`host-api.md`).
-
----
-
-## 1a. Operator recommendation
-
-Production deployments **should** pre-resolve hostnames to IP
-literals before configuring the kernel. The helper documented
-below exists for the call-site that still needs convenience
-(short-lived initiator processes, dev / test harnesses), but
-every blocking `getaddrinfo` lookup inherits the OS resolver's
-adversarial-DNS surface — `EAI_AGAIN` retries, queue contention
-under `/etc/resolv.conf` `timeout` / `attempts`, and the
-fact that a local cached resolver (systemd-resolved, dnsmasq,
-unbound) is the only sensible cache layer; the helper does not
-cache because no in-process cache that is cheaper than asking
-the local resolver gives a meaningful win on the connect-time
-budget. An operator running an unattended daemon avoids the
-exposure entirely by shipping IP literals through configuration
-or letting a sidecar resolver write the configured URI.
-
-A future cancellation-token rewrite of the resolve call only
-buys the synchronous resolver a way out under load — not a
-different exposure surface. Pre-resolution remains the
-operator's lever.
+The handler owns a pluggable `IDnsBackend` backend (memory
+reference in slice 1; sqlite reference in slice 2; DHT + Redis
+planned) and a wire dispatcher that maps the seven `DNS_*`
+envelope types onto the backend. Local callers reach the same
+surface through the [`gn.dns`](../../sdk/extensions/dns.h)
+extension vtable — no wire framing, no conn-id needed.
 
 ---
 
 ## 2. Surface
 
-```cpp
-namespace gn::sdk {
+### 2.1 Extension vtable
 
-/// Returns @p uri with the host segment replaced by an IPv4 / IPv6
-/// literal. IP-literal hosts and path-style URIs (`ipc://...`) are
-/// returned unchanged. Synchronous: a hostname triggers a blocking
-/// `asio::ip::tcp::resolver` lookup on the calling thread. Hostname
-/// resolves are init-time, not per-frame, so the blocking call is
-/// the right shape — it bounds the cost to one event per `connect`.
-[[nodiscard]] std::expected<std::string, ResolveError>
-resolve_uri_host(asio::io_context& ioc, std::string_view uri);
+```c
+gn_dns_api_t* api = host_api->query_extension_checked(
+    "gn.dns", GN_EXT_DNS_VERSION, sizeof(gn_dns_api_t));
 
-}  // namespace gn::sdk
+api->put(api->ctx, "peer/alice", 11,
+         pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);
 ```
 
-The helper lives at `sdk/cpp/dns.hpp` (header-only) so transport
-plugins can include it without linking the kernel. The `asio`
-dependency is shared by every transport already.
+Eight slots: `put / get / query / del / subscribe / unsubscribe /
+cleanup_expired` plus the `ctx`/`_reserved` ABI footer.
+`query` covers exact / prefix / since-timestamp modes through a
+single record-emitting callback.
 
-### Inputs
+### 2.2 Wire surface
 
-| Input | Behaviour |
-|---|---|
-| `tcp://1.2.3.4:443` | passes through unchanged — `asio::ip::make_address` succeeds |
-| `tcp://[::1]:9000` | passes through unchanged — bracketed IPv6 literal |
-| `tcp://example.com:443` | resolves the hostname; result `tcp://93.184.216.34:443` (v4) or `tcp://[2606:2800:220:1::1]:443` (v6) |
-| `ipc:///run/goodnet.sock` | passes through unchanged — path-style URIs have no host |
-| empty string / unparseable | returns `ResolveError::Kind::UnparseableUri` |
+Seven envelopes under `protocol_id = "gnet-v1"`:
 
-The query string (`?peer=<hex>` etc) is preserved verbatim
-through the canonical-form rewrite — `uri.md` §6 carries the same
-guarantee for the parser path.
+| `msg_id` | Direction | Envelope |
+|---|---|---|
+| `0x0610` | client → server | `DNS_PUT` |
+| `0x0611` | client → server | `DNS_GET` |
+| `0x0612` | server → client | `DNS_RESULT` |
+| `0x0613` | client → server | `DNS_DELETE` |
+| `0x0614` | client → server | `DNS_SUBSCRIBE` |
+| `0x0615` | server → subscriber | `DNS_NOTIFY` |
+| `0x0616` | symmetric | `DNS_SYNC` |
 
-### Address family preference
-
-The helper takes the **first** result from
-`asio::ip::tcp::resolver::resolve(host, "")`. Asio orders results
-per the OS resolver's `getaddrinfo` policy (typically RFC 3484 /
-RFC 6724 — IPv6 first when reachable, else IPv4). The helper does
-not impose its own address-family preference; operators that need
-IPv4-only or IPv6-only behaviour set the equivalent OS knob (e.g.
-disable IPv6 in `/etc/gai.conf`) rather than carry a v1 SDK flag.
-
-### Failure modes
-
-| Condition | Returned `ResolveError::Kind` |
-|---|---|
-| `parse_uri` returns `nullopt` | `UnparseableUri` |
-| `asio::ip::tcp::resolver::resolve` fails (`NXDOMAIN`, `EAI_AGAIN`, etc) | `ResolveFailed` (`message` carries the asio error string) |
-| Resolved set is empty after a clean return | `ResolveFailed` (defensive — should not occur per the asio API) |
+These ids are outside the kernel-reserved `0x10..0x1F` range (see
+[`system-handlers.md`](system-handlers.en.md) §2). The
+`0x0610..0x0616` block sits next to the legacy `apps/store`
+range (`0x0600..0x0606`) that `gn.handler.store` keeps, so a
+node hosting both plugins in the same process routes traffic
+unambiguously by `msg_id`.
 
 ---
 
-## 3. Caching is not the helper's concern
+## 3. Wire layout
 
-A naive `connect()` call resolves on every retry; that is fine
-for v1 because hostname-bearing connects are sparse. A future
-caching layer attaches in front of the helper through a transport
-extension or a kernel service; the helper itself remains
-stateless so the contract is observable as a pure function.
+All multi-byte integers are big-endian. Lengths cap at
+`GN_DNS_KEY_MAX_LEN = 256` (key) and
+`GN_DNS_VALUE_MAX_LEN = 65_536` (value).
+
+### 3.1 `DNS_PUT` (`0x0610`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` (caller-correlation token) |
+| 8 | 8 | `ttl_s` (0 = permanent) |
+| 16 | 1 | `flags` (opaque to the backend) |
+| 17 | 1 | reserved (zero) |
+| 18 | 2 | `key_len` (≤ 256) |
+| 20 | 4 | `value_len` (≤ 65 536) |
+| 24 | `key_len` | key bytes |
+| 24+kl | `value_len` | value bytes |
+
+### 3.2 `DNS_GET` (`0x0611`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` |
+| 8 | 1 | `query_mode` (0=exact, 1=prefix, 2=since) |
+| 9 | 1 | reserved (zero) |
+| 10 | 2 | `max_results` (clamped at `GN_DNS_QUERY_MAX_RESULTS = 256`) |
+| 12 | 4 | reserved (zero) |
+| 16 | 8 | `since_us` (μs since epoch; mode=2 only) |
+| 24 | 2 | `key_len` |
+| 26 | 2 | reserved (zero) |
+| 28 | `key_len` | key / prefix bytes |
+
+### 3.3 `DNS_RESULT` (`0x0612`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` (echoed from the request) |
+| 8 | 1 | `status` (0=ok, 1=bad-size, 2=not-found, 3=backend-error) |
+| 9 | 1 | reserved (zero) |
+| 10 | 2 | `record_count` (0 for PUT/DELETE acks) |
+| 12 | ... | `record_count` × Record (§3.6) |
+
+### 3.4 `DNS_DELETE` (`0x0613`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` |
+| 8 | 2 | `key_len` |
+| 10 | 6 | reserved (zero) |
+| 16 | `key_len` | key bytes |
+
+### 3.5 `DNS_SUBSCRIBE` (`0x0614`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` |
+| 8 | 1 | `query_mode` (0=exact, 1=prefix; since is invalid) |
+| 9 | 1 | reserved (zero) |
+| 10 | 2 | `key_len` |
+| 12 | 4 | reserved (zero) |
+| 16 | `key_len` | key bytes |
+
+### 3.6 Record
+
+A single record on the wire (used by `DNS_RESULT`,
+`DNS_NOTIFY`, `DNS_SYNC` payloads):
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `timestamp_us` |
+| 8 | 8 | `ttl_s` |
+| 16 | 1 | `flags` |
+| 17 | 1 | reserved (zero) |
+| 18 | 2 | `key_len` |
+| 20 | 4 | `value_len` |
+| 24 | `key_len` | key bytes |
+| 24+kl | `value_len` | value bytes |
+
+### 3.7 `DNS_NOTIFY` (`0x0615`)
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `timestamp_us` (notification dispatch time) |
+| 8 | 1 | `event` (0=PUT, 1=DELETE) |
+| 9 | 1 | reserved (zero) |
+| 10 | ... | one Record (§3.6) |
+
+### 3.8 `DNS_SYNC` (`0x0616`)
+
+Request and reply share the header; the reply appends records.
+
+| offset | size | field |
+|---|---|---|
+| 0 | 8 | `request_id` |
+| 8 | 8 | `since_us` |
+| 16 | 2 | `max_results` |
+| 18 | 2 | `record_count` (0 on request; N on reply) |
+| 20 | ... | `record_count` × Record (§3.6) |
 
 ---
 
-## 4. Cross-references
+## 4. Backend contract
 
-- URI parser this composes with: `uri.md`.
-- Why hostnames cannot reach the registry literally: `uri.md` §4
-  (canonical form) — `host` is normalised to a literal before the
-  registry sees the URI.
-- Transport ownership of DNS: `link.md` §2.
+Each method is **synchronous and called from a single thread** —
+the handler funnels every call through one mutex so the backend
+sees serialised access. Backends MAY ignore their own locking.
+
+The reference `MemoryDnsBackend` ships in-tree as slice 1.
+`SqliteDnsBackend` lands in slice 2.
+
+| Backend | Persistence | Notes |
+|---|---|---|
+| `MemoryDnsBackend` (slice 1) | none | hash-map; loses state across restart |
+| `SqliteDnsBackend` (slice 2) | file | prepared stmts; production reference |
+| `DhtDnsBackend` (planned) | distributed | Kademlia over GoodNet itself |
+| `RedisDnsBackend` (planned) | external | clustered, hot failover |
+
+---
+
+## 5. Behavioural rules
+
+- **No empty keys.** `put("", ...)` returns -1 / status=bad-size.
+- **Duplicate puts overwrite** with a fresh `timestamp_us` —
+  `subscribe` sees a single `PUT` event.
+- **TTL is wall-clock**, not steady-clock: records cross the wire
+  through `DNS_SYNC` and the time anchor must agree across nodes.
+  Operators that need monotonic semantics use `flags` to tag
+  records they post-process on read.
+- **`cleanup_expired` is reactive**, not background: callers
+  invoke it (typically through a kernel timer) when they want
+  expired records dropped. The plugin ships no automatic cleanup
+  driver.
+- **`get_prefix` is unordered for memory, key-ordered for sqlite.**
+  The memory backend iterates the hash-map; sqlite uses
+  `ORDER BY key`. Callers that depend on order MUST run against
+  sqlite (or a future ordered backend).
+- **Subscriptions are per-conn for wire callers**, per-callback
+  for in-process callers. Wire subscriptions die with the conn
+  through `PerConnMap`-style cleanup (planned).
+- **The handler is `priority = 200`** — below identity-bearing
+  system handlers (240+) but above application handlers (default
+  128). Adjust via plugin manifest if a node hosts a handler
+  that wants `DNS_*` envelopes to land first.
+
+---
+
+## 6. Cross-references
+
+- Extension ABI: [`sdk/extensions/dns.h`](../../sdk/extensions/dns.h)
+- Reference implementation: `plugins/handlers/dns/`
+- Reserved-id semantics:
+  [`handler-registration.md`](handler-registration.en.md) §2a +
+  [`system-handlers.md`](system-handlers.en.md) §1
+- The DIFFERENT thing called "DNS":
+  [`hostname-resolver.md`](hostname-resolver.en.md) — the SDK
+  helper for `tcp://example.com:443` → IP-literal rewriting at
+  connect time. That is a pure-function URI rewrite, not a
+  network service.
+- Legacy origin (archived):
+  `~/Desktop/projects/GoodNet_legacy/apps/store/`

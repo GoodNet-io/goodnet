@@ -43,6 +43,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/store/CMakeLists.txt")
     add_subdirectory(handlers/store)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/dns/CMakeLists.txt")
+    add_subdirectory(handlers/dns)
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()

@@ -107,6 +107,7 @@ __pycache__/
 !plugins/workers/**/CMakeLists.txt
 plugins/handlers/heartbeat/
 plugins/handlers/store/
+plugins/handlers/dns/
 plugins/handlers/mycelium/
 plugins/links/tcp/
 plugins/links/udp/

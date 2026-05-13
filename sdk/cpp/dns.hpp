@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 /// @file   sdk/cpp/dns.hpp
-/// @brief  Header-only synchronous DNS resolver per `dns.md` §2.
+/// @brief  Header-only synchronous DNS resolver per `hostname-resolver.md` §2.
 ///
 /// `resolve_uri_host` rewrites a `<scheme>://<host>:<port>[/path][?query]`
 /// URI so the host segment is an IP literal. Transports call this
@@ -38,7 +38,7 @@ struct ResolveError {
 };
 
 /// Rewrite the host segment of @p uri to an IP literal. See
-/// `dns.md` §2 for the full input matrix.
+/// `hostname-resolver.md` §2 for the full input matrix.
 [[nodiscard]] inline std::expected<std::string, ResolveError>
 resolve_uri_host(asio::io_context& ioc, std::string_view uri) {
     if (uri.empty()) {
