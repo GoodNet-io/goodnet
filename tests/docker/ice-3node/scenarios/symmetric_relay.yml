@@ -1,0 +1,11 @@
+# Scenario: peer A behind symmetric NAT, peer B full-cone.
+# Expected outcome: ICE srflx fails because A's source port is
+# rewritten per destination; check list falls through to the
+# relay candidate and TURN ChannelBind keeps the traffic warm.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: symmetric
+  nat_b:
+    environment:
+      NAT_MODE: full_cone

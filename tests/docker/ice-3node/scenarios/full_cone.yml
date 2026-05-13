@@ -1,0 +1,9 @@
+# Scenario: both peers behind full-cone NAT. Expected outcome:
+# srflx ↔ srflx pair nominated; TURN allocated but never used.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+  nat_b:
+    environment:
+      NAT_MODE: full_cone

@@ -1,0 +1,29 @@
+{
+  "kernel": {
+    "node_id": "@PEER_NAME@",
+    "identity_path": "/var/lib/goodnet/identity-@PEER_NAME@.bin"
+  },
+  "plugins": [
+    { "name": "goodnet_security_null",     "path": "/plugins/libgoodnet_security_null.so"     },
+    { "name": "goodnet_security_noise",    "path": "/plugins/libgoodnet_security_noise.so"    },
+    { "name": "goodnet_link_udp",          "path": "/plugins/libgoodnet_link_udp.so"          },
+    { "name": "goodnet_link_tcp",          "path": "/plugins/libgoodnet_link_tcp.so"          },
+    { "name": "goodnet_link_ice",          "path": "/plugins/libgoodnet_link_ice.so"          },
+    { "name": "goodnet_handler_heartbeat", "path": "/plugins/libgoodnet_handler_heartbeat.so" }
+  ],
+  "ice": {
+    "stun_servers": [ "@STUN_URI@" ],
+    "turn_servers": [ "@TURN_URI@" ],
+    "turn_username": "@TURN_USER@",
+    "turn_password": "@TURN_PASS@",
+    "session_timeout_s": 30,
+    "keepalive_interval_s": 10,
+    "consent_max_failures": 3,
+    "consent_max_recovery": 3
+  },
+  "signal": {
+    "shared_dir": "@SIGNAL_DIR@",
+    "self": "@PEER_NAME@",
+    "peer": "@WAIT_FOR_PEER@"
+  }
+}

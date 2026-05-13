@@ -1,0 +1,138 @@
+# 3-node ICE topology — base stack.
+#
+# Subnets:
+#   * 10.10.0.0/24 — "Internet" — STUN + TURN + coordinator live here
+#   * 10.20.0.0/24 — "LAN A"    — peer A behind NAT-A → Internet
+#   * 10.30.0.0/24 — "LAN B"    — peer B behind NAT-B → Internet
+#
+# Each scenario's compose-override flips NAT-A / NAT-B between
+# `full_cone`, `symmetric`, `shared` (= same upstream as the other
+# peer, for the hairpin case).
+#
+# Build via `nix build .#docker-static` (kernel) + `docker build`
+# (harness layer + plugins). The compose file expects the kernel
+# image as `goodnet:nix-static` in the local Docker daemon.
+
+services:
+  stun:
+    build: ./stun
+    container_name: ice3_stun
+    networks:
+      net: { ipv4_address: 10.10.0.10 }
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -uz 127.0.0.1 3478"]
+      interval: 2s
+      retries: 10
+
+  turn:
+    build: ./turn
+    container_name: ice3_turn
+    networks:
+      net: { ipv4_address: 10.10.0.11 }
+    environment:
+      TURN_USER:   goodnet
+      TURN_PASS:   bench-only-credentials
+      TURN_REALM:  ice3.local
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -uz 127.0.0.1 3478"]
+      interval: 2s
+      retries: 10
+
+  coordinator:
+    build: ./peer
+    container_name: ice3_coordinator
+    networks:
+      net: { ipv4_address: 10.10.0.12 }
+    environment:
+      ROLE: coordinator
+      STUN_URI: stun://10.10.0.10:3478
+      TURN_URI: turn://goodnet:bench-only-credentials@10.10.0.11:3478
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  peer_a:
+    build: ./peer
+    container_name: ice3_peer_a
+    cap_add: [NET_ADMIN]
+    networks:
+      lan_a: { ipv4_address: 10.20.0.20 }
+    environment:
+      ROLE: peer
+      PEER_NAME: A
+      STUN_URI: stun://10.10.0.10:3478
+      TURN_URI: turn://goodnet:bench-only-credentials@10.10.0.11:3478
+      SIGNAL_DIR: /var/lib/ice3-signal
+      WAIT_FOR_PEER: B
+    depends_on:
+      stun:        { condition: service_healthy }
+      turn:        { condition: service_healthy }
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  peer_b:
+    build: ./peer
+    container_name: ice3_peer_b
+    cap_add: [NET_ADMIN]
+    networks:
+      lan_b: { ipv4_address: 10.30.0.20 }
+    environment:
+      ROLE: peer
+      PEER_NAME: B
+      STUN_URI: stun://10.10.0.10:3478
+      TURN_URI: turn://goodnet:bench-only-credentials@10.10.0.11:3478
+      SIGNAL_DIR: /var/lib/ice3-signal
+      WAIT_FOR_PEER: A
+    depends_on:
+      stun:        { condition: service_healthy }
+      turn:        { condition: service_healthy }
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  nat_a:
+    build: ./nat-a
+    container_name: ice3_nat_a
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    networks:
+      lan_a: { ipv4_address: 10.20.0.1 }
+      net:   { ipv4_address: 10.10.0.20 }
+    # NAT_MODE flipped by scenario overrides: full_cone | symmetric | shared
+    environment:
+      NAT_MODE: full_cone
+
+  nat_b:
+    build: ./nat-b
+    container_name: ice3_nat_b
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv6.conf.all.forwarding: 1
+    networks:
+      lan_b: { ipv4_address: 10.30.0.1 }
+      net:   { ipv4_address: 10.10.0.30 }
+    environment:
+      NAT_MODE: full_cone
+
+networks:
+  net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+  lan_a:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.20.0.0/24
+  lan_b:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.30.0.0/24
+
+volumes:
+  signal:

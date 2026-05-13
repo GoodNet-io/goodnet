@@ -129,8 +129,21 @@ bridges/cpp/
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel
 # the same way as plugin slots so the nested .git stays invisible
-# to `git add -A`.
+# to `git add -A`. Block every direct child EXCEPT the Docker-
+# based 3-node ICE harness, which lives in the kernel monorepo
+# (its scenario topology is the kernel's CI artefact, not part
+# of the external integration-tests repo).
 tests/integration/
+
+# tests/docker/ holds the kernel's own Docker-based integration
+# harnesses (ICE 3-node, future NAT scenarios). Lives in the kernel
+# monorepo proper — distinct from tests/integration/ which is the
+# external goodnet-integration-tests repo slot.
+!tests/docker/**/Dockerfile
+!tests/docker/**/*.sh
+!tests/docker/**/*.yml
+!tests/docker/**/*.tmpl
+!tests/docker/**/*.md
 
 # Tests
 !tests/**/*.c

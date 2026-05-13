@@ -197,6 +197,22 @@ if(GOODNET_BENCH_STRATEGIES AND TARGET goodnet_float_send_rtt_objects)
     )
 endif()
 
+# ── Real-mode (production-shape) bench (A.2) ──────────────────────────
+#
+# Boots a real `gn::core::Kernel` + production plugins (Noise security
+# + gnet protocol + the transport plugins) and measures the operator-
+# facing send / recv path. Slice A.2 lands the scaffold with cases
+# marked SkipWithError; the kernel-boot helper that drives them
+# arrives in the A.2-followup commit.
+add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
+target_link_libraries(bench_real_e2e PRIVATE
+    goodnet_bench_harness
+    benchmark::benchmark_main
+)
+set_target_properties(bench_real_e2e PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+)
+
 # Cross-implementation comparison binaries live under bench/comparison/
 # but ship as shell scripts wrapping curl / openssl s_client / etc.
 # rather than C++ — see bench/comparison/README.md for the harness
