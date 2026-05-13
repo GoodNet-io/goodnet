@@ -1,9 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(GoodNet
-        VERSION       0.1.0
+        VERSION       1.0.0
         DESCRIPTION   "Network kernel and SDK"
         LANGUAGES     CXX C)
+
+# Pre-release suffix appended to PROJECT_VERSION wherever the full
+# string is published (CLI banner, package metadata, Nix derivation).
+# CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
+# rides separately. Drop to empty when cutting `v1.0.0` final.
+set(GOODNET_VERSION_SUFFIX "-rc3" CACHE STRING "Pre-release suffix (e.g. -rc3); empty for stable")
+set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
 set(CMAKE_CXX_STANDARD          23)

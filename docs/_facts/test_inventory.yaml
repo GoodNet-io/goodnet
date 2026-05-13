@@ -1,7 +1,7 @@
-total: 1080
+total: 1083
 groups:
 - tree: kernel
-  count: 771
+  count: 774
   files: 70
 - tree: plugins/handlers/heartbeat
   count: 11

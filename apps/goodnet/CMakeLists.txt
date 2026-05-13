@@ -27,7 +27,7 @@ target_compile_features(goodnet PRIVATE cxx_std_23)
 
 target_compile_definitions(goodnet
     PRIVATE
-        "GOODNET_VERSION_STRING=\"${PROJECT_VERSION}\""
+        "GOODNET_VERSION_STRING=\"${GOODNET_VERSION_FULL}\""
 )
 
 set_target_properties(goodnet PROPERTIES

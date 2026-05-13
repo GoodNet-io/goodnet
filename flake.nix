@@ -60,7 +60,7 @@
         , config ? null
         , identity ? null
         , pname ? "goodnet-node"
-        , version ? "0.1.0"
+        , version ? "1.0.0-rc3"
         }:
         pkgs.stdenv.mkDerivation {
           inherit pname version;
@@ -144,7 +144,7 @@
           # present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
-            version = "0.1.0";
+            version = "1.0.0-rc3";
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
