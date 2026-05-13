@@ -6,10 +6,17 @@ on:
 
 permissions:
   contents: write
+  packages: write   # ghcr.io docker push
 
 jobs:
   build-linux:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - { runner: ubuntu-latest,    triple: x86_64 }
+          - { runner: ubuntu-24.04-arm, triple: aarch64 }
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +32,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${GITHUB_REF_NAME}"
+          TRIPLE="${{ matrix.arch.triple }}"
 
           mkdir -p release/bin release/lib release/plugins
 
@@ -55,34 +63,118 @@ jobs:
 
           # Repoint dynamic linker and rpath so the bundled binary
           # finds its libraries through $ORIGIN, not the Nix store.
-          nix shell nixpkgs#patchelf --command bash -c '
+          # The interpreter path is arch-specific.
+          if [ "$TRIPLE" = "aarch64" ]; then
+            INTERP=/lib/ld-linux-aarch64.so.1
+          else
+            INTERP=/lib64/ld-linux-x86-64.so.2
+          fi
+          nix shell nixpkgs#patchelf --command bash -c "
             set -euo pipefail
             for bin in release/bin/*; do
-              [ -f "$bin" ] || continue
-              patchelf --set-interpreter /lib64/ld-linux-x86-64.so.2 "$bin" 2>/dev/null || true
-              patchelf --set-rpath "\$ORIGIN/../lib" "$bin" 2>/dev/null || true
+              [ -f \"\$bin\" ] || continue
+              patchelf --set-interpreter '$INTERP' \"\$bin\" 2>/dev/null || true
+              patchelf --set-rpath '\$ORIGIN/../lib' \"\$bin\" 2>/dev/null || true
             done
-            find release/lib -name "*.so*" -exec patchelf --set-rpath "\$ORIGIN" {} \; 2>/dev/null || true
-            find release/plugins -name "*.so" -exec patchelf --set-rpath "\$ORIGIN/../../lib" {} \; 2>/dev/null || true
-          '
+            find release/lib -name '*.so*' -exec patchelf --set-rpath '\$ORIGIN' {} \; 2>/dev/null || true
+            find release/plugins -name '*.so' -exec patchelf --set-rpath '\$ORIGIN/../../lib' {} \; 2>/dev/null || true
+          "
 
-          tar czf "goodnet-${TAG}-linux-x86_64.tar.gz" -C release .
+          tar czf "goodnet-${TAG}-linux-${TRIPLE}.tar.gz" -C release .
+
+      - name: Generate SHA-256SUMS
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          TRIPLE="${{ matrix.arch.triple }}"
+          sha256sum "goodnet-${TAG}-linux-${TRIPLE}.tar.gz" \
+            > "goodnet-${TAG}-linux-${TRIPLE}.tar.gz.sha256"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: linux-release
-          path: goodnet-*-linux-x86_64.tar.gz
+          name: linux-release-${{ matrix.arch.triple }}
+          path: |
+            goodnet-*-linux-${{ matrix.arch.triple }}.tar.gz
+            goodnet-*-linux-${{ matrix.arch.triple }}.tar.gz.sha256
+
+  build-docker:
+    # `nix build .#docker-static` produces a deterministic tarball
+    # via dockerTools.buildLayeredImage. `docker load -i` swallows
+    # it; we then push to ghcr.io under the tag. x86_64 only — the
+    # Nix derivation is Linux-x86_64 today (multi-arch image manifest
+    # is a follow-up).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build static Docker image via Nix
+        run: nix build .#docker-static --print-build-logs
+      - name: Load + tag image
+        run: |
+          docker load -i result
+          TAG="${GITHUB_REF_NAME}"
+          # nix-side image name is `goodnet:nix-static`; retag for ghcr.
+          docker tag goodnet:nix-static \
+            ghcr.io/${{ github.repository_owner }}/goodnet:${TAG}
+          docker tag goodnet:nix-static \
+            ghcr.io/${{ github.repository_owner }}/goodnet:latest
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Push image
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          docker push ghcr.io/${{ github.repository_owner }}/goodnet:${TAG}
+          docker push ghcr.io/${{ github.repository_owner }}/goodnet:latest
+
+  changelog:
+    runs-on: ubuntu-latest
+    outputs:
+      notes: ${{ steps.gen.outputs.notes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Generate auto-changelog between tags
+        id: gen
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          # Previous tag matching `v*` (excluding the current one) —
+          # falls back to the repository's first commit if no prior tag.
+          PREV=$(git describe --tags --abbrev=0 --match='v*' "${TAG}^" 2>/dev/null \
+                  || git rev-list --max-parents=0 HEAD | tail -1)
+          {
+            echo 'notes<<EOF'
+            echo "## Changes since ${PREV}"
+            echo
+            git log --format='- %s (%h)' "${PREV}..${TAG}"
+            echo
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 
   release:
-    needs: [build-linux]
+    needs: [build-linux, build-docker, changelog]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: linux-release
+          pattern: linux-release-*
+          merge-multiple: true
 
       - uses: softprops/action-gh-release@v2
         with:
           files: |
             goodnet-*-linux-x86_64.tar.gz
-          generate_release_notes: true
+            goodnet-*-linux-x86_64.tar.gz.sha256
+            goodnet-*-linux-aarch64.tar.gz
+            goodnet-*-linux-aarch64.tar.gz.sha256
+          body: ${{ needs.changelog.outputs.notes }}
+          # `generate_release_notes` would re-fetch GitHub's
+          # auto-summary on top — skip, we supply the changelog above.
+          generate_release_notes: false
