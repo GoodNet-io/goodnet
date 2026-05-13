@@ -33,13 +33,17 @@ target_link_libraries(goodnet_protocol_gnet
     PUBLIC
         GoodNet::sdk
         GoodNet::ctx_accessors
+    PRIVATE
+        PkgConfig::SODIUM
 )
-# protocol.cpp / wire.cpp consume only `core/util/endian.hpp` from
-# the kernel tree, reachable through the PUBLIC include directories
-# entry above (PROJECT_SOURCE_DIR covers core/). Linking
-# `GoodNet::kernel` would route consumers back through the kernel
-# graph and prevent the install-tree shape below from being a
-# decoupled add-on.
+# protocol.cpp / wire.cpp consume `core/util/endian.hpp` from the
+# kernel tree (reachable through the PUBLIC include directories
+# entry above, PROJECT_SOURCE_DIR covers core/) plus
+# `sodium_memcmp` from libsodium (PRIVATE — used inside the static
+# archive only, doesn't bleed into the public link surface).
+# Linking `GoodNet::kernel` would route consumers back through the
+# kernel graph and prevent the install-tree shape below from being
+# a decoupled add-on.
 
 target_compile_features(goodnet_protocol_gnet PUBLIC cxx_std_23)
 
