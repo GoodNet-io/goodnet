@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0-rc3] — 2026-05-13
+
 ### Real-mode round-trip bench cases for comparable libp2p / iroh side-by-side
 
 `bench/plugins/bench_real_e2e.cpp` gets three new sibling fixture
