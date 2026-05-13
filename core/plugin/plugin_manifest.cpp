@@ -178,6 +178,18 @@ void PluginManifest::add_entry(const std::string& path,
     entries_.push_back(std::move(me));
 }
 
+void PluginManifest::add_entry(const std::string& path,
+                                const PluginHash&  sha256,
+                                ManifestKind       kind,
+                                std::vector<std::string> args) {
+    ManifestEntry me{};
+    me.path   = canonicalise(path);
+    me.sha256 = sha256;
+    me.kind   = kind;
+    me.args   = std::move(args);
+    entries_.push_back(std::move(me));
+}
+
 gn_result_t PluginManifest::parse(std::string_view  json,
                                    PluginManifest&   out,
                                    std::string&      diagnostic) {
@@ -306,6 +318,11 @@ find_entry(const std::vector<ManifestEntry>& entries,
 }
 
 }  // namespace
+
+const ManifestEntry* PluginManifest::find(const std::string& path) const {
+    const auto it = find_entry(entries_, path);
+    return it == entries_.end() ? nullptr : &*it;
+}
 
 bool PluginManifest::contains(const std::string& path) const {
     return find_entry(entries_, path) != entries_.end();

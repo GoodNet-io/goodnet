@@ -42,6 +42,7 @@
 namespace gn::core {
 
 class Kernel;
+class RemoteHost;
 
 /// One loaded plugin shared object plus its kernel-side state.
 ///
@@ -63,6 +64,16 @@ struct PluginInstance {
     /// rollback path reads `unreg`/`shutdown` from here when
     /// `so_handle == nullptr`.
     const gn_plugin_static_entry_t*   static_entry{nullptr};
+
+    /// Non-null when the instance is a subprocess worker spawned
+    /// over `sdk/remote/wire.h`. `so_handle` and `static_entry`
+    /// stay null in this case; the rollback path dispatches
+    /// through `remote->call_unregister` / `call_shutdown` /
+    /// `terminate()` instead of dlsym. See
+    /// `docs/contracts/remote-plugin.en.md`. The unique_ptr's
+    /// dtor calls `terminate()` so a leaked instance still reaps
+    /// its child process.
+    std::unique_ptr<RemoteHost>       remote;
 };
 
 class PluginManager {

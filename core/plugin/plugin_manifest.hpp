@@ -125,6 +125,13 @@ public:
     /// lookups match equivalent path spellings.
     void add_entry(const std::string& path, const PluginHash& sha256);
 
+    /// Variant of `add_entry` that takes the linkage kind + worker
+    /// argv. Required when the test fixture wants to drive the
+    /// remote linkage path through `PluginManager::load` rather
+    /// than parsing a JSON manifest from disk.
+    void add_entry(const std::string& path, const PluginHash& sha256,
+                   ManifestKind kind, std::vector<std::string> args = {});
+
     /// Verify @p path against the manifest.
     ///
     /// Returns `true` when:
@@ -165,6 +172,12 @@ public:
     [[nodiscard]] const std::vector<ManifestEntry>& entries() const noexcept {
         return entries_;
     }
+
+    /// Look up the entry for @p path, returning nullptr when the
+    /// path is absent. Path canonicalisation matches the rules of
+    /// `contains`/`verify` so relative and absolute spellings
+    /// collapse to the same key.
+    [[nodiscard]] const ManifestEntry* find(const std::string& path) const;
 
     /// Decode a 64-character hex string into a 32-byte digest.
     /// Returns `nullopt` on length mismatch or non-hex characters.

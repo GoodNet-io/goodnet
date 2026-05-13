@@ -87,10 +87,16 @@ codec is hand-rolled (`core/plugin/wire_codec.{hpp,cpp}`) with no
 third-party dependency; mirror it from another language using
 its native CBOR library on the same subset.
 
-`PluginManager` integration (so manifests can carry
-`kind: "remote"` and the kernel will pick this path automatically)
-is the next chunk of work; the wire and the worker side ship
-ready for it.
+`PluginManager` recognises `kind: "remote"` in the manifest. A
+remote entry takes the same path/sha256 pair as a dynamic one
+plus an optional `args` list (argv tail handed to the worker on
+spawn). `PluginManager::open_one` runs the same integrity check
+as the dlopen path before spawning, so an unverified worker
+binary never reaches `execve` — symmetric to the dlopen rule
+that an unverified `.so` never reaches `RTLD_NOW`. The
+lifecycle (init / register / unregister / shutdown) flows
+through `RemoteHost::call_*` instead of dlsym; the rollback
+path terminates the worker and reaps its child process.
 
 ## Cross-platform posture
 
