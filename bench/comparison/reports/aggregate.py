@@ -189,12 +189,12 @@ def main(argv):
             by_payload.setdefault(int(sz), {})[col] = float(bps)
     if by_payload:
         stacks = ["GoodNet UDP", "GoodNet WS", "libp2p", "iroh"]
-        out.append("## Echo round-trip — side-by-side")
+        out.append("## Echo round-trip — side-by-side (parody shape)")
         out.append("")
         out.append("_loopback, round-trip bytes/sec at the application_")
         out.append("_layer; one-way send-only numbers live in "
-                   "`## GoodNet plugin matrix` (`Throughput`) and "
-                   "`## Cross-implementation throughput` (iperf3)._")
+                   "`## Parody — GoodNet plugin matrix` (`Throughput`) "
+                   "and `## Cross-implementation throughput` (iperf3)._")
         out.append("")
         out.append("| Payload | " + " | ".join(stacks) + " |")
         out.append("|---|" + "---|" * len(stacks))
@@ -207,7 +207,19 @@ def main(argv):
         out.append("")
 
     if perf := aggregated.get("perf"):
-        out.append("## GoodNet plugin matrix")
+        out.append("## Parody — GoodNet plugin matrix (raw transport, "
+                   "no security, no protocol layer)")
+        out.append("")
+        out.append("_**Shape**: bench fixtures wire the link plugin to a "
+                   "test stub `host_api` — no security provider is "
+                   "registered, no protocol layer frames the bytes. "
+                   "Numbers are the upper-bound the plugin can deliver "
+                   "to a downstream that drains as fast as the link "
+                   "writes. Compare against `iperf3` rows below (also "
+                   "no security, no framing) for a fair stack-by-stack "
+                   "delta. For the production-shape numbers see the "
+                   "`## Real` section once `bench_real_e2e` lands (plan "
+                   "§A.2)._")
         out.append("")
         out.append("_Memory deltas: `RSS Δ` = `VmRSS_end − VmRSS_start` "
                    "(current; allocator `madvise(MADV_DONTNEED)` masks "
@@ -250,6 +262,22 @@ def main(argv):
 
     if tputs := aggregated.get("throughput_stack"):
         out.append("## Cross-implementation throughput")
+        out.append("")
+        out.append("_**Stack shapes** for the row that follows so the "
+                   "numbers aren't apples-to-oranges:_")
+        out.append("")
+        out.append("| Stack | What's measured |")
+        out.append("|---|---|")
+        out.append("| `iperf3 TCP/UDP` | raw socket throughput, no "
+                   "security, no framing |")
+        out.append("| `rust-libp2p` | Noise XX + Yamux + libp2p-stream "
+                   "(full mesh stack) |")
+        out.append("| `iroh` | TLS 1.3 + QUIC + RPC open_bi per round |")
+        out.append("| `GoodNet parody` | TcpLink/UdpLink/WsLink "
+                   "through a stub host_api — no security, no framing, "
+                   "matches `iperf3` shape |")
+        out.append("| `GoodNet real` (planned) | full kernel: TcpLink + "
+                   "Noise + gnet protocol — matches `libp2p` shape |")
         out.append("")
         out.append("| Stack | Metric | Throughput | Detail |")
         out.append("|---|---|---|---|")
