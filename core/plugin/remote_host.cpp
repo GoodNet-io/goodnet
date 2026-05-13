@@ -490,8 +490,7 @@ void RemoteHost::encode_error_(PayloadVec& out,
 // ── Entry-point round-trips ─────────────────────────────────────────
 
 gn_result_t RemoteHost::call_init(void** out_self_handle) {
-    PayloadVec args;
-    wire::encode_array_header(args, 0);
+    PayloadVec args;  // empty — slot has no in-args
     ReplyResult reply;
     if (auto rc = round_trip_(GN_WIRE_SLOT_PLUGIN_INIT, args, reply);
         rc != GN_OK) {
@@ -500,12 +499,8 @@ gn_result_t RemoteHost::call_init(void** out_self_handle) {
     if (reply.flags & GN_WIRE_FLAG_ERROR) {
         return GN_ERR_INTERNAL;
     }
-    // Reply payload: [result_code, self_handle].
+    // Reply payload: code(i64), self_handle(u64) — inline.
     wire::Reader r{reply.payload, 0};
-    std::size_t n = 0;
-    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
-        return GN_ERR_OUT_OF_RANGE;
-    }
     std::int64_t code = 0;
     std::uint64_t self_handle = 0;
     if (wire::decode_i64(r, code) != GN_OK ||
@@ -531,7 +526,6 @@ gn_result_t RemoteHost::call_init(void** out_self_handle) {
 
 gn_result_t RemoteHost::call_register(std::uint64_t self_handle) {
     PayloadVec args;
-    wire::encode_array_header(args, 1);
     wire::encode_u64(args, self_handle);
     ReplyResult reply;
     if (auto rc = round_trip_(GN_WIRE_SLOT_PLUGIN_REGISTER, args, reply);
@@ -544,12 +538,44 @@ gn_result_t RemoteHost::call_register(std::uint64_t self_handle) {
     wire::Reader r{reply.payload, 0};
     std::int64_t code = 0;
     if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_OUT_OF_RANGE;
-    return static_cast<gn_result_t>(code);
+    const auto worker_rc = static_cast<gn_result_t>(code);
+    if (worker_rc != GN_OK) return worker_rc;
+
+    /// Publish the synthesised link proxy in the kernel's link
+    /// registry on behalf of the worker. The kernel sees a normal
+    /// link plugin with the worker's plugin name as the scheme;
+    /// scheme-based lookups (from `notify_connect`, `send`) hit
+    /// `link_vtable_proxy()` and dispatch through the wire.
+    if (worker_kind_ == GN_PLUGIN_KIND_LINK &&
+        kernel_host_api_.register_vtable != nullptr &&
+        registered_link_id_ == 0) {
+        const gn_link_vtable_t* proxy = link_vtable_proxy();
+        if (proxy != nullptr) {
+            gn_register_meta_t meta{};
+            meta.api_size    = sizeof(gn_register_meta_t);
+            meta.name        = descriptor_name_storage_.c_str();
+            meta.protocol_id = nullptr;
+            (void)kernel_host_api_.register_vtable(
+                kernel_host_api_.host_ctx,
+                GN_REGISTER_LINK,
+                &meta, proxy, this, &registered_link_id_);
+        }
+    }
+    return GN_OK;
 }
 
 gn_result_t RemoteHost::call_unregister(std::uint64_t self_handle) {
+    /// Pull the link proxy out of the kernel registry first so any
+    /// in-flight `find_by_scheme` returns NOT_FOUND before the
+    /// worker has a chance to start tearing down its own state.
+    if (registered_link_id_ != 0 &&
+        kernel_host_api_.unregister_vtable != nullptr) {
+        (void)kernel_host_api_.unregister_vtable(
+            kernel_host_api_.host_ctx, registered_link_id_);
+        registered_link_id_ = 0;
+    }
+
     PayloadVec args;
-    wire::encode_array_header(args, 1);
     wire::encode_u64(args, self_handle);
     ReplyResult reply;
     if (auto rc = round_trip_(GN_WIRE_SLOT_PLUGIN_UNREGISTER, args, reply);
@@ -567,7 +593,6 @@ gn_result_t RemoteHost::call_unregister(std::uint64_t self_handle) {
 
 void RemoteHost::call_shutdown(std::uint64_t self_handle) {
     PayloadVec args;
-    wire::encode_array_header(args, 1);
     wire::encode_u64(args, self_handle);
     ReplyResult reply;
     (void)round_trip_(GN_WIRE_SLOT_PLUGIN_SHUTDOWN, args, reply);
@@ -667,24 +692,115 @@ void RemoteHost::handle_host_call_(std::uint32_t request_id,
 }
 
 // ── Synthetic link vtable proxy ─────────────────────────────────────
+//
+// Every slot of the synthesised vtable carries the worker's
+// `self_handle` through the wire — the worker dispatches the
+// PLUGIN_CALL into its own real vtable using `cfg.link_self` as the
+// in-process self. The kernel never deals with the worker's pointer
+// directly; the synthesised vtable's `self` field is RemoteHost*, so
+// the thunk can issue `round_trip_` against the wire.
 
 namespace {
 
-const char* link_scheme_thunk(void* self) {
+const char* link_scheme_thunk(void* self) noexcept {
     auto* host = static_cast<RemoteHost*>(self);
-    // Scheme is reported as the worker's plugin name. The
-    // descriptor's `name` field carries the scheme string for link
-    // workers; the kernel keeps the storage alive for the host's
-    // lifetime, so handing it back here is safe.
     return host->descriptor()->name;
 }
 
-// Vtable slots beyond `scheme` are stubbed in this proof; once a
-// real workload exercises `listen` / `connect` / `send` over a
-// remote worker, each slot becomes a `round_trip_` call that
-// ships its args through CBOR and decodes the gn_result_t reply.
-// The signature kept here documents the shape future thunks will
-// take; intentionally unreferenced.
+// Decode `[code(i64)]` from a PLUGIN_REPLY payload into a
+// gn_result_t. Used by every link-slot thunk that returns
+// gn_result_t. Any decode error collapses to GN_ERR_INTERNAL — the
+// wire is now in a state the kernel cannot reason about.
+[[nodiscard]] gn_result_t decode_code_reply(
+    const std::vector<std::uint8_t>& payload, std::uint32_t flags) noexcept {
+    if (flags & GN_WIRE_FLAG_ERROR) {
+        // Error map carries `code`/`message`; surface the code.
+        wire::Reader r{payload, 0};
+        std::size_t map_n = 0;
+        if (wire::decode_map_header(r, map_n) != GN_OK) {
+            return GN_ERR_INTERNAL;
+        }
+        gn_result_t observed = GN_ERR_INTERNAL;
+        for (std::size_t i = 0; i < map_n; ++i) {
+            std::string_view key;
+            if (wire::decode_text(r, key) != GN_OK) return GN_ERR_INTERNAL;
+            if (key == "code") {
+                std::int64_t v = 0;
+                if (wire::decode_i64(r, v) != GN_OK) return GN_ERR_INTERNAL;
+                observed = static_cast<gn_result_t>(v);
+            } else if (key == "message") {
+                std::string_view m;
+                if (wire::decode_text(r, m) != GN_OK) return GN_ERR_INTERNAL;
+            } else {
+                return GN_ERR_INTERNAL;
+            }
+        }
+        return observed;
+    }
+    wire::Reader r{payload, 0};
+    std::int64_t code = 0;
+    if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_INTERNAL;
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t link_listen_thunk(void* self, const char* uri) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_text(args, uri ? std::string_view(uri) : std::string_view());
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_LINK_LISTEN, args, reply);
+        rc != GN_OK) return rc;
+    return decode_code_reply(reply.payload, reply.flags);
+}
+
+gn_result_t link_connect_thunk(void* self, const char* uri) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_text(args, uri ? std::string_view(uri) : std::string_view());
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_LINK_CONNECT, args, reply);
+        rc != GN_OK) return rc;
+    return decode_code_reply(reply.payload, reply.flags);
+}
+
+gn_result_t link_send_thunk(void* self,
+                             gn_conn_id_t conn,
+                             const uint8_t* bytes,
+                             size_t size) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, conn);
+    wire::encode_bytes(args, std::span<const std::uint8_t>(bytes, size));
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_LINK_SEND, args, reply);
+        rc != GN_OK) return rc;
+    return decode_code_reply(reply.payload, reply.flags);
+}
+
+gn_result_t link_disconnect_thunk(void* self,
+                                   gn_conn_id_t conn) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, conn);
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_LINK_DISCONNECT, args, reply);
+        rc != GN_OK) return rc;
+    return decode_code_reply(reply.payload, reply.flags);
+}
+
+void link_destroy_thunk(void* /*self*/) noexcept {
+    // Lifetime is owned by the kernel-side RemoteHost; `destroy` is
+    // a no-op on this side. The worker-side equivalent fires when
+    // `call_shutdown` traverses the wire.
+}
 
 }  // namespace
 
@@ -697,14 +813,13 @@ const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept {
     }
     link_vtable_storage_ = std::make_unique<gn_link_vtable_t>();
     auto& v = *link_vtable_storage_;
-    v.api_size = sizeof(gn_link_vtable_t);
-    v.scheme   = &link_scheme_thunk;
-    // Remaining slots remain nullptr in this proof of concept; the
-    // worker only needs to advertise its scheme for the kernel's
-    // ServiceResolver to wire it up. Adding listen/connect/send
-    // proxies is a mechanical extension once a real workload exercises
-    // them — every slot follows the `round_trip_` pattern in
-    // `handle_host_call_` above.
+    v.api_size   = sizeof(gn_link_vtable_t);
+    v.scheme     = &link_scheme_thunk;
+    v.listen     = &link_listen_thunk;
+    v.connect    = &link_connect_thunk;
+    v.send       = &link_send_thunk;
+    v.disconnect = &link_disconnect_thunk;
+    v.destroy    = &link_destroy_thunk;
     return link_vtable_storage_.get();
 }
 

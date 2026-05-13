@@ -158,6 +158,46 @@ TEST(RemoteHost, BadBinaryFailsSpawnCleanly) {
     EXPECT_NE(rc, GN_OK);
 }
 
+TEST(RemoteHost, LinkProxyEndToEndSendEchoes) {
+    /// The synthesised vtable's `send` slot should round-trip the
+    /// payload through PLUGIN_CALL into the worker, the worker's
+    /// echo_send should call back through HOST_CALL
+    /// notify_inbound_bytes, and the stub host_api here should
+    /// observe the same bytes.
+    StubHostState stub;
+    gn::core::PluginContext ctx;
+    ctx.plugin_name = "remote_echo_test";
+    ctx.kind        = GN_PLUGIN_KIND_LINK;
+
+    gn::core::RemoteHost host;
+    std::string diag;
+    ASSERT_EQ(host.spawn(worker_binary_path(),
+                          std::span<const std::string>(),
+                          ctx, make_stub_host_api(stub), diag), GN_OK) << diag;
+
+    void* self_handle = nullptr;
+    ASSERT_EQ(host.call_init(&self_handle), GN_OK);
+    /// Skip call_register here — that would auto-register the proxy
+    /// in the kernel's link registry, which this test doesn't need.
+
+    const gn_link_vtable_t* vt = host.link_vtable_proxy();
+    ASSERT_NE(vt, nullptr);
+    ASSERT_NE(vt->send, nullptr);
+
+    const std::vector<std::uint8_t> payload = {
+        0xDE, 0xAD, 0xBE, 0xEF, 0x42, 0x00, 0x13, 0x37};
+    const gn_conn_id_t conn = 99;
+    const gn_result_t rc = vt->send(
+        static_cast<void*>(&host), conn, payload.data(), payload.size());
+    EXPECT_EQ(rc, GN_OK);
+    EXPECT_EQ(stub.inbound_calls.load(), 1);
+    EXPECT_EQ(stub.last_conn, conn);
+    ASSERT_EQ(stub.last_payload.size(), payload.size());
+    for (std::size_t i = 0; i < payload.size(); ++i) {
+        EXPECT_EQ(stub.last_payload[i], payload[i]) << "byte " << i;
+    }
+}
+
 TEST(RemoteHost, TerminateIsIdempotent) {
     StubHostState stub;
     gn::core::PluginContext ctx;

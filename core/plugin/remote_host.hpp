@@ -116,16 +116,34 @@ public:
         return round_trips_.load(std::memory_order_relaxed);
     }
 
-private:
     using PayloadVec = std::vector<std::uint8_t>;
 
     /// Result of a single PLUGIN_CALL: flags from the reply header
     /// (`GN_WIRE_FLAG_ERROR` bit communicates error) and the CBOR
-    /// payload bytes.
+    /// payload bytes. Public so the synthesised link vtable's
+    /// per-slot thunks (defined in the .cpp's anonymous namespace)
+    /// can construct one and pass it through `round_trip_for_proxy`.
     struct ReplyResult {
         std::uint32_t flags{0};
         PayloadVec    payload;
     };
+
+    /// Public bridge for the synthesised vtable thunks. Wraps the
+    /// private `round_trip_` so callers outside the class can route
+    /// PLUGIN_CALL through the wire. Identical contract.
+    [[nodiscard]] gn_result_t round_trip_for_proxy(std::uint32_t slot_id,
+                                                    const PayloadVec& args,
+                                                    ReplyResult& out) {
+        return round_trip_(slot_id, args, out);
+    }
+
+    /// Public read of the worker's self_handle so the proxy thunks
+    /// can echo it on every PLUGIN_CALL.
+    [[nodiscard]] std::uint64_t worker_self_handle_for_proxy() const noexcept {
+        return worker_self_handle_;
+    }
+
+private:
 
     /// Reader-thread main: spin on `read_frame_`, dispatch by kind.
     void reader_loop_();
@@ -193,6 +211,13 @@ private:
     std::unordered_map<std::uint32_t, Pending> pending_;
 
     std::unique_ptr<gn_link_vtable_t> link_vtable_storage_;
+
+    /// Packed id returned by `host_api.register_vtable` when the
+    /// kernel publishes the link proxy on behalf of a remote link
+    /// worker. Captured during `call_register` and replayed through
+    /// `unregister_vtable` during `call_unregister` so the link
+    /// registry sees a tidy register/unregister pair.
+    std::uint64_t registered_link_id_{0};
 };
 
 }  // namespace gn::core

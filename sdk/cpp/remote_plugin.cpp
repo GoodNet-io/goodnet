@@ -222,7 +222,6 @@ void encode_lifecycle_reply(std::vector<std::uint8_t>& out,
                             gn_result_t code,
                             std::uint64_t self_handle) {
     namespace wire = ::gn::core::wire;
-    wire::encode_array_header(out, 2);
     wire::encode_i64(out, code);
     wire::encode_u64(out, self_handle);
 }
@@ -284,6 +283,87 @@ void encode_code_reply(std::vector<std::uint8_t>& out, gn_result_t code) {
             if (g_state.cfg->on_shutdown != nullptr) {
                 g_state.cfg->on_shutdown(g_state.self);
             }
+            encode_code_reply(reply, GN_OK);
+            break;
+        }
+        case GN_WIRE_SLOT_LINK_LISTEN: {
+            std::uint64_t worker_self = 0;
+            std::string_view uri{};
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_text(r, uri) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->link_vtable && g_state.cfg->link_vtable->listen) {
+                const std::string uri_z(uri);
+                rc = g_state.cfg->link_vtable->listen(
+                    g_state.cfg->link_self, uri_z.c_str());
+            }
+            encode_code_reply(reply, rc);
+            (void)worker_self;
+            break;
+        }
+        case GN_WIRE_SLOT_LINK_CONNECT: {
+            std::uint64_t worker_self = 0;
+            std::string_view uri{};
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_text(r, uri) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->link_vtable && g_state.cfg->link_vtable->connect) {
+                const std::string uri_z(uri);
+                rc = g_state.cfg->link_vtable->connect(
+                    g_state.cfg->link_self, uri_z.c_str());
+            }
+            encode_code_reply(reply, rc);
+            (void)worker_self;
+            break;
+        }
+        case GN_WIRE_SLOT_LINK_SEND: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t conn        = 0;
+            std::span<const std::uint8_t> bytes;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, conn) != GN_OK ||
+                wire::decode_bytes(r, bytes) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->link_vtable && g_state.cfg->link_vtable->send) {
+                rc = g_state.cfg->link_vtable->send(
+                    g_state.cfg->link_self,
+                    static_cast<gn_conn_id_t>(conn),
+                    bytes.data(), bytes.size());
+            }
+            encode_code_reply(reply, rc);
+            (void)worker_self;
+            break;
+        }
+        case GN_WIRE_SLOT_LINK_DISCONNECT: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t conn        = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, conn) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->link_vtable && g_state.cfg->link_vtable->disconnect) {
+                rc = g_state.cfg->link_vtable->disconnect(
+                    g_state.cfg->link_self,
+                    static_cast<gn_conn_id_t>(conn));
+            }
+            encode_code_reply(reply, rc);
+            (void)worker_self;
+            break;
+        }
+        case GN_WIRE_SLOT_LINK_DESTROY: {
+            // Lifetime is anchored on the kernel side; the worker's
+            // destroy fires implicitly during PLUGIN_SHUTDOWN.
             encode_code_reply(reply, GN_OK);
             break;
         }
