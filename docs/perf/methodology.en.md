@@ -67,11 +67,36 @@ What real-mode is **not** comparable to: `iperf3` numbers. Doing
 so would pessimise GoodNet by ~5-10× because iperf3 doesn't pay
 for crypto.
 
-Case names with the `RealFixture/` prefix carry this shape.
-Currently (slice A.2 — `3d58cf3`) the bodies are
-`SkipWithError`-stubbed; numbers materialise once the
-kernel-boot helper lands. See the §A.2 entry in the master plan
-for the path to real numbers.
+Case names starting with the `RealFixture` prefix carry this
+shape. Two sibling fixture families:
+
+* `RealFixture<Plug>` (`RealFixtureTcp`, `RealFixtureUdp`,
+  `RealFixtureIpc`) — **one-way** send→receive measurement.
+  Case shape `RealFixture<Plug>/<Plug>Echo/<sz>/`. Useful as
+  the cost-decomposition baseline against parody.
+* `RealFixture<Plug>Echo` (`RealFixtureTcpEcho`,
+  `RealFixtureUdpEcho`, `RealFixtureIpcEcho`) — **echo
+  round-trip** measurement; alice echoes bob's payload back so
+  bob measures wall-clock RTT. Case shape
+  `RealFixture<Plug>Echo/<Plug>EchoRoundtrip/<sz>/`. This is the
+  shape that lines up with libp2p / iroh runners (read → write
+  → read), reported in `## А. Comparable echo round-trip`.
+
+### 1.3 Comparable stacks — pairing rule
+
+Section `## А. Comparable echo round-trip` is the **only** part
+of the report that quotes GoodNet next to libp2p / iroh. Same
+stack shape per row: transport + AEAD + framing/mux.
+
+| GoodNet column | Reference column | Same shape because |
+|---|---|---|
+| `RealFixtureTcpEcho` (TCP + Noise XX + gnet) | `libp2p-echo` (TCP + Noise XX + Yamux) | both pay TCP + Noise AEAD + frame mux per send |
+| `RealFixtureQuicEcho` (QUIC + TLS 1.3 + gnet) [pending] | `iroh-echo` (QUIC + TLS 1.3 + streams) | both pay QUIC + TLS 1.3 record + per-stream framing |
+| `RealFixtureIpcEcho` (AF_UNIX + Noise + gnet) | (no upstream peer) | included for the IPC lower-bound baseline; not a fair-comparison row |
+
+`yamux ≠ gnet` but both are application-layer mux/framing
+layers running on top of a Noise-encrypted stream — same
+per-frame bookkeeping cost class, so the pairing is honest.
 
 ---
 
@@ -146,9 +171,13 @@ is at the top.
 
 ## 3. What the report is NOT trying to say
 
-- "GoodNet is faster than libp2p" — not unless you compare
-  same-shape rows. Parody vs libp2p is unfair to libp2p; real
-  vs libp2p is the honest comparison.
+- "GoodNet is faster than libp2p" — not unless the rows live
+  in `## А. Comparable echo round-trip`. That section is the
+  only place where stack shape is matched (transport + AEAD +
+  framing/mux), per §1.3 pairing rule. Quoting numbers from
+  `## Cross-implementation throughput` (iperf3 / socat) or
+  `## Parody — GoodNet plugin matrix` next to libp2p / iroh
+  is a methodology error.
 - "GoodNet beats iperf3" — never the goal. iperf3 is the
   upper-bound ceiling for raw TCP / UDP throughput on the box;
   parody reaches it ⇒ link plugin is fine.

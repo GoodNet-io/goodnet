@@ -183,10 +183,14 @@ def fmt_per_byte(n):
 
 
 # Bench `case` names that came from the in-process kernel + real
-# security/protocol stack are tagged with the `RealFixture/` prefix
-# (see `bench/plugins/bench_real_e2e.cpp`, plan §A.2). Anything
-# else is parody — link plugin + LinkStub, no security, no framing.
-_REAL_PREFIX = "RealFixture/"
+# security/protocol stack are tagged with the `RealFixture` prefix.
+# Google-benchmark fixture-class names live to the left of the first
+# `/`, so the case strings look like `RealFixtureTcp/TcpEcho/64/...`
+# (one-way A.2) or `RealFixtureTcpEcho/TcpEchoRoundtrip/64/...`
+# (track-А round-trip, sibling fixture) — both start with
+# `RealFixture` but neither has `RealFixture/` literally. Drop the
+# trailing `/` so the prefix recognises every sibling class.
+_REAL_PREFIX = "RealFixture"
 
 
 def is_real_row(row):
@@ -238,22 +242,56 @@ def main(argv):
     plug_re = re.compile(
         r"^(?P<plug>Udp|Ws|Tcp|Ipc|Quic|Tls)Fixture/"
         r"(?P<kind>EchoRoundtrip|Throughput)/(?P<sz>\d+)/")
+    # Real-mode round-trip lives in sibling fixture classes named
+    # `RealFixtureTcpEcho`, `RealFixtureUdpEcho`, `RealFixtureIpcEcho`.
+    # The case payload is `RealFixture<Plug>Echo/<Plug>EchoRoundtrip/<sz>/`.
+    real_rt_re = re.compile(
+        r"^RealFixture(?P<plug>Tcp|Udp|Ipc)Echo/"
+        r"(?:Tcp|Udp|Ipc)EchoRoundtrip/(?P<sz>\d+)/")
+    # Real-mode one-way A.2 cases — sibling fixture `RealFixtureTcp`
+    # (no `Echo` suffix on the class name). Case shape:
+    # `RealFixture<Plug>/<Plug>Echo/<sz>/`.
+    real_oneway_re = re.compile(
+        r"^RealFixture(?P<plug>Tcp|Udp|Ipc)/"
+        r"(?:Tcp|Udp|Ipc)Echo/(?P<sz>\d+)/")
     for r in aggregated.get("perf", []):
-        m = plug_re.match(r.get("case", ""))
-        if not m or int(m.group("sz")) != canon_payload:
-            continue
+        case = r.get("case", "")
         if not r.get("throughput_bps"):
             continue
-        kind = "echo-RTT" if m.group("kind") == "EchoRoundtrip" else "send-only"
-        shape = "real" if is_real_row(r) else "parody"
-        tldr_rows.append({
-            "stack":       f"GoodNet {m.group('plug').upper()}",
-            "shape":       shape,
-            "kind":        kind,
-            "throughput":  r["throughput_bps"],
-            "p50_ns":      r.get("p50_ns"),
-            "p99_ns":      r.get("p99_ns"),
-        })
+        m_rt = real_rt_re.match(case)
+        m_ow = real_oneway_re.match(case)
+        m_par = plug_re.match(case)
+        if m_rt and int(m_rt.group("sz")) == canon_payload:
+            tldr_rows.append({
+                "stack":       f"GoodNet {m_rt.group('plug').upper()}+Noise+gnet",
+                "shape":       "real",
+                "kind":        "echo-RTT",
+                "throughput":  r["throughput_bps"],
+                "p50_ns":      r.get("p50_ns"),
+                "p99_ns":      r.get("p99_ns"),
+            })
+            continue
+        if m_ow and int(m_ow.group("sz")) == canon_payload:
+            tldr_rows.append({
+                "stack":       f"GoodNet {m_ow.group('plug').upper()}+Noise+gnet",
+                "shape":       "real",
+                "kind":        "echo-one-way",
+                "throughput":  r["throughput_bps"],
+                "p50_ns":      r.get("p50_ns"),
+                "p99_ns":      r.get("p99_ns"),
+            })
+            continue
+        if m_par and int(m_par.group("sz")) == canon_payload:
+            kind = ("echo-RTT" if m_par.group("kind") == "EchoRoundtrip"
+                    else "send-only")
+            tldr_rows.append({
+                "stack":       f"GoodNet {m_par.group('plug').upper()}",
+                "shape":       "parody",
+                "kind":        kind,
+                "throughput":  r["throughput_bps"],
+                "p50_ns":      r.get("p50_ns"),
+                "p99_ns":      r.get("p99_ns"),
+            })
     for tbl in aggregated.get("tables", []):
         if tbl.get("metric") not in (
                 "libp2p_echo_throughput", "iroh_echo_throughput"):
@@ -314,22 +352,27 @@ def main(argv):
                 f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} |")
         out.append("")
 
-    # ── Side-by-side echo round-trip ─────────────────────────────────
+    # ── А. Comparable echo round-trip — production stack ────────────
     #
-    # Pivots `*Fixture/EchoRoundtrip/<payload>` gbench rows AND
-    # libp2p / iroh runner tables into a single matrix where rows
-    # are payload sizes and columns are stacks. Lets the reader see
-    # GoodNet vs libp2p vs iroh at the same payload without scrolling
-    # between per-stack sections below.
+    # Pivots Real-mode echo round-trip gbench rows (TCP/IPC; UDP is
+    # neither libp2p nor iroh's primary transport so the column is
+    # dropped) against the libp2p / iroh runner outputs. Same stack
+    # shape on every row: transport + AEAD + framing/mux.
+    #   * GoodNet TCP+Noise+gnet  ↔  libp2p (TCP+Noise+Yamux)
+    #   * GoodNet QUIC+TLS+gnet   ↔  iroh   (QUIC+TLS 1.3)   [pending]
+    # iperf3 / socat parody rows live in `## Cross-implementation
+    # throughput` and are NOT directly comparable to this section.
+    # See `docs/perf/methodology.en.md` §1.3 (pairing rule).
     echo_re = re.compile(
-        r"^(?P<plug>Udp|Ws)Fixture/EchoRoundtrip/(?P<sz>\d+)/")
+        r"^RealFixture(?P<plug>Tcp|Ipc|Quic)Echo/"
+        r"(?:Tcp|Ipc|Quic)EchoRoundtrip/(?P<sz>\d+)/")
     by_payload: dict[int, dict[str, float]] = {}
     for r in aggregated.get("perf", []):
         m = echo_re.match(r.get("case", ""))
         if not m or not r.get("throughput_bps"):
             continue
         sz = int(m.group("sz"))
-        col = f"GoodNet {m.group('plug').upper()}"
+        col = f"GoodNet {m.group('plug').upper()}+Noise+gnet"
         by_payload.setdefault(sz, {})[col] = float(r["throughput_bps"])
     for tbl in aggregated.get("tables", []):
         if tbl.get("metric") not in (
@@ -343,13 +386,24 @@ def main(argv):
             col = row.get("stack", "?")
             by_payload.setdefault(int(sz), {})[col] = float(bps)
     if by_payload:
-        stacks = ["GoodNet UDP", "GoodNet WS", "libp2p", "iroh"]
-        out.append("## Echo round-trip — side-by-side (parody shape)")
+        stacks = ["GoodNet TCP+Noise+gnet", "GoodNet IPC+Noise+gnet",
+                  "GoodNet QUIC+Noise+gnet",
+                  "libp2p (TCP+Noise+Yamux)", "iroh (QUIC+TLS1.3)"]
+        out.append("## А. Comparable echo round-trip — "
+                   "production stack vs libp2p / iroh")
         out.append("")
-        out.append("_loopback, round-trip bytes/sec at the application_")
-        out.append("_layer; one-way send-only numbers live in "
-                   "`## Parody — GoodNet plugin matrix` (`Throughput`) "
-                   "and `## Cross-implementation throughput` (iperf3)._")
+        out.append("_Same conceptual stack on every row: transport "
+                   "+ AEAD + framing/mux. GoodNet rows are "
+                   "`RealFixture<plug>Echo` cases (kernel + Noise XX "
+                   "+ gnet protocol). libp2p uses Noise XX + Yamux; "
+                   "iroh uses TLS 1.3 + QUIC streams. Compare "
+                   "directly within this section. iperf3 / socat "
+                   "parody rows live in `## Cross-implementation "
+                   "throughput` and are NOT directly comparable — see "
+                   "`docs/perf/methodology.en.md` §1.3 (pairing rule). "
+                   "Real-QUIC fixture pending — see "
+                   "`bench_real_e2e.cpp` TODO block; iroh row appears "
+                   "once Real-QUIC lands._")
         out.append("")
         out.append("| Payload | " + " | ".join(stacks) + " |")
         out.append("|---|" + "---|" * len(stacks))

@@ -22,7 +22,7 @@ EOF
 fi
 
 rows=()
-for sz in 64 1024 8192 65536; do
+for sz in 64 1024 8192 32768; do
     line=$(ECHO_PAYLOAD="$sz" ECHO_DURATION="$duration" "$bin" 2>/dev/null) || {
         rows+=("{\"stack\":\"libp2p\",\"payload\":$sz,\"bytes_per_sec\":0,\"handshake_ms\":0,\"error\":\"bin failed\"}")
         continue
