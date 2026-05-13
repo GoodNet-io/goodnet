@@ -5,19 +5,32 @@
 
   outputs = { self, nixpkgs }:
     let
-      # Linux-only honestly: every strategic plugin (heartbeat, tcp,
-      # udp, ws, ipc, gnet) binds tightly to epoll / capability-style
-      # sandboxing primitives that have no portable Darwin/BSD analogue.
-      # Listing Darwin systems here used to make `nix flake check
-      # --all-systems` fail with "Refusing to evaluate" the moment any
-      # Linux-only plugin met the Darwin platform check. macOS support
-      # can land later as a real port — adding "x86_64-darwin" /
-      # "aarch64-darwin" back here without porting the platform-bound
-      # plugins is the kind of cross-platform theatre this repo has
-      # explicitly chosen to avoid.
+      # Cross-platform posture (honest):
+      #
+      # * **Linux x86_64 / aarch64** — full path. Every bundled
+      #   plugin builds and tests run under sanitisers. CI gates on
+      #   this matrix.
+      # * **Darwin x86_64 / aarch64** — kernel + SDK + GNET protocol
+      #   build via Asio's portable reactor; the kernel's
+      #   `plugin_manager.cpp` falls back from `openat2` to the
+      #   `O_NOFOLLOW` integrity gate behind `__linux__`. Only the
+      #   IPC plugin currently carries the `LOCAL_PEERCRED` port;
+      #   other plugins (tcp/udp/ws/ice/quic/tls/heartbeat/noise/
+      #   null/strategies) live in their own gits and gate
+      #   themselves via `meta.platforms` — they simply don't appear
+      #   in the per-plugin flake's output set on Darwin until each
+      #   is ported. The composed-node derivation here keeps
+      #   `meta.platforms = lib.platforms.linux` because operators
+      #   want a bundle, not a half-set; the kernel-only
+      #   `goodnet-core` derivation builds for Darwin today. See
+      #   `docs/architecture/cross-platform.ru.md`.
+      # * **Windows** — wire/build groundwork landed under
+      #   `_WIN32` guards; the named-pipe runtime stays its own
+      #   plan.
       forAllSystems = f:
         nixpkgs.lib.genAttrs
-          [ "x86_64-linux" "aarch64-linux" ]
+          [ "x86_64-linux" "aarch64-linux"
+            "x86_64-darwin" "aarch64-darwin" ]
           (system: f system (import nixpkgs { inherit system; }));
 
       # `goodnet.lib.compose` — operator-facing constructor.
