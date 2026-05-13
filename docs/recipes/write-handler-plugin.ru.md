@@ -99,7 +99,7 @@ mirror в `~/.local/share/goodnet-mirrors/handler-echo.git` до тех пор,
   "meta": {
     "name":        "goodnet-handler-echo",
     "type":        "handler",
-    "version":     "0.1.0",
+    "version":     "1.0.0-rc1",
     "description": "Echo handler for msg_id 0x100",
     "timestamp":   "2026-05-06T10:00:00Z"
   },

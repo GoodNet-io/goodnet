@@ -337,10 +337,10 @@ Kernel и каждая loadable единица версионятся незав
 
 | Тэг | Что означает |
 |---|---|
-| `kernel/v1.0.0-rc1` | ABI freeze. После этого тэга `host_api_t`, `gn_link_vtable_t`, `gn_handler_vtable_t`, `gn_security_provider_vtable_t`, `gn_message_t` shape — стабильны. Любая правка идёт через `_reserved` слот + `api_size` gating per [`abi-evolution.md`](../contracts/abi-evolution.en.md) |
-| `link-tcp/v0.5.0` | Plugin's own version. Plugin может бампать без kernel rebump'а пока остаётся compatible с kernel ABI |
-| `bridges-cpp/v0.1.0` | Binding's version. Может опережать или отставать от kernel — пока его headers компилируются с kernel ABI |
-| `gssh/v0.1.0` | App's version. Зависит от binding ABI и kernel capi |
+| `kernel/v1.0.0-rc3` | ABI freeze. После этого тэга `host_api_t`, `gn_link_vtable_t`, `gn_handler_vtable_t`, `gn_security_provider_vtable_t`, `gn_message_t` shape — стабильны. Любая правка идёт через `_reserved` слот + `api_size` gating per [`abi-evolution.md`](../contracts/abi-evolution.en.md) |
+| `link-tcp/v1.0.0-rc1` | Plugin's own version. Plugin может бампать без kernel rebump'а пока остаётся compatible с kernel ABI |
+| `bridges-cpp/v1.0.0-rc1` | Binding's version. Может опережать или отставать от kernel — пока его headers компилируются с kernel ABI |
+| `gssh/v1.0.0-rc1` | App's version. Зависит от binding ABI и kernel capi |
 
 При `rc1` каждая единица:
 

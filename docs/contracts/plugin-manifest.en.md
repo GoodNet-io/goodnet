@@ -247,7 +247,7 @@ The build infrastructure emits `<libfile>.json` next to each
   "meta": {
     "name":        "goodnet-plugin-noise",
     "type":        "security",
-    "version":     "0.1.0",
+    "version":     "1.0.0-rc1",
     "description": "Noise XX security provider",
     "timestamp":   "2026-05-05T12:34:56Z"
   },
