@@ -90,29 +90,51 @@ Resource counters surfaced per bench:
 
 ```
 cpu_user_us / cpu_sys_us / cpu_total_us   # getrusage
-rss_kb_delta                              # /proc/self/statm
+rss_kb_delta                              # VmRSS  (current; madvise masks bursts)
+rss_peak_kb_delta                         # VmHWM  (high-water-mark; catches bursts)
+vsz_kb_delta / vsz_peak_kb_delta          # VmSize / VmPeak (virtual address space)
+sock_mem_kb_delta                         # /proc/net/sockstat TCP+UDP+FRAG aggregate
 minor_faults / major_faults               # allocator + disk-back
 vol_ctx_sw / inv_ctx_sw                   # sync + preemption
 block_io_in / block_io_out                # disk
 ```
 
-This is the minimum surface required to answer "why is the number
-what it is" without re-running with a profiler.
+Memory deltas come paired on purpose. `rss_kb_delta` is `VmRSS`
+right at `snapshot_end` — an allocator that grew to 1 GiB and
+then released pages via `madvise(MADV_DONTNEED)` reads 0 here.
+`rss_peak_kb_delta` is `VmHWM`, the high-water-mark the kernel
+accumulates across the window — that same bench reads
+`+~1 GiB`. Compare the two columns to distinguish flat-real from
+burst-and-released allocation. `sock_mem_kb_delta` captures
+kernel TCP/UDP send-receive buffers that are NOT in `VmRSS` —
+~2 MiB per socket × N sockets can be invisible in the process's
+memory map. See
+[`bench/README.md` §"Memory measurement caveats"](../../bench/README.md#memory-measurement-caveats)
+for the four blind spots and which column disambiguates each.
 
-## Results — current snapshot (2026-05-12)
+## Results — current snapshot (2026-05-13)
 
-Reference commit: `bench/reports/0c90f2e.md`.
+Reference commit: [`bench/reports/80d2a04.md`](../../bench/reports/80d2a04.md).
+Bench harness expanded with VmHWM / VmPeak / socket-buffer
+counters plus a backpressure stress fixture per
+[`bench/README.md`](../../bench/README.md#memory-measurement-caveats);
+the report has new sections for `## Binary sizes & deployment
+closure` and `## Comparison stack weights` so the size axis is
+read side-by-side with the throughput axis.
 
 ### Per-plugin throughput
 
 | Plugin | @ 64B | @ 512–1200B | @ 8192B |
 |---|---|---|---|
-| UDP   | 164 MiB/s | 1.03 GiB/s (PMTU) | error (MTU cap) |
-| WS    | 123 MiB/s | 653 MiB/s | **1.32 GiB/s** |
+| UDP   | 166 MiB/s | 1.00 GiB/s (512 B) / 1.57 GiB/s (1200 B PMTU) | error (MTU cap) |
+| WS    | 128 MiB/s | 736 MiB/s | **1.23 GiB/s** |
 | Noise transport (AEAD) | 115 MiB/s | 225 MiB/s | 251 MiB/s |
 | Noise transport @ 65 K | — | — | 274 MiB/s |
 
-**Peak:** UDP @ 1200 B PMTU = **1.64 GiB/s ≈ 14 Gb/s**.
+**Peak:** UDP @ 1200 B PMTU = **1.57 GiB/s ≈ 13.5 Gb/s** (with
++1.3 GiB current RSS, +691 MiB peak — allocator returned ~630 MiB
+via `madvise` over the window; the burst-vs-released distinction
+the new VmHWM column makes visible).
 
 ### Handshake time
 
@@ -140,10 +162,10 @@ This is what `iperf3` and GoodNet `*Fixture/Throughput` measure.
 
 | Stack | Metric | Throughput |
 |---|---|---|
-| **iperf3 raw TCP** | TCP single-stream | **7.23 GiB/s ≈ 62 Gb/s** |
+| **iperf3 raw TCP** | TCP single-stream | **7.81 GiB/s ≈ 67 Gb/s** |
 | iperf3 raw UDP | UDP, capped via `-b 1000M` | 119 MiB/s |
-| **GoodNet UDP @ 1200 B** | UDP composer | **1.64 GiB/s ≈ 14 Gb/s** |
-| GoodNet WS @ 8192 B | WS-over-TCP | 1.32 GiB/s ≈ 11 Gb/s |
+| **GoodNet UDP @ 1200 B** | UDP composer | **1.57 GiB/s ≈ 13.5 Gb/s** |
+| GoodNet WS @ 8192 B | WS-over-TCP | 1.23 GiB/s ≈ 10.6 Gb/s |
 
 iperf3 is **kernel TCP in a tight loop, no plugin overhead**. The
 gap to GoodNet UDP (≈ 5×) is the composition + asio-strand +
@@ -157,15 +179,15 @@ mature Rust P2P stacks (libp2p, iroh) measure, and what GoodNet
 
 | Stack | Metric | Throughput @ 8 KiB |
 |---|---|---|
-| **GoodNet WS echo** | WS over TCP loopback | **130 MiB/s** |
-| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 118 MiB/s |
-| iroh 0.32 echo | QUIC + TLS 1.3 | 90 MiB/s |
+| **GoodNet WS echo** | WS over TCP loopback | **136 MiB/s** |
+| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 135 MiB/s |
+| iroh 0.32 echo | QUIC + TLS 1.3 | 95 MiB/s |
 
 | Stack | Metric | Throughput @ 64 KiB |
 |---|---|---|
-| **GoodNet WS echo** | WS over TCP loopback | **219 MiB/s** |
-| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 249 MiB/s |
-| iroh 0.32 echo | QUIC + TLS 1.3 | 195 MiB/s |
+| GoodNet WS echo | WS over TCP loopback | 185 MiB/s |
+| **rust-libp2p 0.55 echo** | TCP + Noise + Yamux | **254 MiB/s** |
+| iroh 0.32 echo | QUIC + TLS 1.3 | 194 MiB/s |
 
 GoodNet leads on 8 KiB (frame overhead amortised), libp2p edges
 ahead on 64 KiB (yamux's long-substream design wins when stream-open
@@ -196,6 +218,78 @@ src/main.rs` — full round-trip echo, same shape as
 [`examples/hello-echo/`](../../examples/hello-echo/). Upstream
 rust-libp2p doesn't ship a canonical echo example (the closest is
 `examples/ping/`, ~34 LOC — but it's not an echo).
+
+### Deployment weight — binary + dependency closure
+
+The 2026-05-13 bench expansion sizes every stack on the same
+axes (`Binary` on disk + `Lib closure` from `ldd`), so a reader
+can compare "what an operator copies onto a fresh host" side-by-
+side with the throughput / latency rows.
+
+| Stack | Binary | Lib closure | **Total** |
+|---|---|---|---|
+| **GoodNet static** (single binary, 11 plugins linked in) | 1.36 MiB | — | **1.36 MiB** |
+| **GoodNet dynamic** (kernel + 11 plugin `.so`) | 759 KiB | 3.08 MiB | **3.82 MiB** |
+| rust-libp2p 0.55 (`libp2p-echo`) | 4.69 MiB | 3.60 MiB | **8.29 MiB** |
+| iperf3 | 16 KiB | 12.16 MiB | **12.17 MiB** |
+| socat | 565 KiB | 11.13 MiB | **11.69 MiB** |
+| openssl CLI | 1.25 MiB | 11.10 MiB | **12.35 MiB** |
+| iroh 0.32 (`iroh-echo`) | 16.97 MiB | 3.60 MiB | **20.58 MiB** |
+
+Two observations the table makes load-bearing:
+
+1. **GoodNet static is the smallest single-binary networking
+   stack in the comparison set.** 1.36 MiB carries the kernel
+   plus every bundled plugin's `.text` — TCP, UDP, TLS, WS,
+   ICE, QUIC, IPC, Noise, heartbeat, float-send-rtt, null
+   security — in one shippable artefact. The next-closest
+   single-binary is rust-libp2p at 8.29 MiB (one transport +
+   one security layer only).
+2. **Dynamic shipping vs. static breakdown** mirrors how the
+   plugin model trades flexibility for footprint. Dynamic
+   builds let an operator drop plugins they don't use (a TCP-
+   only deployment ships kernel + `libgoodnet_link_tcp.so` =
+   ~1.3 MiB); static builds give the embedded operator a
+   single-binary deploy where nothing can be selectively
+   omitted.
+
+The same report row also tracks the Nix dependency closure (99.8
+MiB worst case before store de-duplication) and a
+`debian:bookworm-slim`-based Docker image (72.7 MiB; a musl /
+scratch base would drop to ~5 MiB but needs a separate musl plugin
+port). Full numbers in
+[`bench/reports/80d2a04.md` § "Binary sizes & deployment closure"](../../bench/reports/80d2a04.md).
+
+### Memory burst vs. released (new VmHWM column)
+
+The 2026-05-13 harness reads `VmHWM` (peak RSS) alongside
+`VmRSS` (current) on every bench. Two patterns the side-by-side
+makes visible:
+
+| Bench | `RSS Δ` (current) | `RSS Peak Δ` (VmHWM) | Reading |
+|---|---|---|---|
+| UDP/Throughput/1200 B | +1320 MiB | +691 MiB | bench peaked at +691 MiB, then allocator returned ~630 MiB via `madvise(MADV_DONTNEED)` — but current RSS still shows +1320 MiB at `snapshot_end` because retention happened on a different thread |
+| WS/Throughput/8192 B | +590 MiB | +237 MiB | similar: ~350 MiB released |
+| WS/EchoRoundtrip/65536 B | +81 MiB | +13 MiB | allocator was very active: ~68 MiB returned of an 81 MiB current |
+| UDP/EchoRoundtrip/* | +28–36 KiB | 0 | flat-real: tiny per-call growth, no burst |
+| TCP/Backpressure/8 producers | +3.8 GiB | +3.8 GiB | runaway queue: no `pending_queue_bytes_hard` configured in the BenchKernel stub, so the queue grew unbounded — a real kernel with limits set would plateau |
+
+The backpressure fixture is intentional — it proves the queue
+depth is the alarming variable a steady-state echo bench hides.
+With a real kernel `limits()` table wired, the same fixture
+would show `back_pressure_hits > 0` and a bounded `RSS Peak Δ`.
+
+### Kernel socket buffers (new sock_mem column)
+
+`sock_mem_kb_delta` reads aggregate TCP + UDP + FRAG memory
+from `/proc/net/sockstat` — kernel-side buffers that don't show
+up in any `VmRSS`-derived counter. Loopback benches usually
+register tiny deltas (`+22 MiB` in the backpressure stress is
+the largest single-bench delta in this run); inter-host or
+N-thousand-connection workloads make this number dominant. The
+column is the system-wide signal; per-process attribution
+needs `ss -tm` or `/proc/<pid>/net/sockstat` and is left to
+operator tooling.
 
 ## Where the cost goes
 
