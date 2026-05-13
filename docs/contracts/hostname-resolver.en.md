@@ -1,10 +1,20 @@
-# Contract: DNS resolution
+# Contract: Hostname resolver
 
 **Status:** active · v1
 **Owner:** every transport plugin that accepts hostnames in its URI
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-13
 **Stability:** v1.x; the helper signature is locked, the resolver
 backend may swap.
+
+> Renamed from `dns.md` on 2026-05-13 to disambiguate from the
+> networked DNS handler plugin contract at
+> [`dns.md`](dns.en.md). This file is the **SDK URI rewriter**
+> (`sdk/cpp/dns.hpp::resolve_uri_host`) — a pure-function helper
+> every link plugin uses at `connect()` time to turn a
+> `tcp://example.com:443` URI into an IP-literal form. The
+> networked DNS service (record DB, SRV lookups, cache cascade)
+> is a separate handler-plugin layer; see `dns.md` for that
+> contract.
 
 ---
 
