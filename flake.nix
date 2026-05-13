@@ -175,6 +175,14 @@
           # plugin set.
           default = goodnet-core;
           inherit goodnet-core;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # Reproducible Docker image around the static kernel.
+          # Linux-only because dockerTools.buildLayeredImage emits a
+          # Linux container; building from a Darwin host requires a
+          # remote Linux builder.
+          docker-static = import ./nix/docker.nix {
+            inherit pkgs goodnet-core;
+          };
         });
 
       apps = forAllSystems (system: pkgs:

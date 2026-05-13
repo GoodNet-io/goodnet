@@ -1,5 +1,11 @@
 # Minimal Docker image around the static GoodNet build.
 #
+# **Reproducible alternative**: `nix build .#docker-static` builds
+# the equivalent image via `dockerTools.buildLayeredImage` with a
+# deterministic hash. The Nix path is what bench/comparison picks
+# up when the dev shell is active; this Dockerfile stays as the
+# imperative recipe for operators who don't have Nix wired up.
+#
 # The static binary (~1.4 MB) is dynamically linked against glibc;
 # `debian:bookworm-slim` ships glibc + ld-linux + libstdc++ at
 # ~30 MiB, so the resulting image is essentially "glibc base +
