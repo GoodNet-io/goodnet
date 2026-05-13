@@ -6,6 +6,27 @@ libuv echo servers, libssh, etc.) on the same payload matrix the
 in-tree bench uses, so the released report can call out areas
 where GoodNet underperforms.
 
+## Two report tracks
+
+The aggregator under `reports/` emits two independent markdown
+documents per run:
+
+* **`bench/reports/<sha>.md`** — fair-comparison aggregate.
+  Section `## А. Comparable echo round-trip — production stack vs
+  libp2p / iroh` is the only place that quotes GoodNet next to
+  libp2p / iroh; both sides match in stack shape (transport + AEAD
+  + framing/mux). Driven by `aggregate.py` + the runners listed in
+  this README. See `docs/perf/methodology.en.md` §1.3 (pairing
+  rule).
+* **`bench/reports/showcase-<sha>.md`** — free-kernel showcase
+  ("track Б"). Six narrative sections (multi-connect, strategy-
+  driven carrier selection, post-handshake Noise→Null handoff
+  PoC, multi-thread fanout, carrier failover, mobility LAN
+  shortcut). NOT a fair-comparison surface — every section is a
+  capability where libp2p / WebRTC / gRPC have no architectural
+  equivalent. Driven by `showcase_aggregate.py` against the
+  `bench_showcase` binary. See `bench/showcase/README.md`.
+
 ## Layout
 
 ```

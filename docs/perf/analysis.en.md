@@ -50,41 +50,72 @@ median.
 
 ## Methodology
 
-Six measurement axes (full table in
+Eight measurement axes (full table in
 [`bench/README.md`](../../bench/README.md)):
 
 | Axis | What it varies |
 |---|---|
-| **Payload size** | 64 / 1024 / 8192 / 65536 bytes |
+| **Payload size** | 64 / 1024 / 8192 / 32768 bytes |
 | **Connection count** | 1 / 10 / 100 / 1000 parallel conns |
 | **Concurrency** | 1 / 2 / 4 / 8 worker threads |
 | **Plugin** | TCP / UDP / IPC / TLS / WS / DTLS / QUIC / ICE |
 | **Composition depth** | TLS/TCP (2), WSS/TLS/TCP (3), Noise/QUIC/UDP (3) |
 | **Strategy** | min-RTT picker over N candidates |
+| **Real-mode end-to-end** | kernel + Noise XX + gnet through TCP / UDP / IPC; one-way `<Plug>Echo` + round-trip `<Plug>EchoRoundtrip` |
+| **Free-kernel showcase** | multi-connect, strategy carrier pick, Noise→Null handoff PoC, multi-thread fanout, carrier failover, mobility LAN shortcut |
 
 Plus a **topology** dimension (intra-process loopback /
 inter-process xprocess / inter-host LAN) and a **cross-impl**
 dimension that drives the same payload matrix through external
-baselines.
+baselines. The cross-impl dimension is split into two report
+tracks — see [§ Two report tracks](#two-report-tracks) below.
 
-### Measurement shape: send-only vs echo vs handshake
+## Two report tracks
 
-Each bench fixture is one of three shapes. Mixing them in a single
+The aggregator emits two markdown documents per run, on purpose:
+
+* **`bench/reports/<sha>.md`** — fair-comparison aggregate.
+  Section `## А. Comparable echo round-trip — production stack vs
+  libp2p / iroh` is the only place the report quotes GoodNet next
+  to libp2p / iroh — both sides match in stack shape (transport +
+  AEAD + framing/mux). Driven by `bench_real_e2e` (sibling
+  fixtures `RealFixture<Plug>Echo/<Plug>EchoRoundtrip`) +
+  `aggregate.py` + runners under `bench/comparison/`. See
+  [`methodology.en.md`](methodology.en.md) §1.3 for the pairing
+  rule.
+* **`bench/reports/showcase-<sha>.md`** — free-kernel showcase.
+  Six narrative sections, each demonstrating a capability where
+  libp2p / WebRTC / gRPC have no architectural equivalent:
+  multi-connect under one identity, strategy-driven carrier
+  selection, post-handshake Noise→Null security provider
+  migration (PoC), multi-thread fanout, carrier failover,
+  mobility-driven LAN shortcut. NOT a fair-comparison surface.
+  Driven by the `bench_showcase` binary +
+  `showcase_aggregate.py`. See
+  [`../../bench/showcase/README.md`](../../bench/showcase/README.md)
+  for the per-section breakdown and the B.3 PoC disclaimer.
+
+### Measurement shape: send-only vs echo vs handshake vs showcase
+
+Each bench fixture is one of four shapes. Mixing them in a single
 table — "GoodNet 1.6 GiB/s vs libp2p 250 MiB/s" — is the apples-
 to-oranges trap this section exists to flag.
 
 | Shape | Hot-loop body | Reads | Compares with |
 |---|---|---|---|
 | `Throughput` | `client.send(payload)` only | Send-side syscall + plugin overhead, no response | iperf3 raw send |
-| `EchoRoundtrip` | `client.send → server.send_back → client.read` | Full stack overhead both directions + 1 RTT | rust-libp2p, iroh, browser data-channel |
+| `EchoRoundtrip` (parody) | `client.send → server.send_back → client.read` through `LinkStub` (no security, no protocol) | Plugin overhead both directions, no AEAD or framing | iperf3 round-trip, but NOT libp2p / iroh |
+| `<Plug>EchoRoundtrip` (real) | same shape but through real kernel + Noise XX + gnet protocol on both peers | Full production-stack overhead both directions + 1 RTT | rust-libp2p, iroh, browser data-channel — **the libp2p-comparable shape** |
 | `HandshakeTime` | Set up fresh connection, no traffic | Crypto + control-plane cost only | OpenSSL `s_client` handshake |
+| `Showcase*` | One capability per fixture (multi-connect, strategy, handoff, fanout, failover, mobility) | Architectural feature reachability | nothing — these capabilities have no architectural analogue in libp2p / WebRTC / gRPC |
 
 Rust P2P stacks expose echo + handshake; iperf3 exposes
-send-only. GoodNet exposes all three (`Throughput`,
-`EchoRoundtrip`, `HandshakeTime` fixtures per plugin where the
-fixture race is fixed). The aggregator never crosses shapes
-in a single table — see `## Echo round-trip — side-by-side` for
-the round-trip cross-impl matrix.
+send-only. GoodNet exposes all four (`Throughput`,
+`<Plug>EchoRoundtrip`, `HandshakeTime`, and `Showcase*`). The
+aggregator never crosses shapes in a single table — see
+**`## А. Comparable echo round-trip`** for the round-trip
+cross-impl matrix and `bench/reports/showcase-<sha>.md` for the
+showcase narrative.
 
 Resource counters surfaced per bench:
 
@@ -175,28 +206,68 @@ allocator budget — see § "Where the cost goes" below.
 waits for the echo, repeat. Includes plugin-stack overhead in **both**
 directions plus one full RTT per byte returned. This is what the
 mature Rust P2P stacks (libp2p, iroh) measure, and what GoodNet
-`*Fixture/EchoRoundtrip` measures for fair compare.
+**`RealFixture<Plug>Echo/<Plug>EchoRoundtrip`** measures for fair
+compare — kernel + Noise XX + gnet protocol on both peers. Pre-track-
+А `*Fixture/EchoRoundtrip` parody rows still exist in the report but
+must NOT be quoted next to libp2p / iroh — see
+[`methodology.en.md`](methodology.en.md) §1.3 (pairing rule).
 
 | Stack | Metric | Throughput @ 8 KiB |
 |---|---|---|
-| **GoodNet WS echo** | WS over TCP loopback | **136 MiB/s** |
-| rust-libp2p 0.55 echo | TCP + Noise + Yamux | 135 MiB/s |
-| iroh 0.32 echo | QUIC + TLS 1.3 | 95 MiB/s |
+| **GoodNet TCP+Noise+gnet** | RealFixtureTcpEcho/TcpEchoRoundtrip | first numbers landing in `bench/reports/<sha>.md` §А |
+| GoodNet IPC+Noise+gnet | RealFixtureIpcEcho/IpcEchoRoundtrip | same; IPC trails TCP only on the AF_UNIX strand layout cost |
+| rust-libp2p 0.55 echo | TCP + Noise + Yamux | comparable column (libp2p_rs.sh runner) |
+| iroh 0.32 echo | QUIC + TLS 1.3 | comparable column (iroh.sh runner) — Real-QUIC fixture pending |
 
-| Stack | Metric | Throughput @ 64 KiB |
-|---|---|---|
-| GoodNet WS echo | WS over TCP loopback | 185 MiB/s |
-| **rust-libp2p 0.55 echo** | TCP + Noise + Yamux | **254 MiB/s** |
-| iroh 0.32 echo | QUIC + TLS 1.3 | 194 MiB/s |
+Loopback debug-build first numbers from the in-tree run at
+2026-05-13:
 
-GoodNet leads on 8 KiB (frame overhead amortised), libp2p edges
-ahead on 64 KiB (yamux's long-substream design wins when stream-open
-cost is rare). iroh trails because the bench uses `open_bi()` per
-round (RPC-style), so each 65 KiB payload pays one stream-open +
-close overhead — symmetric with how applications actually use iroh.
+| Payload | TCP RT p50 | UDP RT p50 | IPC RT p50 |
+|---|---|---|---|
+| 64 B    | 38 μs | 36 μs | 27 μs |
+| 1024 B  | 45 μs | 40 μs | 32 μs |
+| 8192 B  | 78 μs | — (MTU cap) | 66 μs |
+| 32768 B | 217 μs | — | 181 μs |
+
+(Release-build numbers run 5–10 % faster on crypto-heavy
+sections; the canonical report quotes Release.)
 
 Full payload sweep + handshake numbers live in
-`bench/reports/<sha>.md` under **`## Echo round-trip — side-by-side`**.
+`bench/reports/<sha>.md` under **`## А. Comparable echo round-trip
+— production stack vs libp2p / iroh`**.
+
+### Free-kernel showcase — capabilities no other stack has
+
+The `bench_showcase` binary (track Б) wraps six fixtures, each
+demonstrating one capability that requires the kernel-driven
+architecture. The report lives at `bench/reports/showcase-<sha>.md`
+through `showcase_aggregate.py` — separate from the
+fair-comparison aggregate above by design. Each section is
+**not** a number to beat; it's an acceptance condition to verify.
+
+| # | Section | What it demonstrates | Acceptance condition | Status (2026-05-13) |
+|---|---|---|---|---|
+| B.1 | `MultiConnFixture/FallbackThroughput` | One peer pk holds three live conn records (TCP + UDP + IPC); registry returns all three on `for_each` | `alice.kernel->connections().size() == 3` | PASS |
+| B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses | PASS (425 k IPC picks vs 0 other) |
+| B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through env-gated `_test_clear_inline_crypto`; production-shape API in v1.x |
+| B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
+| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down` stand-in (Slice-9-KERNEL auto-emit hook pending) |
+| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up` stand-in (C.4 RTM_NEWLINK netlink hook pending) |
+
+Time-series cases (B.2 flip, B.3 trigger, B.5 failover, B.6
+mobility) emit CSV side-channels to
+`/tmp/showcase-<tag>-<pid>.csv` that the aggregator renders as
+inline ASCII sparklines (`▁▂▃▄▅▆▇█`) in the report.
+
+The showcase exists to make these architectural moves
+**observable**, not asserted. Each acceptance row is a single
+boolean derived from counters in the JSON output — pass / fail,
+not aggregated latency. The full read happens in
+[`bench/showcase/README.md`](../../bench/showcase/README.md),
+including the B.3 PoC disclaimer (`GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE`
+env-gate + unit test
+[`tests/unit/security/test_inline_downgrade_gate.cpp`](../../tests/unit/security/test_inline_downgrade_gate.cpp)
+that pins the contract).
 
 ### DX LOC — hello-world echo
 
@@ -368,6 +439,31 @@ not asserted, not assumed.
   return `NOT_FOUND`; handshake bench works.
 - **TLS / WSS / DTLS / QUIC handshake** — `UseManualTime` shape
   conflicts with the aggregator's median picker (rows show "—").
+- **Real-mode QUIC bench** — `QuicLink::listen/connect` return
+  `GN_ERR_NOT_IMPLEMENTED` (composer-only over UDP carrier);
+  `bench_real_e2e` needs a LinkCarrier + composer chain
+  bring-up in `test_bench_helper.hpp`. Until landed, the iroh
+  column in section А has no GoodNet pair.
+- **Production Noise→Null handoff** — B.3 currently runs through
+  an env-gated `_test_clear_inline_crypto` PoC seam in
+  `SecuritySession`. v1.x followup exposes a kernel-driven
+  `SessionRegistry::downgrade_*` API + trust-class hook on
+  connection bring-up + peer-side wire signal so both halves of
+  a session migrate symmetrically without bench harness
+  reaching into private state.
+- **Slice-9-KERNEL auto-emit hooks** — `notify_connect` /
+  `notify_disconnect` do not yet fire `CONN_UP` / `CONN_DOWN`
+  events to strategy plugins. B.5 + B.6 fire `on_path_event`
+  manually; when the kernel-side hook lands, ~10 LOC of bench
+  stand-ins delete cleanly.
+- **C.4 Network mobility** — AF_NETLINK socket on
+  `RTM_NEWLINK` / `RTM_DELLINK` not yet wired; B.6 mobility
+  bench simulates the event through a synthetic second
+  carrier. With C.4 the bench just listens.
+- **Slice-9-HEARTBEAT** — kernel-side RTT measurement
+  (heartbeat extension writing `ConnectionRecord::last_rtt_us`)
+  is pending; B.2 / B.5 / B.6 inject RTT directly through
+  `picker.on_path_event(RTT_UPDATE)`.
 - **xprocess (inter-process)** — the operator-facing topology;
   current numbers are all in-process.
 - **Inter-host LAN** — no two-machine harness in tree yet.
@@ -394,7 +490,13 @@ nix develop --command \
 nix develop --command cmake --build build-release --target \
     bench_tcp bench_udp bench_ipc bench_ws bench_tls \
     bench_dtls bench_quic bench_ice bench_wss_over_tls \
-    bench_tcp_scale bench_noise
+    bench_tcp_scale bench_noise bench_real_e2e
+
+# Free-kernel showcase (track Б — opt-in, needs strategies sub-checkout)
+nix develop --command cmake -B build-release \
+    -DCMAKE_BUILD_TYPE=Release -DGOODNET_BUILD_BENCH=ON \
+    -DGOODNET_BENCH_STRATEGIES=ON
+nix develop --command cmake --build build-release --target bench_showcase
 
 # Stage external baselines (one-shot, ~5 min including OpenSSL
 # shallow clone)
@@ -406,8 +508,27 @@ nix develop --command cmake --build build-release --target \
 
 # Run the full matrix + cross-impl baselines + aggregate
 nix develop --command bash bench/comparison/runners/run_all.sh
-ls bench/reports/  # one .md per commit sha
+ls bench/reports/  # one .md per commit sha — fair-comparison aggregate
+
+# Run the free-kernel showcase + aggregate (separate report)
+nix develop --command \
+    ./build-release/bench/bench_showcase \
+        --benchmark_out=bench/reports/showcase-raw.json \
+        --benchmark_out_format=json \
+        --benchmark_min_time=2s
+nix develop --command python3 \
+    bench/comparison/reports/showcase_aggregate.py \
+        "$(git rev-parse --short HEAD)" \
+        bench/reports/showcase-$(git rev-parse --short HEAD).md \
+        bench/reports/showcase-raw.json
+ls bench/reports/showcase-*.md  # showcase narrative report
 ```
 
-The report at `bench/reports/<sha>.md` is the single source of
-truth — every table in this article is a copy-paste from it.
+Two reports per run:
+* `bench/reports/<sha>.md` — fair-comparison aggregate (section
+  А for libp2p / iroh pairing, parody matrix, cost decomposition).
+* `bench/reports/showcase-<sha>.md` — free-kernel showcase
+  (six B.X sections with acceptance verdicts + ASCII sparks).
+
+Every table in this article is a copy-paste from one of those
+two files.

@@ -15,6 +15,8 @@ the right cause.
 | **Plugin (single-layer)** | TCP / UDP / IPC / TLS / WS / DTLS / QUIC / ICE | `bench_<plugin>` | ✅ |
 | **Composition depth** | TLS/TCP (2) / WSS/TLS/TCP (3) / Noise/QUIC/UDP (3) | `bench_wss_over_tls`, follow-ups | ✅ depth-3 WSS; depth-3 Noise TBD |
 | **Strategy** | min-RTT picker over N candidates | `bench_float_send_rtt` | ✅ (opt-in via `GOODNET_BENCH_STRATEGIES`) |
+| **Real-mode end-to-end** | Full kernel + Noise XX + gnet protocol; one-way (`<Plug>Echo`) and echo round-trip (`<Plug>EchoRoundtrip`) | `bench_real_e2e` (`RealFixtureTcp`, `RealFixtureUdp`, `RealFixtureIpc` + `*Echo` siblings) | ✅ TCP / UDP / IPC; QUIC pending |
+| **Free-kernel showcase** | Multi-connect, strategy-driven carrier selection, Noise→Null handoff PoC, multi-thread fanout, carrier failover, mobility LAN shortcut | `bench_showcase` (six fixtures, separate aggregator) | ✅ all six sections; some stand-ins for Slice-9-KERNEL + C.4 hooks |
 
 ## Topology variants
 
@@ -46,8 +48,8 @@ implementations the report compares against:
 | openssl s_client | `setup/01_openssl.sh` + `05_openssl_demos.sh` | `runners/tls_handshake.sh` | `TlsFixture/HandshakeTime` |
 | socat (AF_UNIX) | (built-in) | `runners/socat_unix.sh` | `IpcFixture/Throughput` |
 | libuv / libssh | `setup/03_libuv.sh` + `04_libssh.sh` | (DX LOC only) | `dx_loc_hello_world_echo` |
-| **rust-libp2p 0.55** | `setup/06_libp2p_rs.sh` | `runners/libp2p_rs.sh` | `*Fixture/EchoRoundtrip` |
-| **iroh 0.32** | `setup/07_iroh.sh` | `runners/iroh.sh` | `*Fixture/EchoRoundtrip` |
+| **rust-libp2p 0.55** | `setup/06_libp2p_rs.sh` | `runners/libp2p_rs.sh` | `RealFixture<Plug>Echo/<Plug>EchoRoundtrip` (TCP+Noise+gnet vs TCP+Noise+Yamux) |
+| **iroh 0.32** | `setup/07_iroh.sh` | `runners/iroh.sh` | `RealFixture<Plug>Echo/<Plug>EchoRoundtrip` (QUIC+Noise+gnet vs QUIC+TLS1.3; Real-QUIC pending) |
 
 Rust P2P baselines run echo round-trip — sources в
 `bench/comparison/p2p/` (см. README там); setup is opt-in (~5 min
@@ -68,10 +70,20 @@ Run via:
 ```
 
 Output: `bench/reports/<commit-sha>.md` — markdown отчёт. Самая
-наглядная секция — **`## Echo round-trip — side-by-side`**:
-pivoted таблица где payload-size это строки, а GoodNet UDP/WS /
-libp2p / iroh — колонки, чтобы глаз видел сравнение в одной
-clavicle без скроллинга между секциями.
+наглядная секция — **`## А. Comparable echo round-trip —
+production stack vs libp2p / iroh`**: pivoted таблица где
+payload-size это строки, а `GoodNet TCP+Noise+gnet` /
+`GoodNet IPC+Noise+gnet` / `libp2p (TCP+Noise+Yamux)` /
+`iroh (QUIC+TLS1.3)` — колонки. Каждая строка сравнивает
+одинаковую stack shape (transport + AEAD + framing/mux); см.
+`docs/perf/methodology.en.md` §1.3 (pairing rule).
+
+Track Б ('free-kernel showcase') живёт отдельно: бинарь
+`bench_showcase`, отчёт `bench/reports/showcase-<sha>.md` через
+`bench/comparison/reports/showcase_aggregate.py`. Это **не**
+fair-comparison surface, а демонстрация архитектурных
+возможностей kernel'a, которым нет аналога в libp2p / WebRTC /
+gRPC. См. `bench/showcase/README.md`.
 
 ## Memory measurement caveats
 
