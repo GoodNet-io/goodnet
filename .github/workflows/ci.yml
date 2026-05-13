@@ -34,8 +34,52 @@ jobs:
       - name: Build (Debug) and run unit + integration tests
         run: nix run .#test
 
-# Sanitizers (ASan/UBSan, TSan) and clang-tidy intentionally don't run
-# on push. They live on the developer's local box: `nix run .#test --
-# asan|tsan` and `clang-tidy --warnings-as-errors=* -p build <file>`
-# before push. Push CI is the smoke check — flake evaluates and the
-# vanilla suite passes — not the gate.
+  clang-tidy:
+    # Diff-based mirror of `.githooks/pre-commit`: re-enter the dev
+    # shell so `clang-tidy` inherits `NIX_CFLAGS_COMPILE` (gtest,
+    # spdlog, fmt etc.), then lint every *.{cpp,hpp,h,cc} file the
+    # diff touches against `--warnings-as-errors=*`. Push-event runs
+    # against the previous commit; PR-event runs against the base
+    # branch. Skipped when no C/C++ files changed.
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build (Debug, emits compile_commands.json)
+        run: nix run .#build --
+      - name: Collect changed C/C++ files
+        id: changed
+        run: |
+          if [ -n "${{ github.base_ref }}" ]; then
+            base="origin/${{ github.base_ref }}"
+            git fetch origin "${{ github.base_ref }}" --depth=1
+          else
+            base="HEAD^"
+          fi
+          files=$(git diff --name-only --diff-filter=ACMR "$base"...HEAD \
+                    | grep -E '\.(cpp|hpp|h|cc)$' || true)
+          {
+            echo 'files<<EOF'
+            printf '%s\n' "$files"
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+      - name: Run clang-tidy on changed files
+        if: steps.changed.outputs.files != ''
+        run: |
+          printf '%s\n' '${{ steps.changed.outputs.files }}' \
+            | xargs -P 4 -I{} nix develop --command \
+                clang-tidy --quiet --warnings-as-errors='*' -p build {}
+
+# Sanitizers (ASan/UBSan, TSan) intentionally don't run on push. They
+# live on the developer's local box: `nix run .#test -- asan|tsan`
+# before push. Push CI is the smoke check — flake evaluates, vanilla
+# suite passes, clang-tidy clean on the diff. Full sanitizer pass on
+# a 2-core GitHub-hosted runner is a 60-90 min critical-path tax that
+# magic-nix-cache only partially recovers; see plan
+# `~/.claude/plans/glowing-tickling-cocke.md` §2 for the policy.
