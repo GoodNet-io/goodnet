@@ -34,6 +34,43 @@ jobs:
       - name: Build (Debug) and run unit + integration tests
         run: nix run .#test
 
+  plugin-verify:
+    # Each loadable plugin lives in its own git under
+    # `github.com/goodnet-io/<repo>`. This matrix confirms every
+    # plugin's `flake.nix` evaluates and `nix build .#default`
+    # produces an artefact standalone — i.e. without the kernel
+    # monorepo's CMake tree present. Catches `find_package(GoodNet)`
+    # / `flake.nix` regressions in plugin repos.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - { repo: link-tcp,         path: plugins/links/tcp }
+          - { repo: link-udp,         path: plugins/links/udp }
+          - { repo: link-ipc,         path: plugins/links/ipc }
+          - { repo: link-tls,         path: plugins/links/tls }
+          - { repo: link-ws,          path: plugins/links/ws }
+          - { repo: link-ice,         path: plugins/links/ice }
+          - { repo: link-quic,        path: plugins/links/quic }
+          - { repo: handler-heartbeat, path: plugins/handlers/heartbeat }
+          - { repo: security-noise,   path: plugins/security/noise }
+          - { repo: security-null,    path: plugins/security/null }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: goodnet-io/${{ matrix.plugin.repo }}
+          path: ${{ matrix.plugin.path }}
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build plugin standalone
+        working-directory: ${{ matrix.plugin.path }}
+        run: nix build .#default --print-build-logs
+
   clang-tidy:
     # Diff-based mirror of `.githooks/pre-commit`: re-enter the dev
     # shell so `clang-tidy` inherits `NIX_CFLAGS_COMPILE` (gtest,
