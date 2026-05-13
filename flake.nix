@@ -133,6 +133,13 @@
             # bench/comparison/runners/run_all.sh works out of the
             # box; libwebrtc / nginx-quic remain Docker-only.
             iperf3 socat
+            # SQLite for handler-store's optional SqliteStore
+            # backend. Kernel itself never links sqlite; propagated
+            # here so plugins/handlers/store/ can build in-tree
+            # without a second `nix develop` shell, and so the
+            # standalone plugin default.nix inherits it through
+            # goodnet-core's propagatedBuildInputs.
+            sqlite
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -459,6 +466,13 @@
             # bench/comparison/runners/run_all.sh works out of the
             # box; libwebrtc / nginx-quic remain Docker-only.
             iperf3 socat
+            # SQLite for handler-store's optional SqliteStore
+            # backend. Kernel itself never links sqlite; propagated
+            # here so plugins/handlers/store/ can build in-tree
+            # without a second `nix develop` shell, and so the
+            # standalone plugin default.nix inherits it through
+            # goodnet-core's propagatedBuildInputs.
+            sqlite
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
