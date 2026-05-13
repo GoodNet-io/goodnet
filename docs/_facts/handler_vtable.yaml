@@ -1,0 +1,49 @@
+struct: gn_handler_vtable_s
+header: sdk/handler.h
+named_slots: 6
+reserved_slots: 4
+families:
+  misc:
+  - protocol_id
+  - supported_msg_ids
+  - handle_message
+  - on_result
+  - on_init
+  - on_shutdown
+slots:
+- name: protocol_id
+  signature: const char * (*)(void *)
+  file: sdk/handler.h
+  line: 68
+  family: misc
+  doc: identifier of the protocol layer this handler binds to.
+- name: supported_msg_ids
+  signature: void (*)(void *, const uint32_t **, size_t *)
+  file: sdk/handler.h
+  line: 80
+  family: misc
+  doc: of message IDs this handler subscribes to.
+- name: handle_message
+  signature: gn_propagation_t (*)(void *, const gn_message_t *)
+  file: sdk/handler.h
+  line: 95
+  family: misc
+  doc: entry point.
+- name: on_result
+  signature: void (*)(void *, const gn_message_t *, gn_propagation_t)
+  file: sdk/handler.h
+  line: 109
+  family: misc
+  doc: after every `handle_message` regardless of outcome.
+- name: on_init
+  signature: void (*)(void *)
+  file: sdk/handler.h
+  line: 122
+  family: misc
+  doc: lifecycle hooks.
+- name: on_shutdown
+  signature: void (*)(void *)
+  file: sdk/handler.h
+  line: 123
+  family: misc
+  doc: ''

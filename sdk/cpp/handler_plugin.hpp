@@ -50,6 +50,7 @@
 #include <new>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 #include <sdk/abi.h>
 #include <sdk/handler.h>
@@ -135,6 +136,45 @@ constexpr bool has_extension_v =
         { t.extension_vtable() } -> std::convertible_to<const void*>;
     };
 
+/// Plugin-side extension registration helper. The body has to live
+/// inside a function template so `if constexpr` actually discards
+/// the call to `T::extension_name()` etc. — `if constexpr` in a
+/// non-template function still checks the discarded substatement
+/// for ill-formed non-dependent expressions, which would otherwise
+/// force every handler class to define `extension_name()` /
+/// `extension_version()` / `extension_vtable()` even when the
+/// plugin ships no extension surface.
+template <class T>
+inline void maybe_register_extension(HandlerPluginInstance<T>* p) {
+    if constexpr (has_extension_v<T>) {
+        if (p->api && p->api->register_extension) {
+            if (p->api->register_extension(
+                    p->host_ctx,
+                    T::extension_name(),
+                    T::extension_version(),
+                    p->handler->extension_vtable()) == GN_OK) {
+                p->extension_registered = true;
+            }
+        }
+    } else {
+        (void)p;
+    }
+}
+
+template <class T>
+inline void maybe_unregister_extension(HandlerPluginInstance<T>* p) noexcept {
+    if constexpr (has_extension_v<T>) {
+        if (p->extension_registered &&
+            p->api && p->api->unregister_extension) {
+            (void)p->api->unregister_extension(
+                p->host_ctx, T::extension_name());
+            p->extension_registered = false;
+        }
+    } else {
+        (void)p;
+    }
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_HANDLER_PLUGIN(Class, "plugin_name", "version")`. See file
@@ -147,8 +187,8 @@ constexpr bool has_extension_v =
     using _gn_handler_instance_t =                                             \
         ::gn::sdk::detail::HandlerPluginInstance<_gn_handler_class_t>;         \
                                                                                \
-    constexpr const char* _gn_handler_plugin_name    = PLUGIN_NAME;            \
-    constexpr const char* _gn_handler_plugin_version = PLUGIN_VERSION;         \
+    [[maybe_unused]] constexpr const char* _gn_handler_plugin_name    = PLUGIN_NAME;    \
+    [[maybe_unused]] constexpr const char* _gn_handler_plugin_version = PLUGIN_VERSION; \
                                                                                \
     inline _gn_handler_class_t& _gn_handler_of(void* p) noexcept {             \
         return *static_cast<_gn_handler_instance_t*>(p)->handler;              \
@@ -239,7 +279,7 @@ constexpr bool has_extension_v =
                                                                                \
     extern "C" {                                                               \
                                                                                \
-    GN_PLUGIN_EXPORT void gn_plugin_sdk_version(std::uint32_t* major,          \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SDK_VERSION_NAME(std::uint32_t* major,     \
                                                  std::uint32_t* minor,         \
                                                  std::uint32_t* patch) {       \
         if (major) *major = GN_SDK_VERSION_MAJOR;                              \
@@ -247,7 +287,7 @@ constexpr bool has_extension_v =
         if (patch) *patch = GN_SDK_VERSION_PATCH;                              \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(                               \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_INIT_NAME(                          \
         const host_api_t* api, void** out_self) {                              \
         if (!api || !out_self) return GN_ERR_NULL_ARG;                         \
         auto* p = new (std::nothrow) _gn_handler_instance_t{};                 \
@@ -266,7 +306,7 @@ constexpr bool has_extension_v =
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {              \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_REGISTER_NAME(void* self) {         \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_handler_instance_t*>(self);                  \
         if (!p->api || !p->api->register_vtable) {                             \
@@ -281,34 +321,14 @@ constexpr bool has_extension_v =
             p->host_ctx, GN_REGISTER_HANDLER, &meta,                           \
             &_gn_handler_vtable(), p->handler.get(), &p->handler_id);          \
         if (rc != GN_OK) return rc;                                            \
-        if constexpr (::gn::sdk::detail::has_extension_v<                      \
-                          _gn_handler_class_t>) {                              \
-            if (p->api->register_extension) {                                  \
-                if (p->api->register_extension(                                \
-                        p->host_ctx,                                           \
-                        _gn_handler_class_t::extension_name(),                 \
-                        _gn_handler_class_t::extension_version(),              \
-                        p->handler->extension_vtable()) == GN_OK) {            \
-                    p->extension_registered = true;                            \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
+        ::gn::sdk::detail::maybe_register_extension(p);                        \
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_unregister(void* self) {            \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_UNREGISTER_NAME(void* self) {       \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_handler_instance_t*>(self);                  \
-        if constexpr (::gn::sdk::detail::has_extension_v<                      \
-                          _gn_handler_class_t>) {                              \
-            if (p->extension_registered &&                                     \
-                p->api && p->api->unregister_extension) {                      \
-                (void)p->api->unregister_extension(                            \
-                    p->host_ctx,                                               \
-                    _gn_handler_class_t::extension_name());                    \
-                p->extension_registered = false;                               \
-            }                                                                  \
-        }                                                                      \
+        ::gn::sdk::detail::maybe_unregister_extension(p);                      \
         if (p->api && p->api->unregister_vtable &&                             \
             p->handler_id != GN_INVALID_ID) {                                  \
             (void)p->api->unregister_vtable(p->host_ctx, p->handler_id);       \
@@ -317,12 +337,12 @@ constexpr bool has_extension_v =
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self) {                     \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SHUTDOWN_NAME(void* self) {                \
         delete static_cast<_gn_handler_instance_t*>(self);                     \
     }                                                                          \
                                                                                \
     GN_PLUGIN_EXPORT const gn_plugin_descriptor_t*                             \
-    gn_plugin_descriptor(void) {                                               \
+    GN_PLUGIN_DESCRIPTOR_NAME(void) {                                          \
         return &_gn_handler_descriptor;                                        \
     }                                                                          \
                                                                                \

@@ -6,10 +6,22 @@ Requires: graphviz system package (in flake.nix), pip graphviz.
 
 from pathlib import Path
 import graphviz
+import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "docs" / "img"
 OUT.mkdir(parents=True, exist_ok=True)
+FACTS = ROOT / "docs" / "_facts"
+
+
+def load_facts(name: str) -> dict:
+    """Read a livedoc fact-file. Falls back to an empty dict when
+    the file is absent so first-run code paths still render — the
+    caller is expected to guard slot counts with `or 0`."""
+    p = FACTS / f"{name}.yaml"
+    if not p.is_file():
+        return {}
+    return yaml.safe_load(p.read_text()) or {}
 
 # ── Palette (Catppuccin Mocha) ───────────────────────────────────────────────
 
@@ -82,14 +94,30 @@ def gen_architecture():
             penwidth="1.5",
         )
 
-        # host_api_t — single C ABI table handed to every plugin
-        k.node("host_api",
-               "host_api_t  (C ABI)\n"
-               "register_vtable / unregister_vtable\n"
-               "register_security / register_extension\n"
-               "send / inject / config_get / log\n"
-               "subscribe_conn_state / subscribe_config_reload\n"
-               "set_timer / for_each_connection / emit_counter",
+        # host_api_t — single C ABI table handed to every plugin.
+        # Slot families come from docs/_facts/host_api.yaml so this
+        # label refreshes when sdk/host_api.h grows.
+        facts = load_facts("host_api")
+        n_slots = facts.get("named_slots") or "?"
+        n_reserved = facts.get("reserved_slots") or 8
+        fams = facts.get("families") or {}
+        # Compact short family name (strip parenthetical doc-refs).
+        family_lines = []
+        for fam in sorted(fams):
+            short_fam = fam.split("(")[0].strip()
+            members = fams[fam]
+            head = members[0] if members else ""
+            tail = f" + {len(members)-1}" if len(members) > 1 else ""
+            family_lines.append(f"  · {short_fam}: {head}{tail}")
+        body = (
+            f"host_api_t  (C ABI)\n"
+            f"{n_slots} named slots + {n_reserved} reserved\n"
+            + "\n".join(family_lines)
+        ) if fams else (
+            "host_api_t  (C ABI)\n"
+            "run tools/livedoc.py to populate"
+        )
+        k.node("host_api", body,
                fillcolor=SURFACE1, color=BLUE, fontcolor=BLUE,
                shape="box", fontsize="9")
 
@@ -1532,19 +1560,375 @@ def gen_host_api_kinds():
     g.edge("config_get",       "k_config",   color=YELLOW)
     g.edge("get_lookups",      "k_conn",     color=YELLOW)
 
-    # Discipline note
+    # Discipline note — slot count auto-filled from facts so the
+    # number never drifts behind sdk/host_api.h.
+    _f = load_facts("host_api")
+    _n = _f.get("named_slots") or "?"
+    _r = _f.get("reserved_slots") or 8
     g.node("discipline",
            "Slot discipline:\n"
            "  · single ABI slot per primitive shape\n"
            "  · KIND enum (or channel id, or type tag) selects routing\n"
            "  · adding a new kind = enum value + kernel side; ABI stable\n"
-           "  · ~21 functional slots on host_api_t today + 8 reserved\n"
-           "Pre-RC reduction: 41 named slots → 21 KIND-tagged.",
+           f"  · {_n} functional slots on host_api_t today + {_r} reserved\n"
+           "History: pre-RC dedupe 41 → 21 KIND-tagged; post-RC growth\n"
+           "re-introduced notify_*, key/sign, cap-blob and send_to\n"
+           f"families → {_n} today.",
            shape="note", color=SURFACE2, fontcolor=BORDER,
            style="filled", fillcolor="#181825", fontsize="9")
     g.edge("k_config", "discipline", style="invis")
 
     g.render(str(OUT / "host_api_kinds"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 18. Composer extension surface — bit-63 kComposerIdBit dispatch
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_composer_extension():
+    g = graphviz.Digraph("composer_extension", format="svg",
+                         **base_attrs())
+    g.attr(rankdir="LR", nodesep="0.4", ranksep="0.55")
+
+    g.node("plugin", "Link plugin (e.g. gn.link.tcp, gn.link.ice)\n"
+                     "exports composer surface through\n"
+                     "the extension vtable (gn_link_api_s)",
+           color=GREEN, fontcolor=GREEN, fillcolor=SURFACE1,
+           shape="box", fontsize="10")
+
+    methods = [
+        ("composer_listen",
+         "open a server-side socket for a uri"),
+        ("composer_connect",
+         "open a client-side socket; conn-id returned\n"
+         "with kComposerIdBit (bit-63) set"),
+        ("composer_subscribe_data",
+         "register per-conn inbound callback;\n"
+         "kernel routes by conn-id top-bit"),
+        ("composer_subscribe_accept",
+         "register accept-bus callback;\n"
+         "fired when peer connects to a listener"),
+        ("composer_listen_port",
+         "introspect the ephemeral port the\n"
+         "listen socket was bound to"),
+    ]
+    for name, doc in methods:
+        g.node(name, f"{name}\n{doc}",
+               color=BLUE, fontcolor=BLUE, fillcolor=SURFACE1,
+               shape="box", fontsize="9")
+        g.edge("plugin", name, color=BORDER)
+
+    g.node("dispatch",
+           "Inbound dispatch\n"
+           "  · conn-id bit-63 set?\n"
+           "      → composer fan-out (plugin's per-cid map)\n"
+           "  · clear?\n"
+           "      → kernel registry / gn_handler_vtable",
+           color=LAVENDER, fontcolor=LAVENDER, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("composer_subscribe_data", "dispatch", color=TEAL,
+           label="data path")
+    g.edge("composer_subscribe_accept", "dispatch", color=TEAL,
+           label="accept path")
+
+    g.node("note",
+           "Why bit-63?\n"
+           "  · conn ids are 63-bit ascending integers\n"
+           "    (top bit was always zero before the composer landed)\n"
+           "  · kComposerIdBit gives a no-cost discriminator without\n"
+           "    growing host_api_t with a parallel registry",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge("dispatch", "note", style="invis")
+
+    g.render(str(OUT / "composer_extension"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 19. TURN stream framing — RFC 5389 §7.2.2 over TCP / TLS
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_turn_stream_framing():
+    g = graphviz.Digraph("turn_stream_framing", format="svg",
+                         **base_attrs())
+    g.attr(rankdir="TB", nodesep="0.4", ranksep="0.5")
+
+    g.node("carrier",
+           "Stream carrier\n"
+           "  · gn.link.tcp  (turn:)\n"
+           "  · gn.link.tls  (turns:)\n"
+           "selected by ICE session per precedence: TLS > TCP > UDP",
+           color=GREEN, fontcolor=GREEN, fillcolor=SURFACE1,
+           shape="box", fontsize="10")
+
+    g.node("encode",
+           "encode_stream_frame(payload, out)\n"
+           "  · reject if payload.size > 65535\n"
+           "  · append uint16 big-endian length\n"
+           "  · append payload bytes",
+           color=BLUE, fontcolor=BLUE, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("carrier", "encode", color=BORDER, label="outbound")
+
+    g.node("decode",
+           "try_take_stream_frame(buf, out)\n"
+           "  · need at least 2 bytes for length prefix\n"
+           "  · read uint16 BE → frame size N\n"
+           "  · need 2 + N bytes total\n"
+           "  · hand N bytes to dispatch_inbound_message,\n"
+           "    keep tail in buf for the next call",
+           color=PEACH, fontcolor=PEACH, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("carrier", "decode", color=BORDER, label="inbound")
+
+    g.node("dispatch",
+           "dispatch_inbound_message(bytes)\n"
+           "  · first byte ∈ {0x00, 0x01} → STUN header → STUN branch\n"
+           "  · first byte ∈ {0x40 .. 0x4f} → ChannelData → fast path\n"
+           "  · otherwise → drop, log warning",
+           color=LAVENDER, fontcolor=LAVENDER, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("decode", "dispatch", color=TEAL)
+
+    g.node("note",
+           "Stream framing rationale\n"
+           "  · TCP and TLS are byte streams; STUN messages have no\n"
+           "    intrinsic boundary, so a length prefix is mandatory\n"
+           "    per RFC 5389 §7.2.2 / RFC 5766 §11.6\n"
+           "  · UDP needs no framing — each datagram is one message",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge("dispatch", "note", style="invis")
+
+    g.render(str(OUT / "turn_stream_framing"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 20. QUIC carrier dispatch — detect_carrier_scheme(suffix)
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_quic_carrier_dispatch():
+    g = graphviz.Digraph("quic_carrier_dispatch", format="svg",
+                         **base_attrs())
+    g.attr(rankdir="LR", nodesep="0.45", ranksep="0.55")
+
+    g.node("dial",
+           "gn.link.quic\n"
+           "dial(\"quic://<suffix>\")",
+           color=GREEN, fontcolor=GREEN, fillcolor=SURFACE1,
+           shape="box", fontsize="10")
+
+    g.node("detect",
+           "detect_carrier_scheme(suffix)\n"
+           "  · 64 hex chars (peer-pk hex)?\n"
+           "  · else (host:port)?",
+           color=BLUE, fontcolor=BLUE, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("dial", "detect", color=BORDER)
+
+    g.node("ice", "gn.link.ice carrier\n"
+                  "  · STUN/TURN candidate gather\n"
+                  "  · ICE checks, nominate\n"
+                  "  · QUIC over the nominated pair",
+           color=TEAL, fontcolor=TEAL, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.node("udp", "gn.link.udp carrier\n"
+                  "  · plain UDP socket\n"
+                  "  · QUIC handshake over host:port",
+           color=YELLOW, fontcolor=YELLOW, fillcolor=SURFACE1,
+           shape="box", fontsize="9")
+    g.edge("detect", "ice", color=GREEN, label="hex")
+    g.edge("detect", "udp", color=YELLOW, label="host:port")
+
+    g.node("note",
+           "Status\n"
+           "  · route detection: GREEN (3 smoke tests in\n"
+           "    test_quic.cpp::IceCarrierBridge)\n"
+           "  · end-to-end QUIC over nominated ICE pair: PENDING\n"
+           "    (needs signaling extraction API from IceLink — see\n"
+           "    project_goodnet_post_compact memory)",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge("ice", "note", style="invis")
+    g.edge("udp", "note", style="invis")
+
+    g.render(str(OUT / "quic_carrier_dispatch"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 21. Handler / link / security / extension kinds — fact-driven
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_handler_kinds():
+    g = graphviz.Digraph("handler_kinds", format="svg", **base_attrs())
+    g.attr(rankdir="LR", nodesep="0.4", ranksep="0.55")
+
+    facts_map = {
+        "Handler":           ("handler_vtable", GREEN),
+        "Link":              ("link_vtable", BLUE),
+        "Security":          ("security_vtable", MAUVE),
+        "Link extension":    ("extension_link", TEAL),
+    }
+
+    g.node("registry",
+           "host_api->register_vtable(kind, meta, vtable, self)\n"
+           "single entry point; kind selects family;\n"
+           "returned id encodes the kind in its top 4 bits",
+           color=LAVENDER, fontcolor=LAVENDER, fillcolor=SURFACE1,
+           shape="box", fontsize="10")
+
+    for kind, (fact_name, color) in facts_map.items():
+        f = load_facts(fact_name)
+        slots = [s["name"] for s in (f.get("slots") or [])]
+        head = ", ".join(slots[:4])
+        tail = f"  + {len(slots) - 4} more" if len(slots) > 4 else ""
+        n = f.get("named_slots", len(slots))
+        r = f.get("reserved_slots", "?")
+        label = (
+            f"{kind} vtable ({f.get('struct','?')})\n"
+            f"{n} slots + {r} reserved\n"
+            f"{head}{tail}"
+        )
+        nid = kind.lower().replace(" ", "_")
+        g.node(nid, label,
+               color=color, fontcolor=color, fillcolor=SURFACE1,
+               shape="box", fontsize="9")
+        g.edge("registry", nid, color=BORDER)
+
+    g.node("note",
+           "Slot counts auto-extracted from docs/_facts/*.yaml\n"
+           "(libclang AST walk over sdk/*.h, run by\n"
+           "tools/livedoc.py). Drift impossible — header changes\n"
+           "land in the diagram next time make livedoc runs.",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge("link_extension", "note", style="invis")
+
+    g.render(str(OUT / "handler_kinds"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 22. Security pipeline — Noise XX/IK + attestation + trust class
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_security_pipeline():
+    g = graphviz.Digraph("security_pipeline", format="svg",
+                         **base_attrs())
+    g.attr(rankdir="TB", nodesep="0.35", ranksep="0.45")
+
+    stages = [
+        ("dial",     "dial(uri)",                        GREEN),
+        ("conn",     "host_api->notify_connect()\n"
+                     "kernel creates conn id +\n"
+                     "SecuritySession (Handshake phase)",  BLUE),
+        ("kick",     "host_api->kick_handshake(conn)\n"
+                     "initiator drives first Noise message", LAVENDER),
+        ("noise_xx", "Noise XX (3 messages)\n"
+                     "  · e\n"
+                     "  · e, ee, s, es\n"
+                     "  · s, se\n"
+                     "Noise IK is a wrapper that reuses\n"
+                     "the same pattern enum for known-pk", TEAL),
+        ("transit",  "SecuritySession → Transport phase\n"
+                     "  · pending plaintexts drained\n"
+                     "  · noise_*_cipher state holds N_send / N_recv",
+                                                          PEACH),
+        ("attest",   "Attestation exchange (232 B per side)\n"
+                     "AttestationDispatcher verifies remote payload\n"
+                     "pin_device_pk on first attestation",  MAUVE),
+        ("upgrade",  "Trust upgraded: Untrusted → Peer\n"
+                     "TRUST_UPGRADED event fired\n"
+                     "Loopback / IntraNode set on connect\n"
+                     "(immutable, not upgraded)",            YELLOW),
+        ("ready",    "Connection READY\n"
+                     "handler.on_inbound dispatches normally",
+                                                          GREEN),
+    ]
+    for nid, label, color in stages:
+        g.node(nid, label, color=color, fontcolor=color,
+               fillcolor=SURFACE1, shape="box", fontsize="9")
+    for (a, _, _), (b, _, _) in zip(stages, stages[1:]):
+        g.edge(a, b, color=BORDER)
+
+    g.node("note",
+           "Touchpoints with host_api\n"
+           "  · kick_handshake(conn) — drives initiator's first msg\n"
+           "  · notify_inbound_bytes(conn, bytes) — feeds the cipher\n"
+           "  · subscribe_conn_state(...) — emits TRUST_UPGRADED",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge("ready", "note", style="invis")
+
+    g.render(str(OUT / "security_pipeline"), cleanup=True)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 23. Link carrier family — plugins/links/* inventory
+# ═════════════════════════════════════════════════════════════════════════════
+
+def gen_link_carriers():
+    g = graphviz.Digraph("link_carriers", format="svg", **base_attrs())
+    g.attr(rankdir="TB", nodesep="0.35", ranksep="0.4")
+
+    g.node("link_api",
+           "gn_link_vtable_s (sdk/link.h)\n"
+           "kernel-facing surface every link plugin implements",
+           color=LAVENDER, fontcolor=LAVENDER, fillcolor=SURFACE1,
+           shape="box", fontsize="10")
+
+    plugins_dir = ROOT / "plugins" / "links"
+    carriers: list[tuple[str, str]] = []
+    if plugins_dir.is_dir():
+        for p in sorted(plugins_dir.iterdir()):
+            if not p.is_dir() or p.name.startswith("."):
+                continue
+            carriers.append((p.name, f"gn.link.{p.name}"))
+
+    if not carriers:
+        carriers = [
+            ("udp", "gn.link.udp"),
+            ("tcp", "gn.link.tcp"),
+            ("ws",  "gn.link.ws"),
+            ("tls", "gn.link.tls"),
+            ("quic", "gn.link.quic"),
+            ("ipc", "gn.link.ipc"),
+            ("ice", "gn.link.ice"),
+        ]
+
+    # Hard-coded notes — these stay in source because they describe
+    # design intent, not slot counts. They're verified manually
+    # against the plugin READMEs.
+    notes = {
+        "udp":  "datagram; no framing; ≤8 KiB single-shot limit",
+        "tcp":  "byte stream; TURN-over-TCP framing (16-bit BE len)",
+        "ws":   "RFC 6455 WebSocket framing; mask handling per spec",
+        "tls":  "stream framed like tcp; TURNS:// over TLS 1.3",
+        "quic": "ngtcp2-backed; carrier scheme detect:\n"
+                "  · 64 hex chars → gn.link.ice\n"
+                "  · else → gn.link.udp",
+        "ipc":  "AF_UNIX stream / datagram; Loopback trust",
+        "ice":  "STUN/TURN candidate gather, ICE checks,\n"
+                "Triggered + Regular Nomination, IPv6 happy-eyeballs",
+    }
+
+    for short, full in carriers:
+        body = f"{full}\n{notes.get(short, '')}"
+        composer = (plugins_dir / short / "include").is_dir()  # heuristic
+        color = TEAL if composer else GREEN
+        g.node(short, body, color=color, fontcolor=color,
+               fillcolor=SURFACE1, shape="box", fontsize="9")
+        g.edge("link_api", short, color=BORDER)
+
+    g.node("note",
+           "Composer surface (subset of plugins) — see\n"
+           "composer_extension.svg for the bit-63 dispatch detail.\n"
+           "Carrier list discovered from plugins/links/ at\n"
+           "diagram-gen time; new plugins appear here automatically.",
+           shape="note", color=SURFACE2, fontcolor=BORDER,
+           style="filled", fillcolor="#181825", fontsize="9")
+    g.edge(carriers[-1][0], "note", style="invis")
+
+    g.render(str(OUT / "link_carriers"), cleanup=True)
 
 
 # ═════════════════════════════════════════════════════════════════════════════
@@ -1569,3 +1953,9 @@ if __name__ == "__main__":
     gen_extension_query()
     gen_plugin_separation()
     gen_host_api_kinds()
+    gen_composer_extension()
+    gen_turn_stream_framing()
+    gen_quic_carrier_dispatch()
+    gen_handler_kinds()
+    gen_security_pipeline()
+    gen_link_carriers()

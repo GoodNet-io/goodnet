@@ -19,9 +19,11 @@ current code:
   * No orchestrator, no path manager, no reconnect manager, no
     optimizer. Multi-path is sequential link switch (dial new, drop
     old), not aggregation.
-  * `host_api_t` ~21 named slots, KIND-tagged register/unregister with
-    two families: HANDLER and LINK. Security providers and extensions
-    have their own typed slots.
+  * `host_api_t` exposes 40 named slots plus 8 reserved pointers
+    (count auto-derived from docs/_facts/host_api.yaml at render
+    time). KIND-tagged register/unregister with two families:
+    HANDLER and LINK. Security providers and extensions have their
+    own typed slots.
   * Trust classes: Untrusted → Peer (one-way upgrade after
     attestation), Loopback / IntraNode set on connect and immutable.
 """
@@ -30,12 +32,36 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_OUT = REPO_ROOT / "docs" / "architecture.canvas"
+FACTS_ROOT = REPO_ROOT / "docs" / "_facts"
+
+
+def _load_facts(name: str) -> dict:
+    """Read a livedoc fact-file; return {} if absent so the canvas
+    still renders on a fresh checkout where tools/livedoc.py has not
+    been run yet."""
+    import yaml as _yaml
+    p = FACTS_ROOT / f"{name}.yaml"
+    if not p.is_file():
+        return {}
+    return _yaml.safe_load(p.read_text()) or {}
+
+
+def _discover_link_plugins() -> list[str]:
+    """List plugins/links/<name>/ directories (sorted)."""
+    root = REPO_ROOT / "plugins" / "links"
+    if not root.is_dir():
+        return []
+    return sorted(
+        p.name for p in root.iterdir()
+        if p.is_dir() and not p.name.startswith(".")
+    )
 
 # ── Catppuccin Mocha canvas colors ──────────────────────────────────────────
 # Obsidian canvas color indices: 1=red, 2=orange, 3=yellow, 4=green, 5=cyan, 6=purple
@@ -129,25 +155,12 @@ NODES: dict[str, tuple[str, str]] = {
     # ── SDK interfaces ──────────────────────────────────────────────────────
     "n_host_api": (
         "host_api_t",
+        # Body refreshed at render time by `_refresh_host_api_node()` —
+        # slot count and family list come from docs/_facts/host_api.yaml.
         "# host_api_t\n`sdk/host_api.h`\n\n"
         "Public host vtable — всё, что плагин запрашивает у ядра, идёт через "
-        "один size-prefixed C struct (~21 named slot + 8 reserved).\n\n"
-        "**Семейства slot'ов:**\n"
-        "- Messaging: `send`, `disconnect`\n"
-        "- Registration (KIND-tagged): `register_vtable(kind, meta, vt, self, &id)` "
-        "+ `unregister_vtable(id)`. KINDs: `HANDLER`, `LINK`.\n"
-        "- Security: `register_security` / `unregister_security` (один активный провайдер v1)\n"
-        "- Queries: `find_conn_by_pk`, `get_endpoint`, `for_each_connection`\n"
-        "- Extensions: `register_extension`, `query_extension_checked`, `unregister_extension`\n"
-        "- Config + limits: `config_get`, `limits()`\n"
-        "- Link callbacks: `notify_connect`, `notify_inbound_bytes`, "
-        "`notify_disconnect`, `notify_backpressure`, `kick_handshake`\n"
-        "- Channels: `subscribe_conn_state`, `subscribe_config_reload`, `unsubscribe`\n"
-        "- Service: `set_timer`, `cancel_timer`, `inject(LAYER_*)`\n"
-        "- Metrics: `emit_counter`, `iterate_counters`, plus `log` sub-vtable\n"
-        "- Cooperative shutdown: `is_shutdown_requested`\n\n"
-        "Каждая запись принимает `host_ctx` первым аргументом — тот же\n"
-        "указатель, что плагин получил на init."
+        "один size-prefixed C struct. Карточка перерисовывается из\n"
+        "`docs/_facts/host_api.yaml` через `make livedoc`.\n"
     ),
     "n_handler_iface": (
         "gn_handler_vtable_t",
@@ -789,6 +802,113 @@ def build_canvas(positions: dict[str, tuple[float, float]]) -> dict:
     return {"nodes": nodes, "edges": edges_out}
 
 
+# ── Runtime fact injection ──────────────────────────────────────────────────
+
+# Status badge → Catppuccin color index used by Obsidian canvas.
+_STATUS_COLOR = {
+    "done":    C_GREEN,
+    "partial": C_YELLOW,
+    "missing": C_RED,
+}
+
+
+def _refresh_host_api_node() -> None:
+    facts = _load_facts("host_api")
+    if not facts:
+        return
+    n = facts.get("named_slots", "?")
+    r = facts.get("reserved_slots", 8)
+    fams = facts.get("families", {})
+    body = [
+        "# host_api_t",
+        "`sdk/host_api.h`",
+        "",
+        f"Public host vtable — **{n} named slots** + `{r}` reserved.",
+        "Карточка перерисовывается из `docs/_facts/host_api.yaml`",
+        "через `make livedoc` (libclang AST walk → YAML).",
+        "",
+        "**Семейства slot'ов:**",
+    ]
+    for fam in sorted(fams):
+        slots = fams[fam]
+        short = fam.split("(")[0].strip()
+        joined = ", ".join(f"`{s}`" for s in slots)
+        body.append(f"- {short}: {joined}")
+    body.extend([
+        "",
+        "Каждая запись принимает `host_ctx` первым аргументом — тот",
+        "же указатель, что плагин получил на init.",
+    ])
+    NODES["n_host_api"] = (NODES["n_host_api"][0], "\n".join(body))
+
+
+def _refresh_link_carriers() -> None:
+    """Replace hardcoded link-plugin node list with the actual on-disk set."""
+    discovered = _discover_link_plugins()
+    if not discovered:
+        return
+    # Find the LINK PLUGINS group and rewrite its member list.
+    for i, (gid, label, color, members) in enumerate(GROUPS):
+        if gid != "g_links":
+            continue
+        new_members = []
+        for name in discovered:
+            nid = f"n_{name}_plugin"
+            new_members.append(nid)
+            if nid not in NODES:
+                NODES[nid] = (
+                    f"gn.link.{name}",
+                    f"# gn.link.{name}\n`plugins/links/{name}/`\n\n"
+                    f"Discovered at canvas-render time from the "
+                    f"plugin tree. Run `make livedoc` to refresh after "
+                    f"adding or removing a link plugin checkout.",
+                )
+        GROUPS[i] = (gid, label, color, new_members)
+        return
+
+
+def _refresh_roadmap_overlay() -> None:
+    """Add a g_roadmap group with one node per ROADMAP feature.
+
+    Status badge maps to Catppuccin color (green/yellow/red) so a
+    reader scanning the canvas sees coverage at a glance.
+    """
+    status = _load_facts("roadmap_status")
+    features = (status.get("features") or []) if status else []
+    if not features:
+        return
+    members = []
+    by_color: dict[str, list[str]] = {}
+    for feat in features:
+        name = feat.get("name", "?")
+        st = feat.get("status", "missing")
+        evidence = feat.get("evidence", "")
+        nid = "n_rm_" + re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+        badge = {"done": "✓", "partial": "🚧", "missing": "✗"}.get(st, "·")
+        NODES[nid] = (
+            f"{badge} {name}",
+            f"# {badge} {name}\n\nstatus: **{st}**\n\n"
+            f"evidence: {evidence}\n\n"
+            f"_Driven by `tools/livedoc/roadmap_map.yaml`._",
+        )
+        members.append(nid)
+        by_color.setdefault(_STATUS_COLOR.get(st, C_RED), []).append(nid)
+    # Use the dominant status color for the group band.
+    dom_color = max(by_color, key=lambda c: len(by_color[c]))
+    GROUPS.append((
+        "g_roadmap",
+        "ROADMAP STATUS (auto, see roadmap_status.yaml)",
+        dom_color,
+        members,
+    ))
+
+
+def _inject_runtime_nodes() -> None:
+    _refresh_host_api_node()
+    _refresh_link_carriers()
+    _refresh_roadmap_overlay()
+
+
 # ── Entry point ─────────────────────────────────────────────────────────────
 
 
@@ -804,6 +924,10 @@ def main() -> None:
 
     DPI = 96.0
     print("Computing auto-sized layout via Graphviz dot...")
+
+    # Refresh fact-driven nodes before sizing — host_api summary,
+    # discovered link plugins, roadmap status overlay.
+    _inject_runtime_nodes()
 
     for nid in NODES:
         get_size(nid)

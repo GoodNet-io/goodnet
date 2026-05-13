@@ -29,12 +29,23 @@ set(_goodnet_kernel_sources
     kernel/kernel.cpp
     kernel/core_c.cpp
     kernel/host_api_builder.cpp
+    kernel/host_api/internal.cpp
+    kernel/host_api/messaging.cpp
+    kernel/host_api/identity.cpp
+    kernel/host_api/control.cpp
+    kernel/host_api/notifications.cpp
     kernel/service_resolver.cpp
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
     kernel/metrics_registry.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
+    plugin/wire_codec.cpp
+    plugin/remote_host.cpp
+    # Static-registry stub. Dynamic builds keep this empty array; the
+    # static-linkage build replaces this TU with a generated one via
+    # `cmake/StaticPlugins.cmake`.
+    plugin/static_registry_default.cpp
     util/log.cpp
     util/log_config.cpp
 )

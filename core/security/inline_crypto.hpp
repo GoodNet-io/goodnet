@@ -99,6 +99,22 @@ public:
         return recv_nonce_.load(std::memory_order_relaxed);
     }
 
+    /// Bench-only seam: zero send + recv keys and flip `seeded_`
+    /// back to false so subsequent `encrypt`/`decrypt` calls land
+    /// `GN_ERR_INVALID_STATE` (the caller — `SecuritySession` —
+    /// then falls through to the provider vtable, which is a
+    /// copy-through for `gn.security.null`).
+    ///
+    /// This is the inline-crypto half of the post-handshake
+    /// Noise→Null handoff PoC in `bench/showcase` (track Б, §B.3).
+    /// Production-shape kernel-side handoff is a v1.x followup;
+    /// for now this hook is gated through
+    /// `SecuritySession::_test_clear_inline_crypto`, which checks
+    /// the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` env var before
+    /// calling here. Without the env var, nothing in the build
+    /// reaches this method.
+    void clear_for_test() noexcept;
+
 private:
     std::uint8_t              send_key_[kKeyBytes]{};
     std::uint8_t              recv_key_[kKeyBytes]{};

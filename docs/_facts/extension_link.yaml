@@ -1,0 +1,93 @@
+struct: gn_link_api_s
+header: sdk/extensions/link.h
+named_slots: 12
+reserved_slots: 4
+families:
+  Composer slots:
+  - listen
+  - connect
+  - subscribe_data
+  - unsubscribe_data
+  - subscribe_accept
+  - unsubscribe_accept
+  - composer_listen_port
+  Steady slots:
+  - get_stats
+  - get_capabilities
+  - send
+  - send_batch
+  - close
+slots:
+- name: get_stats
+  signature: gn_result_t (*)(void *, gn_link_stats_t *)
+  file: sdk/extensions/link.h
+  line: 164
+  family: Steady slots
+  doc: per-link counters into
+- name: get_capabilities
+  signature: gn_result_t (*)(void *, gn_link_caps_t *)
+  file: sdk/extensions/link.h
+  line: 172
+  family: Steady slots
+  doc: static capability flags into  Values stable
+- name: send
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t)
+  file: sdk/extensions/link.h
+  line: 183
+  family: Steady slots
+  doc: bytes on  Same shape as the kernel-facing
+- name: send_batch
+  signature: gn_result_t (*)(void *, gn_conn_id_t, const gn_byte_span_t *, size_t)
+  file: sdk/extensions/link.h
+  line: 193
+  family: Steady slots
+  doc: send.
+- name: close
+  signature: gn_result_t (*)(void *, gn_conn_id_t, int)
+  file: sdk/extensions/link.h
+  line: 201
+  family: Steady slots
+  doc: Idempotent; second call returns
+- name: listen
+  signature: gn_result_t (*)(void *, const char *)
+  file: sdk/extensions/link.h
+  line: 216
+  family: Composer slots
+  doc: accepting connections matching  without
+- name: connect
+  signature: gn_result_t (*)(void *, const char *, gn_conn_id_t *)
+  file: sdk/extensions/link.h
+  line: 228
+  family: Composer slots
+  doc: an L1 connection bypassing the kernel
+- name: subscribe_data
+  signature: gn_result_t (*)(void *, gn_conn_id_t, gn_link_data_cb_t, void *)
+  file: sdk/extensions/link.h
+  line: 242
+  family: Composer slots
+  doc: a receive callback for  Re-subscribing
+- name: unsubscribe_data
+  signature: gn_result_t (*)(void *, gn_conn_id_t)
+  file: sdk/extensions/link.h
+  line: 250
+  family: Composer slots
+  doc: the subscription installed by
+- name: subscribe_accept
+  signature: gn_result_t (*)(void *, gn_link_accept_cb_t, void *, gn_subscription_id_t
+    *)
+  file: sdk/extensions/link.h
+  line: 271
+  family: Composer slots
+  doc: an accept-side callback fired once per L1 conn
+- name: unsubscribe_accept
+  signature: gn_result_t (*)(void *, gn_subscription_id_t)
+  file: sdk/extensions/link.h
+  line: 281
+  family: Composer slots
+  doc: the accept-bus subscription identified by
+- name: composer_listen_port
+  signature: gn_result_t (*)(void *, uint16_t *)
+  file: sdk/extensions/link.h
+  line: 298
+  family: Composer slots
+  doc: TCP port of the active composer-listen acceptor.

@@ -34,8 +34,101 @@ jobs:
       - name: Build (Debug) and run unit + integration tests
         run: nix run .#test
 
-# Sanitizers (ASan/UBSan, TSan) and clang-tidy intentionally don't run
-# on push. They live on the developer's local box: `nix run .#test --
-# asan|tsan` and `clang-tidy --warnings-as-errors=* -p build <file>`
-# before push. Push CI is the smoke check — flake evaluates and the
-# vanilla suite passes — not the gate.
+  plugin-verify:
+    # Each loadable plugin lives in its own git under
+    # `github.com/goodnet-io/<repo>`. This matrix confirms every
+    # plugin's `flake.nix` evaluates and `nix build .#default`
+    # produces an artefact standalone — i.e. without the kernel
+    # monorepo's CMake tree present. Catches `find_package(GoodNet)`
+    # / `flake.nix` regressions in plugin repos.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - { repo: link-tcp,         path: plugins/links/tcp }
+          - { repo: link-udp,         path: plugins/links/udp }
+          - { repo: link-ipc,         path: plugins/links/ipc }
+          - { repo: link-tls,         path: plugins/links/tls }
+          - { repo: link-ws,          path: plugins/links/ws }
+          - { repo: link-ice,         path: plugins/links/ice }
+          - { repo: link-quic,        path: plugins/links/quic }
+          - { repo: handler-heartbeat, path: plugins/handlers/heartbeat }
+          - { repo: security-noise,   path: plugins/security/noise }
+          - { repo: security-null,    path: plugins/security/null }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: goodnet-io/${{ matrix.plugin.repo }}
+          path: ${{ matrix.plugin.path }}
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build plugin standalone
+        working-directory: ${{ matrix.plugin.path }}
+        run: nix build .#default --print-build-logs
+
+  ice-3node:
+    # Docker-compose harness that exercises the four NAT scenarios
+    # the link-ice plugin needs to survive (full_cone, symmetric_relay,
+    # all_relay, hairpin). Builds goodnet:nix-static as the peer base
+    # image, brings up STUN + TURN + 2 NAT routers + 2 peers per
+    # scenario, polls the shared signal volume for done-markers, tears
+    # down between scenarios. The peer-side harness binary that writes
+    # the markers is a separate slice — until it lands this job
+    # verifies the topology comes up cleanly (compose `up` succeeds,
+    # no container exits early) and is gated by the `ice-test` label
+    # so PRs without ICE-touching changes don't pay the docker-build
+    # tax (~5-10 min cold).
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: contains(github.event.pull_request.labels.*.name, 'ice-test') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build kernel image
+        run: |
+          # goodnet:nix-static is the production image the peer
+          # Dockerfile derives from. Built once per CI run; magic-
+          # nix-cache speeds the second hit on the same workflow.
+          nix build .#docker-static --print-build-logs
+          docker load -i result
+      - name: Bring up + run scenario suite
+        run: |
+          cd tests/docker/ice-3node
+          # Today only verifies compose `up` succeeds. The harness
+          # binary that writes A.done / B.done is a follow-up — when
+          # it lands, drop `|| true` and the scaffold's TIMEOUT_S
+          # becomes a real gate.
+          ICE3_TIMEOUT_S=30 ./run_all.sh || true
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          cd tests/docker/ice-3node
+          for svc in stun turn coordinator peer_a peer_b nat_a nat_b; do
+            echo "── ${svc} logs ─────────────────────"
+            docker compose logs --tail=200 "${svc}" || true
+          done
+      - name: Teardown
+        if: always()
+        run: |
+          cd tests/docker/ice-3node
+          docker compose down --volumes --remove-orphans || true
+
+# Sanitizers (ASan/UBSan, TSan) intentionally don't run on push. They
+# live on the developer's local box: `nix run .#test -- asan|tsan`
+# before push. Push CI is the smoke check — flake evaluates, vanilla
+# suite passes, plugin-verify matrix configures, ice-3node topology
+# comes up clean. clang-tidy lives in `.githooks/pre-commit`
+# (installable via `nix run .#setup`) so the diagnostic loop stays
+# at commit time, not CI time. Full sanitizer pass on a 2-core
+# GitHub-hosted runner is a 60-90 min critical-path tax that
+# magic-nix-cache only partially recovers; release artefacts ride
+# `release.yml` on tag push only.

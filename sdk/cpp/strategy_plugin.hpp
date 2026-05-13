@@ -200,7 +200,7 @@ constexpr bool strategy_has_required_v =
                                                                                \
     extern "C" {                                                               \
                                                                                \
-    GN_PLUGIN_EXPORT void gn_plugin_sdk_version(std::uint32_t* major,          \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SDK_VERSION_NAME(std::uint32_t* major,     \
                                                  std::uint32_t* minor,         \
                                                  std::uint32_t* patch) {       \
         if (major) *major = GN_SDK_VERSION_MAJOR;                              \
@@ -208,7 +208,7 @@ constexpr bool strategy_has_required_v =
         if (patch) *patch = GN_SDK_VERSION_PATCH;                              \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(                               \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_INIT_NAME(                          \
         const host_api_t* api, void** out_self) {                              \
         if (!api || !out_self) return GN_ERR_NULL_ARG;                         \
         auto* p = new (std::nothrow) _gn_strategy_instance_t{};                \
@@ -226,7 +226,7 @@ constexpr bool strategy_has_required_v =
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self) {              \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_REGISTER_NAME(void* self) {         \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_strategy_instance_t*>(self);                 \
         if (!p->api || !p->api->register_extension) {                          \
@@ -244,7 +244,7 @@ constexpr bool strategy_has_required_v =
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT gn_result_t gn_plugin_unregister(void* self) {            \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_UNREGISTER_NAME(void* self) {       \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_strategy_instance_t*>(self);                 \
         if (p->extension_registered &&                                         \
@@ -257,7 +257,7 @@ constexpr bool strategy_has_required_v =
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
-    GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self) {                     \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SHUTDOWN_NAME(void* self) {                \
         if (!self) return;                                                     \
         auto* p = static_cast<_gn_strategy_instance_t*>(self);                 \
         if (p->strategy) {                                                     \
@@ -267,7 +267,7 @@ constexpr bool strategy_has_required_v =
     }                                                                          \
                                                                                \
     GN_PLUGIN_EXPORT const gn_plugin_descriptor_t*                             \
-    gn_plugin_descriptor(void) {                                               \
+    GN_PLUGIN_DESCRIPTOR_NAME(void) {                                          \
         return &_gn_strategy_descriptor;                                       \
     }                                                                          \
                                                                                \

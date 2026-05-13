@@ -1,0 +1,11 @@
+# Scenario: both peers behind symmetric NAT. Neither side can
+# learn a usable srflx from the other; only the relay candidate
+# pair survives the check phase. Exercises the TURN ChannelBind
+# fast path (RFC 5766 §11) end-to-end through the goodnet kernel.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: symmetric
+  nat_b:
+    environment:
+      NAT_MODE: symmetric

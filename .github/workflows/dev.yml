@@ -19,3 +19,10 @@ jobs:
 
       - name: Build (Release) and run tests
         run: nix run .#test
+
+# Dev branch is intentionally minimum-friction: only the test gate
+# runs. clang-tidy lives in `.githooks/pre-commit` (installable via
+# `nix run .#setup`) so the diagnostic loop stays at commit time, not
+# CI time. Plugin-verify matrix and the ice-3node Docker harness only
+# run on main (`ci.yml`); release artefacts only build on tag push
+# (`release.yml`).

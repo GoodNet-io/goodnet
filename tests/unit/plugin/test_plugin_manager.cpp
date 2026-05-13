@@ -401,3 +401,51 @@ TEST(PluginManager_LoadFailure, FirstFailureRollsBackPriorSuccess) {
     pm.shutdown();
     EXPECT_EQ(pm.leaked_handles(), 0u);
 }
+
+#ifdef GOODNET_REMOTE_ECHO_PATH
+
+TEST(PluginManager_Remote, LoadsRemoteWorkerThroughManifest) {
+    /// End-to-end PluginManager path: a manifest entry with
+    /// `kind: remote` makes `open_one` spawn the worker binary
+    /// over `sdk/remote/wire.h` instead of dlopen-ing it.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_REMOTE_ECHO_PATH);
+    ASSERT_TRUE(digest.has_value());
+    if (!digest) GTEST_SKIP() << "worker binary unavailable";
+
+    PluginManifest m;
+    m.add_entry(GOODNET_REMOTE_ECHO_PATH, *digest, ManifestKind::Remote);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(m));
+
+    std::string diag;
+    const std::vector<std::string> paths = {GOODNET_REMOTE_ECHO_PATH};
+    ASSERT_EQ(pm.load(paths, &diag), GN_OK) << "diag: " << diag;
+    EXPECT_EQ(pm.size(), 1u);
+
+    pm.shutdown();
+    EXPECT_EQ(pm.size(), 0u);
+    EXPECT_EQ(pm.leaked_handles(), 0u);
+}
+
+TEST(PluginManager_Remote, MissingManifestEntryRejectedByIntegrity) {
+    /// The remote linkage path runs the same integrity check as
+    /// dlopen. A manifest that pins the worker's path with a wrong
+    /// hash must fail the load before spawn.
+    PluginManifest m;
+    PluginHash wrong{};
+    m.add_entry(GOODNET_REMOTE_ECHO_PATH, wrong, ManifestKind::Remote);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(m));
+
+    std::string diag;
+    const std::vector<std::string> paths = {GOODNET_REMOTE_ECHO_PATH};
+    EXPECT_EQ(pm.load(paths, &diag), GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("integrity"), std::string::npos) << diag;
+    EXPECT_EQ(pm.size(), 0u);
+}
+
+#endif  // GOODNET_REMOTE_ECHO_PATH

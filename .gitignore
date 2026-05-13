@@ -37,6 +37,7 @@ result-*
 # CMake helpers
 !cmake/*.cmake
 !cmake/*.cmake.in
+!cmake/*.cpp.in
 
 # Nix helpers (per-plugin Nix derivations)
 !nix/*.nix
@@ -47,19 +48,32 @@ result-*
 !docs/Doxyfile
 !docs/img/*.svg
 !docs/architecture.canvas
+# Livedoc fact extracts — diff-friendly YAML produced from sdk/*.h
+# and plugin trees by `tools/livedoc.py`. Committed so the rendered
+# markdown stays accurate without operators having to run the
+# generator themselves.
+!docs/_facts/*.yaml
 
 # Diagram + math generators
 !tools/*.py
 !tools/math/*.py
+# Livedoc package — abi_extract, renderers, roadmap resolver,
+# inventory walker, plus the YAML feature map.
+!tools/livedoc/*.py
+!tools/livedoc/*.yaml
 __pycache__/
 
 # CI
 !.github/**/*.yml
 !.github/**/*.yaml
 
-# SDK (header-only)
+# SDK (header-only headers + the worker stub static library — the
+# stub mirrors `core/plugin/remote_host.*` from the worker side so
+# every binding can link a C++ reference implementation; pinned in
+# `docs/contracts/remote-plugin.en.md` §10).
 !sdk/**/*.h
 !sdk/**/*.hpp
+!sdk/**/*.cpp
 !sdk/**/CMakeLists.txt
 !sdk/LICENSE
 
@@ -84,7 +98,16 @@ __pycache__/
 # `git add -A` from the monorepo root.
 !plugins/CMakeLists.txt
 !plugins/protocols/**
+# Subprocess plugin workers. The in-tree `remote_echo` proof rides
+# under `plugins/workers/` and ships with the kernel monorepo (it's
+# the single integration smoke for `RemoteHost`). Real workers live
+# in their own gits the same way other plugins do.
+!plugins/workers/**/*.cpp
+!plugins/workers/**/*.hpp
+!plugins/workers/**/CMakeLists.txt
 plugins/handlers/heartbeat/
+plugins/handlers/store/
+plugins/handlers/dns/
 plugins/handlers/mycelium/
 plugins/links/tcp/
 plugins/links/udp/
@@ -106,8 +129,21 @@ bridges/cpp/
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel
 # the same way as plugin slots so the nested .git stays invisible
-# to `git add -A`.
+# to `git add -A`. Block every direct child EXCEPT the Docker-
+# based 3-node ICE harness, which lives in the kernel monorepo
+# (its scenario topology is the kernel's CI artefact, not part
+# of the external integration-tests repo).
 tests/integration/
+
+# tests/docker/ holds the kernel's own Docker-based integration
+# harnesses (ICE 3-node, future NAT scenarios). Lives in the kernel
+# monorepo proper — distinct from tests/integration/ which is the
+# external goodnet-integration-tests repo slot.
+!tests/docker/**/Dockerfile
+!tests/docker/**/*.sh
+!tests/docker/**/*.yml
+!tests/docker/**/*.tmpl
+!tests/docker/**/*.md
 
 # Tests
 !tests/**/*.c
@@ -116,6 +152,9 @@ tests/integration/
 !tests/**/*.hpp
 !tests/**/*.conf
 !tests/**/CMakeLists.txt
+# Python-side unit suite for tools/livedoc/.
+!tests/**/*.py
+!pytest.ini
 
 # Examples
 !examples/**/*.cpp
@@ -123,6 +162,17 @@ tests/integration/
 !examples/**/*.md
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
+
+# Bench suite
+!bench/**/*.cpp
+!bench/**/*.hpp
+!bench/**/*.md
+!bench/**/*.sh
+!bench/**/*.py
+!bench/**/*.rs
+!bench/**/*.toml
+!bench/**/CMakeLists.txt
+!bench/**/LICENSE
 
 # Apps (operator-facing CLI binaries)
 !apps/**/*.cpp
@@ -134,6 +184,8 @@ tests/integration/
 !dist/**/*.service
 !dist/**/*.json
 !dist/**/*.md
+!dist/**/Dockerfile*
 
 # manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
 manifesto/
+plugins/strategies/

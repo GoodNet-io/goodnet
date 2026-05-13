@@ -5,19 +5,32 @@
 
   outputs = { self, nixpkgs }:
     let
-      # Linux-only honestly: every strategic plugin (heartbeat, tcp,
-      # udp, ws, ipc, gnet) binds tightly to epoll / capability-style
-      # sandboxing primitives that have no portable Darwin/BSD analogue.
-      # Listing Darwin systems here used to make `nix flake check
-      # --all-systems` fail with "Refusing to evaluate" the moment any
-      # Linux-only plugin met the Darwin platform check. macOS support
-      # can land later as a real port — adding "x86_64-darwin" /
-      # "aarch64-darwin" back here without porting the platform-bound
-      # plugins is the kind of cross-platform theatre this repo has
-      # explicitly chosen to avoid.
+      # Cross-platform posture (honest):
+      #
+      # * **Linux x86_64 / aarch64** — full path. Every bundled
+      #   plugin builds and tests run under sanitisers. CI gates on
+      #   this matrix.
+      # * **Darwin x86_64 / aarch64** — kernel + SDK + GNET protocol
+      #   build via Asio's portable reactor; the kernel's
+      #   `plugin_manager.cpp` falls back from `openat2` to the
+      #   `O_NOFOLLOW` integrity gate behind `__linux__`. Only the
+      #   IPC plugin currently carries the `LOCAL_PEERCRED` port;
+      #   other plugins (tcp/udp/ws/ice/quic/tls/heartbeat/noise/
+      #   null/strategies) live in their own gits and gate
+      #   themselves via `meta.platforms` — they simply don't appear
+      #   in the per-plugin flake's output set on Darwin until each
+      #   is ported. The composed-node derivation here keeps
+      #   `meta.platforms = lib.platforms.linux` because operators
+      #   want a bundle, not a half-set; the kernel-only
+      #   `goodnet-core` derivation builds for Darwin today. See
+      #   `docs/architecture/cross-platform.ru.md`.
+      # * **Windows** — wire/build groundwork landed under
+      #   `_WIN32` guards; the named-pipe runtime stays its own
+      #   plan.
       forAllSystems = f:
         nixpkgs.lib.genAttrs
-          [ "x86_64-linux" "aarch64-linux" ]
+          [ "x86_64-linux" "aarch64-linux"
+            "x86_64-darwin" "aarch64-darwin" ]
           (system: f system (import nixpkgs { inherit system; }));
 
       # `goodnet.lib.compose` — operator-facing constructor.
@@ -47,7 +60,7 @@
         , config ? null
         , identity ? null
         , pname ? "goodnet-node"
-        , version ? "0.1.0"
+        , version ? "1.0.0-rc3"
         }:
         pkgs.stdenv.mkDerivation {
           inherit pname version;
@@ -113,7 +126,26 @@
         let
           stdenv = pkgs.gcc15Stdenv;
           coreBuildInputs = with pkgs; [
-            asio spdlog fmt nlohmann_json libsodium openssl
+            asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            # External bench baselines — iperf3 for raw TCP/UDP
+            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
+            # All three stage cleanly in the dev shell so
+            # bench/comparison/runners/run_all.sh works out of the
+            # box; libwebrtc / nginx-quic remain Docker-only.
+            iperf3 socat
+            # SQLite for handler-store's optional SqliteStore
+            # backend. Kernel itself never links sqlite; propagated
+            # here so plugins/handlers/store/ can build in-tree
+            # without a second `nix develop` shell, and so the
+            # standalone plugin default.nix inherits it through
+            # goodnet-core's propagatedBuildInputs.
+            sqlite
+            # c-ares for handler-dns upstream resolution (D-DNS.4).
+            # Kernel doesn't link c-ares; same convenience pattern
+            # as sqlite — in-tree dev gets pkg-config libcares
+            # without a second devShell, standalone plugin builds
+            # inherit it through propagatedBuildInputs.
+            c-ares
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -125,7 +157,7 @@
           # present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
-            version = "0.1.0";
+            version = "1.0.0-rc3";
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -156,6 +188,14 @@
           # plugin set.
           default = goodnet-core;
           inherit goodnet-core;
+        } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # Reproducible Docker image around the static kernel.
+          # Linux-only because dockerTools.buildLayeredImage emits a
+          # Linux container; building from a Darwin host requires a
+          # remote Linux builder.
+          docker-static = import ./nix/docker.nix {
+            inherit pkgs goodnet-core;
+          };
         });
 
       apps = forAllSystems (system: pkgs:
@@ -174,17 +214,22 @@
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-debug}"
               shift || true
+              static_flag=""
+              tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
-                debug)   build_type=Debug   ; build_dir=build       ;;
+                debug)   build_type=Debug   ; build_dir=build         ;;
                 release) build_type=Release ; build_dir=build-release ;;
-                *) echo "build: unknown variant $variant (debug|release)" >&2
+                static)  build_type=Release ; build_dir=build-static
+                         static_flag="-DGOODNET_STATIC_PLUGINS=ON"
+                         tests_flag="-DGOODNET_BUILD_TESTS=OFF"      ;;
+                *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
               if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                 echo ">>> Configuring $build_type build in $build_dir..."
                 cmake -B "$build_dir" -G Ninja \
                   -DCMAKE_BUILD_TYPE=$build_type \
-                  -DGOODNET_BUILD_TESTS=ON
+                  $tests_flag $static_flag
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"
@@ -420,7 +465,26 @@
           # plugin-side dev work is done in the plugin's own
           # `nix develop` shell.
           coreBuildInputs = with pkgs; [
-            asio spdlog fmt nlohmann_json libsodium openssl
+            asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            # External bench baselines — iperf3 for raw TCP/UDP
+            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
+            # All three stage cleanly in the dev shell so
+            # bench/comparison/runners/run_all.sh works out of the
+            # box; libwebrtc / nginx-quic remain Docker-only.
+            iperf3 socat
+            # SQLite for handler-store's optional SqliteStore
+            # backend. Kernel itself never links sqlite; propagated
+            # here so plugins/handlers/store/ can build in-tree
+            # without a second `nix develop` shell, and so the
+            # standalone plugin default.nix inherits it through
+            # goodnet-core's propagatedBuildInputs.
+            sqlite
+            # c-ares for handler-dns upstream resolution (D-DNS.4).
+            # Kernel doesn't link c-ares; same convenience pattern
+            # as sqlite — in-tree dev gets pkg-config libcares
+            # without a second devShell, standalone plugin builds
+            # inherit it through propagatedBuildInputs.
+            c-ares
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
@@ -453,7 +517,17 @@
               gdb
               gnumake
               doxygen graphviz
-              (python3.withPackages (ps: [ ps.graphviz ]))
+              # python3 — graphviz drives diagram rendering; libclang
+              # parses sdk/*.h for the livedoc fact extractor; pyyaml
+              # serialises the fact files that gen_diagrams + canvas
+              # consume; pytest runs the livedoc unit suite under
+              # tests/livedoc/.
+              (python3.withPackages (ps: [
+                ps.graphviz
+                ps.libclang
+                ps.pyyaml
+                ps.pytest
+              ]))
             ] ++ pkgs.lib.optionals pkgs.stdenv.isLinux [ pkgs.valgrind ];
 
             # Welcome message points at the `nix run` apps so callers

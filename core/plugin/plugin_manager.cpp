@@ -27,6 +27,7 @@
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/safe_invoke.hpp>
+#include <core/plugin/remote_host.hpp>
 #include <core/util/log.hpp>
 
 #include <sdk/plugin.h>
@@ -126,6 +127,65 @@ gn_result_t PluginManager::open_one(const std::string& path,
         diag = "plugin integrity check failed: manifest required but empty: ";
         diag += path;
         return GN_ERR_INTEGRITY_FAILED;
+    }
+
+    /// Linkage selector: a manifest entry with `kind: "remote"`
+    /// switches this path from dlopen to a subprocess worker over
+    /// `sdk/remote/wire.h`. The dynamic-default branch below stays
+    /// unchanged for every other entry.
+    const ManifestEntry* manifest_entry =
+        manifest_.empty() ? nullptr : manifest_.find(path);
+    const bool is_remote =
+        manifest_entry != nullptr &&
+        manifest_entry->kind == ManifestKind::Remote;
+
+    if (is_remote) {
+        /// Worker binary integrity: hash the file the same way the
+        /// dlopen path hashes the .so. The kernel never executes
+        /// an unverified worker, mirroring the dlopen rule that an
+        /// unverified .so never reaches `RTLD_NOW`.
+        std::string verify_diag;
+        if (!manifest_.verify(path, verify_diag)) {
+            diag = "remote worker integrity check failed: ";
+            diag += verify_diag;
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+
+        out.ctx = std::make_unique<PluginContext>();
+        out.ctx->plugin_name = path;  // descriptor name overrides post-HELLO
+        out.ctx->kernel      = &kernel_;
+        out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
+        out.api = build_host_api(*out.ctx);
+
+        out.remote = std::make_unique<RemoteHost>();
+        std::string spawn_diag;
+        const auto rc = out.remote->spawn(path,
+            std::span<const std::string>(
+                manifest_entry->args.data(),
+                manifest_entry->args.size()),
+            *out.ctx, out.api, spawn_diag);
+        if (rc != GN_OK) {
+            diag = "remote spawn failed: ";
+            diag += spawn_diag;
+            out.remote.reset();
+            out.ctx.reset();
+            return rc;
+        }
+
+        if (const auto* d = out.remote->descriptor(); d != nullptr) {
+            if (d->name) {
+                out.descriptor.plugin_name = d->name;
+                out.ctx->plugin_name       = d->name;
+            }
+            out.ctx->kind = d->kind;
+        }
+        if (out.descriptor.plugin_name.empty()) {
+            out.descriptor.plugin_name = path;
+        }
+
+        out.self       = nullptr;
+        out.registered = false;
+        return GN_OK;
     }
 
     /// Integrity check before dlopen. An empty manifest is the
@@ -359,13 +419,21 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 
     /// Phase 4: init_all.
     for (auto& inst : instances_) {
-        auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
-            ::dlsym(inst.so_handle, "gn_plugin_init"));
-        const auto init_tag =
-            "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
-        const auto rc = safe_call_result(
-            init_tag.c_str(),
-            init_fn, &inst.api, &inst.self);
+        gn_result_t rc = GN_OK;
+        if (inst.remote) {
+            /// Subprocess worker: the lifecycle entry-points cross
+            /// the wire as PLUGIN_CALL frames. `self` becomes the
+            /// worker-side opaque returned in the reply.
+            rc = inst.remote->call_init(&inst.self);
+        } else {
+            auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
+                ::dlsym(inst.so_handle, "gn_plugin_init"));
+            const auto init_tag =
+                "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
+            rc = safe_call_result(
+                init_tag.c_str(),
+                init_fn, &inst.api, &inst.self);
+        }
         if (rc != GN_OK) {
             note("gn_plugin_init failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -392,11 +460,17 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 
     /// Phase 5: register_all.
     for (auto& inst : instances_) {
-        auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
-            ::dlsym(inst.so_handle, "gn_plugin_register"));
-        const auto rc = safe_call_result(
-            "plugin.gn_plugin_register",
-            reg_fn, inst.self);
+        gn_result_t rc = GN_OK;
+        if (inst.remote) {
+            rc = inst.remote->call_register(
+                reinterpret_cast<std::uintptr_t>(inst.self));
+        } else {
+            auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
+                ::dlsym(inst.so_handle, "gn_plugin_register"));
+            rc = safe_call_result(
+                "plugin.gn_plugin_register",
+                reg_fn, inst.self);
+        }
         if (rc != GN_OK) {
             note("gn_plugin_register failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -484,16 +558,34 @@ void PluginManager::rollback() {
                 true, std::memory_order_release);
         }
 
-        if (it->registered && it->so_handle) {
-            if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-                    ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
-                /// `gn_result_t` discarded — the unregister path
-                /// continues to teardown regardless of the
-                /// plugin's reported outcome; we only care that
-                /// no exception escapes the C ABI boundary.
+        if (it->registered) {
+            if (it->remote) {
+                /// Remote-linkage path: `unregister` becomes a
+                /// PLUGIN_CALL frame and the worker mirrors the
+                /// in-process plugin's unregister entry-point. The
+                /// `gn_result_t` is discarded same as the other
+                /// branches — teardown continues regardless.
+                (void)it->remote->call_unregister(
+                    reinterpret_cast<std::uintptr_t>(it->self));
+            } else if (it->so_handle) {
+                if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
+                        ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
+                    /// `gn_result_t` discarded — the unregister path
+                    /// continues to teardown regardless of the
+                    /// plugin's reported outcome; we only care that
+                    /// no exception escapes the C ABI boundary.
+                    (void)safe_call_result(
+                        "plugin.gn_plugin_unregister",
+                        fn, it->self);
+                }
+            } else if (it->static_entry && it->static_entry->unreg) {
+                /// Static-linkage path: dlsym would return null for
+                /// the suffix-renamed entry, so we read the function
+                /// pointer the registry already provides. Same
+                /// noexcept guarantees apply across the C ABI.
                 (void)safe_call_result(
                     "plugin.gn_plugin_unregister",
-                    fn, it->self);
+                    it->static_entry->unreg, it->self);
             }
             it->registered = false;
         }
@@ -531,13 +623,37 @@ void PluginManager::rollback() {
         }
         const bool drained = drain_anchor(*it, watch);
 
-        if (it->self && it->so_handle) {
-            if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-                    ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
+        if (it->self) {
+            if (it->remote) {
+                /// `call_shutdown` is void (no return code). The
+                /// worker reaps state and acks the PLUGIN_CALL but
+                /// we do not branch on its reply.
+                it->remote->call_shutdown(
+                    reinterpret_cast<std::uintptr_t>(it->self));
+            } else if (it->so_handle) {
+                if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
+                        ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
+                    safe_call_void("plugin.gn_plugin_shutdown",
+                        fn, it->self);
+                }
+            } else if (it->static_entry && it->static_entry->shutdown) {
+                /// Static-linkage path — see the matching branch in
+                /// the unregister step above. The static registry
+                /// supplies the function pointer directly.
                 safe_call_void("plugin.gn_plugin_shutdown",
-                    fn, it->self);
+                    it->static_entry->shutdown, it->self);
             }
             it->self = nullptr;
+        }
+
+        if (it->remote) {
+            /// Remote-linkage final phase: send GOODBYE, join the
+            /// reader thread, reap the worker process. The unique_ptr
+            /// destructor would do this too, but running it
+            /// explicitly here keeps the dlclose-vs-terminate
+            /// ordering symmetric with the dlopen path.
+            it->remote->terminate();
+            it->remote.reset();
         }
 
         if (it->so_handle) {
@@ -580,6 +696,105 @@ void PluginManager::set_manifest(PluginManifest manifest) noexcept {
 
 void PluginManager::set_manifest_required(bool required) noexcept {
     manifest_required_ = required;
+}
+
+// ── Static-registry path ─────────────────────────────────────────────
+//
+// Activates every plugin baked into the kernel binary at link time.
+// The registry array (`gn_plugin_static_registry[]`, declared in
+// `core/plugin/static_registry.hpp`) is populated by either the
+// generated `static_plugins.cpp` (under `-DGOODNET_STATIC_PLUGINS=ON`)
+// or by the empty default TU. Either way the iteration here is
+// safe — a dynamic build hits the sentinel on the first read and
+// returns GN_OK after a no-op.
+
+#include <core/plugin/static_registry.hpp>
+
+gn_result_t PluginManager::load_static(std::string* out_diagnostic) {
+    if (active_) {
+        if (out_diagnostic) *out_diagnostic = "PluginManager already active";
+        return GN_ERR_LIMIT_REACHED;
+    }
+    auto note = [&](std::string_view m) {
+        if (out_diagnostic) *out_diagnostic = std::string(m);
+    };
+
+    /// Phase 1-3: gather every registry entry. We skip dlopen + symbol
+    /// resolution + integrity verification entirely — every entry's
+    /// addresses are already valid (the linker resolved them at build
+    /// time) and the symbols' identity is implicit in the binary's
+    /// own integrity check (the operator must verify the kernel itself
+    /// rather than per-plugin .so files in this mode).
+    for (const auto* e = &gn_plugin_static_registry[0];
+         e->name != nullptr; ++e) {
+
+        /// Static plugins ship inside the kernel binary; their SDK
+        /// version is forcibly identical to the host. Still call
+        /// `sdk_version` if present so a future build that ships
+        /// an out-of-tree static archive can catch a stale .a at
+        /// the same point as the dlopen path catches a stale .so.
+        if (e->sdk_version) {
+            uint32_t pmaj = 0, pmin = 0, ppatch = 0;
+            e->sdk_version(&pmaj, &pmin, &ppatch);
+            if (pmaj != GN_SDK_VERSION_MAJOR) {
+                note(std::string("sdk-version mismatch: ") + e->name);
+                rollback();
+                return GN_ERR_VERSION_MISMATCH;
+            }
+        }
+
+        PluginInstance inst{};
+        inst.path = std::string("static://") + e->name;
+        inst.static_entry = e;
+        inst.ctx = std::make_unique<PluginContext>();
+        inst.ctx->plugin_name = e->name;
+        inst.ctx->kernel      = &kernel_;
+        inst.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
+
+        if (e->descriptor) {
+            if (const auto* d = e->descriptor(); d != nullptr) {
+                if (d->name) inst.descriptor.plugin_name = d->name;
+                inst.ctx->kind = d->kind;
+            }
+        }
+        if (inst.descriptor.plugin_name.empty()) {
+            inst.descriptor.plugin_name = e->name;
+        }
+
+        inst.api = build_host_api(*inst.ctx);
+
+        instances_.push_back(std::move(inst));
+    }
+
+    /// Phase 4: init each plugin.
+    for (std::size_t i = 0; i < instances_.size(); ++i) {
+        auto& inst  = instances_[i];
+        const auto* e = &gn_plugin_static_registry[i];
+        if (!e->init) continue;
+        const auto rc = e->init(&inst.api, &inst.self);
+        if (rc != GN_OK) {
+            note(std::string("gn_plugin_init failed: ") + e->name);
+            rollback();
+            return rc;
+        }
+    }
+
+    /// Phase 5: register each plugin.
+    for (std::size_t i = 0; i < instances_.size(); ++i) {
+        auto& inst  = instances_[i];
+        const auto* e = &gn_plugin_static_registry[i];
+        if (!e->reg) continue;
+        const auto rc = e->reg(inst.self);
+        if (rc != GN_OK) {
+            note(std::string("gn_plugin_register failed: ") + e->name);
+            rollback();
+            return rc;
+        }
+        inst.registered = true;
+    }
+
+    active_ = true;
+    return GN_OK;
 }
 
 } // namespace gn::core

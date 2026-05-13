@@ -1,0 +1,88 @@
+# Roadmap status resolver — explicit map from feature bullet name
+# (the bold-bracketed identifier in docs/ROADMAP.en.md) to a check
+# rule the resolver can evaluate against the working tree.
+#
+# Rule types:
+#   plugin_exists: PATH        — directory exists relative to repo root
+#   extension_registered: ID   — grep for gn_extension_id = "ID" or
+#                                similar registration in plugins/
+#   symbol_in_kernel: SYM      — grep for SYM under core/ or sdk/
+#   kernel_feature: TOKEN      — grep across core/ + plugins/ for TOKEN
+#   file_exists: PATH          — explicit file path
+#   any: [rule, rule, ...]     — pass if any inner rule passes
+#   all: [rule, rule, ...]     — pass if every inner rule passes
+#
+# Each entry MAY also carry `partial_if`: a rule that, when matched
+# without the main rule matching, downgrades the status from
+# `missing` to `partial`. Useful for features where a precursor is
+# in tree but the full piece is not.
+
+features:
+  "NAT-traversal pipeline":
+    rule:
+      any:
+        - plugin_exists: plugins/extensions/nat-traversal
+        - extension_registered: gn.nat
+    partial_if:
+      extension_registered: gn.heartbeat
+
+  "Multi-path scheduler":
+    rule:
+      any:
+        - plugin_exists: plugins/extensions/multipath
+        - extension_registered: gn.multipath
+    partial_if:
+      symbol_in_kernel: link_switch
+
+  "Directed relay → direct upgrade":
+    rule:
+      any:
+        - plugin_exists: plugins/extensions/relay-upgrade
+        - extension_registered: gn.relay
+
+  "Kademlia-style DHT":
+    rule:
+      plugin_exists: plugins/handlers/kademlia
+
+  "Address-based forwarding":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/router
+        - symbol_in_kernel: route_to_pk
+
+  "KV storage handler":
+    rule:
+      plugin_exists: plugins/handlers/kv
+
+  "Gossip sync handler":
+    rule:
+      plugin_exists: plugins/handlers/gossip
+
+  "Offline outbound queue":
+    rule:
+      any:
+        - kernel_feature: outbound_queue
+        - kernel_feature: offline_queue
+
+  "Fuzz harness":
+    rule:
+      any:
+        - file_exists: tests/fuzz/CMakeLists.txt
+        - file_exists: fuzz/CMakeLists.txt
+
+  "Coverage gating":
+    rule:
+      any:
+        - kernel_feature: llvm-cov
+        - kernel_feature: gcov
+        - kernel_feature: --coverage
+
+  "Plugin templates and scaffolder":
+    rule:
+      file_exists: nix/plugin.nix
+
+  "Test vectors":
+    rule:
+      any:
+        - plugin_exists: tests/vectors
+        - plugin_exists: docs/test-vectors

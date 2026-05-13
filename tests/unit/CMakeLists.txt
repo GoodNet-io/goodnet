@@ -65,6 +65,18 @@ if(TARGET goodnet_security_null)
     )
 endif()
 
+# RemoteHost regression spawns the in-tree remote_echo worker binary
+# over the subprocess-plugin wire protocol. Force-build it first and
+# thread its path through an env-fallback so ctest can find it even
+# when run from a different CWD.
+if(TARGET remote_echo_worker)
+    add_dependencies(goodnet_unit_tests remote_echo_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_ECHO_PATH=\"$<TARGET_FILE:remote_echo_worker>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_unit_tests
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60

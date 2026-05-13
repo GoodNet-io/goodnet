@@ -1,0 +1,25 @@
+# Minimal Docker image around the static GoodNet build.
+#
+# **Reproducible alternative**: `nix build .#docker-static` builds
+# the equivalent image via `dockerTools.buildLayeredImage` with a
+# deterministic hash. The Nix path is what bench/comparison picks
+# up when the dev shell is active; this Dockerfile stays as the
+# imperative recipe for operators who don't have Nix wired up.
+#
+# The static binary (~1.4 MB) is dynamically linked against glibc;
+# `debian:bookworm-slim` ships glibc + ld-linux + libstdc++ at
+# ~30 MiB, so the resulting image is essentially "glibc base +
+# goodnet". A fully-static (musl) build would let the base drop
+# to `scratch` or `alpine:3` at ~5 MiB, but requires re-linking
+# against musl across every plugin's dependency closure (libsodium,
+# OpenSSL, …) — a separate plan.
+#
+# Build context: this Dockerfile expects `goodnet` (the binary)
+# in the build root. `bench/comparison/runners/binary_sizes.sh`
+# copies it from `build-static/bin/goodnet` into a tmp context.
+FROM debian:bookworm-slim
+
+COPY goodnet /usr/local/bin/goodnet
+
+ENTRYPOINT ["/usr/local/bin/goodnet"]
+CMD ["version"]

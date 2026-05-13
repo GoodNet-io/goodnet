@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.22)
 
 if(NOT TARGET GoodNet::sdk)
     project(goodnet_protocol_gnet
-        VERSION   0.1.0
+        VERSION   1.0.0
         LANGUAGES CXX)
     find_package(GoodNet REQUIRED)
     include(CTest)
@@ -34,10 +34,35 @@ target_link_libraries(goodnet_protocol_gnet
         GoodNet::sdk
         GoodNet::ctx_accessors
     PRIVATE
-        GoodNet::kernel
+        PkgConfig::SODIUM
 )
+# protocol.cpp / wire.cpp consume `core/util/endian.hpp` from the
+# kernel tree (reachable through the PUBLIC include directories
+# entry above, PROJECT_SOURCE_DIR covers core/) plus
+# `sodium_memcmp` from libsodium (PRIVATE — used inside the static
+# archive only, doesn't bleed into the public link surface).
+# Linking `GoodNet::kernel` would route consumers back through the
+# kernel graph and prevent the install-tree shape below from being
+# a decoupled add-on.
 
 target_compile_features(goodnet_protocol_gnet PUBLIC cxx_std_23)
+
+# Export under the `GoodNet::protocol_gnet` alias name (matches the
+# in-tree alias above so consumers using `find_package(GoodNet)`
+# spell the dependency identically to a source-tree subdirectory
+# build).
+set_target_properties(goodnet_protocol_gnet PROPERTIES
+    EXPORT_NAME protocol_gnet)
+
+# Install the static archive alongside the kernel archives.
+# `gn_core_init` references `GnetProtocol::vtable`; without this
+# install, `find_package(GoodNet)` consumers that link only
+# `GoodNet::kernel` see unresolved-vtable at link time. The plugin's
+# archive lands next to libgoodnet_kernel.a so consumers add a
+# single `GoodNet::protocol_gnet` link line and the symbol resolves.
+install(TARGETS goodnet_protocol_gnet
+    EXPORT GoodNetTargets
+    ARCHIVE)
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)

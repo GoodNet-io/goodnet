@@ -6,7 +6,108 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-Nothing yet.
+## [1.0.0-rc3] — 2026-05-13
+
+### Real-mode round-trip bench cases for comparable libp2p / iroh side-by-side
+
+`bench/plugins/bench_real_e2e.cpp` gets three new sibling fixture
+classes — `RealFixtureTcpEcho`, `RealFixtureUdpEcho`,
+`RealFixtureIpcEcho` — each registering an
+`<plug>EchoRoundtrip/<sz>` case that drives full bob→alice→bob
+echo through the production stack (kernel + Noise XX + gnet). One
+new `RxEchoResponder` handler in `core/kernel/test_bench_helper.hpp`
+echoes the inbound payload back via `api->send(env->conn_id, ...)`,
+gated on the conn_id `api_size` contract per `sdk/types.h`. The
+aggregator now routes these into a new section "А. Comparable
+echo round-trip — production stack vs libp2p / iroh" pivoted on
+payload, listing GoodNet TCP / IPC rows next to libp2p (TCP +
+Noise XX + Yamux) and iroh (QUIC + TLS 1.3) outputs from the
+existing comparison runners. The `bench/comparison/runners/`
+`libp2p_rs.sh` and `iroh.sh` payload sweeps drop to
+`64 1024 8192 32768` so every column meets at the same payload
+ladder. Methodology doc gets §1.3 pairing rule so the report
+states what's comparable to what (same transport + AEAD +
+framing/mux shape).
+
+### Free-kernel showcase bench
+
+New `bench_showcase` binary at `bench/showcase/bench_showcase.cpp`
++ `core/kernel/test_bench_showcase.hpp` (~340 LOC helper). Six
+sections, each demonstrating one capability that requires the
+kernel-driven architecture:
+
+* `MultiConnFixture/FallbackThroughput` — alice listens on TCP +
+  UDP + IPC simultaneously, three connection records under one
+  `remote_pk`. Without a strategy plugin the kernel's
+  `send_to(peer_pk)` falls back to first-found; throughput
+  counters confirm the multi-conn shape on alice side.
+* `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` —
+  the `goodnet_float_send_rtt` plugin's picker is registered as
+  `gn.strategy.rtt-optimal` directly through
+  `host_api->register_extension`. Synthetic RTT samples injected
+  via `on_path_event` settle on the lowest-RTT carrier; a runtime
+  degradation flips the winner after the EWMA-α=1/8 hysteresis
+  crosses 0.75× threshold.
+* `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` —
+  PoC for post-handshake Noise→Null security provider migration.
+  After the Noise XX handshake establishes identity binding, the
+  bench reaches the kernel's `SecuritySession` through a new
+  `_test_clear_inline_crypto()` method that zeros the inline
+  AEAD state. Subsequent `encrypt_transport` /
+  `decrypt_transport` fall through to the provider vtable
+  (copy-through for `gn.security.null`), dropping per-frame AEAD
+  cost while the handshake hash stays alive. The seam is gated
+  at runtime through the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`
+  environment variable; without the var the method returns
+  `GN_ERR_INVALID_STATE` so production binaries that accidentally
+  link the showcase header fail closed.
+  `tests/unit/security/test_inline_downgrade_gate.cpp` pins the
+  contract — refuses without env var, refuses outside
+  `SecurityPhase::Transport`, refuses on string values other than
+  literal `1`. v1.x followup exposes a kernel-driven
+  `SessionRegistry::downgrade_*` API; the bench's PoC suffices
+  to surface the latency-step number now.
+* `FanoutFixture/Producers` — N producer threads on bob spam
+  `api.send_to(alice_pk)` in parallel; the kernel's
+  strand-per-conn + crypto worker pool absorb the load. Throughput
+  scaling vs N exposes where the single-writer drain CAS on
+  `PerConnQueue::drain_scheduled` becomes the bottleneck.
+* `FailoverFixture/IpcDrop` — picker drives between three
+  synthetic carriers, mid-iteration `CONN_DOWN` is injected on
+  the IPC slot, next pick routes to TCP. Stand-in for the
+  Slice-9-KERNEL auto-emit hook on `notify_disconnect` that is
+  still pending; the bench fires `on_path_event` manually so the
+  shape is testable now.
+* `MobilityFixture/LanShortcut` — one carrier starts as the
+  active path (synthetic TURN-relayed, RTT 60µs); mid-iteration
+  a second carrier appears with RTT 2µs (synthetic LAN host
+  candidate). Strategy `CONN_UP` flips the winner; the same peer
+  identity survives the path migration. Stand-in for the C.4
+  network-mobility netlink hook (`RTM_NEWLINK` →
+  `GN_CONN_EVENT_NETWORK_CHANGE`). Acceptance verifies bytes
+  through the TURN-relayed conn stop growing after the flip.
+
+Time-series cases write CSV side-channels to
+`/tmp/showcase-<tag>-<pid>.csv` that the companion aggregator
+`bench/comparison/reports/showcase_aggregate.py` picks up to
+render inline ASCII sparklines in
+`bench/reports/showcase-<sha>.md`. Tests for the aggregator live
+in `tests/aggregator/test_showcase_aggregator.py` (4 pytest
+cases). The showcase report is intentionally separate from the
+fair-comparison aggregate — `bench/showcase/README.md` documents
+the boundary.
+
+### Build gate
+
+`bench_showcase` configures when `-DGOODNET_BENCH_STRATEGIES=ON`
+is passed AND every needed plugin target is in the build
+(`goodnet_security_noise`, `goodnet_float_send_rtt_objects`,
+`goodnet_tcp_objects`, `goodnet_udp_objects`,
+`goodnet_ipc_objects`). Pre-existing `bench_float_send_rtt` was
+re-enabled along the way; one compile-only fixup in its source
+fully-qualifies `FloatSendRtt` to the new
+`gn::strategy::float_send_rtt::` namespace and passes `nullptr`
+to the host-api-taking constructor.
 
 ## [1.0.0-rc1] — 2026-05-08
 

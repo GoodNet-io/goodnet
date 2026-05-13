@@ -1,9 +1,16 @@
 cmake_minimum_required(VERSION 3.22)
 
 project(GoodNet
-        VERSION       0.1.0
+        VERSION       1.0.0
         DESCRIPTION   "Network kernel and SDK"
         LANGUAGES     CXX C)
+
+# Pre-release suffix appended to PROJECT_VERSION wherever the full
+# string is published (CLI banner, package metadata, Nix derivation).
+# CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
+# rides separately. Drop to empty when cutting `v1.0.0` final.
+set(GOODNET_VERSION_SUFFIX "-rc3" CACHE STRING "Pre-release suffix (e.g. -rc3); empty for stable")
+set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
 set(CMAKE_CXX_STANDARD          23)
@@ -59,6 +66,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/Pch.cmake")
 # development convenience; production builds package each plugin separately.
 option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
+option(GOODNET_BUILD_BENCH            "Build the comprehensive bench suite (bench/)" OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
 
 # Build-acceleration toggles. Defaults pick the right path per build
@@ -180,6 +188,53 @@ if(GOODNET_BUILD_APPS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/CMakeLists.tx
     add_subdirectory(apps)
 endif()
 
+# ── Static-plugin registry (`-DGOODNET_STATIC_PLUGINS=ON`) ───────────────────
+# Wire every bundled plugin's OBJECT lib + suffix-named entry symbols
+# into the kernel binary. The helper generates `static_plugins.cpp`,
+# excludes the empty-default registry TU, and links every passed
+# plugin target via PRIVATE so downstream consumers still get the
+# dynamic-linkage contract from `find_package(GoodNet)`.
+#
+# Globally surface the option to the C++ preprocessor so kernel and
+# apps code (notably `apps/goodnet/subcommands/run.cpp`) can switch
+# to `PluginManager::load_static()` at compile time. The macros in
+# `sdk/plugin.h` are guarded on both this define AND
+# `GN_PLUGIN_STATIC_NAME` — defining only the former at the kernel
+# scope keeps the suffix rename limited to plugin TUs.
+if(GOODNET_STATIC_PLUGINS)
+    add_compile_definitions(GOODNET_STATIC_PLUGINS=1)
+endif()
+
+if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
+        AND TARGET goodnet)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/StaticPlugins.cmake")
+
+    set(_goodnet_static_plugin_list "")
+    foreach(_p IN ITEMS
+            goodnet_security_null
+            goodnet_security_noise
+            goodnet_link_ipc
+            goodnet_link_tcp
+            goodnet_link_udp
+            goodnet_link_tls
+            goodnet_link_ws
+            goodnet_link_ice
+            goodnet_link_quic
+            goodnet_handler_heartbeat
+            goodnet_strategy_float_send_rtt)
+        if(TARGET ${_p})
+            list(APPEND _goodnet_static_plugin_list ${_p})
+        endif()
+    endforeach()
+
+    if(_goodnet_static_plugin_list)
+        goodnet_register_static_plugins(goodnet
+            ${_goodnet_static_plugin_list})
+        message(STATUS
+            "  Static plugins    : ${_goodnet_static_plugin_list}")
+    endif()
+endif()
+
 # ── Examples & tests ─────────────────────────────────────────────────────────
 if(GOODNET_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
     add_subdirectory(examples)
@@ -187,6 +242,15 @@ endif()
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+# ── Benchmark suite ──────────────────────────────────────────────────────────
+# Opt-in via GOODNET_BUILD_BENCH. Pulls google-benchmark from the dev
+# shell; the suite covers per-plugin throughput / latency / handshake,
+# composition depth, and live comparisons vs mature solutions for the
+# UX / DX gap analysis the bench report exports.
+if(GOODNET_BUILD_BENCH AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/bench/CMakeLists.txt")
+    add_subdirectory(bench)
 endif()
 
 # ── Install / find_package(GoodNet) support ──────────────────────────────────

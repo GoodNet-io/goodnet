@@ -19,6 +19,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <mutex>
@@ -74,6 +75,23 @@ struct LinkStub {
     std::thread::id                        main_tid{};
     std::atomic<int>                       on_main_disconnects{0};
 
+    /// Sleep (microseconds) injected inside every `on_inbound`
+    /// call. Used by bench backpressure scenarios to deliberately
+    /// throttle the consumer so the kernel's send/recv buffers
+    /// build up and `pending_queue_bytes_*` gates fire. Zero (the
+    /// default) preserves the existing fast-path behaviour for
+    /// every other test that uses this stub.
+    std::atomic<int>                       inbound_sleep_us{0};
+
+    /// When true, `on_inbound` ONLY bumps the counter and skips
+    /// the payload copy into `inbound`. Required for long-running
+    /// stress benches that emit millions of frames — without this
+    /// the stub's vector grows by `total-bytes-sent`, reading like
+    /// a multi-GiB leak in RSS reports. The fast tests + assertion
+    /// suites leave this false (default) so existing
+    /// `last_payload` / `inbound[idx]` accesses keep working.
+    std::atomic<bool>                      inbound_discard_payload{false};
+
     static gn_result_t on_connect(
         void* host_ctx,
         const std::uint8_t /*remote_pk*/[GN_PUBLIC_KEY_BYTES],
@@ -98,12 +116,17 @@ struct LinkStub {
                                    const std::uint8_t* bytes,
                                    std::size_t size) {
         auto* h = static_cast<LinkStub*>(host_ctx);
-        {
+        if (!h->inbound_discard_payload.load(
+                std::memory_order_acquire)) {
             std::lock_guard lk(h->mu);
             h->inbound.emplace_back(bytes, bytes + size);
             h->inbound_owners.push_back(conn);
         }
         h->inbound_calls.fetch_add(1);
+        if (const int us = h->inbound_sleep_us.load(
+                std::memory_order_acquire); us > 0) {
+            std::this_thread::sleep_for(std::chrono::microseconds(us));
+        }
         return GN_OK;
     }
 

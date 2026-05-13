@@ -59,6 +59,19 @@ InlineCrypto::~InlineCrypto() {
     sodium_memzero(recv_key_, sizeof(recv_key_));
 }
 
+void InlineCrypto::clear_for_test() noexcept {
+    /// Zero key material the same way ~InlineCrypto does, but
+    /// drop `seeded_` so the next `encrypt`/`decrypt` returns
+    /// `GN_ERR_INVALID_STATE` and the session walks the vtable
+    /// fallback. Nonces left untouched — they're meaningless once
+    /// keys are zero and resetting them would mask a bench bug
+    /// where the session illegally re-encrypts after the
+    /// handoff. See `inline_crypto.hpp` for the env-var gate.
+    sodium_memzero(send_key_, sizeof(send_key_));
+    sodium_memzero(recv_key_, sizeof(recv_key_));
+    seeded_ = false;
+}
+
 bool InlineCrypto::seed(const gn_handshake_keys_t& keys) noexcept {
     if (!keys_nonzero(keys)) return false;
     std::memcpy(send_key_, keys.send_cipher_key, kKeyBytes);

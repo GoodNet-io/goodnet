@@ -4,6 +4,7 @@
 
 #include "session.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -298,6 +299,23 @@ std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
     /// `pending_bytes_.fetch_add` runs.
     pending_bytes_.store(0, std::memory_order_relaxed);
     return out;
+}
+
+gn_result_t SecuritySession::_test_clear_inline_crypto() {
+    /// Env-var gate — fail closed when the var is absent so a
+    /// production binary that accidentally calls this method
+    /// surfaces the misuse via the error code rather than
+    /// silently corrupting session state. See header comment
+    /// for the rationale.
+    const char* gate = std::getenv("GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE");
+    if (!gate || std::strcmp(gate, "1") != 0) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport) {
+        return GN_ERR_INVALID_STATE;
+    }
+    inline_crypto_.clear_for_test();
+    return GN_OK;
 }
 
 gn_result_t SecuritySession::decrypt_transport(

@@ -221,6 +221,26 @@ int cmd_run(std::span<const std::string_view> args) {
     plugins.set_manifest(std::move(manifest));
     plugins.set_manifest_required(true);
 
+#ifdef GOODNET_STATIC_PLUGINS
+    /// Static-linkage build: every plugin's entry symbols ship in the
+    /// kernel binary itself (suffix-renamed per `sdk/plugin.h` macros)
+    /// and the registry array `gn_plugin_static_registry[]` holds the
+    /// addresses. Skip the manifest path entirely — there are no .so
+    /// files to verify. `load_static()` mirrors `load()`'s two-phase
+    /// init+register with rollback on any failure.
+    std::size_t static_count = 0;
+    {
+        std::string diag;
+        if (plugins.load_static(&diag) != GN_OK) {
+            (void)std::fprintf(stderr,
+                "goodnet run: static plugin load failed — %s\n",
+                diag.c_str());
+            return 1;
+        }
+        static_count = plugins.size();
+    }
+    const std::size_t loaded_plugin_count = static_count;
+#else
     /// Pull the manifest's path list into a flat `std::vector<std::string>`
     /// for `PluginManager::load`. The manager re-hashes each path as
     /// part of the integrity gate, so we don't pre-verify here.
@@ -237,6 +257,8 @@ int cmd_run(std::span<const std::string_view> args) {
             return 1;
         }
     }
+    const std::size_t loaded_plugin_count = plugin_paths.size();
+#endif
 
     /// Signal handlers go in AFTER plugins load — until then a
     /// SIGTERM should kill the process immediately rather than walk
@@ -253,7 +275,7 @@ int cmd_run(std::span<const std::string_view> args) {
     /// users set `log.console_level = "info"` to keep this line
     /// visible on a Release deployment that otherwise pins WARN.
     GN_LOG_INFO("goodnet run: kernel up, {} plugins loaded, awaiting signal",
-                plugin_paths.size());
+                loaded_plugin_count);
 
     /// Main loop: poll the quit flag every 100ms. Active work runs
     /// on plugin worker threads (asio io_context per transport,

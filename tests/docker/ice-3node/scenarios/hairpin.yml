@@ -1,0 +1,18 @@
+# Scenario: both peers share NAT-A (NAT-B unused). Peer A reaches
+# peer B through NAT-A's hairpin loopback. Exercises the
+# shared-upstream code path where two peers learn the SAME srflx
+# IP and have to fall back to host-candidate use.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: shared
+  # peer_b joins lan_a instead of lan_b so both peers come up
+  # behind NAT-A. NAT-B stays up but unused; keeping the same
+  # base topology lets `docker compose down` / `up` switch
+  # scenarios without restructuring the stack.
+  peer_b:
+    networks:
+      lan_a: { ipv4_address: 10.20.0.21 }
+      lan_b: !reset {}
+    environment:
+      WAIT_FOR_PEER: A

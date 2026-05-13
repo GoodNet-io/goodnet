@@ -172,7 +172,22 @@ PluginManifest::sha256_of_fd(int fd) noexcept {
 
 void PluginManifest::add_entry(const std::string& path,
                                 const PluginHash&  sha256) {
-    entries_.push_back({canonicalise(path), sha256});
+    ManifestEntry me{};
+    me.path   = canonicalise(path);
+    me.sha256 = sha256;
+    entries_.push_back(std::move(me));
+}
+
+void PluginManifest::add_entry(const std::string& path,
+                                const PluginHash&  sha256,
+                                ManifestKind       kind,
+                                std::vector<std::string> args) {
+    ManifestEntry me{};
+    me.path   = canonicalise(path);
+    me.sha256 = sha256;
+    me.kind   = kind;
+    me.args   = std::move(args);
+    entries_.push_back(std::move(me));
 }
 
 gn_result_t PluginManifest::parse(std::string_view  json,
@@ -240,7 +255,49 @@ gn_result_t PluginManifest::parse(std::string_view  json,
             return GN_ERR_INTEGRITY_FAILED;
         }
 
-        out.entries_.push_back({std::move(canonical), *digest});
+        ManifestEntry me{};
+        me.path   = std::move(canonical);
+        me.sha256 = *digest;
+        me.kind   = ManifestKind::Dynamic;
+
+        // Optional `kind`: "dynamic" (default) or "remote". Anything
+        // else is a hard parse error — the manifest is the trust
+        // root and ambiguous specs must reject rather than tolerate.
+        if (entry.contains("kind")) {
+            if (!entry["kind"].is_string()) {
+                diagnostic = "manifest entry `kind` must be a string";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            const std::string kind_s = entry["kind"].get<std::string>();
+            if      (kind_s == "dynamic") me.kind = ManifestKind::Dynamic;
+            else if (kind_s == "remote")  me.kind = ManifestKind::Remote;
+            else {
+                diagnostic = "manifest entry `kind` not one of "
+                             "{\"dynamic\",\"remote\"}: ";
+                diagnostic += kind_s;
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+        }
+
+        // Optional `args`: argv tail for remote workers. Quietly
+        // ignored when kind == Dynamic; the schema accepts it under
+        // any kind so an operator can keep a unified entry while
+        // switching linkage modes for a single deploy.
+        if (entry.contains("args")) {
+            if (!entry["args"].is_array()) {
+                diagnostic = "manifest entry `args` must be an array";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            for (const auto& a : entry["args"]) {
+                if (!a.is_string()) {
+                    diagnostic = "manifest `args` entry must be a string";
+                    return GN_ERR_INTEGRITY_FAILED;
+                }
+                me.args.emplace_back(a.get<std::string>());
+            }
+        }
+
+        out.entries_.push_back(std::move(me));
     }
     return GN_OK;
 }
@@ -261,6 +318,11 @@ find_entry(const std::vector<ManifestEntry>& entries,
 }
 
 }  // namespace
+
+const ManifestEntry* PluginManifest::find(const std::string& path) const {
+    const auto it = find_entry(entries_, path);
+    return it == entries_.end() ? nullptr : &*it;
+}
 
 bool PluginManifest::contains(const std::string& path) const {
     return find_entry(entries_, path) != entries_.end();

@@ -1,0 +1,17 @@
+[package]
+name    = "libp2p-echo"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+libp2p = { version = "0.55", features = [
+    "tokio", "tcp", "noise", "yamux", "macros",
+] }
+libp2p-stream = "=0.3.0-alpha"
+tokio       = { version = "1", features = ["full"] }
+futures     = "0.3"
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1

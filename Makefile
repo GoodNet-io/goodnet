@@ -9,11 +9,11 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help setup update dev \
-        build build-release \
+        build build-release build-static \
         test test-asan test-tsan test-all \
         run demo goodnet node \
         plugin-new plugin-pull plugin-install plugin-update \
-        docs \
+        docs livedoc livedoc-check livedoc-test \
         clean
 
 help:
@@ -27,6 +27,7 @@ help:
 	@echo "  make dev              enter dev shell (nix develop)"
 	@echo "  make build            Debug build (incremental)"
 	@echo "  make build-release    Release build"
+	@echo "  make build-static     Release build with every plugin linked statically"
 	@echo ""
 	@echo "Test:"
 	@echo "  make test             vanilla ctest (full suite)"
@@ -47,6 +48,9 @@ help:
 	@echo ""
 	@echo "Documentation:"
 	@echo "  make docs             Doxygen API ref + diagrams + canvas"
+	@echo "  make livedoc          refresh source-derived facts + injections"
+	@echo "  make livedoc-check    fail if working tree drifts from sources"
+	@echo "  make livedoc-test     unit tests for the livedoc tooling"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  make clean            remove build*/ and result/ symlinks"
@@ -67,6 +71,15 @@ build:
 
 build-release:
 	nix run .#build -- release
+
+# Single-binary build: every bundled plugin's `gn_plugin_init`
+# entry symbol gets suffix-renamed (`gn_plugin_init_link_tcp`, …)
+# so they can all link into the goodnet binary at once.
+# `PluginManager::load_static()` iterates the generated registry
+# instead of dlopen. Result: one Release binary that ships every
+# plugin's implementation (.text) without separate `.so` files.
+build-static:
+	nix run .#build -- static
 
 # Test
 test:
@@ -111,6 +124,21 @@ plugin-update:
 docs:
 	nix run .#docs
 
+# Livedoc — refresh source-derived facts + diagrams + canvas +
+# inject into narrative markdown. Idempotent; commit the diff to
+# keep docs in sync with the working tree.
+livedoc:
+	nix develop --command python3 tools/livedoc.py --all
+
+# Same as `livedoc` but exits non-zero if the working tree drifts
+# from what the generator would produce. Useful as a CI gate.
+livedoc-check:
+	nix develop --command python3 tools/livedoc.py --check
+
+# Unit test suite for the livedoc Python tooling itself.
+livedoc-test:
+	nix develop --command python3 -m pytest tests/livedoc -v
+
 # Maintenance
 clean:
-	rm -rf build build-* result result-*
+	rm -rf build build-* result result-* /tmp/static_v2 /tmp/dyn_release

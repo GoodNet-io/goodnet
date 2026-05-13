@@ -49,11 +49,25 @@ namespace gn::core {
 /// without allocating; the caller serialises through hex.
 using PluginHash = std::array<std::uint8_t, 32>;
 
+/// Linkage mode the manifest declares for a single entry. The
+/// kernel uses it to choose between `dlopen` and a subprocess
+/// spawner over `sdk/remote/wire.h`. Defaults to `Dynamic` when
+/// the manifest entry omits the field — preserves the historical
+/// dlopen-only behaviour.
+enum class ManifestKind : std::uint8_t {
+    Dynamic = 0,   ///< dlopen path; the historical default
+    Remote  = 1    ///< subprocess worker over the wire protocol
+};
+
 /// Single allowlist record: an absolute or build-relative plugin
-/// path paired with the SHA-256 the operator approved.
+/// path paired with the SHA-256 the operator approved. The
+/// `kind`/`args` fields are only meaningful for remote entries and
+/// are quietly ignored by the dlopen path.
 struct ManifestEntry {
-    std::string path;
-    PluginHash  sha256{};
+    std::string  path;
+    PluginHash   sha256{};
+    ManifestKind kind{ManifestKind::Dynamic};
+    std::vector<std::string> args;  ///< argv tail handed to a remote worker
 };
 
 /// Operator-supplied integrity allowlist.
@@ -111,6 +125,13 @@ public:
     /// lookups match equivalent path spellings.
     void add_entry(const std::string& path, const PluginHash& sha256);
 
+    /// Variant of `add_entry` that takes the linkage kind + worker
+    /// argv. Required when the test fixture wants to drive the
+    /// remote linkage path through `PluginManager::load` rather
+    /// than parsing a JSON manifest from disk.
+    void add_entry(const std::string& path, const PluginHash& sha256,
+                   ManifestKind kind, std::vector<std::string> args = {});
+
     /// Verify @p path against the manifest.
     ///
     /// Returns `true` when:
@@ -151,6 +172,12 @@ public:
     [[nodiscard]] const std::vector<ManifestEntry>& entries() const noexcept {
         return entries_;
     }
+
+    /// Look up the entry for @p path, returning nullptr when the
+    /// path is absent. Path canonicalisation matches the rules of
+    /// `contains`/`verify` so relative and absolute spellings
+    /// collapse to the same key.
+    [[nodiscard]] const ManifestEntry* find(const std::string& path) const;
 
     /// Decode a 64-character hex string into a 32-byte digest.
     /// Returns `nullopt` on length mismatch or non-hex characters.

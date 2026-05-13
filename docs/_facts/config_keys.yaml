@@ -1,0 +1,103 @@
+keys:
+- name: ice.aggressive_nomination
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 177
+- name: ice.check_interval_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 156
+- name: ice.consent_max_failures
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 152
+- name: ice.keepalive_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 148
+- name: ice.path_mtu
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 168
+- name: ice.session_timeout_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 144
+- name: ice.turn_password
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 133
+- name: ice.turn_servers
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 95
+- name: ice.turn_tcp
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 184
+- name: ice.turn_tls
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 192
+- name: ice.turn_username
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 120
+- name: links.tls.cert_path
+  type: string
+  family: links
+  sources:
+  - file: plugins/links/tls/tls.cpp
+    line: 493
+- name: links.tls.key_path
+  type: string
+  family: links
+  sources:
+  - file: plugins/links/tls/tls.cpp
+    line: 502
+- name: links.tls.verify_peer
+  type: bool
+  family: links
+  sources:
+  - file: plugins/links/tls/tls.cpp
+    line: 386
+- name: udp.new_conn_burst
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 75
+- name: udp.new_conn_lru_cap
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 79
+- name: udp.new_conn_rate
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 71
