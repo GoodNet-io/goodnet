@@ -102,63 +102,94 @@ the kernel does in exchange.
 
 Same machine, same kernel, same ChaCha20-Poly1305 primitive.
 WireGuard is a kernel module: zero-copy data plane, single
-peer = single IP tunnel, no application-layer framing or
-routing. GoodNet is userspace: peer identities are public
-keys, every send carries a typed message envelope through a
-plugin pipeline. The two pay for different things.
+peer = single IP tunnel, encryption pinned to one softirq CPU
+per peer, no application-layer framing or routing. GoodNet is
+userspace: peer identities are public keys, every send carries
+a typed message envelope through a plugin pipeline. The two
+pay for different things.
 
-| Surface | Throughput | What it carries |
-|---|---|---|
-| `veth` loopback (no crypto, kernel baseline)            | ~80 Gb/s | raw IP frames |
-| **GoodNet UDP parody @ MTU** (no crypto, no protocol)   | **8.7 Gb/s** | raw datagrams through link plugin |
-| **WireGuard single tunnel** (kernel, single-thread)     | **~4.9 Gb/s** | IP tunnel, ChaCha20-Poly1305 per packet |
-| **GoodNet IPC real @ 32 KiB** (kernel + Noise + gnet)   | **~2.0 Gb/s** | typed `gn_message_t` envelopes, peer-pk addressing |
-| **GoodNet TCP real @ 32 KiB** (kernel + Noise + gnet)   | **~1.7 Gb/s** | same, over TCP loopback |
+| Surface | Throughput | Parallelism | What it carries |
+|---|---|---|---|
+| `veth` loopback baseline (no crypto, `iperf3 -P 8`)        | **~80 Gb/s**  | 8 streams, kernel splice + `MSG_ZEROCOPY` | raw IP frames |
+| **GoodNet UDP parody, 8 parallel processes, no crypto**    | **~28 Gb/s**  | 8 procs × 1 strand each | raw datagrams through link plugin |
+| **GoodNet UDP parody single conn, no crypto**              | **~8.7 Gb/s** | one asio strand                          | raw datagrams through link plugin |
+| **WireGuard single tunnel, kernel, with crypto**           | **~4.9 Gb/s** | one softirq CPU pinned                   | IP tunnel, ChaCha20-Poly1305 per packet |
+| **GoodNet IPC real @ 32 KiB, with crypto**                 | **~2.0 Gb/s** | one strand, single conn                  | typed `gn_message_t` envelopes, peer-pk addressing |
+| **GoodNet TCP real @ 32 KiB, with crypto**                 | **~1.7 Gb/s** | one strand, single conn                  | same, over TCP loopback |
 
-What the table shows. The link plugin alone (parody UDP) tops
-WireGuard because there's no crypto and no protocol framing in
-the path. With the production stack engaged (Noise XX + gnet
-protocol layer + per-message envelope construction in userspace),
-GoodNet pays 2–3× WireGuard's per-byte cost. That gap is the
-operator-facing plugin model — the price of every byte going
-through `host_api->send()`, framed by `gn.protocol.gnet`,
-AEAD-sealed in userspace, dispatched into a strand-per-conn
-write pump. WireGuard skips all five layers.
+**Two reads of the table.**
 
-What the table does not show. WireGuard delivers raw IP packets
-between two endpoints. It does not address peers by public key
-in the application layer, does not route by message id, does
-not let one peer have three concurrent transports under one
-identity, does not migrate carriers when a mobile device shifts
-networks, does not give a strategy plugin the slot to pick a
-path per send. Those are the moves the
+*Per-connection.* WireGuard's single-tunnel ceiling (~4.9 Gb/s)
+is also single-CPU: the softirq context that runs the tunnel
+pins one core, encryption serialises on it. GoodNet's
+single-connection-with-crypto sits at ~1.7-2.0 Gb/s through the
+production stack — slower per byte because every send walks
+`host_api->send()`, `gn.protocol.gnet` framing, Noise AEAD,
+strand-per-conn write pump. The 2-3× gap is the cost of the
+userspace plugin model on this hardware.
+
+*Aggregate.* WireGuard's single tunnel cannot saturate more
+than one CPU regardless of how many cores you give it. GoodNet's
+`CryptoWorkerPool` distributes AEAD jobs across worker threads,
+so multi-conn aggregate scales near-linearly: 8 parallel
+no-crypto UDP processes hit **~28 Gb/s** on this 12-thread
+laptop, and per the legacy 4-connection inline-crypto bench in
+[`docs/perf/analysis.en.md`](docs/perf/analysis.en.md), the
+encrypted multi-conn path reached **19.84 Gb/s** — already 4×
+the WireGuard single-tunnel ceiling, on the same machine, with
+crypto.
+
+**Why 80 Gb/s is the kernel-only ceiling.** The veth baseline
+comes from `iperf3 -P 8` doing `splice()` and `MSG_ZEROCOPY` —
+the kernel hands packets between network namespaces without
+ever materialising a user-space buffer. Any userspace plugin
+pattern pays a syscall + memcpy per `write()`. The roof for
+userspace without zero-copy on this hardware is somewhere
+between 30 Gb/s (no crypto, multi-conn) and 40 Gb/s with an
+`io_uring` backend; both are deferred. `nix run .#build --
+release` and `nix run .#test -- asan` keep the harness moving
+on Release performance work toward that ceiling.
+
+**What WireGuard does not do, at all.** It delivers raw IP
+packets between two endpoints. It does not address peers by
+public key in the application layer, does not route by message
+id, does not let one peer have three concurrent transports
+under one identity, does not migrate carriers when a mobile
+device shifts networks, does not give a strategy plugin the
+slot to pick a path per send. Those moves are what the
 [`bench_showcase`](bench/showcase/README.md) binary
-demonstrates in six sections — capabilities the kernel does in
-exchange for the throughput tax above. WireGuard's architecture
-has no slot for any of them; libp2p / WebRTC / gRPC each only
+demonstrates in six sections — capabilities the kernel pays the
+throughput tax above to provide. WireGuard's architecture has
+no slot for any of them; libp2p / WebRTC / gRPC each only
 partially overlap.
-
-This is loopback-only evidence. On a real 10 Gb/s NIC, raw IP
-zero-copy still wins on throughput per CPU cycle — but on the
-exact same hardware that runs WireGuard, GoodNet runs every
-plugin it ships in userspace plus the application stack on top
-of WireGuard's surface. The two are doing different jobs.
 
 Reproduce:
 
 ```sh
 nix run .#build -- release
+
+# Real-mode echo, with crypto, single conn
 ./build-release/bench/bench_real_e2e \
     --benchmark_filter='RealFixture' \
     --benchmark_min_time=1s --benchmark_repetitions=3
+
+# Parody throughput, no crypto, single conn
 ./build-release/bench/bench_udp \
     --benchmark_filter='Throughput' \
     --benchmark_min_time=1s --benchmark_repetitions=3
+
+# Multi-process aggregate (no-crypto upper bound on this box)
+for i in $(seq 1 8); do
+    ./build-release/bench/bench_udp \
+        --benchmark_filter='Throughput/1200' \
+        --benchmark_min_time=2s &
+done
+wait
 ```
 
-Full numbers in [`bench/reports/<sha>.md` § "А. Comparable echo
-round-trip"](bench/reports/) and per-section showcase report at
-`bench/reports/showcase-<sha>.md`.
+Full per-bench numbers in [`bench/reports/<sha>.md` § "А.
+Comparable echo round-trip"](bench/reports/) and the
+showcase report at `bench/reports/showcase-<sha>.md`.
 
 ## Architecture
 
