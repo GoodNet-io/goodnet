@@ -193,6 +193,31 @@ gn_result_t gn_core_init(gn_core_t* core) {
     }
 
     walk_to_ready(core->kernel);
+
+#ifdef GOODNET_STATIC_PLUGINS
+    // Static-linkage build: every bundled plugin's entry symbols
+    // ship inside the kernel binary (suffix-renamed per
+    // `sdk/plugin.h` macros) and `gn_plugin_static_registry[]`
+    // carries their addresses. Walk the registry now so embedded
+    // hosts (Solas, in-process operator UIs) don't have to call
+    // `PluginManager::load_static` themselves — the dynamic-load
+    // path in `gn_core_load_plugin` stays available for hosts that
+    // do their own composition.
+    {
+        std::string diag;
+        if (const auto rc = core->plugins.load_static(&diag);
+            rc != GN_OK) {
+            // Don't roll back `init_done` — the kernel is otherwise
+            // healthy and the host might recover by registering
+            // providers in-process; just surface the diagnostic on
+            // stderr the same way `apps/goodnet run` does.
+            (void)std::fprintf(stderr,
+                "gn_core_init: static plugin load failed — %s\n",
+                diag.c_str());
+        }
+    }
+#endif
+
     return GN_OK;
 }
 

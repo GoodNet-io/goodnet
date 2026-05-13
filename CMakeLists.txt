@@ -221,8 +221,7 @@ if(GOODNET_STATIC_PLUGINS)
     add_compile_definitions(GOODNET_STATIC_PLUGINS=1)
 endif()
 
-if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
-        AND TARGET goodnet)
+if(GOODNET_STATIC_PLUGINS)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/StaticPlugins.cmake")
 
     set(_goodnet_static_plugin_list "")
@@ -244,8 +243,25 @@ if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
     endforeach()
 
     if(_goodnet_static_plugin_list)
-        goodnet_register_static_plugins(goodnet
+        # Bundle the registry + plugin objects into the kernel
+        # static archive. Targeting `goodnet_kernel` directly
+        # (the STATIC variant) — `target_sources($<TARGET_OBJECTS
+        # :p>)` resolves at the archive step, so the plugin .o
+        # files actually land in `libgoodnet_kernel.a`. Targeting
+        # `goodnet_kernel_objects` (OBJECT) drops the TARGET_OBJECTS
+        # generator expression silently. Same registry then reaches
+        # apps/goodnet (links kernel), find_package consumers like
+        # Solas (link kernel), and in-process operator UIs.
+        # `gn_core_init` walks the registry via
+        # `PluginManager::load_static` automatically under the
+        # GOODNET_STATIC_PLUGINS compile gate.
+        goodnet_register_static_plugins(goodnet_kernel
             ${_goodnet_static_plugin_list})
+        # `goodnet_kernel_shared` is currently built from the same
+        # OBJECT lib without the per-plugin TARGET_OBJECTS bundling
+        # — operator UIs that need static plugins in a shared
+        # variant should adjust the recipe; in-tree apps/goodnet
+        # and find_package consumers go through the STATIC variant.
         message(STATUS
             "  Static plugins    : ${_goodnet_static_plugin_list}")
     endif()
