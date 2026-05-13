@@ -11,11 +11,13 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <new>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include <core/identity/node_identity.hpp>
@@ -114,6 +116,43 @@ void gn_core_destroy(gn_core_t* core) {
     delete core;
 }
 
+gn_result_t gn_core_install_identity_from_file(gn_core_t*  core,
+                                               const char* path) {
+    if (core == nullptr || path == nullptr) return GN_ERR_NULL_ARG;
+
+    // Same `init_done` gate `gn_core_init` uses — the C ABI
+    // contract is "install before init". Calling on an already-
+    // initialised kernel is the operator's bug; surface it as
+    // INVALID_STATE rather than racing the protocol-layer
+    // registration.
+    if (core->init_done.load(std::memory_order_acquire)) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (core->kernel.has_node_identity()) {
+        return GN_ERR_INVALID_STATE;
+    }
+
+    auto loaded = gn::core::identity::NodeIdentity::load_from_file(path);
+    if (!loaded) {
+        // `NodeIdentity::load_from_file` returns a tl::expected
+        // with a `Error` describing the failure. We don't have
+        // a stable enum mapping yet; surface NOT_FOUND when the
+        // file is plain missing, INTEGRITY_FAILED otherwise so
+        // the operator can distinguish "no key yet" from "key
+        // tampered or unreadable".
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+            return GN_ERR_NOT_FOUND;
+        }
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+
+    const auto pk = loaded->device().public_key();
+    core->kernel.identities().add(pk);
+    core->kernel.set_node_identity(std::move(*loaded));
+    return GN_OK;
+}
+
 gn_result_t gn_core_init(gn_core_t* core) {
     if (core == nullptr) return GN_ERR_NULL_ARG;
 
@@ -123,14 +162,22 @@ gn_result_t gn_core_init(gn_core_t* core) {
         return GN_ERR_INVALID_STATE;
     }
 
-    auto identity = gn::core::identity::NodeIdentity::generate(/*expiry*/ 0);
-    if (!identity.has_value()) {
-        core->init_done.store(false, std::memory_order_release);
-        return GN_ERR_INTEGRITY_FAILED;
+    // Skip the fresh-keypair mint when the host already injected
+    // a NodeIdentity through `gn_core_install_identity_from_file`.
+    // Production hosts that keep one identity per system (chat
+    // clients, operator daemons) want their persisted key to
+    // outlive `gn_core_init`; the throw-away mint is reserved for
+    // ad-hoc CLIs that don't carry state across runs.
+    if (!core->kernel.has_node_identity()) {
+        auto identity = gn::core::identity::NodeIdentity::generate(/*expiry*/ 0);
+        if (!identity.has_value()) {
+            core->init_done.store(false, std::memory_order_release);
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        const auto pk = identity->device().public_key();
+        core->kernel.identities().add(pk);
+        core->kernel.set_node_identity(std::move(*identity));
     }
-    const auto pk = identity->device().public_key();
-    core->kernel.identities().add(pk);
-    core->kernel.set_node_identity(std::move(*identity));
 
     /// Register the canonical mesh-framing layer. Plugin-supplied
     /// alternatives (raw via gn_core_register_protocol; future ssh
