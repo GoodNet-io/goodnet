@@ -75,34 +75,58 @@ cross.stdenv.mkDerivation {
   # the regular nixpkgs `asio` works through the cross stdenv. The
   # mingw stub of libsodium / spdlog / fmt / nlohmann_json /
   # pthreads is what gets linked into goodnet.exe.
-  buildInputs = [
-    asio-win
-    # spdlog upstream builds + runs its own utests by default. The
-    # tests touch MSVC-only `_dupenv_s` which mingw's binutils
-    # doesn't resolve. The library itself compiles fine; only the
-    # tests trip. Disable the test target so the cross-build
-    # produces just the libs we link against.
-    (cross.spdlog.overrideAttrs (old: {
-      cmakeFlags = (old.cmakeFlags or []) ++ [
-        "-DSPDLOG_BUILD_TESTS=OFF"
-        "-DSPDLOG_BUILD_EXAMPLE=OFF"
-      ];
-      doCheck = false;
-    }))
-    # fmt: same — skip tests so a mingw cross stays focused on the
-    # library artefact.
-    (cross.fmt.overrideAttrs (old: {
-      cmakeFlags = (old.cmakeFlags or []) ++ [
-        "-DFMT_TEST=OFF"
-        "-DFMT_DOC=OFF"
-      ];
-      doCheck = false;
-    }))
-  ] ++ (with cross; [
-    nlohmann_json
-    libsodium
-    windows.pthreads
-  ]);
+  buildInputs =
+    let
+      # spdlog / fmt / libsodium are forced to static-only — the
+      # Windows MVP ships a single `goodnet.exe` with no
+      # neighbouring DLLs. Each upstream nixpkgs recipe exposes a
+      # native knob:
+      #   * fmt: `enableShared` (default true, flip false).
+      #   * spdlog: `staticBuild` (default false, flip true).
+      #   * libsodium: no parameter — re-run configure with
+      #     `--disable-shared`.
+      # spdlog `propagatedBuildInputs = [ fmt ]` — without rerouting
+      # spdlog's fmt to OUR static fmt, the propagated default
+      # leaks back as a shared-linkage candidate at the goodnet
+      # link step. Hence the explicit `spdlog.override { fmt =
+      # fmt-static; }` below.
+      fmt-static = (cross.fmt.override { enableShared = false; }).overrideAttrs (old: {
+        cmakeFlags = (old.cmakeFlags or []) ++ [
+          "-DFMT_TEST=OFF"
+          "-DFMT_DOC=OFF"
+        ];
+        doCheck = false;
+      });
+      spdlog-static = (cross.spdlog.override {
+        staticBuild = true;
+        fmt = fmt-static;
+      }).overrideAttrs (old: {
+        cmakeFlags = (old.cmakeFlags or []) ++ [
+          "-DSPDLOG_BUILD_TESTS=OFF"
+          "-DSPDLOG_BUILD_EXAMPLE=OFF"
+        ];
+        doCheck = false;
+      });
+      sodium-static = cross.libsodium.overrideAttrs (old: {
+        configureFlags = (old.configureFlags or []) ++ [
+          "--disable-shared"
+          "--enable-static"
+        ];
+      });
+    in
+    [
+      asio-win
+      fmt-static
+      spdlog-static
+      sodium-static
+    ] ++ (with cross; [
+      nlohmann_json
+      # `windows.pthreads` provides libwinpthread; mingw's gcc
+      # `-static -static-libgcc -static-libstdc++` switches its
+      # libstdc++ / libgcc / libwinpthread links to static archives
+      # the toolchain ships alongside the dlls.
+      windows.pthreads
+    ]);
 
   cmakeFlags = [
     "-DCMAKE_BUILD_TYPE=Release"
@@ -120,21 +144,15 @@ cross.stdenv.mkDerivation {
 
   doCheck = false;
 
-  # The static-plugin binary is just `bin/goodnet.exe`. Cross-stdenv's
-  # default `installPhase` already runs `cmake --install`, which the
-  # apps/ CMakeLists wires to `install(TARGETS goodnet RUNTIME ...)`.
-  # We just need to drop in any mingw runtime DLLs the .exe needs at
-  # runtime (libstdc++-6.dll, libgcc_s_seh-1.dll, libwinpthread-1.dll
-  # — all in `cross.stdenv.cc.cc.lib`).
-  postInstall = ''
-    mkdir -p $out/bin
-    for dll in \
-      ${cross.stdenv.cc.cc.lib}/${cross.stdenv.hostPlatform.config}/lib/libstdc++-6.dll \
-      ${cross.stdenv.cc.cc.lib}/${cross.stdenv.hostPlatform.config}/lib/libgcc_s_seh-1.dll \
-      ${cross.windows.pthreads}/bin/libwinpthread-1.dll; do
-      [ -f "$dll" ] && cp "$dll" $out/bin/ || true
-    done
-  '';
+  # The static-plugin binary is just `bin/goodnet.exe`. With
+  # `-static -static-libgcc -static-libstdc++` (set in apps/goodnet/
+  # CMakeLists.txt under WIN32) plus `--disable-shared` rebuilds of
+  # spdlog / fmt / libsodium in `buildInputs` above, the result is
+  # a single self-contained executable — no neighbouring DLLs are
+  # required at run-time. `dontPatchELF = true` skips the
+  # nix-mingw fixup that would copy in the dynamic mingw runtime
+  # DLLs that we just compiled away from.
+  dontPatchELF = true;
 
   meta = {
     description = "GoodNet kernel cross-built for Windows x86_64 (mingw-w64).";

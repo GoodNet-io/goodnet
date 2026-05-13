@@ -25,6 +25,22 @@ target_link_libraries(goodnet
 
 target_compile_features(goodnet PRIVATE cxx_std_23)
 
+# Windows mingw: roll the C++/C runtime, libgcc, and winpthread
+# into the executable so the shipped `goodnet.exe` is a single file
+# with no neighbouring .dll requirements. mingw provides static
+# archives (`libstdc++.a`, `libgcc.a`, `libwinpthread.a`) alongside
+# the .dll variants — `-static -static-libgcc -static-libstdc++`
+# pins ld.bfd to the archives. Combined with `--disable-shared`
+# rebuilds of spdlog / fmt / libsodium in `nix/goodnet-windows.nix`,
+# the final goodnet.exe carries every dependency inline.
+if(WIN32)
+    target_link_options(goodnet PRIVATE
+        -static
+        -static-libgcc
+        -static-libstdc++
+    )
+endif()
+
 target_compile_definitions(goodnet
     PRIVATE
         "GOODNET_VERSION_STRING=\"${GOODNET_VERSION_FULL}\""
