@@ -83,14 +83,18 @@ def parse_gbench(j, out):
             "time_ns": time_ns,
             "throughput_bps": bps,
             "error":  error_msg,
-            "p50_ns": b.get("lat_p50_ns"),
-            "p95_ns": b.get("lat_p95_ns"),
-            "p99_ns": b.get("lat_p99_ns"),
+            "p50_ns":  b.get("lat_p50_ns"),
+            "p95_ns":  b.get("lat_p95_ns"),
+            "p99_ns":  b.get("lat_p99_ns"),
+            "p999_ns": b.get("lat_p999_ns"),
             "rss_kb_delta":      b.get("rss_kb_delta"),
             "rss_peak_kb_delta": b.get("rss_peak_kb_delta"),
             "vsz_peak_kb_delta": b.get("vsz_peak_kb_delta"),
             "sock_mem_kb_delta": b.get("sock_mem_kb_delta"),
             "minor_faults":      b.get("minor_faults"),
+            "major_faults":      b.get("major_faults"),
+            "vol_ctx_sw":        b.get("vol_ctx_sw"),
+            "inv_ctx_sw":        b.get("inv_ctx_sw"),
             "cpu_user_us":       cpu_user,
             "cpu_sys_us":        cpu_sys,
             "cpu_total_us":      cpu_total_us,
@@ -360,13 +364,26 @@ def main(argv):
     def emit_perf_table(rows, shape_label):
         out.append("| Case | Time | Throughput | CPU/B | P50 lat | "
                    "P99 lat | RSS Δ | RSS Peak Δ | VSZ Peak Δ | "
-                   "Sock Mem Δ | Minor Faults |")
-        out.append("|---|---|---|---|---|---|---|---|---|---|---|")
+                   "Sock Mem Δ | Minor Faults | Ctx Sw (vol/inv) |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
         for r in rows:
             tput = (fmt_bytes_per_sec(r["throughput_bps"])
                     if r["throughput_bps"] else "-")
             mf = r.get("minor_faults")
             mf_str = f"{int(mf):,}" if mf is not None and mf > 0 else "—"
+            # Voluntary / involuntary context switches as a pair.
+            # Voluntary = thread gave up the slice (mutex / condvar /
+            # io_context post / sleep) — high count means lots of
+            # synchronisation. Involuntary = preempted (slice
+            # expired / higher-priority task arrived) — high count
+            # means saturated CPU. Both reveal whether a throughput
+            # number was bottlenecked by sync vs CPU.
+            vol = r.get("vol_ctx_sw")
+            inv = r.get("inv_ctx_sw")
+            if vol is None and inv is None:
+                cs_str = "—"
+            else:
+                cs_str = (f"{int(vol or 0):,} / {int(inv or 0):,}")
             # Strip the `RealFixture/` prefix from the case name in
             # the Real table so a reader scanning the column gets
             # `TcpEcho/1024` not `RealFixture/TcpEcho/1024` repeated.
@@ -381,7 +398,7 @@ def main(argv):
                 f"{fmt_kb(r.get('rss_peak_kb_delta'))} | "
                 f"{fmt_kb(r.get('vsz_peak_kb_delta'))} | "
                 f"{fmt_kb(r.get('sock_mem_kb_delta'))} | "
-                f"{mf_str} |")
+                f"{mf_str} | {cs_str} |")
         out.append("")
 
     if perf := aggregated.get("perf"):
@@ -422,6 +439,46 @@ def main(argv):
                        "on a quiet test machine stays at steady state)._")
             out.append("")
             emit_perf_table(parody_rows, "parody")
+
+        # ── Latency tail ladder ─────────────────────────────────────
+        #
+        # Every fixture that records `lat_pNN_ns` lands here as one row
+        # showing P50 → P95 → P99 → P99.9. Tail behaviour is the more
+        # discriminating signal between p2p stacks: average / P50 hides
+        # the worst-case path; P99.9 surfaces it. RoundTripMeter
+        # interpolates between adjacent samples (linear), so a fixture
+        # with N=1 returns the same value at every percentile — those
+        # show up flat across the row, which is the honest answer.
+        lat_rows = [
+            r for r in perf
+            if any(r.get(k) for k in ("p50_ns", "p95_ns",
+                                       "p99_ns", "p999_ns"))
+        ]
+        if lat_rows:
+            out.append("## Latency tail — P50 → P99.9 ladder")
+            out.append("")
+            out.append("_Tail latency is the dimension that distinguishes "
+                       "an evenly-paced p2p stack from one that pauses on "
+                       "GC / strand-hop / allocator slow paths. A widening "
+                       "gap between P99 and P99.9 across rows is the "
+                       "signal — flat rows mean the bench body is "
+                       "uniformly fast. Cases with a single iteration "
+                       "(handshake fixtures) report the same number at "
+                       "every percentile by definition._")
+            out.append("")
+            out.append("| Case | P50 | P95 | P99 | P99.9 |")
+            out.append("|---|---|---|---|---|")
+            for r in lat_rows:
+                case = r["case"]
+                if case.startswith(_REAL_PREFIX):
+                    case = "real:" + case[len(_REAL_PREFIX):]
+                out.append(
+                    f"| {case} | "
+                    f"{fmt_ns(r.get('p50_ns'))} | "
+                    f"{fmt_ns(r.get('p95_ns'))} | "
+                    f"{fmt_ns(r.get('p99_ns'))} | "
+                    f"{fmt_ns(r.get('p999_ns'))} |")
+            out.append("")
 
         if real_rows:
             out.append("## Real — production-shape echo "
