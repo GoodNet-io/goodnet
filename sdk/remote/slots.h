@@ -57,6 +57,37 @@ typedef enum gn_wire_host_slot_e {
     GN_WIRE_HOST_SLOT_UNREGISTER_VTABLE    = 0x16
 } gn_wire_host_slot_t;
 
+/** Security-provider vtable slots — kernel → worker. Contract
+ *  pinned so a future RemoteHost::security_vtable_proxy can be
+ *  added without renumbering. Implementation deferred until a
+ *  real workload (Python Noise IK worker, sandboxed identity-only
+ *  provider, etc.) asks for it. `gn_secure_buffer_t` slots
+ *  zeroise the input bytes on both wire boundaries before/after
+ *  encoding so memory hygiene mirrors the in-process path. */
+typedef enum gn_wire_security_slot_e {
+    GN_WIRE_SLOT_SECURITY_PROVIDER_ID       = 0x300,
+    GN_WIRE_SLOT_SECURITY_HANDSHAKE_OPEN    = 0x301,
+    GN_WIRE_SLOT_SECURITY_HANDSHAKE_STEP    = 0x302,
+    GN_WIRE_SLOT_SECURITY_HANDSHAKE_COMPLETE= 0x303,
+    GN_WIRE_SLOT_SECURITY_EXPORT_KEYS       = 0x304,
+    GN_WIRE_SLOT_SECURITY_ENCRYPT           = 0x305,
+    GN_WIRE_SLOT_SECURITY_DECRYPT           = 0x306,
+    GN_WIRE_SLOT_SECURITY_REKEY             = 0x307,
+    GN_WIRE_SLOT_SECURITY_HANDSHAKE_CLOSE   = 0x308
+} gn_wire_security_slot_t;
+
+/** Handler vtable slots — kernel → worker. Same defer rationale
+ *  as the security family: contract pinned, implementation lands
+ *  when a real workload appears. */
+typedef enum gn_wire_handler_slot_e {
+    GN_WIRE_SLOT_HANDLER_PROTOCOL_ID       = 0x400,
+    GN_WIRE_SLOT_HANDLER_SUPPORTED_MSG_IDS = 0x401,
+    GN_WIRE_SLOT_HANDLER_HANDLE_MESSAGE    = 0x402,
+    GN_WIRE_SLOT_HANDLER_ON_RESULT         = 0x403,
+    GN_WIRE_SLOT_HANDLER_ON_INIT           = 0x404,
+    GN_WIRE_SLOT_HANDLER_ON_SHUTDOWN       = 0x405
+} gn_wire_handler_slot_t;
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

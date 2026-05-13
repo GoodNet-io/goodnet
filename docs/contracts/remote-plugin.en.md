@@ -115,17 +115,45 @@ frame opcode disambiguates direction.
 
 Plugin slots (carried by `PLUGIN_CALL`):
 
-| Slot id | Name                       |
-|--------:|----------------------------|
-|   0x100 | `PLUGIN_INIT`              |
-|   0x101 | `PLUGIN_REGISTER`          |
-|   0x102 | `PLUGIN_UNREGISTER`        |
-|   0x103 | `PLUGIN_SHUTDOWN`          |
-|   0x200 | `LINK_LISTEN`              |
-|   0x201 | `LINK_CONNECT`             |
-|   0x202 | `LINK_SEND`                |
-|   0x203 | `LINK_DISCONNECT`          |
-|   0x204 | `LINK_DESTROY`             |
+| Slot id | Name                       | Status        |
+|--------:|----------------------------|---------------|
+|   0x100 | `PLUGIN_INIT`              | implemented   |
+|   0x101 | `PLUGIN_REGISTER`          | implemented   |
+|   0x102 | `PLUGIN_UNREGISTER`        | implemented   |
+|   0x103 | `PLUGIN_SHUTDOWN`          | implemented   |
+|   0x200 | `LINK_LISTEN`              | implemented   |
+|   0x201 | `LINK_CONNECT`             | implemented   |
+|   0x202 | `LINK_SEND`                | implemented   |
+|   0x203 | `LINK_DISCONNECT`          | implemented   |
+|   0x204 | `LINK_DESTROY`             | implemented   |
+|   0x300 | `SECURITY_PROVIDER_ID`     | contract only |
+|   0x301 | `SECURITY_HANDSHAKE_OPEN`  | contract only |
+|   0x302 | `SECURITY_HANDSHAKE_STEP`  | contract only |
+|   0x303 | `SECURITY_HANDSHAKE_COMPLETE` | contract only |
+|   0x304 | `SECURITY_EXPORT_KEYS`     | contract only |
+|   0x305 | `SECURITY_ENCRYPT`         | contract only |
+|   0x306 | `SECURITY_DECRYPT`         | contract only |
+|   0x307 | `SECURITY_REKEY`           | contract only |
+|   0x308 | `SECURITY_HANDSHAKE_CLOSE` | contract only |
+|   0x400 | `HANDLER_PROTOCOL_ID`      | contract only |
+|   0x401 | `HANDLER_SUPPORTED_MSG_IDS`| contract only |
+|   0x402 | `HANDLER_HANDLE_MESSAGE`   | contract only |
+|   0x403 | `HANDLER_ON_RESULT`        | contract only |
+|   0x404 | `HANDLER_ON_INIT`          | contract only |
+|   0x405 | `HANDLER_ON_SHUTDOWN`      | contract only |
+
+"contract only" means the slot id is pinned in `sdk/remote/slots.h`
+but neither `RemoteHost` (kernel) nor `goodnet_remote_plugin_stub`
+(worker) currently dispatch it. A future commit can wire the proxy
+on either side without renumbering; bindings in other languages
+can lock against the IDs today.
+
+Security-vtable wiring in particular needs careful `gn_secure_buffer_t`
+zero-on-drop handling at every wire boundary — encode the bytes,
+zeroise the source slice; decode the bytes, hand to the worker /
+kernel, zeroise the receive buffer. The contract is stable; the
+implementation lands when a real workload (Python Noise IK worker,
+sandboxed identity-only provider) asks for it.
 
 Host slots (carried by `HOST_CALL`) — kernel exposes the minimum
 useful subset for the v1 proof:
