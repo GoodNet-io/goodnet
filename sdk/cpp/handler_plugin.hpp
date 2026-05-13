@@ -147,8 +147,8 @@ constexpr bool has_extension_v =
     using _gn_handler_instance_t =                                             \
         ::gn::sdk::detail::HandlerPluginInstance<_gn_handler_class_t>;         \
                                                                                \
-    constexpr const char* _gn_handler_plugin_name    = PLUGIN_NAME;            \
-    constexpr const char* _gn_handler_plugin_version = PLUGIN_VERSION;         \
+    [[maybe_unused]] constexpr const char* _gn_handler_plugin_name    = PLUGIN_NAME;    \
+    [[maybe_unused]] constexpr const char* _gn_handler_plugin_version = PLUGIN_VERSION; \
                                                                                \
     inline _gn_handler_class_t& _gn_handler_of(void* p) noexcept {             \
         return *static_cast<_gn_handler_instance_t*>(p)->handler;              \

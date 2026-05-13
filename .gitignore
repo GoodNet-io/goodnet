@@ -105,6 +105,14 @@ __pycache__/
 !plugins/workers/**/*.cpp
 !plugins/workers/**/*.hpp
 !plugins/workers/**/CMakeLists.txt
+# Store handler — kept in-tree for slice 1 (memory backend reference).
+# Graduates to `goodnet-io/handler-store` git submodule at slice 4;
+# remove these whitelist lines at that point and add a submodule
+# block-row like `plugins/handlers/heartbeat/` below.
+!plugins/handlers/store/**/*.cpp
+!plugins/handlers/store/**/*.hpp
+!plugins/handlers/store/**/*.md
+!plugins/handlers/store/**/CMakeLists.txt
 plugins/handlers/heartbeat/
 plugins/handlers/mycelium/
 plugins/links/tcp/
