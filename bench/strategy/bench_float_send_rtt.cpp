@@ -15,7 +15,7 @@
 namespace {
 
 using namespace gn::bench;
-using gn::strategy::FloatSendRtt;
+using gn::strategy::float_send_rtt::FloatSendRtt;
 
 /// Picker dispatch overhead under increasing candidate-set size.
 /// Strategy plugins live on the hot send path; benchmarking the
@@ -25,7 +25,10 @@ static void BM_FloatSendRtt_PickConn(::benchmark::State& state) {
     const std::size_t candidate_count =
         static_cast<std::size_t>(state.range(0));
 
-    FloatSendRtt picker;
+    /// FloatSendRtt requires a `host_api_t*` at construction; this
+    /// bench drives picker logic directly so the api is unused —
+    /// pass nullptr to satisfy the signature.
+    FloatSendRtt picker{nullptr};
     std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES] = {};
 
     std::vector<gn_path_sample_t> candidates(candidate_count);
@@ -44,7 +47,7 @@ static void BM_FloatSendRtt_PickConn(::benchmark::State& state) {
         picker.on_path_event(peer_pk, GN_PATH_EVENT_RTT_UPDATE, &s);
     }
 
-    for (auto _ : state) {
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT
         gn_conn_id_t chosen = GN_INVALID_ID;
         (void)picker.pick_conn(peer_pk, candidates.data(),
                                  candidates.size(), &chosen);
