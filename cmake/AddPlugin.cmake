@@ -49,13 +49,36 @@ function(add_plugin NAME)
     set(_sources ${ARGN})
 
     if(GOODNET_STATIC_PLUGINS)
-        add_library(${NAME} OBJECT ${_sources})
+        # Plugin source files routinely share the same basename
+        # across plugins (`plugin_entry.cpp` is in every plugin
+        # dir). Bundling many plugins as `$<TARGET_OBJECTS:>` into
+        # one static archive flattens object names — `ar` then
+        # overwrites earlier members with the same basename, so
+        # only one plugin's entry symbols survive. Generate a
+        # per-plugin shim that includes the original source under
+        # a unique filename so `<plugin>_plugin_entry.cpp.o` etc.
+        # never collide.
+        string(REGEX REPLACE "^goodnet_" "" _stem "${NAME}")
+        set(_renamed_sources "")
+        foreach(_src IN LISTS _sources)
+            get_filename_component(_src_abs "${_src}" ABSOLUTE
+                BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+            get_filename_component(_src_name "${_src}" NAME_WE)
+            get_filename_component(_src_ext  "${_src}" EXT)
+            set(_unique
+                "${CMAKE_CURRENT_BINARY_DIR}/${_stem}_${_src_name}${_src_ext}")
+            # `#include "..."` forwards every TU through the
+            # original source — no logic duplicated, just a
+            # rename for archive uniqueness.
+            file(WRITE "${_unique}" "#include \"${_src_abs}\"\n")
+            list(APPEND _renamed_sources "${_unique}")
+        endforeach()
+        add_library(${NAME} OBJECT ${_renamed_sources})
         # Suffix every entry symbol with the plugin stem so multiple
         # plugins linked into the same binary don't collide. The
         # symbol-rename macros in `sdk/plugin.h` read both defines:
         # `GOODNET_STATIC_PLUGINS` gates the rename, and
         # `GN_PLUGIN_STATIC_NAME=<stem>` supplies the suffix token.
-        string(REGEX REPLACE "^goodnet_" "" _stem "${NAME}")
         target_compile_definitions(${NAME} PRIVATE
             GOODNET_STATIC_PLUGINS=1
             GN_PLUGIN_STATIC_NAME=${_stem})

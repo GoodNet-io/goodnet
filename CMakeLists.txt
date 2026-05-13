@@ -257,6 +257,22 @@ if(GOODNET_STATIC_PLUGINS)
         # GOODNET_STATIC_PLUGINS compile gate.
         goodnet_register_static_plugins(goodnet_kernel
             ${_goodnet_static_plugin_list})
+
+        # Plugin-side PUBLIC link deps that aren't already on
+        # `goodnet_kernel_objects`'s link line. Bundling the
+        # plugin .o files via TARGET_OBJECTS doesn't carry the
+        # INTERFACE_LINK_LIBRARIES; the bundled symbols compile
+        # but the final link of a consumer (apps/goodnet, Solas)
+        # fails with unresolved references unless the host
+        # archive itself surfaces the requirement. Listed plugins
+        # opt in here by name; new plugins with unique link deps
+        # extend the block.
+        find_package(OpenSSL QUIET)
+        if(TARGET goodnet_link_tls AND TARGET OpenSSL::SSL)
+            target_link_libraries(goodnet_kernel PUBLIC
+                OpenSSL::SSL OpenSSL::Crypto)
+        endif()
+
         # `goodnet_kernel_shared` is currently built from the same
         # OBJECT lib without the per-plugin TARGET_OBJECTS bundling
         # — operator UIs that need static plugins in a shared
