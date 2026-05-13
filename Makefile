@@ -9,7 +9,7 @@
 .DEFAULT_GOAL := help
 
 .PHONY: help setup update dev \
-        build build-release \
+        build build-release build-static \
         test test-asan test-tsan test-all \
         run demo goodnet node \
         plugin-new plugin-pull plugin-install plugin-update \
@@ -27,6 +27,7 @@ help:
 	@echo "  make dev              enter dev shell (nix develop)"
 	@echo "  make build            Debug build (incremental)"
 	@echo "  make build-release    Release build"
+	@echo "  make build-static     Release build with every plugin linked statically"
 	@echo ""
 	@echo "Test:"
 	@echo "  make test             vanilla ctest (full suite)"
@@ -70,6 +71,15 @@ build:
 
 build-release:
 	nix run .#build -- release
+
+# Single-binary build: every bundled plugin's `gn_plugin_init`
+# entry symbol gets suffix-renamed (`gn_plugin_init_link_tcp`, …)
+# so they can all link into the goodnet binary at once.
+# `PluginManager::load_static()` iterates the generated registry
+# instead of dlopen. Result: one Release binary that ships every
+# plugin's implementation (.text) without separate `.so` files.
+build-static:
+	nix run .#build -- static
 
 # Test
 test:
@@ -131,4 +141,4 @@ livedoc-test:
 
 # Maintenance
 clean:
-	rm -rf build build-* result result-*
+	rm -rf build build-* result result-* /tmp/static_v2 /tmp/dyn_release

@@ -35,6 +35,10 @@ set(_goodnet_kernel_sources
     kernel/metrics_registry.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
+    # Static-registry stub. Dynamic builds keep this empty array; the
+    # static-linkage build replaces this TU with a generated one via
+    # `cmake/StaticPlugins.cmake`.
+    plugin/static_registry_default.cpp
     util/log.cpp
     util/log_config.cpp
 )

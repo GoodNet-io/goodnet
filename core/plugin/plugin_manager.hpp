@@ -37,6 +37,7 @@
 #include <core/kernel/plugin_context.hpp>
 #include <core/kernel/service_resolver.hpp>
 #include <core/plugin/plugin_manifest.hpp>
+#include <core/plugin/static_registry.hpp>
 
 namespace gn::core {
 
@@ -49,7 +50,7 @@ class Kernel;
 /// plugin through `host_api->host_ctx` and captured in the plugin's
 /// own state — moving it would invalidate every callback).
 struct PluginInstance {
-    std::string                       path;        ///< absolute .so path
+    std::string                       path;        ///< absolute .so path or `static://<name>` for the static-linkage path
     void*                             so_handle{nullptr};   ///< dlopen result; opaque to plugin
     int                               integrity_fd{-1};     ///< /proc/self/fd path source — kept open until shutdown so glibc dlopen does not reuse the path string across plugins
     std::unique_ptr<PluginContext>    ctx;         ///< handed via api->host_ctx
@@ -57,6 +58,11 @@ struct PluginInstance {
     void*                             self{nullptr};        ///< returned from gn_plugin_init
     ServiceDescriptor                 descriptor;  ///< name + ext_requires/_provides
     bool                              registered{false};    ///< whether gn_plugin_register succeeded
+    /// Non-null when the instance came from
+    /// `gn_plugin_static_registry[]` instead of dlopen — the
+    /// rollback path reads `unreg`/`shutdown` from here when
+    /// `so_handle == nullptr`.
+    const gn_plugin_static_entry_t*   static_entry{nullptr};
 };
 
 class PluginManager {
@@ -78,6 +84,18 @@ public:
     /// any failing step.
     [[nodiscard]] gn_result_t load(std::span<const std::string> paths,
                                    std::string* out_diagnostic = nullptr);
+
+    /// Activate every plugin from the static registry instead of
+    /// `dlopen`. Used by `-DGOODNET_STATIC_PLUGINS=ON` builds where
+    /// every plugin's entry symbols ship inside the kernel binary
+    /// itself (suffix-renamed per the macros in `sdk/plugin.h`).
+    /// Mirror semantics of `load()`: two-phase init → register with
+    /// rollback on any failure. The registry array
+    /// (`gn_plugin_static_registry[]`) is iterated until its
+    /// sentinel `name == nullptr` is seen. Empty under a dynamic
+    /// build — returns GN_OK after a no-op.
+    [[nodiscard]] gn_result_t load_static(
+        std::string* out_diagnostic = nullptr);
 
     /// Reverse the activation: unregister every plugin, then
     /// shutdown, then dlclose. Idempotent — second call no-ops.

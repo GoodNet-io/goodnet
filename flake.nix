@@ -180,17 +180,22 @@
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-debug}"
               shift || true
+              static_flag=""
+              tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
-                debug)   build_type=Debug   ; build_dir=build       ;;
+                debug)   build_type=Debug   ; build_dir=build         ;;
                 release) build_type=Release ; build_dir=build-release ;;
-                *) echo "build: unknown variant $variant (debug|release)" >&2
+                static)  build_type=Release ; build_dir=build-static
+                         static_flag="-DGOODNET_STATIC_PLUGINS=ON"
+                         tests_flag="-DGOODNET_BUILD_TESTS=OFF"      ;;
+                *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
               if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                 echo ">>> Configuring $build_type build in $build_dir..."
                 cmake -B "$build_dir" -G Ninja \
                   -DCMAKE_BUILD_TYPE=$build_type \
-                  -DGOODNET_BUILD_TESTS=ON
+                  $tests_flag $static_flag
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"

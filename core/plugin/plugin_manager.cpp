@@ -484,16 +484,26 @@ void PluginManager::rollback() {
                 true, std::memory_order_release);
         }
 
-        if (it->registered && it->so_handle) {
-            if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-                    ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
-                /// `gn_result_t` discarded — the unregister path
-                /// continues to teardown regardless of the
-                /// plugin's reported outcome; we only care that
-                /// no exception escapes the C ABI boundary.
+        if (it->registered) {
+            if (it->so_handle) {
+                if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
+                        ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
+                    /// `gn_result_t` discarded — the unregister path
+                    /// continues to teardown regardless of the
+                    /// plugin's reported outcome; we only care that
+                    /// no exception escapes the C ABI boundary.
+                    (void)safe_call_result(
+                        "plugin.gn_plugin_unregister",
+                        fn, it->self);
+                }
+            } else if (it->static_entry && it->static_entry->unreg) {
+                /// Static-linkage path: dlsym would return null for
+                /// the suffix-renamed entry, so we read the function
+                /// pointer the registry already provides. Same
+                /// noexcept guarantees apply across the C ABI.
                 (void)safe_call_result(
                     "plugin.gn_plugin_unregister",
-                    fn, it->self);
+                    it->static_entry->unreg, it->self);
             }
             it->registered = false;
         }
@@ -531,11 +541,19 @@ void PluginManager::rollback() {
         }
         const bool drained = drain_anchor(*it, watch);
 
-        if (it->self && it->so_handle) {
-            if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-                    ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
+        if (it->self) {
+            if (it->so_handle) {
+                if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
+                        ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
+                    safe_call_void("plugin.gn_plugin_shutdown",
+                        fn, it->self);
+                }
+            } else if (it->static_entry && it->static_entry->shutdown) {
+                /// Static-linkage path — see the matching branch in
+                /// the unregister step above. The static registry
+                /// supplies the function pointer directly.
                 safe_call_void("plugin.gn_plugin_shutdown",
-                    fn, it->self);
+                    it->static_entry->shutdown, it->self);
             }
             it->self = nullptr;
         }
@@ -580,6 +598,105 @@ void PluginManager::set_manifest(PluginManifest manifest) noexcept {
 
 void PluginManager::set_manifest_required(bool required) noexcept {
     manifest_required_ = required;
+}
+
+// ── Static-registry path ─────────────────────────────────────────────
+//
+// Activates every plugin baked into the kernel binary at link time.
+// The registry array (`gn_plugin_static_registry[]`, declared in
+// `core/plugin/static_registry.hpp`) is populated by either the
+// generated `static_plugins.cpp` (under `-DGOODNET_STATIC_PLUGINS=ON`)
+// or by the empty default TU. Either way the iteration here is
+// safe — a dynamic build hits the sentinel on the first read and
+// returns GN_OK after a no-op.
+
+#include <core/plugin/static_registry.hpp>
+
+gn_result_t PluginManager::load_static(std::string* out_diagnostic) {
+    if (active_) {
+        if (out_diagnostic) *out_diagnostic = "PluginManager already active";
+        return GN_ERR_LIMIT_REACHED;
+    }
+    auto note = [&](std::string_view m) {
+        if (out_diagnostic) *out_diagnostic = std::string(m);
+    };
+
+    /// Phase 1-3: gather every registry entry. We skip dlopen + symbol
+    /// resolution + integrity verification entirely — every entry's
+    /// addresses are already valid (the linker resolved them at build
+    /// time) and the symbols' identity is implicit in the binary's
+    /// own integrity check (the operator must verify the kernel itself
+    /// rather than per-plugin .so files in this mode).
+    for (const auto* e = &gn_plugin_static_registry[0];
+         e->name != nullptr; ++e) {
+
+        /// Static plugins ship inside the kernel binary; their SDK
+        /// version is forcibly identical to the host. Still call
+        /// `sdk_version` if present so a future build that ships
+        /// an out-of-tree static archive can catch a stale .a at
+        /// the same point as the dlopen path catches a stale .so.
+        if (e->sdk_version) {
+            uint32_t pmaj = 0, pmin = 0, ppatch = 0;
+            e->sdk_version(&pmaj, &pmin, &ppatch);
+            if (pmaj != GN_SDK_VERSION_MAJOR) {
+                note(std::string("sdk-version mismatch: ") + e->name);
+                rollback();
+                return GN_ERR_VERSION_MISMATCH;
+            }
+        }
+
+        PluginInstance inst{};
+        inst.path = std::string("static://") + e->name;
+        inst.static_entry = e;
+        inst.ctx = std::make_unique<PluginContext>();
+        inst.ctx->plugin_name = e->name;
+        inst.ctx->kernel      = &kernel_;
+        inst.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
+
+        if (e->descriptor) {
+            if (const auto* d = e->descriptor(); d != nullptr) {
+                if (d->name) inst.descriptor.plugin_name = d->name;
+                inst.ctx->kind = d->kind;
+            }
+        }
+        if (inst.descriptor.plugin_name.empty()) {
+            inst.descriptor.plugin_name = e->name;
+        }
+
+        inst.api = build_host_api(*inst.ctx);
+
+        instances_.push_back(std::move(inst));
+    }
+
+    /// Phase 4: init each plugin.
+    for (std::size_t i = 0; i < instances_.size(); ++i) {
+        auto& inst  = instances_[i];
+        const auto* e = &gn_plugin_static_registry[i];
+        if (!e->init) continue;
+        const auto rc = e->init(&inst.api, &inst.self);
+        if (rc != GN_OK) {
+            note(std::string("gn_plugin_init failed: ") + e->name);
+            rollback();
+            return rc;
+        }
+    }
+
+    /// Phase 5: register each plugin.
+    for (std::size_t i = 0; i < instances_.size(); ++i) {
+        auto& inst  = instances_[i];
+        const auto* e = &gn_plugin_static_registry[i];
+        if (!e->reg) continue;
+        const auto rc = e->reg(inst.self);
+        if (rc != GN_OK) {
+            note(std::string("gn_plugin_register failed: ") + e->name);
+            rollback();
+            return rc;
+        }
+        inst.registered = true;
+    }
+
+    active_ = true;
+    return GN_OK;
 }
 
 } // namespace gn::core

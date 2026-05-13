@@ -22,6 +22,46 @@
 extern "C" {
 #endif
 
+/* ── Entry-point name discipline (dynamic vs. static linkage) ──────────────
+ *
+ * `make build` produces one `.so` per plugin, each exporting the five
+ * standard entry symbols by name (`gn_plugin_init` etc.) so the
+ * kernel's dlopen path resolves them with no extra glue. `make
+ * build-static` (`-DGOODNET_STATIC_PLUGINS=ON`) links every plugin
+ * directly into the kernel binary; the same symbol names would
+ * collide at link time, so the macros below rewrite each entry to
+ * `<prefix>_<plugin>` where `<plugin>` is the stem the CMake helper
+ * passes through `-DGN_PLUGIN_STATIC_NAME=<stem>`. A generated
+ * `static_plugins.cpp` collects every entry into
+ * `gn_plugin_static_registry[]` (see `core/plugin/static_registry.h`),
+ * which the kernel iterates in place of `dlopen` when the static
+ * build flag is set.
+ *
+ * Cross-language note: the suffixed names are still plain C symbols —
+ * a Python ctypes / Rust FFI / Zig `@cImport` binding can reach them
+ * the same way as the dynamic path, so the "cross-language plugin"
+ * promise of GoodNet survives both linkage modes.
+ */
+
+#define GN_PLUGIN_PASTE2_(a, b) a##b
+#define GN_PLUGIN_PASTE_(a, b)  GN_PLUGIN_PASTE2_(a, b)
+
+#if defined(GOODNET_STATIC_PLUGINS) && defined(GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_INIT_NAME       GN_PLUGIN_PASTE_(gn_plugin_init_,       GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_REGISTER_NAME   GN_PLUGIN_PASTE_(gn_plugin_register_,   GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_UNREGISTER_NAME GN_PLUGIN_PASTE_(gn_plugin_unregister_, GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_SHUTDOWN_NAME   GN_PLUGIN_PASTE_(gn_plugin_shutdown_,   GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_SDK_VERSION_NAME GN_PLUGIN_PASTE_(gn_plugin_sdk_version_, GN_PLUGIN_STATIC_NAME)
+#  define GN_PLUGIN_DESCRIPTOR_NAME GN_PLUGIN_PASTE_(gn_plugin_descriptor_, GN_PLUGIN_STATIC_NAME)
+#else
+#  define GN_PLUGIN_INIT_NAME       gn_plugin_init
+#  define GN_PLUGIN_REGISTER_NAME   gn_plugin_register
+#  define GN_PLUGIN_UNREGISTER_NAME gn_plugin_unregister
+#  define GN_PLUGIN_SHUTDOWN_NAME   gn_plugin_shutdown
+#  define GN_PLUGIN_SDK_VERSION_NAME gn_plugin_sdk_version
+#  define GN_PLUGIN_DESCRIPTOR_NAME gn_plugin_descriptor
+#endif
+
 /* ── Entry points ────────────────────────────────────────────────────────── */
 
 /**

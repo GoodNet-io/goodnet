@@ -50,6 +50,15 @@ function(add_plugin NAME)
 
     if(GOODNET_STATIC_PLUGINS)
         add_library(${NAME} OBJECT ${_sources})
+        # Suffix every entry symbol with the plugin stem so multiple
+        # plugins linked into the same binary don't collide. The
+        # symbol-rename macros in `sdk/plugin.h` read both defines:
+        # `GOODNET_STATIC_PLUGINS` gates the rename, and
+        # `GN_PLUGIN_STATIC_NAME=<stem>` supplies the suffix token.
+        string(REGEX REPLACE "^goodnet_" "" _stem "${NAME}")
+        target_compile_definitions(${NAME} PRIVATE
+            GOODNET_STATIC_PLUGINS=1
+            GN_PLUGIN_STATIC_NAME=${_stem})
     else()
         add_library(${NAME} SHARED ${_sources})
         set_target_properties(${NAME} PROPERTIES

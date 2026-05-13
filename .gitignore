@@ -37,6 +37,7 @@ result-*
 # CMake helpers
 !cmake/*.cmake
 !cmake/*.cmake.in
+!cmake/*.cpp.in
 
 # Nix helpers (per-plugin Nix derivations)
 !nix/*.nix

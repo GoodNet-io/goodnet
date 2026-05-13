@@ -181,6 +181,53 @@ if(GOODNET_BUILD_APPS AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/apps/CMakeLists.tx
     add_subdirectory(apps)
 endif()
 
+# ── Static-plugin registry (`-DGOODNET_STATIC_PLUGINS=ON`) ───────────────────
+# Wire every bundled plugin's OBJECT lib + suffix-named entry symbols
+# into the kernel binary. The helper generates `static_plugins.cpp`,
+# excludes the empty-default registry TU, and links every passed
+# plugin target via PRIVATE so downstream consumers still get the
+# dynamic-linkage contract from `find_package(GoodNet)`.
+#
+# Globally surface the option to the C++ preprocessor so kernel and
+# apps code (notably `apps/goodnet/subcommands/run.cpp`) can switch
+# to `PluginManager::load_static()` at compile time. The macros in
+# `sdk/plugin.h` are guarded on both this define AND
+# `GN_PLUGIN_STATIC_NAME` — defining only the former at the kernel
+# scope keeps the suffix rename limited to plugin TUs.
+if(GOODNET_STATIC_PLUGINS)
+    add_compile_definitions(GOODNET_STATIC_PLUGINS=1)
+endif()
+
+if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
+        AND TARGET goodnet)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/StaticPlugins.cmake")
+
+    set(_goodnet_static_plugin_list "")
+    foreach(_p IN ITEMS
+            goodnet_security_null
+            goodnet_security_noise
+            goodnet_link_ipc
+            goodnet_link_tcp
+            goodnet_link_udp
+            goodnet_link_tls
+            goodnet_link_ws
+            goodnet_link_ice
+            goodnet_link_quic
+            goodnet_handler_heartbeat
+            goodnet_strategy_float_send_rtt)
+        if(TARGET ${_p})
+            list(APPEND _goodnet_static_plugin_list ${_p})
+        endif()
+    endforeach()
+
+    if(_goodnet_static_plugin_list)
+        goodnet_register_static_plugins(goodnet
+            ${_goodnet_static_plugin_list})
+        message(STATUS
+            "  Static plugins    : ${_goodnet_static_plugin_list}")
+    endif()
+endif()
+
 # ── Examples & tests ─────────────────────────────────────────────────────────
 if(GOODNET_BUILD_EXAMPLES AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/examples/CMakeLists.txt")
     add_subdirectory(examples)
