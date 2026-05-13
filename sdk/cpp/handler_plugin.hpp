@@ -50,6 +50,7 @@
 #include <new>
 #include <span>
 #include <type_traits>
+#include <vector>
 
 #include <sdk/abi.h>
 #include <sdk/handler.h>
@@ -134,6 +135,45 @@ constexpr bool has_extension_v =
     requires(const T& t) {
         { t.extension_vtable() } -> std::convertible_to<const void*>;
     };
+
+/// Plugin-side extension registration helper. The body has to live
+/// inside a function template so `if constexpr` actually discards
+/// the call to `T::extension_name()` etc. — `if constexpr` in a
+/// non-template function still checks the discarded substatement
+/// for ill-formed non-dependent expressions, which would otherwise
+/// force every handler class to define `extension_name()` /
+/// `extension_version()` / `extension_vtable()` even when the
+/// plugin ships no extension surface.
+template <class T>
+inline void maybe_register_extension(HandlerPluginInstance<T>* p) {
+    if constexpr (has_extension_v<T>) {
+        if (p->api && p->api->register_extension) {
+            if (p->api->register_extension(
+                    p->host_ctx,
+                    T::extension_name(),
+                    T::extension_version(),
+                    p->handler->extension_vtable()) == GN_OK) {
+                p->extension_registered = true;
+            }
+        }
+    } else {
+        (void)p;
+    }
+}
+
+template <class T>
+inline void maybe_unregister_extension(HandlerPluginInstance<T>* p) noexcept {
+    if constexpr (has_extension_v<T>) {
+        if (p->extension_registered &&
+            p->api && p->api->unregister_extension) {
+            (void)p->api->unregister_extension(
+                p->host_ctx, T::extension_name());
+            p->extension_registered = false;
+        }
+    } else {
+        (void)p;
+    }
+}
 
 } // namespace gn::sdk::detail
 
@@ -281,34 +321,14 @@ constexpr bool has_extension_v =
             p->host_ctx, GN_REGISTER_HANDLER, &meta,                           \
             &_gn_handler_vtable(), p->handler.get(), &p->handler_id);          \
         if (rc != GN_OK) return rc;                                            \
-        if constexpr (::gn::sdk::detail::has_extension_v<                      \
-                          _gn_handler_class_t>) {                              \
-            if (p->api->register_extension) {                                  \
-                if (p->api->register_extension(                                \
-                        p->host_ctx,                                           \
-                        _gn_handler_class_t::extension_name(),                 \
-                        _gn_handler_class_t::extension_version(),              \
-                        p->handler->extension_vtable()) == GN_OK) {            \
-                    p->extension_registered = true;                            \
-                }                                                              \
-            }                                                                  \
-        }                                                                      \
+        ::gn::sdk::detail::maybe_register_extension(p);                        \
         return GN_OK;                                                          \
     }                                                                          \
                                                                                \
     GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_UNREGISTER_NAME(void* self) {       \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         auto* p = static_cast<_gn_handler_instance_t*>(self);                  \
-        if constexpr (::gn::sdk::detail::has_extension_v<                      \
-                          _gn_handler_class_t>) {                              \
-            if (p->extension_registered &&                                     \
-                p->api && p->api->unregister_extension) {                      \
-                (void)p->api->unregister_extension(                            \
-                    p->host_ctx,                                               \
-                    _gn_handler_class_t::extension_name());                    \
-                p->extension_registered = false;                               \
-            }                                                                  \
-        }                                                                      \
+        ::gn::sdk::detail::maybe_unregister_extension(p);                      \
         if (p->api && p->api->unregister_vtable &&                             \
             p->handler_id != GN_INVALID_ID) {                                  \
             (void)p->api->unregister_vtable(p->host_ctx, p->handler_id);       \
