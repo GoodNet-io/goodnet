@@ -112,7 +112,25 @@ gn_result_t notify_connect(void* host_ctx,
     auto& sec = pc->kernel->security();
     auto ident = pc->kernel->node_identity();
     if (sec.is_active() && ident != nullptr) {
-        const auto entry = sec.current();
+        /// StackRegistry-aware lookup: a registered `null` provider
+        /// admits `Loopback` / `IntraNode`; a registered `noise`
+        /// provider admits all four trust classes. The kernel picks
+        /// the first registered match, so an operator who loads
+        /// `gn.security.null` BEFORE `gn.security.noise` gets the
+        /// fast plaintext path on loopback and falls through to
+        /// Noise for peer traffic. Per
+        /// `docs/contracts/security-trust.en.md` §5 (StackRegistry).
+        const auto entry = sec.find_for_trust(trust);
+        if (entry.vtable == nullptr) {
+            /// No registered provider admits this trust class.
+            /// Surface the same code the session-create gate uses
+            /// so the operator metric `drop.trust_class_mismatch`
+            /// records the rejection consistently.
+            pc->kernel->metrics().increment("drop.trust_class_mismatch");
+            (void)pc->kernel->connections().erase_with_index(new_id);
+            pc->kernel->send_queues().erase(new_id);
+            return GN_ERR_INVALID_ENVELOPE;
+        }
         const auto& device = ident->device();
         std::span<const std::uint8_t> rs_span;
         if (pk_is_known(remote_pk)) {

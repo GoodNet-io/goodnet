@@ -1,11 +1,12 @@
 /// @file   tests/unit/registry/test_security.cpp
 /// @brief  GoogleTest unit tests for `gn::core::SecurityRegistry`.
 ///
-/// Pins the contract from `docs/contracts/security-trust.md` §4: a node
-/// uses one default security provider per trust class. v1 simplification
-/// in `core/registry/security.hpp`: a single active provider total. The
-/// registry rejects a second registration loudly and only accepts an
-/// unregister against the matching provider id.
+/// Pins the StackRegistry contract from
+/// `docs/contracts/security-trust.md` §5: a kernel admits N security
+/// providers concurrently, each declaring `allowed_trust_mask`. The
+/// registry rejects a duplicate `provider_id`, but distinct ids
+/// (e.g. `gn.security.null` + `gn.security.noise`) coexist so the
+/// `notify_connect` path can route by trust class.
 
 #include <gtest/gtest.h>
 
@@ -61,20 +62,41 @@ TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
     EXPECT_EQ(cur.self, &dummy_self);
 }
 
-TEST(SecurityRegistry_SingleActive, SecondRegisterRejected) {
+TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
     SecurityRegistry r;
     int self_a = 0, self_b = 0;
     ASSERT_EQ(r.register_provider("noise",
                                    make_dummy_vtable(), &self_a),
               GN_OK);
 
-    /// Second register — even with a different id — must fail with
-    /// GN_ERR_LIMIT_REACHED per the security registry contract.
+    /// StackRegistry contract: registering a SECOND provider with a
+    /// DISTINCT id (`null` alongside `noise`) succeeds — that is the
+    /// canonical "null on loopback + noise on peer" stack the v1.x
+    /// design promised.
     EXPECT_EQ(r.register_provider("null",
+                                   make_dummy_vtable(), &self_b),
+              GN_OK);
+    EXPECT_TRUE(r.is_active());
+
+    /// First-registered is what `current()` returns for the back-
+    /// compat callers.
+    auto cur = r.current();
+    EXPECT_EQ(cur.provider_id, "noise");
+    EXPECT_EQ(cur.self, &self_a);
+}
+
+TEST(SecurityRegistry_SingleActive, DuplicateIdRejected) {
+    SecurityRegistry r;
+    int self_a = 0, self_b = 0;
+    ASSERT_EQ(r.register_provider("noise",
+                                   make_dummy_vtable(), &self_a),
+              GN_OK);
+    /// Same provider_id → reject. The kernel admits one entry per
+    /// name regardless of registration multiplicity.
+    EXPECT_EQ(r.register_provider("noise",
                                    make_dummy_vtable(), &self_b),
               GN_ERR_LIMIT_REACHED);
 
-    /// First entry remains the active one.
     auto cur = r.current();
     EXPECT_EQ(cur.provider_id, "noise");
     EXPECT_EQ(cur.self, &self_a);
@@ -128,6 +150,82 @@ TEST(SecurityRegistry_Unregister, AllowsReregisterAfterRemoval) {
 }
 
 // ── current() / is_active() ──────────────────────────────────────────────
+
+// ── find_for_trust (StackRegistry v1.x preview) ──────────────────────────
+
+namespace {
+
+/// Build a vtable whose `allowed_trust_mask` thunk returns @p mask.
+/// The static lambda-captured-int trick gives us a per-test static
+/// storage slot; safe because tests run single-threaded.
+template <std::uint32_t Mask>
+const gn_security_provider_vtable_t* make_vtable_with_mask() {
+    static const gn_security_provider_vtable_t vt = []() {
+        gn_security_provider_vtable_t v{};
+        v.api_size = sizeof(gn_security_provider_vtable_t);
+        v.allowed_trust_mask = [](void*) -> std::uint32_t { return Mask; };
+        return v;
+    }();
+    return &vt;
+}
+
+constexpr std::uint32_t kMaskLoopbackIntra =
+    (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+constexpr std::uint32_t kMaskAllFour =
+    (1u << GN_TRUST_UNTRUSTED) | (1u << GN_TRUST_PEER) |
+    (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+
+}  // namespace
+
+TEST(SecurityRegistry_FindForTrust, NullProviderWinsLoopback) {
+    SecurityRegistry r;
+    int null_self = 0, noise_self = 0;
+    ASSERT_EQ(r.register_provider("null",
+        make_vtable_with_mask<kMaskLoopbackIntra>(), &null_self), GN_OK);
+    ASSERT_EQ(r.register_provider("noise",
+        make_vtable_with_mask<kMaskAllFour>(), &noise_self), GN_OK);
+
+    /// Both providers admit Loopback — first-registered wins, so
+    /// the kernel routes loopback through `null` for the fast
+    /// plaintext path.
+    auto picked = r.find_for_trust(GN_TRUST_LOOPBACK);
+    EXPECT_EQ(picked.provider_id, "null");
+    EXPECT_EQ(picked.self, &null_self);
+}
+
+TEST(SecurityRegistry_FindForTrust, NoiseWinsUntrustedWhenNullCannotServe) {
+    SecurityRegistry r;
+    int null_self = 0, noise_self = 0;
+    ASSERT_EQ(r.register_provider("null",
+        make_vtable_with_mask<kMaskLoopbackIntra>(), &null_self), GN_OK);
+    ASSERT_EQ(r.register_provider("noise",
+        make_vtable_with_mask<kMaskAllFour>(), &noise_self), GN_OK);
+
+    /// Untrusted is outside `null`'s mask, so the search falls
+    /// through to noise.
+    auto picked = r.find_for_trust(GN_TRUST_UNTRUSTED);
+    EXPECT_EQ(picked.provider_id, "noise");
+    EXPECT_EQ(picked.self, &noise_self);
+}
+
+TEST(SecurityRegistry_FindForTrust, NoProviderAdmitsClass) {
+    SecurityRegistry r;
+    int null_self = 0;
+    ASSERT_EQ(r.register_provider("null",
+        make_vtable_with_mask<kMaskLoopbackIntra>(), &null_self), GN_OK);
+
+    /// `null` doesn't admit Peer; no other provider registered →
+    /// empty entry.
+    auto picked = r.find_for_trust(GN_TRUST_PEER);
+    EXPECT_EQ(picked.provider_id, "");
+    EXPECT_EQ(picked.vtable, nullptr);
+}
+
+TEST(SecurityRegistry_FindForTrust, EmptyRegistryReturnsEmpty) {
+    SecurityRegistry r;
+    auto picked = r.find_for_trust(GN_TRUST_LOOPBACK);
+    EXPECT_EQ(picked.provider_id, "");
+}
 
 TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
     SecurityRegistry r;
