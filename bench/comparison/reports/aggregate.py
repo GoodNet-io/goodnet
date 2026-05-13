@@ -47,12 +47,20 @@ def parse_gbench(j, out):
         time = b.get("real_time")
         unit = b.get("time_unit", "ns")
         scale = {"ns": 1, "us": 1e3, "ms": 1e6, "s": 1e9}.get(unit, 1)
+        # `UseManualTime()` benchmarks write `real_time` from the
+        # user's `SetIterationTime`; if the body never reached that
+        # call (early SkipWithError exit) the field stays 0.0. Treat
+        # that as "no data" rather than a 0-ns measurement.
+        if time is not None and float(time) == 0.0:
+            time = None
         time_ns = float(time) * scale if time else None
+        error_msg = b.get("error_message") if b.get("error_occurred") else None
         row = {
             "stack": "goodnet",
             "case":  name,
             "time_ns": time_ns,
             "throughput_bps": bps,
+            "error":  error_msg,
             "p50_ns": b.get("lat_p50_ns"),
             "p95_ns": b.get("lat_p95_ns"),
             "p99_ns": b.get("lat_p99_ns"),
