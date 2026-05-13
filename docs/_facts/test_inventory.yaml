@@ -1,8 +1,8 @@
-total: 1056
+total: 1080
 groups:
 - tree: kernel
-  count: 749
-  files: 68
+  count: 771
+  files: 70
 - tree: plugins/handlers/heartbeat
   count: 11
   files: 1
@@ -10,8 +10,8 @@ groups:
   count: 59
   files: 3
 - tree: plugins/links/ipc
-  count: 6
-  files: 1
+  count: 8
+  files: 2
 - tree: plugins/links/quic
   count: 11
   files: 1
@@ -45,7 +45,7 @@ groups:
 by_plugin:
   handlers/heartbeat: 11
   links/ice: 59
-  links/ipc: 6
+  links/ipc: 8
   links/quic: 11
   links/tcp: 14
   links/tls: 21

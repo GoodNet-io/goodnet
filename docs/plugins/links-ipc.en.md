@@ -10,7 +10,7 @@
 **Slot:** `gn.link.ipc`
 **URI schemes:** `ipc`
 **Composer surface:** no
-**Tests:** 6 cases in [`plugins/links/ipc/tests`](../../plugins/links/ipc/tests)
+**Tests:** 8 cases in [`plugins/links/ipc/tests`](../../plugins/links/ipc/tests)
 
 _AF_UNIX SOCK_STREAM transport for GoodNet. `ipc:///run/goodnet.sock`_
 

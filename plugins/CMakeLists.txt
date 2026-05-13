@@ -78,3 +78,14 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/float_send_rtt/CMakeLists.txt")
     add_subdirectory(strategies/float_send_rtt)
 endif()
+
+# Subprocess workers — separate executables (not `.so` plugins) that
+# the kernel spawns over `sdk/remote/wire.h`. Tracked under
+# `plugins/workers/` so they ride the same `add_subdirectory` walk as
+# in-tree dlopen plugins. The `remote_echo` proof binary ships in-tree
+# so the kernel↔worker round trip has a stable integration smoke
+# without pulling a separate repo. Real workers live in their own gits
+# the same way handlers/links/security plugins do.
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/workers/CMakeLists.txt")
+    add_subdirectory(workers)
+endif()

@@ -5,9 +5,9 @@ counters:
   - emit_counter
   sources:
   - file: plugins/links/ipc/ipc.cpp
-    line: 551
+    line: 594
   - file: plugins/links/ipc/ipc.cpp
-    line: 579
+    line: 622
   - file: plugins/links/tcp/tcp.cpp
     line: 726
   - file: plugins/links/tcp/tcp.cpp

@@ -287,6 +287,69 @@ TEST(PluginManifest_Parse, EmptyPluginsArrayProducesEmptyManifest) {
     EXPECT_TRUE(m.empty());
 }
 
+TEST(PluginManifest_Parse, DefaultsKindToDynamicWhenAbsent) {
+    const std::string json = R"({
+        "plugins": [
+            { "path": "/usr/lib/goodnet/libtcp.so",
+              "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad" }
+        ]
+    })";
+    PluginManifest m;
+    std::string diag;
+    ASSERT_EQ(PluginManifest::parse(json, m, diag), GN_OK) << diag;
+    ASSERT_EQ(m.entries().size(), 1u);
+    EXPECT_EQ(m.entries()[0].kind, ManifestKind::Dynamic);
+    EXPECT_TRUE(m.entries()[0].args.empty());
+}
+
+TEST(PluginManifest_Parse, AcceptsRemoteKindAndArgs) {
+    const std::string json = R"({
+        "plugins": [
+            { "path": "/usr/libexec/goodnet/remote_echo",
+              "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+              "kind": "remote",
+              "args": ["--verbose", "--log-level=debug"] }
+        ]
+    })";
+    PluginManifest m;
+    std::string diag;
+    ASSERT_EQ(PluginManifest::parse(json, m, diag), GN_OK) << diag;
+    ASSERT_EQ(m.entries().size(), 1u);
+    EXPECT_EQ(m.entries()[0].kind, ManifestKind::Remote);
+    ASSERT_EQ(m.entries()[0].args.size(), 2u);
+    EXPECT_EQ(m.entries()[0].args[0], "--verbose");
+    EXPECT_EQ(m.entries()[0].args[1], "--log-level=debug");
+}
+
+TEST(PluginManifest_Parse, RejectsUnknownKind) {
+    const std::string json = R"({
+        "plugins": [
+            { "path": "p",
+              "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+              "kind": "nonsense" }
+        ]
+    })";
+    PluginManifest m;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(json, m, diag), GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("kind"), std::string::npos) << diag;
+}
+
+TEST(PluginManifest_Parse, RejectsNonArrayArgs) {
+    const std::string json = R"({
+        "plugins": [
+            { "path": "p",
+              "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+              "kind": "remote",
+              "args": "not-an-array" }
+        ]
+    })";
+    PluginManifest m;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(json, m, diag), GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("args"), std::string::npos) << diag;
+}
+
 // ── Verifier ─────────────────────────────────────────────────────────────
 
 TEST(PluginManifest_Verify, AcceptsMatchingHash) {

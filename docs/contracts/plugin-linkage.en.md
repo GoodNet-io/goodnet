@@ -53,35 +53,44 @@ build still emits `gn_plugin_init` while the static build emits
 the suffixed names automatically). Plugins authored from the
 bundled templates pick this up without further work.
 
-## 3. Out-of-process worker (`kind: remote`, **designed**)
+## 3. Out-of-process worker (`kind: remote`, **runtime present**)
 
-Wire-protocol scaffolding lives in `sdk/remote/wire.h`. The kernel
-spawns a worker child over `socketpair(AF_UNIX)` (POSIX) or a
-named pipe pair (Windows, deferred) and exchanges
-`gn_wire_frame_t` envelopes:
+Wire-protocol header lives in `sdk/remote/wire.h`; slot ids in
+`sdk/remote/slots.h`; the per-frame CBOR shape is documented in
+`docs/contracts/remote-plugin.en.md`. The kernel-side runtime lives
+in `core/plugin/remote_host.{hpp,cpp}` — it spawns a worker child
+over `socketpair(AF_UNIX, SOCK_STREAM)` (POSIX) or a named pipe
+pair (Windows, deferred), drives the framing reader thread, and
+exposes the same `call_init / call_register / call_unregister /
+call_shutdown` surface the `dlopen` path uses. The worker links
+the `goodnet_remote_plugin_stub` static library from `sdk/cpp/`,
+which mirrors the kernel side and publishes a synthetic
+`host_api_t` whose every slot serialises a `HOST_CALL` and waits
+on the reply.
 
-```
-worker → kernel: HELLO          (sdk version, descriptor)
-kernel → worker: HELLO_ACK      (host handles)
-kernel → worker: PLUGIN_CALL    (vtable invocation; init/register/send/…)
-worker → kernel: PLUGIN_REPLY   (result)
-worker → kernel: HOST_CALL      (host_api invocation; notify_*/emit_*/…)
-kernel → worker: HOST_REPLY     (result)
-either side:     GOODBYE        (clean teardown before exit 0)
-```
+A `remote_echo://` proof binary lives at
+`plugins/workers/remote_echo` — registers as a link plugin whose
+`send` slot copies bytes straight back through
+`host_api.notify_inbound_bytes`, demonstrating the full kernel↔
+worker round trip without any new transport. The regression
+suite at `tests/unit/plugin/test_remote_host.cpp` boots the real
+worker over the wire (5 cases: HELLO handshake, lifecycle
+round-trip, scheme exposed through the synthesised vtable, bad
+binary surfaced as error, idempotent teardown).
 
-Payload is a CBOR subset (8-byte integers, fixed bytestrings, no
-floats); the per-slot wire shape is specified in
-`docs/contracts/remote-plugin.en.md` (future). Handle translation
-keeps every `void* host_ctx` and `void* self` as a `uint64_t`
-opaque on the wire — the kernel-side dispatcher maps to its real
-pointer, the worker's `host_ctx` is synthetic.
+Payload is a CBOR subset (major types 0/1/2/3/4/5 + simple values
+20/21/22 from major 7; no floats, no indefinite-length). Handle
+translation keeps every `void* host_ctx` and `void* self` as a
+`uint64_t` opaque on the wire — the kernel-side dispatcher maps
+to its real pointer, the worker's `host_ctx` is synthetic. The
+codec is hand-rolled (`core/plugin/wire_codec.{hpp,cpp}`) with no
+third-party dependency; mirror it from another language using
+its native CBOR library on the same subset.
 
-The runtime implementation (`RemoteHost` kernel-side spawner,
-worker stub library, `remote_echo` proof) ships in a follow-up
-plan. This commit lands the wire contract so language bindings
-(Python, Rust, Go, Zig) can lock against a stable header before
-the spawner exists.
+`PluginManager` integration (so manifests can carry
+`kind: "remote"` and the kernel will pick this path automatically)
+is the next chunk of work; the wire and the worker side ship
+ready for it.
 
 ## Cross-platform posture
 

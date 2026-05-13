@@ -67,9 +67,13 @@ __pycache__/
 !.github/**/*.yml
 !.github/**/*.yaml
 
-# SDK (header-only)
+# SDK (header-only headers + the worker stub static library — the
+# stub mirrors `core/plugin/remote_host.*` from the worker side so
+# every binding can link a C++ reference implementation; pinned in
+# `docs/contracts/remote-plugin.en.md` §10).
 !sdk/**/*.h
 !sdk/**/*.hpp
+!sdk/**/*.cpp
 !sdk/**/CMakeLists.txt
 !sdk/LICENSE
 
@@ -94,6 +98,13 @@ __pycache__/
 # `git add -A` from the monorepo root.
 !plugins/CMakeLists.txt
 !plugins/protocols/**
+# Subprocess plugin workers. The in-tree `remote_echo` proof rides
+# under `plugins/workers/` and ships with the kernel monorepo (it's
+# the single integration smoke for `RemoteHost`). Real workers live
+# in their own gits the same way other plugins do.
+!plugins/workers/**/*.cpp
+!plugins/workers/**/*.hpp
+!plugins/workers/**/CMakeLists.txt
 plugins/handlers/heartbeat/
 plugins/handlers/mycelium/
 plugins/links/tcp/
