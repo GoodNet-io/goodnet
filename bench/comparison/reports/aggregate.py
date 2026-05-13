@@ -56,14 +56,39 @@ def parse_gbench(j, out):
             "p50_ns": b.get("lat_p50_ns"),
             "p95_ns": b.get("lat_p95_ns"),
             "p99_ns": b.get("lat_p99_ns"),
-            "rss_kb_delta": b.get("rss_kb_delta"),
-            "cpu_user_us": b.get("cpu_user_us"),
-            "cpu_sys_us":  b.get("cpu_sys_us"),
+            "rss_kb_delta":      b.get("rss_kb_delta"),
+            "rss_peak_kb_delta": b.get("rss_peak_kb_delta"),
+            "vsz_peak_kb_delta": b.get("vsz_peak_kb_delta"),
+            "sock_mem_kb_delta": b.get("sock_mem_kb_delta"),
+            "minor_faults":      b.get("minor_faults"),
+            "cpu_user_us":       b.get("cpu_user_us"),
+            "cpu_sys_us":        b.get("cpu_sys_us"),
         }
         out.setdefault("perf", []).append(row)
 
 
+def fmt_kb(v):
+    """Render a KiB-valued counter; cope with None and zero deltas."""
+    if v is None:
+        return "—"
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return "—"
+    if n == 0:
+        return "0"
+    if abs(n) >= 1024:
+        return f"{n/1024:+.1f} MiB" if n else "0"
+    return f"{n:+d} KiB"
+
+
 def parse_comparison(j, out):
+    if j.get("metric") == "binary_sizes":
+        out["binary_sizes"] = j
+        return
+    if j.get("metric") == "comparison_weights":
+        out["comparison_weights"] = j
+        return
     if "rows" in j:
         out.setdefault("tables", []).append(j)
         return
@@ -72,6 +97,33 @@ def parse_comparison(j, out):
         return
     if "metric" in j and "bytes_per_sec" in j:
         out.setdefault("throughput_stack", []).append(j)
+
+
+def fmt_size_bytes(n):
+    """KiB / MiB-aware size formatter for binary-size table."""
+    if n is None:
+        return "—"
+    try:
+        b = int(n)
+    except (TypeError, ValueError):
+        return "—"
+    if b < 1024:
+        return f"{b} B"
+    if b < 1024 * 1024:
+        return f"{b/1024:.1f} KiB"
+    return f"{b/1024/1024:.2f} MiB"
+
+
+def fmt_size_kib(n):
+    if n is None:
+        return "—"
+    try:
+        kib = int(n)
+    except (TypeError, ValueError):
+        return "—"
+    if kib < 1024:
+        return f"{kib} KiB"
+    return f"{kib/1024:.1f} MiB"
 
 
 def main(argv):
@@ -149,13 +201,32 @@ def main(argv):
     if perf := aggregated.get("perf"):
         out.append("## GoodNet plugin matrix")
         out.append("")
-        out.append("| Case | Time | Throughput | P50 lat | P99 lat | RSS Delta |")
-        out.append("|---|---|---|---|---|---|")
+        out.append("_Memory deltas: `RSS Δ` = `VmRSS_end − VmRSS_start` "
+                   "(current; allocator `madvise(MADV_DONTNEED)` masks "
+                   "bursts that returned). `RSS Peak Δ` = `VmHWM_end − "
+                   "VmHWM_start` (high-water-mark; catches bursts). "
+                   "`VSZ Peak Δ` = same for VmPeak (virtual address "
+                   "space, includes mmap'd-but-untouched). `Sock Mem Δ` = "
+                   "kernel TCP+UDP+FRAG buffers from "
+                   "`/proc/net/sockstat` (system-wide; bench attribution "
+                   "via window-delta — every other socket on a quiet "
+                   "test machine stays at steady state)._")
+        out.append("")
+        out.append("| Case | Time | Throughput | P50 lat | P99 lat | "
+                   "RSS Δ | RSS Peak Δ | VSZ Peak Δ | Sock Mem Δ | "
+                   "Minor Faults |")
+        out.append("|---|---|---|---|---|---|---|---|---|---|")
         for r in perf:
             tput = fmt_bytes_per_sec(r["throughput_bps"]) if r["throughput_bps"] else "-"
+            mf = r.get("minor_faults")
+            mf_str = f"{int(mf):,}" if mf is not None and mf > 0 else "—"
             out.append(f"| {r['case']} | {fmt_ns(r['time_ns'])} | {tput} | "
                        f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} | "
-                       f"{r['rss_kb_delta'] or '-'} KB |")
+                       f"{fmt_kb(r.get('rss_kb_delta'))} | "
+                       f"{fmt_kb(r.get('rss_peak_kb_delta'))} | "
+                       f"{fmt_kb(r.get('vsz_peak_kb_delta'))} | "
+                       f"{fmt_kb(r.get('sock_mem_kb_delta'))} | "
+                       f"{mf_str} |")
         out.append("")
 
     if singles := aggregated.get("single_stack"):
@@ -188,6 +259,106 @@ def main(argv):
             detail = ", ".join(detail_parts) if detail_parts else "—"
             out.append(f"| {t.get('stack','?')} | {t.get('metric','?')} | "
                        f"{fmt_bytes_per_sec(bps)} | {detail} |")
+        out.append("")
+
+    if sizes := aggregated.get("binary_sizes"):
+        out.append("## Binary sizes & deployment closure")
+        out.append("")
+        out.append("_Release + LTO + mold. `Dynamic shipping` is "
+                   "what an operator copies to a host: the kernel "
+                   "binary plus N plugin `.so` files. `Static` is "
+                   "`make build-static` — every plugin's `.text` "
+                   "linked into the kernel binary. `Nix closure` is "
+                   "the worst-case `nix profile install` cost "
+                   "(transitive dependency tree, de-dup'd on real "
+                   "deployments via store sharing). `Docker image` "
+                   "uses `debian:bookworm-slim` as the glibc base "
+                   "(see `dist/Dockerfile.static`); a `scratch`-"
+                   "based musl build would land near ~5 MiB but "
+                   "needs a separate musl plugin port._")
+        out.append("")
+        out.append("| Artifact | Size |")
+        out.append("|---|---|")
+        if sizes.get("kernel_dynamic_bytes") is not None:
+            out.append(f"| Dynamic kernel binary | "
+                       f"{fmt_size_bytes(sizes['kernel_dynamic_bytes'])} |")
+        if sizes.get("plugins_sum_bytes"):
+            out.append(f"| Plugin `.so` files "
+                       f"(sum, {sizes.get('plugin_count', '?')} files) | "
+                       f"{fmt_size_bytes(sizes['plugins_sum_bytes'])} |")
+        if sizes.get("kernel_dynamic_bytes") is not None \
+                and sizes.get("plugins_sum_bytes"):
+            total = (sizes["kernel_dynamic_bytes"]
+                     + sizes["plugins_sum_bytes"])
+            out.append(f"| **Dynamic shipping total** | "
+                       f"**{fmt_size_bytes(total)}** |")
+        if sizes.get("kernel_static_bytes") is not None:
+            out.append(f"| **Static single binary** | "
+                       f"**{fmt_size_bytes(sizes['kernel_static_bytes'])}** |")
+        if sizes.get("kernel_static_stripped_bytes") is not None:
+            out.append(f"| Static, stripped | "
+                       f"{fmt_size_bytes(sizes['kernel_static_stripped_bytes'])} |")
+        if sizes.get("nix_closure_kb") is not None:
+            out.append(f"| Nix closure (`.#goodnet-core` + deps) | "
+                       f"{fmt_size_kib(sizes['nix_closure_kb'])} |")
+        if sizes.get("docker_image_kb") is not None:
+            out.append(f"| Docker image (debian-slim + static binary) | "
+                       f"{fmt_size_kib(sizes['docker_image_kb'])} |")
+        out.append("")
+
+    if weights := aggregated.get("comparison_weights"):
+        out.append("## Comparison stack weights")
+        out.append("")
+        out.append("_Same axes as `## Binary sizes`, applied to "
+                   "every external stack the bench compares "
+                   "against. `Binary` is the executable on disk; "
+                   "`Lib closure` is the sum of every distinct `.so` "
+                   "the binary maps at runtime (from `ldd`, "
+                   "excluding `linux-vdso`). Rust stacks "
+                   "static-link their crates so `Binary` is the "
+                   "meaningful number and `Lib closure` is just "
+                   "glibc + libgcc_s + libm. C tools take the "
+                   "opposite shape — small binary, large library "
+                   "closure._")
+        out.append("")
+        out.append("| Stack | Binary | Lib closure | Total |")
+        out.append("|---|---|---|---|")
+        label_map = {
+            "libp2p_rust": "rust-libp2p 0.55 (`libp2p-echo`)",
+            "iroh_rust":   "iroh 0.32 (`iroh-echo`)",
+            "iperf3":      "iperf3 (TCP/UDP throughput baseline)",
+            "socat":       "socat (AF_UNIX echo baseline)",
+            "openssl":     "openssl CLI (handshake baseline)",
+        }
+        for name in ("libp2p_rust", "iroh_rust", "iperf3", "socat",
+                     "openssl"):
+            s = weights.get("stacks", {}).get(name)
+            if not s:
+                continue
+            out.append(
+                f"| {label_map.get(name, name)} | "
+                f"{fmt_size_bytes(s['binary_bytes'])} | "
+                f"{fmt_size_bytes(s['libs_sum_bytes'])} | "
+                f"**{fmt_size_bytes(s['total_bytes'])}** |")
+        # Reference row from the GoodNet build itself so readers
+        # don't have to scroll between sections to compare.
+        if (bs := aggregated.get("binary_sizes")) is not None:
+            if bs.get("kernel_dynamic_bytes") is not None \
+                    and bs.get("plugins_sum_bytes"):
+                gn_total = (bs["kernel_dynamic_bytes"]
+                            + bs["plugins_sum_bytes"])
+                out.append(
+                    f"| **GoodNet dynamic** (kernel + 11 plugins) | "
+                    f"{fmt_size_bytes(bs['kernel_dynamic_bytes'])} | "
+                    f"{fmt_size_bytes(bs['plugins_sum_bytes'])} | "
+                    f"**{fmt_size_bytes(gn_total)}** |")
+            if bs.get("kernel_static_bytes") is not None:
+                out.append(
+                    f"| **GoodNet static** (single binary, all "
+                    f"plugins linked in) | "
+                    f"{fmt_size_bytes(bs['kernel_static_bytes'])} | "
+                    f"— | "
+                    f"**{fmt_size_bytes(bs['kernel_static_bytes'])}** |")
         out.append("")
 
     if tables := aggregated.get("tables"):

@@ -73,6 +73,68 @@ pivoted таблица где payload-size это строки, а GoodNet UDP/W
 libp2p / iroh — колонки, чтобы глаз видел сравнение в одной
 clavicle без скроллинга между секциями.
 
+## Memory measurement caveats
+
+A flat `RSS Δ` does NOT mean the bench was memory-quiet. Four
+blind spots routinely lie to a casual reader; the harness now
+captures the supplementary metrics to distinguish them, and the
+report surfaces all four columns side-by-side so the reader can
+triangulate.
+
+**A. Pages released via `madvise(MADV_DONTNEED)` mask bursts.**
+`VmRSS` (what `top` / `btop` show, what `RSS Δ` reports) is *the
+current resident pages*. An allocator that grew the heap to
+200 MiB then returned pages with `madvise(MADV_DONTNEED)` ends
+the bench with `VmRSS` back at the starting value — the burst
+existed but is invisible to a snapshot read. The harness's
+`RSS Peak Δ` column reads `VmHWM` from `/proc/self/status`,
+which is the **high-water-mark** the kernel accumulates; a
+bench that briefly peaked at 200 MiB reports `RSS Δ = 0` but
+`RSS Peak Δ = +182 MiB`. Compare the two columns: equal =
+flat-real allocation; peak ≫ current = burst-and-released.
+
+**B. Kernel network buffers are not in process RSS.** Each
+TCP / UDP socket carries kernel-side send + receive buffers
+(`SO_RCVBUF` / `SO_SNDBUF`, typically 256 KiB – 4 MiB per
+socket on Linux). 1000 sockets × 2 MiB = ~2 GiB of *kernel*
+memory none of which counts toward `VmRSS`. The harness reads
+`/proc/net/sockstat` to capture the system-wide TCP + UDP +
+FRAG buffer total and reports its delta as `Sock Mem Δ`.
+Per-process attribution (which pid owns which buffers) needs
+`ss -tm` or `/proc/<pid>/net/sockstat`; the aggregate window
+delta is good enough on a quiet test machine because every
+other socket stays at steady state.
+
+**C. Shared libraries are counted once.** Multiple `.so`
+files sharing pages (`libstdc++.so`, `libsodium.so`, libssl)
+contribute their text segment to `VmRSS` exactly once per
+process. The static build (`-DGOODNET_STATIC_PLUGINS=ON`)
+duplicates none of this — every plugin's `.text` is one
+contiguous section of the kernel binary — so a static-vs-
+dynamic comparison must take the **sum** of every plugin's
+`.so` plus the kernel binary, not just the kernel binary. The
+`## Binary sizes` section in the report shows the apples-to-
+apples comparison.
+
+**D. Mostly-idle steady state hides queue depth.** An
+`EchoRoundtrip` bench where producer and consumer run in
+lockstep (zero queue depth) shows `RSS Δ ≈ 0` simply because
+no activity sat in any queue. That's the bench measuring
+zero-queue-depth latency — not "the plugin is memory-quiet
+under all loads". The
+`TcpScaleFixture/BackpressureSlowConsumer/<N>` fixture
+deliberately throttles the consumer side via
+`LinkStub::inbound_sleep_us` (50 µs sleep per inbound notify);
+producer threads then drive the queue to its bounded limit.
+The resulting `RSS Peak Δ` shows the worst-case footprint the
+plugin holds before backpressure engages; `back_pressure_hits`
+counts how often the producer hit `pending_queue_bytes_hard`.
+A bench with `bp_ratio > 0` proves the backpressure path
+actually fires; one with `bp_ratio == 0` but large
+`RSS Peak Δ` means the queue grew unbounded (no host_api
+`limits()` callback wired in — common in the bench harness
+which is a stub, but a red flag in a real kernel).
+
 ## What's not measured (yet)
 
 | Gap | Reason | Plan |

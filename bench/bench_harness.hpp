@@ -29,6 +29,8 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <mutex>
 #include <span>
@@ -110,12 +112,20 @@ class ResourceCounters {
 public:
     void snapshot_start() {
         getrusage(RUSAGE_SELF, &before_);
-        rss_kb_start_ = current_rss_kb();
+        rss_kb_start_      = read_status_kb("VmRSS");
+        rss_peak_kb_start_ = read_status_kb("VmHWM");
+        vsz_kb_start_      = read_status_kb("VmSize");
+        vsz_peak_kb_start_ = read_status_kb("VmPeak");
+        sock_mem_start_    = read_sockstat_total_kb();
     }
 
     void snapshot_end() {
         getrusage(RUSAGE_SELF, &after_);
-        rss_kb_end_ = current_rss_kb();
+        rss_kb_end_      = read_status_kb("VmRSS");
+        rss_peak_kb_end_ = read_status_kb("VmHWM");
+        vsz_kb_end_      = read_status_kb("VmSize");
+        vsz_peak_kb_end_ = read_status_kb("VmPeak");
+        sock_mem_end_    = read_sockstat_total_kb();
     }
 
     /// User CPU microseconds across the measurement window.
@@ -137,14 +147,64 @@ public:
         return user_us() + system_us();
     }
 
-    /// Peak RSS delta (KiB). Positive = bench grew RSS, negative =
-    /// kernel reclaimed pages during the window. Note: `/proc/self/
-    /// statm` reads the CURRENT RSS, not a window max — a bench
-    /// that allocated 1 GB then freed it would show RSS delta = 0.
-    /// For an alloc-proxy with finer granularity see `minor_faults`.
+    /// Current RSS delta (KiB) across the window. Reads `VmRSS`
+    /// from `/proc/self/status` — this is "RSS *right now at
+    /// `snapshot_end`*", not a window max. Allocator `madvise
+    /// (MADV_DONTNEED)` after a burst returns pages and drops this
+    /// value back; the bench then looks flat even when it briefly
+    /// peaked at 200 MB. See `rss_peak_kb_delta` for the
+    /// high-water-mark variant and `minor_faults` for a count-of-
+    /// fresh-pages alloc proxy.
     [[nodiscard]] std::int64_t rss_kb_delta() const noexcept {
         return static_cast<std::int64_t>(rss_kb_end_)
              - static_cast<std::int64_t>(rss_kb_start_);
+    }
+
+    /// Peak RSS delta (KiB). Reads `VmHWM` ("high water mark") —
+    /// the maximum RSS the process EVER reached, accumulating
+    /// across the window. Catches bursts that allocated then
+    /// `madvise`'d away: a bench that briefly grew RSS to 200 MB
+    /// then released back to 18 MB reports `rss_kb_delta = 0` but
+    /// `rss_peak_kb_delta = 182000`. The two numbers together
+    /// distinguish flat-real from burst-released allocation
+    /// shapes.
+    [[nodiscard]] std::int64_t rss_peak_kb_delta() const noexcept {
+        return static_cast<std::int64_t>(rss_peak_kb_end_)
+             - static_cast<std::int64_t>(rss_peak_kb_start_);
+    }
+
+    /// Virtual-size delta (KiB). Reads `VmSize` — every page in
+    /// the address space whether resident or not. Heap-allocator
+    /// arena growth shows up here even when the underlying RSS
+    /// stays low; useful for catching virtual-memory leaks that
+    /// `VmRSS` misses because the pages were never written.
+    [[nodiscard]] std::int64_t vsz_kb_delta() const noexcept {
+        return static_cast<std::int64_t>(vsz_kb_end_)
+             - static_cast<std::int64_t>(vsz_kb_start_);
+    }
+
+    /// Peak virtual-size delta (KiB). Reads `VmPeak` — max VmSize
+    /// the process ever reached. Mirror of `rss_peak_kb_delta`
+    /// for the virtual address space.
+    [[nodiscard]] std::int64_t vsz_peak_kb_delta() const noexcept {
+        return static_cast<std::int64_t>(vsz_peak_kb_end_)
+             - static_cast<std::int64_t>(vsz_peak_kb_start_);
+    }
+
+    /// Aggregate kernel socket-buffer memory delta (KiB).
+    /// Reads `/proc/net/sockstat` (TCP `mem` + UDP `mem` +
+    /// FRAG `memory`) — these are bytes allocated by the kernel
+    /// in TCP / UDP send-receive buffers and IP fragment queues,
+    /// which do NOT show up in the process's `VmRSS`. 1000
+    /// sockets × ~2 MiB SO_RCVBUF + SO_SNDBUF = ~2 GiB of kernel
+    /// memory invisible to userspace RSS counters; this metric
+    /// brings it back into the report. Per-process attribution
+    /// (which pid owns which socket buffers) needs `ss -tm`
+    /// or `/proc/<pid>/net/sockstat`; this aggregate is the
+    /// system-wide signal that catches the elephant.
+    [[nodiscard]] std::int64_t sock_mem_kb_delta() const noexcept {
+        return static_cast<std::int64_t>(sock_mem_end_)
+             - static_cast<std::int64_t>(sock_mem_start_);
     }
 
     /// Minor page faults during the window — getrusage's
@@ -201,25 +261,83 @@ private:
         return b_us > a_us ? (b_us - a_us) : 0;
     }
 
-    /// `/proc/self/statm`'s second field is resident set size in
-    /// pages. Read it as a string so the bench's reported number
-    /// matches what `top` would show.
-    static std::uint64_t current_rss_kb() noexcept {
-        FILE* f = std::fopen("/proc/self/statm", "r");
+    /// Read a single `VmXxx:` field from `/proc/self/status` as
+    /// a KiB integer. Returns 0 if the field is absent or the
+    /// file can't be opened (kernel-without-procfs, sandbox).
+    /// Format is `VmHWM:\t<n> kB\n` — line-oriented, so a tiny
+    /// per-line scan stays under 4 KiB of read.
+    static std::uint64_t read_status_kb(const char* key) noexcept {
+        FILE* f = std::fopen("/proc/self/status", "r");
         if (!f) return 0;
-        unsigned long size_pages = 0, rss_pages = 0;
-        const int n = std::fscanf(f, "%lu %lu", &size_pages, &rss_pages);  // NOLINT(cert-err34-c)
+        char line[256];
+        const std::size_t key_len = std::strlen(key);
+        std::uint64_t val = 0;
+        while (std::fgets(line, sizeof(line), f)) {
+            if (std::strncmp(line, key, key_len) == 0 &&
+                line[key_len] == ':') {
+                /// Skip past key + ':' + whitespace, then parse
+                /// the leading integer (units are always "kB"
+                /// per kernel/proc/proc_pid_status.c).
+                const char* p = line + key_len + 1;
+                while (*p == ' ' || *p == '\t') ++p;
+                val = std::strtoull(p, nullptr, 10);
+                break;
+            }
+        }
         (void)std::fclose(f);
-        if (n < 2) return 0;
-        return static_cast<std::uint64_t>(rss_pages)
-             * static_cast<std::uint64_t>(::sysconf(_SC_PAGESIZE))
-             / 1024ULL;
+        return val;
+    }
+
+    /// Sum kernel socket-buffer memory across TCP / UDP / IP
+    /// fragmentation queues. `/proc/net/sockstat` reports:
+    ///   TCP: ...  mem <pages>
+    ///   UDP: ...  mem <pages>
+    ///   FRAG: ... memory <bytes>
+    /// We translate the page counts via PAGE_SIZE and convert
+    /// FRAG bytes to KiB. The TOTAL is system-wide, not
+    /// per-process — fine as a bench-window delta because every
+    /// other socket on a quiet test machine stays at steady
+    /// state; the delta attributes change to the bench under
+    /// measurement.
+    static std::uint64_t read_sockstat_total_kb() noexcept {
+        FILE* f = std::fopen("/proc/net/sockstat", "r");
+        if (!f) return 0;
+        const long page = ::sysconf(_SC_PAGESIZE);
+        if (page <= 0) { (void)std::fclose(f); return 0; }
+        const std::uint64_t page_kb =
+            static_cast<std::uint64_t>(page) / 1024ULL;
+        std::uint64_t total_kb = 0;
+        char line[256];
+        while (std::fgets(line, sizeof(line), f)) {
+            /// Format examples:
+            ///   TCP: inuse 24 orphan 0 tw 0 alloc 24 mem 7
+            ///   UDP: inuse 4 mem 1
+            ///   FRAG: inuse 0 memory 0
+            if (char* p = std::strstr(line, " mem "); p != nullptr) {
+                p += std::strlen(" mem ");
+                total_kb += std::strtoull(p, nullptr, 10) * page_kb;
+            } else if (char* q = std::strstr(line, " memory ");
+                       q != nullptr) {
+                q += std::strlen(" memory ");
+                total_kb += std::strtoull(q, nullptr, 10) / 1024ULL;
+            }
+        }
+        (void)std::fclose(f);
+        return total_kb;
     }
 
     rusage         before_{};
     rusage         after_{};
-    std::uint64_t  rss_kb_start_ = 0;
-    std::uint64_t  rss_kb_end_   = 0;
+    std::uint64_t  rss_kb_start_      = 0;
+    std::uint64_t  rss_kb_end_        = 0;
+    std::uint64_t  rss_peak_kb_start_ = 0;
+    std::uint64_t  rss_peak_kb_end_   = 0;
+    std::uint64_t  vsz_kb_start_      = 0;
+    std::uint64_t  vsz_kb_end_        = 0;
+    std::uint64_t  vsz_peak_kb_start_ = 0;
+    std::uint64_t  vsz_peak_kb_end_   = 0;
+    std::uint64_t  sock_mem_start_    = 0;
+    std::uint64_t  sock_mem_end_      = 0;
 };
 
 /// Build a deterministic payload of `size` bytes.
@@ -244,16 +362,20 @@ inline void report_latency(::benchmark::State& s, RoundTripMeter& m) {
 }
 
 inline void report_resources(::benchmark::State& s, const ResourceCounters& r) {
-    s.counters["cpu_user_us"]    = static_cast<double>(r.user_us());
-    s.counters["cpu_sys_us"]     = static_cast<double>(r.system_us());
-    s.counters["cpu_total_us"]   = static_cast<double>(r.cpu_total_us());
-    s.counters["rss_kb_delta"]   = static_cast<double>(r.rss_kb_delta());
-    s.counters["minor_faults"]   = static_cast<double>(r.minor_faults());
-    s.counters["major_faults"]   = static_cast<double>(r.major_faults());
-    s.counters["vol_ctx_sw"]     = static_cast<double>(r.vol_ctx_switches());
-    s.counters["inv_ctx_sw"]     = static_cast<double>(r.inv_ctx_switches());
-    s.counters["block_io_in"]    = static_cast<double>(r.block_io_in());
-    s.counters["block_io_out"]   = static_cast<double>(r.block_io_out());
+    s.counters["cpu_user_us"]      = static_cast<double>(r.user_us());
+    s.counters["cpu_sys_us"]       = static_cast<double>(r.system_us());
+    s.counters["cpu_total_us"]     = static_cast<double>(r.cpu_total_us());
+    s.counters["rss_kb_delta"]     = static_cast<double>(r.rss_kb_delta());
+    s.counters["rss_peak_kb_delta"]= static_cast<double>(r.rss_peak_kb_delta());
+    s.counters["vsz_kb_delta"]     = static_cast<double>(r.vsz_kb_delta());
+    s.counters["vsz_peak_kb_delta"]= static_cast<double>(r.vsz_peak_kb_delta());
+    s.counters["sock_mem_kb_delta"]= static_cast<double>(r.sock_mem_kb_delta());
+    s.counters["minor_faults"]     = static_cast<double>(r.minor_faults());
+    s.counters["major_faults"]     = static_cast<double>(r.major_faults());
+    s.counters["vol_ctx_sw"]       = static_cast<double>(r.vol_ctx_switches());
+    s.counters["inv_ctx_sw"]       = static_cast<double>(r.inv_ctx_switches());
+    s.counters["block_io_in"]      = static_cast<double>(r.block_io_in());
+    s.counters["block_io_out"]     = static_cast<double>(r.block_io_out());
 }
 
 }  // namespace gn::bench

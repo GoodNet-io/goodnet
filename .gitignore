@@ -158,6 +158,7 @@ tests/integration/
 !dist/**/*.service
 !dist/**/*.json
 !dist/**/*.md
+!dist/**/Dockerfile*
 
 # manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
 manifesto/

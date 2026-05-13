@@ -16,8 +16,8 @@ trap 'rm -rf $tmp' EXIT
 mkdir -p bench/reports
 
 echo "=== GoodNet plugin matrix ==="
-for b in bench_tcp bench_udp bench_ipc bench_ws bench_tls bench_dtls \
-         bench_quic bench_ice bench_wss_over_tls; do
+for b in bench_tcp bench_tcp_scale bench_udp bench_ipc bench_ws bench_tls \
+         bench_dtls bench_quic bench_ice bench_wss_over_tls; do
     # Prefer Release-build binaries when available. Debug runs
     # through the same syscalls and gets within ~5% on throughput
     # benches but skews crypto-heavy numbers (Noise handshake) by
@@ -79,6 +79,11 @@ fi
 
 echo "=== DX LOC count ==="
 bench/comparison/runners/dx_loc_count.sh > "$tmp/dx_loc.json"
+
+echo "=== Binary sizes / closure / docker ==="
+bench/comparison/runners/binary_sizes.sh > "$tmp/binary_sizes.json"
+echo "=== Comparison stack weights ==="
+bench/comparison/runners/comparison_weights.sh > "$tmp/comparison_weights.json"
 
 echo "=== Aggregating ==="
 python3 bench/comparison/reports/aggregate.py \
