@@ -28,8 +28,8 @@
 # subsystems (handler/dns via c-ares). ICE and store/strategies stay
 # off the first cut until their CI smoke is wired. The lean Windows
 # bundle is kernel + gnet + Noise + Null + TCP + UDP + Heartbeat;
-# everything else lifts in Phase W3 once each plugin's mingw build
-# is verified.
+# the rest will lift in a follow-up cut once each plugin's mingw
+# build is verified.
 set(_GOODNET_WINDOWS_SKIP FALSE)
 if(WIN32)
     set(_GOODNET_WINDOWS_SKIP TRUE)
@@ -97,7 +97,7 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/quic)
 endif()
 
-# Strategy plugins consume `sdk/extensions/strategy.h` (Слайс 9-SDK).
+# Strategy plugins consume `sdk/extensions/strategy.h`.
 # FloatSendRtt is the reference implementation — picks min-RTT
 # conn with hysteresis. Added after every L1 link so its tests can
 # build synthetic candidate sets representing real link surfaces.
