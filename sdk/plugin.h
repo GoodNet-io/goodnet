@@ -149,7 +149,15 @@ typedef enum gn_plugin_kind_e {
      * Kernel queries the extension when an outbound message has
      * multiple eligible connections to the same peer.
      */
-    GN_PLUGIN_KIND_STRATEGY  = 6
+    GN_PLUGIN_KIND_STRATEGY  = 6,
+    /**
+     * User-interface plugins — surface widget trees through the
+     * `gn.ui` extension (`sdk/extensions/ui.h`). The kernel gates
+     * the registration entries (`register_route` / `register_slot`
+     * / `invalidate`) by kind: only UI plugins may call them.
+     * Same gating shape as LINK plugins for `notify_*`.
+     */
+    GN_PLUGIN_KIND_UI        = 7
 } gn_plugin_kind_t;
 
 /**
