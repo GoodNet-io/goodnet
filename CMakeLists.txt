@@ -9,7 +9,7 @@ project(GoodNet
 # string is published (CLI banner, package metadata, Nix derivation).
 # CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
 # rides separately. Drop to empty when cutting `v1.0.0` final.
-set(GOODNET_VERSION_SUFFIX "-rc3" CACHE STRING "Pre-release suffix (e.g. -rc3); empty for stable")
+set(GOODNET_VERSION_SUFFIX "-rc4" CACHE STRING "Pre-release suffix (e.g. -rc4); empty for stable")
 set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────

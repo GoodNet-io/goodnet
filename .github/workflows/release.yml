@@ -136,47 +136,12 @@ jobs:
             goodnet-*-windows-x86_64.zip
             goodnet-*-windows-x86_64.zip.sha256
 
-  build-docker:
-    # `nix build .#docker-static` produces a deterministic tarball
-    # via dockerTools.buildLayeredImage. `docker load -i` swallows
-    # it; we then push to ghcr.io under the tag. x86_64 only — the
-    # Nix derivation is Linux-x86_64 today (multi-arch image manifest
-    # is a follow-up).
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
-        with:
-          use-flakehub: false
-      - name: Build static Docker image via Nix
-        run: nix build .#docker-static --print-build-logs
-      - name: Load + tag image
-        run: |
-          docker load -i result
-          TAG="${GITHUB_REF_NAME}"
-          # ghcr.io rejects mixed-case repository names — the
-          # `GoodNet-io` org slug must round-trip through tr.
-          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          # nix-side image name is `goodnet:nix-static`; retag for ghcr.
-          docker tag goodnet:nix-static \
-            ghcr.io/${OWNER}/goodnet:${TAG}
-          docker tag goodnet:nix-static \
-            ghcr.io/${OWNER}/goodnet:latest
-          # Expose the lowered slug to subsequent steps so we don't
-          # re-derive it.
-          echo "OWNER=${OWNER}" >> "$GITHUB_ENV"
-      - name: Login to ghcr.io
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Push image
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          docker push ghcr.io/${OWNER}/goodnet:${TAG}
-          docker push ghcr.io/${OWNER}/goodnet:latest
+  # `build-docker` removed at v1.0.0-rc4 — the kernel is a
+  # library + plugin .so set + headers after the apps/ extraction.
+  # The daemon binary `goodnetd` (the only entrypoint a container
+  # has reason to ship) lives at github.com/GoodNet-io/goodnetd and
+  # carries its own release.yml with the docker push step. Operators
+  # who want a runnable container pull that repo.
 
   changelog:
     runs-on: ubuntu-latest
@@ -205,7 +170,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   release:
-    needs: [build-linux, build-windows, build-docker, changelog]
+    needs: [build-linux, build-windows, changelog]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
