@@ -43,16 +43,11 @@ Slots are grouped by purpose:
 - **Universal handler / link registration** — `register_vtable`, `unregister_vtable`
 <!-- /livedoc:host_api_summary -->
 
-Two distinct vtables exist:
-
-| Table | Audience | When passed |
-|---|---|---|
-| `host_api_t` | every plugin | once, on `gn_plugin_init` |
-| `host_loader_api_t` | kernel-internal `PluginManager` only | never crosses the plugin boundary |
-
-A plugin **cannot** see `host_loader_api_t`. The split is structural;
-loader entries (such as `_create_plugin_ctx`) are not even declared in
-public headers.
+`host_api_t` is the only vtable the kernel hands a plugin — once,
+on `gn_plugin_init`. Loader orchestration (`dlopen`/`dlclose`,
+plugin-context allocation, plugin iteration) lives entirely inside
+the kernel; the corresponding entry points are not declared in any
+public SDK header, so a plugin has no way to reference them.
 
 ---
 
@@ -468,15 +463,11 @@ the safety net, manual call is the explicit path.
 
 ## 4. What is **not** in `host_api_t`
 
-These belong to `host_loader_api_t` (kernel-internal) and are never
-reachable from a plugin:
-
-- `_create_plugin_ctx` — kernel allocates the plugin context.
-- `_load_so` / `_unload_so` — `dlopen` / `dlclose` orchestration.
-- `_iterate_plugins` — kernel introspection over the plugin set.
-
-A plugin that needs cross-plugin communication uses extensions
-(`query_extension_checked`), not loader internals.
+Loader orchestration is kernel-internal and never reachable from
+a plugin: there is no entry point for plugin-context allocation,
+`dlopen`/`dlclose` of plugin shared objects, or iteration over the
+loaded plugin set. A plugin that needs cross-plugin communication
+uses extensions (`query_extension_checked`), not loader internals.
 
 ---
 

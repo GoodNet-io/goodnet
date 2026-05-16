@@ -55,11 +55,11 @@ from the load entry point and the plugin is rejected.
 ## 3. Size-prefix vtables
 
 Every function-pointer table crossing the C ABI starts with a
-`uint32_t api_size` as its first field. That includes `host_api_t`,
-`host_loader_api_t`, and every `*_vtable_t` (transport, security
-provider, handler, protocol layer, extension API). The producer
-fills it with `sizeof(*table)` at producer build time. Consumers
-compare against the offset of the field they want to call:
+`uint32_t api_size` as its first field. That includes `host_api_t`
+and every `*_vtable_t` (transport, security provider, handler,
+protocol layer, extension API). The producer fills it with
+`sizeof(*table)` at producer build time. Consumers compare against
+the offset of the field they want to call:
 
 ```c
 typedef struct host_api_s {
@@ -188,9 +188,9 @@ without `git log`-archaeology.
 ## 4. `_reserved` slots in value-type structs
 
 Plain data structures that the kernel passes to plugins by value or
-pointer (`gn_message_t`, `gn_endpoint_t`, `gn_health_report_t`,
-`gn_handshake_result_t`) do not use size-prefix. They use a fixed-count
-`_reserved` array sized for likely future fields.
+pointer (`gn_message_t`, `gn_endpoint_t`) do not use size-prefix.
+They use a fixed-count `_reserved` array sized for likely future
+fields.
 
 ```c
 typedef struct gn_message_s {
