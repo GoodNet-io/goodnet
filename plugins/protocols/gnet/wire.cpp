@@ -3,7 +3,7 @@
 
 #include "wire.hpp"
 
-#include <core/util/endian.hpp>
+#include <sdk/cpp/endian.hpp>
 
 namespace gn::plugins::gnet::wire {
 
@@ -49,9 +49,9 @@ gn_result_t parse_header(std::span<const std::uint8_t> bytes,
     }
 
     const std::uint32_t msg_id =
-        gn::util::read_be<std::uint32_t>(bytes.subspan(kOffsetMsgId, 4));
+        gn::endian::read_be<std::uint32_t>(bytes.subspan(kOffsetMsgId, 4));
     const std::uint32_t length =
-        gn::util::read_be<std::uint32_t>(bytes.subspan(kOffsetLength, 4));
+        gn::endian::read_be<std::uint32_t>(bytes.subspan(kOffsetLength, 4));
 
     const std::size_t cond_pk = conditional_pk_size(flags);
     const std::size_t header  = kFixedHeaderSize + cond_pk;
@@ -87,8 +87,8 @@ void encode_header(std::span<std::uint8_t> dst,
     }
     dst[kOffsetVersion] = kVersion;
     dst[kOffsetFlags]   = flags;
-    gn::util::write_be<std::uint32_t>(dst.subspan(kOffsetMsgId,  4), msg_id);
-    gn::util::write_be<std::uint32_t>(dst.subspan(kOffsetLength, 4), total_length);
+    gn::endian::write_be<std::uint32_t>(dst.subspan(kOffsetMsgId,  4), msg_id);
+    gn::endian::write_be<std::uint32_t>(dst.subspan(kOffsetLength, 4), total_length);
 }
 
 std::size_t compute_frame_size(std::uint8_t flags, std::size_t payload_size) noexcept {

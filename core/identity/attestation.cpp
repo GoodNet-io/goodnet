@@ -5,7 +5,7 @@
 
 #include <cstring>
 
-#include <core/util/endian.hpp>
+#include <sdk/cpp/endian.hpp>
 
 namespace gn::core::identity {
 
@@ -22,7 +22,7 @@ namespace {
     std::memcpy(buf.data() + 32,  device_pk.data(), GN_PUBLIC_KEY_BYTES);
     /// Big-endian for cross-platform parse. Cast-then-write covers
     /// negative values via two's complement bit pattern.
-    ::gn::util::write_be<std::uint64_t>(
+    ::gn::endian::write_be<std::uint64_t>(
         std::span<std::uint8_t>(buf.data() + 64, 8),
         static_cast<std::uint64_t>(expiry_unix_ts));
     return buf;
@@ -70,7 +70,7 @@ Attestation::to_bytes() const noexcept {
     std::array<std::uint8_t, kAttestationBytes> buf{};
     std::memcpy(buf.data(),      user_pk.data(),   32);
     std::memcpy(buf.data() + 32, device_pk.data(), 32);
-    ::gn::util::write_be<std::uint64_t>(
+    ::gn::endian::write_be<std::uint64_t>(
         std::span<std::uint8_t>(buf.data() + 64, 8),
         static_cast<std::uint64_t>(expiry_unix_ts));
     std::memcpy(buf.data() + 72, signature.data(), 64);
@@ -83,7 +83,7 @@ Attestation::to_bytes() const noexcept {
     Attestation att;
     std::memcpy(att.user_pk.data(),   bytes.data(),      32);
     std::memcpy(att.device_pk.data(), bytes.data() + 32, 32);
-    const auto exp = ::gn::util::read_be<std::uint64_t>(
+    const auto exp = ::gn::endian::read_be<std::uint64_t>(
         std::span<const std::uint8_t>(bytes.data() + 64, 8));
     att.expiry_unix_ts = static_cast<std::int64_t>(exp);
     std::memcpy(att.signature.data(), bytes.data() + 72, 64);
