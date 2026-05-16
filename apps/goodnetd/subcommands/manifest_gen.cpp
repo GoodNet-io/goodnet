@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/manifest_gen.cpp
+/// @file   apps/goodnetd/subcommands/manifest_gen.cpp
 /// @brief  `goodnet manifest gen <so>...` — emit `plugins.json`.
 ///
 /// Streams a fresh manifest document to stdout in the format

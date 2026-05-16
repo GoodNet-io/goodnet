@@ -1,4 +1,4 @@
-# apps/goodnet — operator CLI
+# apps/goodnetd — operator CLI
 
 BusyBox-style multicall binary. One executable, flat dispatch by
 subcommand.

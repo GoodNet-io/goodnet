@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/plugin_hash.cpp
+/// @file   apps/goodnetd/subcommands/plugin_hash.cpp
 /// @brief  `goodnet plugin hash <so>` — print SHA-256 of a plugin .so.
 ///
 /// Wraps `PluginManifest::sha256_of_file` so the operator's hash

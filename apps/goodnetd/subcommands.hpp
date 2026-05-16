@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands.hpp
+/// @file   apps/goodnetd/subcommands.hpp
 /// @brief  Subcommand dispatch table for the `goodnet` multicall.
 ///
 /// Each subcommand exposes one entry point taking the subcommand's

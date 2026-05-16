@@ -235,7 +235,7 @@ endif()
 # dynamic-linkage contract from `find_package(GoodNet)`.
 #
 # Globally surface the option to the C++ preprocessor so kernel and
-# apps code (notably `apps/goodnet/subcommands/run.cpp`) can switch
+# apps code (notably `apps/goodnetd/subcommands/run.cpp`) can switch
 # to `PluginManager::load_static()` at compile time. The macros in
 # `sdk/plugin.h` are guarded on both this define AND
 # `GN_PLUGIN_STATIC_NAME` — defining only the former at the kernel
