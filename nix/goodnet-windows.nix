@@ -145,7 +145,7 @@ cross.stdenv.mkDerivation {
   doCheck = false;
 
   # The static-plugin binary is just `bin/goodnet.exe`. With
-  # `-static -static-libgcc -static-libstdc++` (set in apps/goodnet/
+  # `-static -static-libgcc -static-libstdc++` (set in apps/goodnetd/
   # CMakeLists.txt under WIN32) plus `--disable-shared` rebuilds of
   # spdlog / fmt / libsodium in `buildInputs` above, the result is
   # a single self-contained executable — no neighbouring DLLs are

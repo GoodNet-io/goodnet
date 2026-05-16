@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/run.cpp
+/// @file   apps/goodnetd/subcommands/run.cpp
 /// @brief  `goodnet run --config X --manifest Y --identity Z` —
 ///         production node entry point.
 ///

@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/identity.cpp
+/// @file   apps/goodnetd/subcommands/identity.cpp
 /// @brief  `goodnet identity gen|show` — node identity lifecycle.
 ///
 /// `gen --out <file> [--expiry <unix-ts>]` writes a fresh identity

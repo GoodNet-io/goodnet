@@ -321,4 +321,4 @@ no diagnostic trail.
 - Implementation: `core/plugin/plugin_manifest.{hpp,cpp}` and
   `core/plugin/plugin_manager.cpp::open_one`.
 - Per-package emission: `nix/buildPlugin.nix` (build infrastructure).
-- Aggregate manifest CLI: `apps/goodnet/subcommands/manifest_gen.cpp`.
+- Aggregate manifest CLI: `apps/goodnetd/subcommands/manifest_gen.cpp`.

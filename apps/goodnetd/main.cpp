@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/main.cpp
+/// @file   apps/goodnetd/main.cpp
 /// @brief  Multicall dispatcher for the `goodnet` operator CLI.
 ///
 /// Resolves the first positional argument to a subcommand handler and

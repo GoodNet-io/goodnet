@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/config_validate.cpp
+/// @file   apps/goodnetd/subcommands/config_validate.cpp
 /// @brief  `goodnet config validate <file>` — pre-deploy config check.
 ///
 /// Wraps `gn::core::Config::load_file`. Success prints a one-line OK

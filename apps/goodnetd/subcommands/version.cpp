@@ -1,4 +1,4 @@
-/// @file   apps/goodnet/subcommands/version.cpp
+/// @file   apps/goodnetd/subcommands/version.cpp
 /// @brief  `goodnet version` — print version + git/build info.
 
 #include "../subcommands.hpp"
