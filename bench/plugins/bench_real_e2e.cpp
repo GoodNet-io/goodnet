@@ -18,7 +18,7 @@
 
 #include "../bench_harness.hpp"
 
-#include <core/kernel/test_bench_helper.hpp>
+#include <bench/test_bench_helper.hpp>
 
 #include <plugins/links/tcp/tcp.hpp>
 #include <plugins/links/udp/udp.hpp>
