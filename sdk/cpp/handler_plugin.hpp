@@ -175,6 +175,25 @@ inline void maybe_unregister_extension(HandlerPluginInstance<T>* p) noexcept {
     }
 }
 
+/// Compile-time list of extension names this handler advertises
+/// through `gn_plugin_descriptor_t::ext_provides`. Returns a
+/// null-terminated array when the handler class defines the
+/// extension trio, or `nullptr` when it doesn't — the kernel
+/// reads this list at load time and the macro below cannot push
+/// names into a const array at runtime.
+template <class T, bool HasExt = has_extension_v<T>>
+struct handler_provides {
+    static constexpr const char* const* value = nullptr;
+};
+
+template <class T>
+struct handler_provides<T, true> {
+    /// Two-slot array: the extension name from the handler class
+    /// plus a trailing nullptr terminator the kernel walks until.
+    static constexpr const char* names[] = {T::extension_name(), nullptr};
+    static constexpr const char* const* value = &names[0];
+};
+
 } // namespace gn::sdk::detail
 
 /// `GN_HANDLER_PLUGIN(Class, "plugin_name", "version")`. See file
@@ -258,20 +277,13 @@ inline void maybe_unregister_extension(HandlerPluginInstance<T>* p) noexcept {
         return v;                                                              \
     }                                                                          \
                                                                                \
-    const char* const _gn_handler_provides[] = {                               \
-        nullptr,  /* extension name pushed in at init when present */          \
-        nullptr,                                                               \
-    };                                                                         \
-                                                                               \
     const gn_plugin_descriptor_t _gn_handler_descriptor = {                    \
         /* name              */ PLUGIN_NAME,                                   \
         /* version           */ PLUGIN_VERSION,                                \
         /* hot_reload_safe   */ 0,                                             \
         /* ext_requires      */ nullptr,                                       \
-        /* ext_provides      */ ::gn::sdk::detail::has_extension_v<            \
-                                    _gn_handler_class_t>                       \
-                                ? &_gn_handler_provides[0]                     \
-                                : nullptr,                                     \
+        /* ext_provides      */ ::gn::sdk::detail::handler_provides<           \
+                                    _gn_handler_class_t>::value,               \
         /* kind              */ GN_PLUGIN_KIND_HANDLER,                        \
         /* _reserved         */ {nullptr, nullptr, nullptr, nullptr},          \
     };                                                                         \
