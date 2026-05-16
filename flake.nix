@@ -74,12 +74,12 @@
                 cp -L "$so" plugins/
               done
             done
-            ${kernel}/bin/goodnet manifest gen plugins/lib*.so > manifest.json
+            ${kernel}/bin/goodnetd manifest gen plugins/lib*.so > manifest.json
           '';
 
           installPhase = ''
             mkdir -p $out/bin $out/lib/goodnet/plugins $out/etc/goodnet
-            cp ${kernel}/bin/goodnet $out/bin/goodnet
+            cp ${kernel}/bin/goodnetd $out/bin/goodnetd
             cp plugins/lib*.so $out/lib/goodnet/plugins/
             sed "s|plugins/|$out/lib/goodnet/plugins/|g" \
                 manifest.json > $out/etc/goodnet/manifest.json
@@ -92,7 +92,7 @@
               install -m 0600 ${identity} $out/etc/goodnet/identity.bin
             ''}
 
-            makeWrapper $out/bin/goodnet $out/bin/goodnet-node \
+            makeWrapper $out/bin/goodnetd $out/bin/goodnet-node \
               --add-flags "run" \
               --add-flags "--config $out/etc/goodnet/node.json" \
               --add-flags "--manifest $out/etc/goodnet/manifest.json" \
@@ -351,11 +351,11 @@
                       -DCMAKE_BUILD_TYPE=Release \
                       -DGOODNET_BUILD_TESTS=OFF
                   fi
-                  cmake --build "$build_dir" --target goodnet -j"$(nproc)"
+                  cmake --build "$build_dir" --target goodnetd -j"$(nproc)"
                   if [ "$kind" = "node" ]; then
-                    exec "$build_dir/bin/goodnet" run "$@"
+                    exec "$build_dir/bin/goodnetd" run "$@"
                   else
-                    exec "$build_dir/bin/goodnet" "$@"
+                    exec "$build_dir/bin/goodnetd" "$@"
                   fi
                   ;;
                 *)
