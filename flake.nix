@@ -34,18 +34,26 @@
           (system: f system (import nixpkgs { inherit system; }));
 
       # `goodnet.lib.compose` — operator-facing constructor.
-      # Bundles the kernel binary + a chosen plugin set + an
-      # optional config + identity into a single derivation. The
-      # output layout matches what `goodnet run` expects out of
+      # Bundles a daemon binary + a chosen plugin set + an optional
+      # config + identity into a single derivation. The output
+      # layout matches what `goodnetd run` expects out of
       # `/etc/goodnet`, so the wrapper script in `bin/goodnet-node`
-      # invokes the real binary against the bundled paths without
-      # any additional plumbing on the operator side.
+      # invokes the real binary against the bundled paths.
       #
-      # An operator's flake takes `goodnet` as a flake input and
-      # writes:
+      # **Daemon binary source** — the kernel repo no longer ships
+      # `goodnetd` since the apps/ tree extraction (2026-05-17). The
+      # `kernel` parameter below now expects a derivation that
+      # provides `bin/goodnetd` — typically pulled as a flake input
+      # from `github:GoodNet-io/goodnetd`. Passing the bare kernel
+      # output (which only ships libraries + plugin .sos) fails the
+      # build with a clear "no such file" pointing at the missing
+      # binary. An operator's flake threads both inputs:
       #
+      #     inputs.goodnet.url   = "github:GoodNet-io/goodnet";
+      #     inputs.goodnetd.url  = "github:GoodNet-io/goodnetd";
+      #     ...
       #     goodnet.lib.compose pkgs {
-      #       kernel  = goodnet.packages.${system}.goodnet-core;
+      #       kernel  = goodnetd.packages.${system}.default;
       #       plugins = with goodnet.packages.${system}; [
       #         goodnet-link-tcp
       #         goodnet-security-noise
@@ -345,6 +353,13 @@
                   exec "$build_dir/bin/goodnet-demo" "$@"
                   ;;
                 goodnet|node)
+                  echo "run: the goodnetd daemon binary now ships from" >&2
+                  echo "  github.com/GoodNet-io/goodnetd" >&2
+                  echo "" >&2
+                  echo "  build it standalone:" >&2
+                  echo "    nix build github:GoodNet-io/goodnetd" >&2
+                  echo "    ./result/bin/goodnetd $@" >&2
+                  exit 1
                   build_dir=build-release
                   if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                     cmake -B "$build_dir" -G Ninja \
