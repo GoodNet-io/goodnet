@@ -14,15 +14,6 @@ namespace gn::plugins::gnet {
 
 namespace {
 
-/// Compare a 32-byte public key buffer against the all-zero pattern.
-/// Mirror of `gn_pk_is_zero` from `sdk/types.h`, kept inline so the
-/// implementation does not depend on cross-TU inlining of the C helper.
-[[nodiscard]] bool pk_buffer_is_zero(const std::uint8_t* pk) noexcept {
-    std::uint8_t acc = 0;
-    for (std::size_t i = 0; i < GN_PUBLIC_KEY_BYTES; ++i) acc |= pk[i];
-    return acc == 0;
-}
-
 [[nodiscard]] bool pk_buffer_eq(const std::uint8_t* a, const std::uint8_t* b) noexcept {
     /// Constant-time compare so the framed-vs-relay-transit branch
     /// downstream (header overhead 14 vs 78 bytes) does not become a
@@ -162,7 +153,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         return std::unexpected(::gn::Error{
             GN_ERR_INVALID_ENVELOPE, "msg_id must be non-zero"});
     }
-    if (pk_buffer_is_zero(msg.sender_pk)) {
+    if (gn_pk_is_zero(msg.sender_pk)) {
         return std::unexpected(::gn::Error{
             GN_ERR_INVALID_ENVELOPE, "sender_pk must be non-zero"});
     }
@@ -173,7 +164,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
 
     /// Decide flags and which pk fields go on the wire.
     std::uint8_t flags = 0;
-    const bool receiver_zero = pk_buffer_is_zero(msg.receiver_pk);
+    const bool receiver_zero = gn_pk_is_zero(msg.receiver_pk);
 
     if (receiver_zero) {
         /// Broadcast — sender on wire so transit nodes preserve identity.
