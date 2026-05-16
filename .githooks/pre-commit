@@ -14,6 +14,81 @@ set -euo pipefail
 staged=$(git diff --cached --name-only --diff-filter=ACMR \
     | grep -E '\.(cpp|hpp|h|cc)$' || true)
 
+staged_all=$(git diff --cached --name-only --diff-filter=ACMR || true)
+
+# ── ABI hermeticity gate ────────────────────────────────────────────
+# Boundary rule per `docs/contracts/abi-evolution.en.md` §3:
+#   `core/` ↛ `plugins/`  — kernel never #includes plugin headers
+#   `plugins/` ↛ `core/`  — plugins never reach kernel internals
+# Cross-plugin private headers (`plugins/A/foo.hpp` from `plugins/B/`)
+# are also banned — extensions are the only inter-plugin surface.
+abi_violations=0
+if [ -n "$staged" ]; then
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            core/*)
+                if grep -nE '^#include[[:space:]]+["<]plugins/' "$f" >&2; then
+                    echo "pre-commit: $f — kernel must not include plugin headers" >&2
+                    abi_violations=$((abi_violations + 1))
+                fi
+                ;;
+            plugins/*)
+                if grep -nE '^#include[[:space:]]+["<]core/' "$f" >&2; then
+                    echo "pre-commit: $f — plugin must not include kernel internals" >&2
+                    abi_violations=$((abi_violations + 1))
+                fi
+                plugin_path=$(printf '%s' "$f" | awk -F/ '{print $1"/"$2"/"$3}')
+                while IFS= read -r inc; do
+                    case "$inc" in
+                        "${plugin_path}/"*) ;;
+                        plugins/*)
+                            echo "pre-commit: $f includes $inc — cross-plugin private headers banned" >&2
+                            abi_violations=$((abi_violations + 1))
+                            ;;
+                    esac
+                done < <(grep -oE '#include[[:space:]]+["<]plugins/[^">]+' "$f" \
+                            | sed -E 's|.*[<"]||')
+                ;;
+        esac
+    done <<< "$staged"
+fi
+
+# ── Banlist gate ────────────────────────────────────────────────────
+# Hardcoded plugin name string literals in `core/` couple the kernel
+# to specific plugin identities. Plan vocab in repo artefacts warns
+# (not block) — `Phase X` / `LA.3` / `ML.1` should land in private
+# plans, not commits.
+banlist_violations=0
+if [ -n "$staged_all" ]; then
+    while IFS= read -r f; do
+        [ -f "$f" ] || continue
+        case "$f" in
+            core/*.cpp|core/*.hpp|core/*.h|core/*/*.cpp|core/*/*.hpp|core/*/*.h|core/*/*/*.cpp|core/*/*/*.hpp|core/*/*/*.h)
+                if grep -nE '"gn\.(link|handler|security|protocol|strategy)\.' "$f" >&2; then
+                    echo "pre-commit: $f — hardcoded plugin name literal in kernel" >&2
+                    banlist_violations=$((banlist_violations + 1))
+                fi
+                ;;
+        esac
+        case "$f" in
+            *.cpp|*.hpp|*.h|*.cc|docs/spec/*.md|docs/contracts/*.md)
+                if grep -qnE '\bPhase [A-Z]\b|\bLA\.[0-9]+\b|\bML\.[0-9]+\b|\bCK-[0-9]+\b|\bFA-[0-9]+\b' "$f" 2>/dev/null; then
+                    grep -nE '\bPhase [A-Z]\b|\bLA\.[0-9]+\b|\bML\.[0-9]+\b|\bCK-[0-9]+\b|\bFA-[0-9]+\b' "$f" >&2
+                    echo "pre-commit: $f — plan vocab in repo artefact (warning, not blocking)" >&2
+                fi
+                ;;
+        esac
+    done <<< "$staged_all"
+fi
+
+if [ "$abi_violations" -gt 0 ] || [ "$banlist_violations" -gt 0 ]; then
+    echo "" >&2
+    echo "pre-commit: $abi_violations ABI + $banlist_violations banlist violation(s)." >&2
+    echo "pre-commit: bypass with \`git commit --no-verify\` only for backwards-compat shims." >&2
+    exit 1
+fi
+
 [ -z "$staged" ] && exit 0
 
 if [ ! -f build/compile_commands.json ]; then
