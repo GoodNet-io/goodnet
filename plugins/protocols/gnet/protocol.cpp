@@ -45,7 +45,22 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
     deframe_buffer.clear();
     std::size_t cursor = 0;
 
+    /// Defensive envelope-count cap. A 64 KiB recv buffer packed with
+    /// minimum-size headers can yield up to ~4700 envelopes per
+    /// dispatch — an attacker shape that makes the dispatch handler
+    /// loop the bottleneck and starves siblings. 1024 covers any
+    /// legitimate workload (kernel reads at frame_bytes ceiling, the
+    /// upper bound for one read is `64 KiB / kFixedHeaderSize`); past
+    /// that we treat the input as malformed.
+    constexpr std::size_t kMaxEnvelopesPerCall = 1024;
+
     while (cursor < bytes.size()) {
+        if (deframe_buffer.size() >= kMaxEnvelopesPerCall) {
+            return std::unexpected(::gn::Error{
+                GN_ERR_FRAME_TOO_LARGE,
+                "GNET deframe exceeded envelope-count cap; possible "
+                "minimal-frame flood"});
+        }
         wire::ParsedHeader hdr;
         const auto rc = wire::parse_header(bytes.subspan(cursor), hdr);
 

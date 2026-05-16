@@ -459,7 +459,7 @@ uint64_t gn_core_subscribe(gn_core_t* core,
 
     gn_handler_id_t hid = GN_INVALID_ID;
     const gn_result_t rc = core->kernel.handlers().register_handler(
-        /*protocol_id*/ "gnet-v1",
+        /*protocol_id*/ gn::core::kDefaultProtocolId,
         /*msg_id*/      msg_id,
         /*priority*/    128,
         &kMessageSubVtable,
