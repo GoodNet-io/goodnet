@@ -65,7 +65,14 @@ if [ -n "$staged_all" ]; then
         [ -f "$f" ] || continue
         case "$f" in
             core/*.cpp|core/*.hpp|core/*.h|core/*/*.cpp|core/*/*.hpp|core/*/*.h|core/*/*/*.cpp|core/*/*/*.hpp|core/*/*/*.h)
-                if grep -nE '"gn\.(link|handler|security|protocol|strategy)\.' "$f" >&2; then
+                # Catch complete plugin-name literals (`"gn.link.tcp"`,
+                # `"gn.security.noise"`, …). The `gn.link.%.*s` runtime
+                # format string used to assemble per-scheme extension
+                # names is fine — it does not bind the kernel to any
+                # specific plugin id. Require the segment after the
+                # family prefix to start with a lowercase letter to
+                # exclude format placeholders.
+                if grep -nE '"gn\.(link|handler|security|protocol|strategy)\.[a-z][a-z0-9_-]*"' "$f" >&2; then
                     echo "pre-commit: $f — hardcoded plugin name literal in kernel" >&2
                     banlist_violations=$((banlist_violations + 1))
                 fi
