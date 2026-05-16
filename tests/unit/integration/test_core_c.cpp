@@ -375,10 +375,10 @@ TEST(CoreC, VersionStringNonEmpty) {
 }
 
 TEST(CoreC, VersionPackedMatchesSdkMacros) {
-    const std::uint32_t expected =
-        (static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR) << 16) |
-        (static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR) << 8)  |
-         static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH);
+    const std::uint32_t expected = gn_version_pack(
+        static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR),
+        static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR),
+        static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH));
     EXPECT_EQ(gn_version_packed(), expected);
 }
 

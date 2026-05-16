@@ -623,7 +623,7 @@ GN_EXPORT const host_api_t* gn_core_host_api(gn_core_t* core);
 /** Human-readable version string ("0.1.0", "1.0.0-rc1", …). */
 GN_EXPORT const char* gn_version(void);
 
-/** Packed `(MAJOR << 16) | (MINOR << 8) | PATCH`. */
+/** Packed version in `gn_version_pack` layout — see `sdk/abi.h`. */
 GN_EXPORT uint32_t gn_version_packed(void);
 
 #ifdef __cplusplus

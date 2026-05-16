@@ -28,10 +28,14 @@
 
 namespace {
 
+/// Packed kernel version in the canonical layout exposed by
+/// `gn_version_pack` (major:8 << 24 | minor:8 << 16 | patch:16).
+/// `gn_version_packed()` returns this value to plugins; both sides
+/// must agree on the same bit layout so ordered comparison works.
 constexpr std::uint32_t kPackedVersion =
-    (static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR) << 16) |
-    (static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR) << 8)  |
-    static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH);
+    gn_version_pack(static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR),
+                    static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR),
+                    static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH));
 
 inline constexpr const char kVersionString[] = "1.0.0-dev";
 
