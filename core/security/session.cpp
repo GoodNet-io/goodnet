@@ -491,15 +491,12 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
     /// `allowed_trust_mask`; the kernel rejects any mismatch before
     /// the handshake state is allocated. Refusing here keeps the
     /// upstream pipeline from leaking a half-initialised session
-    /// into the registry on a misconfigured stack.
-    if (entry.vtable && entry.vtable->allowed_trust_mask) {
-        const auto mask_opt = safe_call_value<std::uint32_t>(
-            "security.allowed_trust_mask",
-            entry.vtable->allowed_trust_mask, entry.self);
-        /// A throwing trust-mask slot collapses the gate to "deny"
-        /// — we cannot trust a provider that crashes to enumerate
-        /// its admitted classes correctly.
-        const std::uint32_t mask = mask_opt.value_or(0u);
+    /// into the registry on a misconfigured stack. The mask read
+    /// goes through `SecurityEntry::trust_mask()` so `find_for_trust`
+    /// and this call cannot drift on the gate's stance toward a
+    /// throwing slot — both fold it to "deny".
+    {
+        const std::uint32_t mask = entry.trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
             /// `out_result = INVALID_ENVELOPE` is the same code the

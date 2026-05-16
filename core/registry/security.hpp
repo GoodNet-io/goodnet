@@ -39,6 +39,15 @@ struct SecurityEntry {
     /// snapshots a `SecurityEntry` value-style; the returned
     /// anchor lives for the duration of the snapshot.
     std::shared_ptr<void>                lifetime_anchor;
+
+    /// Read the provider's `allowed_trust_mask` through the
+    /// `safe_invoke` wrapper. A throwing slot or a missing entry
+    /// collapses to 0 (deny) per `security-trust.md` §4 — the
+    /// gate cannot trust a provider that cannot enumerate its
+    /// admitted classes. Single source of truth so `find_for_trust`
+    /// and `SessionRegistry::create` cannot drift apart on the
+    /// gate's interpretation.
+    [[nodiscard]] std::uint32_t trust_mask() const noexcept;
 };
 
 class SecurityRegistry {

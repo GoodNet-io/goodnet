@@ -6,22 +6,15 @@
 
 namespace gn::core {
 
-namespace {
-
-/// Read the provider's `allowed_trust_mask` slot through the
-/// safe-invoke wrapper. A throwing slot collapses to 0 (deny),
-/// matching the gate's stance in `session.cpp`.
-[[nodiscard]] std::uint32_t mask_of(const SecurityEntry& e) noexcept {
-    if (e.vtable == nullptr || e.vtable->allowed_trust_mask == nullptr) {
+std::uint32_t SecurityEntry::trust_mask() const noexcept {
+    if (vtable == nullptr || vtable->allowed_trust_mask == nullptr) {
         return 0u;
     }
     const auto v = ::gn::core::safe_call_value<std::uint32_t>(
         "security.allowed_trust_mask",
-        e.vtable->allowed_trust_mask, e.self);
+        vtable->allowed_trust_mask, self);
     return v.value_or(0u);
 }
-
-}  // namespace
 
 gn_result_t SecurityRegistry::register_provider(
     std::string_view provider_id,
@@ -107,7 +100,7 @@ SecurityEntry SecurityRegistry::find_for_trust(gn_trust_class_t trust) const {
     if (!cur || cur->empty()) return SecurityEntry{};
     const std::uint32_t bit = 1u << static_cast<unsigned>(trust);
     for (const auto& e : *cur) {
-        if ((mask_of(e) & bit) != 0u) return e;
+        if ((e.trust_mask() & bit) != 0u) return e;
     }
     return SecurityEntry{};
 }
