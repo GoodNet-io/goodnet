@@ -23,22 +23,25 @@
 #include "plugin_context.hpp"
 
 #include <core/plugin/plugin_manager.hpp>
-#include <plugins/protocols/gnet/protocol.hpp>
 
 /// Library handle the host owns through `gn_core_create`.
 ///
 /// Carries the Kernel, the embedding-side PluginContext (kind
 /// `GN_PLUGIN_KIND_UNKNOWN` — permissive across role checks because
 /// the host is not a plugin), the locked `host_api_t` table the host
-/// can pull through `gn_core_host_api`, the `gnet-v1` protocol layer
-/// shared_ptr keeping the canonical mesh-framing instance alive, and
-/// the manager the host drives through `gn_core_load_plugin`. A
-/// `wait_cv` blocks `gn_core_wait` callers until `gn_core_stop`
-/// fires.
+/// can pull through `gn_core_host_api`, and the manager the host
+/// drives through `gn_core_load_plugin`. A `wait_cv` blocks
+/// `gn_core_wait` callers until `gn_core_stop` fires.
+///
+/// Protocol layers are registered explicitly by the host through
+/// `gn_core_register_protocol` (C ABI hosts) or through direct
+/// `kernel.protocol_layers().register_layer(...)` access (in-tree
+/// C++ hosts like `apps/goodnet`, `apps/gssh`). The kernel does not
+/// auto-register any plugin-supplied layer — `core/` includes
+/// nothing from `plugins/` per `abi-evolution.en.md` §3.
 struct gn_core_s {
     gn::core::Kernel                                  kernel;
     gn::core::PluginContext                           host_ctx;
-    std::shared_ptr<gn::plugins::gnet::GnetProtocol>  protocol_gnet;
     host_api_t                                        api{};
     gn::core::PluginManager                           plugins;
 
