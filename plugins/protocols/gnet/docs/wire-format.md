@@ -74,8 +74,13 @@ bit  mask   name                  meaning
  7   0x80   reserved              MUST be 0 in v1
 ```
 
-Reserved bits set on inbound → drop frame, metric `gnet.dropped.reserved_bit`,
-no connection close (forward compat).
+Reserved bits set on inbound → silently masked off; the frame
+parses on the bits the reader understands. Forward-compatibility
+posture: a v1.1 sender that lands a new flag in `0x08`–`0x80`
+keeps interoperating with a v1 reader without dropping the
+connection. A future version that needs strict rejection promotes
+the flag out of the reserved range and the inbound check on that
+specific bit decides drop-or-accept.
 
 ### 2.4 Payload
 
