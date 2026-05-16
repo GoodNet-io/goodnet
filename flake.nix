@@ -196,6 +196,47 @@
           # plugin set.
           default = goodnet-core;
           inherit goodnet-core;
+
+          # Header-only redistribution channel for language bindings
+          # (`goodnet-io/bridges-rust`, `goodnet-io/bridges-python`,
+          # etc.) and other not-kernel consumers that need the SDK
+          # surface without dragging the full kernel build closure.
+          # Ships only `sdk/*.h` + `sdk/extensions/` + `sdk/remote/` +
+          # `sdk/cpp/*.hpp` + `docs/contracts/*.en.md` + LICENSE.
+          # The header-only model means a language binding pins a
+          # specific `v*` tag of the kernel flake and gets a stable
+          # ABI snapshot — same canonical source as the kernel's own
+          # in-tree build consumes.
+          sdk-headers = pkgs.stdenvNoCC.mkDerivation {
+            pname   = "goodnet-sdk-headers";
+            version = "1.0.0-rc4";
+            src     = pkgs.lib.cleanSourceWith {
+              src    = ./.;
+              filter = path: type:
+                let
+                  rel = pkgs.lib.removePrefix (toString ./. + "/")
+                                                (toString path);
+                  topLevel = builtins.head
+                    (pkgs.lib.splitString "/" rel);
+                in
+                  builtins.elem topLevel [ "sdk" "docs" "LICENSE" ];
+            };
+            dontBuild = true;
+            installPhase = ''
+              mkdir -p $out/include/sdk
+              cp -r sdk/*.h sdk/extensions sdk/remote sdk/cpp $out/include/sdk/
+              if [ -d sdk/test ]; then
+                cp -r sdk/test $out/include/sdk/
+              fi
+              mkdir -p $out/share/doc/goodnet-sdk
+              cp -r docs/contracts $out/share/doc/goodnet-sdk/
+              cp LICENSE $out/share/doc/goodnet-sdk/
+            '';
+            meta = {
+              description = "GoodNet SDK headers — C ABI + C++ bridges + normative contracts.";
+              license     = pkgs.lib.licenses.mit;
+            };
+          };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           # Reproducible Docker image around the static kernel.
           # Linux-only because dockerTools.buildLayeredImage emits a
