@@ -76,6 +76,16 @@ option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
 option(GOODNET_BUILD_BENCH            "Build the comprehensive bench suite (bench/)" OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
+# Compiles the bench-only `_test_clear_inline_crypto` seam into the
+# kernel. The seam is a guarded entrypoint that zeroes the inline
+# AEAD counters so `bench_showcase` §B.3 can model the post-handshake
+# Noise→Null handoff path. Default OFF — production binaries do not
+# carry the seam at all; the method always returns
+# `GN_ERR_INVALID_STATE` when the macro is undefined.
+option(GOODNET_BENCH_SHOWCASE         "Compile the inline-crypto downgrade seam for bench_showcase" OFF)
+if(GOODNET_BENCH_SHOWCASE)
+    add_compile_definitions(GOODNET_BENCH_SHOWCASE)
+endif()
 
 # Build-acceleration toggles. Defaults pick the right path per build
 # type: Release gets LTO + `-O3`, every type gets the mold linker + a
