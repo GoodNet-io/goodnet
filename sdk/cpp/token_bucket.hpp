@@ -1,4 +1,4 @@
-/// @file   core/util/token_bucket.hpp
+/// @file   sdk/cpp/token_bucket.hpp
 /// @brief  Token-bucket rate limiter with explicit clock injection.
 ///
 /// Per `docs/contracts/clock.en.md`, every time-dependent component
@@ -22,7 +22,7 @@
 #include <mutex>
 #include <unordered_map>
 
-namespace gn::util {
+namespace gn::ratelimit {
 
 /// @tparam Clock  monotonic clock providing `time_point` and `now()`
 ///                with ticks convertible to `std::chrono::duration<double>`.
@@ -176,4 +176,4 @@ private:
     std::unordered_map<std::uint64_t, Entry>            map_;
 };
 
-}  // namespace gn::util
+}  // namespace gn::ratelimit
