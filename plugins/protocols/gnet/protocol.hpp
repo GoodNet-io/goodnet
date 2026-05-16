@@ -60,6 +60,18 @@ public:
     /// against `kMaxFrameBytes` minus the worst-case header (relay
     /// transit: fixed header + sender_pk + receiver_pk).
     [[nodiscard]] std::size_t max_payload_size() const noexcept override;
+
+    /// All four trust classes ride GNET — it is the canonical
+    /// mesh-framing protocol. The override is explicit (matches the
+    /// `IProtocolLayer` base default) so the contract review can
+    /// see the gate the kernel enforces against the registry entry,
+    /// rather than walking up the inheritance chain.
+    [[nodiscard]] std::uint32_t allowed_trust_mask() const noexcept override {
+        return (1u << GN_TRUST_UNTRUSTED)  |
+               (1u << GN_TRUST_PEER)       |
+               (1u << GN_TRUST_LOOPBACK)   |
+               (1u << GN_TRUST_INTRA_NODE);
+    }
 };
 
 } // namespace gn::plugins::gnet
