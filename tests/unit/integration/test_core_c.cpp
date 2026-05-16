@@ -375,10 +375,10 @@ TEST(CoreC, VersionStringNonEmpty) {
 }
 
 TEST(CoreC, VersionPackedMatchesSdkMacros) {
-    const std::uint32_t expected =
-        (static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR) << 16) |
-        (static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR) << 8)  |
-         static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH);
+    const std::uint32_t expected = gn_version_pack(
+        static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR),
+        static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR),
+        static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH));
     EXPECT_EQ(gn_version_packed(), expected);
 }
 
@@ -395,5 +395,88 @@ TEST(CoreC, HostApiAccessorReturnsBuiltTable) {
     /// at minimum the `send` slot the host drives indirectly through
     /// `gn_core_send_to` is non-null.
     EXPECT_NE(api->send, nullptr);
+    gn_core_destroy(core);
+}
+
+// ── gn_core_register_protocol — C ABI host-side protocol registration ──────
+
+#include <sdk/protocol.h>
+
+namespace {
+
+/// Minimum-viable stub vtable just for the registration path. The
+/// kernel only needs `protocol_id` at registration time; deframe /
+/// frame are not exercised by these smoke tests.
+const char* stub_protocol_id(void*) noexcept { return "stub-test-v1"; }
+std::size_t stub_max_payload(void*) noexcept { return 1024; }
+std::uint32_t stub_trust_mask(void*) noexcept { return 0xFu; }
+void stub_destroy(void*) noexcept { /* no-op */ }
+gn_result_t stub_deframe(void*, gn_connection_context_t*,
+                          const std::uint8_t*, std::size_t,
+                          gn_deframe_result_t*) noexcept {
+    return GN_ERR_DEFRAME_INCOMPLETE;
+}
+gn_result_t stub_frame(void*, gn_connection_context_t*,
+                        const gn_message_t*,
+                        std::uint8_t**, std::size_t*,
+                        void**, void(**)(void*, std::uint8_t*)) noexcept {
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
+gn_protocol_layer_vtable_t make_stub_vtable() {
+    gn_protocol_layer_vtable_t v{};
+    v.api_size           = sizeof(v);
+    v.protocol_id        = &stub_protocol_id;
+    v.deframe            = &stub_deframe;
+    v.frame              = &stub_frame;
+    v.max_payload_size   = &stub_max_payload;
+    v.destroy            = &stub_destroy;
+    v.allowed_trust_mask = &stub_trust_mask;
+    return v;
+}
+
+}  // namespace
+
+TEST(CoreC, RegisterProtocolAcceptsVtable) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    /// Kernel wraps the supplied vtable in `VtableProtocolLayer` and
+    /// stores it in the registry exactly as if it had been registered
+    /// through the C++ `protocol_layers().register_layer(...)` path.
+    gn_protocol_layer_vtable_t vt = make_stub_vtable();
+    EXPECT_EQ(gn_core_register_protocol(core, &vt, /*self*/ nullptr),
+              GN_OK);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, RegisterProtocolNullArgRejected) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_protocol(nullptr, nullptr, nullptr),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_register_protocol(core, nullptr, nullptr),
+              GN_ERR_NULL_ARG);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, RegisterProtocolApiSizeMismatchRejected) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    /// api_size below the producer's `sizeof(gn_protocol_layer_vtable_t)`
+    /// means the consumer's struct is older than the producer's —
+    /// `abi-evolution.md` §3a says the kernel refuses the registration
+    /// instead of letting a partial vtable through.
+    gn_protocol_layer_vtable_t vt = make_stub_vtable();
+    vt.api_size = 4;
+    EXPECT_EQ(gn_core_register_protocol(core, &vt, nullptr),
+              GN_ERR_VERSION_MISMATCH);
+
     gn_core_destroy(core);
 }

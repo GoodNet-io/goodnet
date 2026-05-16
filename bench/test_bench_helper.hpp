@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   core/kernel/test_bench_helper.hpp
+/// @file   bench/test_bench_helper.hpp
 /// @brief  Bench-only kernel/plugin boot helper (A.2 follow-up).
 ///
 /// Spins up a real `gn::core::Kernel` with the gnet protocol layer,

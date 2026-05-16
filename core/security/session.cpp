@@ -302,11 +302,20 @@ std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
 }
 
 gn_result_t SecuritySession::_test_clear_inline_crypto() {
-    /// Env-var gate — fail closed when the var is absent so a
-    /// production binary that accidentally calls this method
-    /// surfaces the misuse via the error code rather than
-    /// silently corrupting session state. See header comment
-    /// for the rationale.
+#ifndef GOODNET_BENCH_SHOWCASE
+    /// Production build — the bench-only seam is compiled out
+    /// entirely. The method stays in the type surface so callers
+    /// (test fixtures, bench harnesses linked against a release
+    /// kernel) get a hard error instead of a missing symbol.
+    return GN_ERR_INVALID_STATE;
+#else
+    /// Bench build only (`-DGOODNET_BENCH_SHOWCASE=ON`). A second
+    /// runtime gate over the compile-time gate so that even a
+    /// bench-mode kernel does not zero the inline AEAD state
+    /// unless the operator explicitly opted in for the current
+    /// process by setting the env var. The env-var trip-wire
+    /// matches the historical contract pinned in
+    /// `tests/unit/security/test_inline_downgrade_gate.cpp`.
     const char* gate = std::getenv("GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE");
     if (!gate || std::strcmp(gate, "1") != 0) {
         return GN_ERR_INVALID_STATE;
@@ -316,6 +325,7 @@ gn_result_t SecuritySession::_test_clear_inline_crypto() {
     }
     inline_crypto_.clear_for_test();
     return GN_OK;
+#endif
 }
 
 gn_result_t SecuritySession::decrypt_transport(
@@ -481,15 +491,12 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
     /// `allowed_trust_mask`; the kernel rejects any mismatch before
     /// the handshake state is allocated. Refusing here keeps the
     /// upstream pipeline from leaking a half-initialised session
-    /// into the registry on a misconfigured stack.
-    if (entry.vtable && entry.vtable->allowed_trust_mask) {
-        const auto mask_opt = safe_call_value<std::uint32_t>(
-            "security.allowed_trust_mask",
-            entry.vtable->allowed_trust_mask, entry.self);
-        /// A throwing trust-mask slot collapses the gate to "deny"
-        /// — we cannot trust a provider that crashes to enumerate
-        /// its admitted classes correctly.
-        const std::uint32_t mask = mask_opt.value_or(0u);
+    /// into the registry on a misconfigured stack. The mask read
+    /// goes through `SecurityEntry::trust_mask()` so `find_for_trust`
+    /// and this call cannot drift on the gate's stance toward a
+    /// throwing slot — both fold it to "deny".
+    {
+        const std::uint32_t mask = entry.trust_mask();
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
             /// `out_result = INVALID_ENVELOPE` is the same code the

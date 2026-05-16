@@ -93,20 +93,37 @@ function(goodnet_register_static_plugins host_target)
     target_sources(${host_target}
         PRIVATE "${CMAKE_BINARY_DIR}/static_plugins.cpp")
 
-    # Link every plugin's entry OBJECT lib + its matching C++-class
-    # _objects sibling when present. The objects lib carries the
-    # plugin's implementation TUs (`ipc.cpp` → `goodnet_ipc_objects`,
-    # etc.); OBJECT libs do not propagate transitively, so we resolve
-    # the sibling explicitly. Plugins authored as a single TU
-    # (security/null) have no _objects sibling — the plugin target
-    # itself carries the whole implementation.
+    # Bundle every plugin's OBJECT files (entry TU + the matching
+    # C++-class _objects sibling) directly into host_target through
+    # `$<TARGET_OBJECTS:...>` rather than `target_link_libraries`.
+    # When host_target is an OBJECT or STATIC library — the
+    # `goodnet_kernel_objects` case used for find_package consumers
+    # — target_link_libraries only sets up INTERFACE propagation
+    # and the plugin .o files never land in the final archive.
+    # `target_sources($<TARGET_OBJECTS:...>)` packs them into
+    # host_target's own object list so the resulting `.a` carries
+    # the registry and every plugin's symbols.
+    #
+    # Each plugin's `<stem>_objects` sibling holds the plugin's
+    # implementation TUs (`ipc.cpp` → `goodnet_ipc_objects`).
+    # Plugins authored as a single TU (security/null) skip the
+    # sibling — the plugin target itself owns the whole impl.
     foreach(p IN LISTS plugins)
-        target_link_libraries(${host_target} PRIVATE ${p})
+        target_sources(${host_target}
+            PRIVATE $<TARGET_OBJECTS:${p}>)
+        # Skip `target_link_libraries` on the plugin OBJECT lib —
+        # adding a non-exported target to kernel_objects'
+        # INTERFACE_LINK_LIBRARIES trips `install(EXPORT)` since
+        # the plugin target isn't in any export set. The plugin's
+        # own PUBLIC link deps (asio, sdk, sodium, ctx_accessors)
+        # are already in `goodnet_kernel_objects`' link line, so
+        # the bundled objects compile + link without re-stating.
         string(REGEX REPLACE "^goodnet_(link|handler|security|strategy)_"
                "" _bare "${p}")
         set(_obj_target "goodnet_${_bare}_objects")
         if(TARGET ${_obj_target})
-            target_link_libraries(${host_target} PRIVATE ${_obj_target})
+            target_sources(${host_target}
+                PRIVATE $<TARGET_OBJECTS:${_obj_target}>)
         endif()
     endforeach()
 endfunction()

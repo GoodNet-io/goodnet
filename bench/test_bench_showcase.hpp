@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-/// @file   core/kernel/test_bench_showcase.hpp
+/// @file   bench/test_bench_showcase.hpp
 /// @brief  Bench-only kernel scaffold for the free-kernel showcase
 ///         (track Б of the plan in
 ///         `~/.claude/plans/crispy-petting-kettle.md`).
@@ -43,7 +43,7 @@
 #include <utility>
 #include <vector>
 
-#include <core/kernel/test_bench_helper.hpp>
+#include <bench/test_bench_helper.hpp>
 #include <core/security/session.hpp>
 
 #include <plugins/links/ipc/ipc.hpp>

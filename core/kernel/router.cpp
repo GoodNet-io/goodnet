@@ -5,21 +5,11 @@
 
 #include <cstring>
 
+#include <sdk/types.h>
+
 #include "safe_invoke.hpp"
 
 namespace gn::core {
-
-namespace {
-
-/// Local helper mirroring `gn_pk_is_zero` so the router does not
-/// depend on the C inline being inlined across compilation units.
-[[nodiscard]] bool pk_is_zero(const std::uint8_t (&pk)[GN_PUBLIC_KEY_BYTES]) noexcept {
-    std::uint8_t acc = 0;
-    for (std::size_t i = 0; i < GN_PUBLIC_KEY_BYTES; ++i) acc |= pk[i];
-    return acc == 0;
-}
-
-} // namespace
 
 Router::Router(LocalIdentityRegistry& identities, HandlerRegistry& handlers) noexcept
     : identities_(identities), handlers_(handlers) {}
@@ -35,11 +25,11 @@ void Router::set_relay_available(bool v) noexcept {
 RouteOutcome Router::route_inbound(std::string_view    protocol_id,
                                    const gn_message_t& env) const {
     /// Sender identity must be present.
-    if (pk_is_zero(env.sender_pk))            return RouteOutcome::DroppedZeroSender;
+    if (gn_pk_is_zero(env.sender_pk))            return RouteOutcome::DroppedZeroSender;
     if (env.msg_id == 0)                      return RouteOutcome::DroppedInvalidMsgId;
 
     /// Broadcast is recognised by an all-zero receiver.
-    if (pk_is_zero(env.receiver_pk)) {
+    if (gn_pk_is_zero(env.receiver_pk)) {
         const auto rc = dispatch_chain(protocol_id, env);
         if (rc == RouteOutcome::DroppedNoHandler) {
             return rc;

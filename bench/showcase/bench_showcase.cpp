@@ -24,8 +24,8 @@
 
 #include "../bench_harness.hpp"
 
-#include <core/kernel/test_bench_helper.hpp>
-#include <core/kernel/test_bench_showcase.hpp>
+#include <bench/test_bench_helper.hpp>
+#include <bench/test_bench_showcase.hpp>
 
 #include <benchmark/benchmark.h>
 

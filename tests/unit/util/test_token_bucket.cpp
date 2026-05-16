@@ -5,7 +5,7 @@
 
 #include <gtest/gtest.h>
 
-#include <core/util/token_bucket.hpp>
+#include <sdk/cpp/token_bucket.hpp>
 
 #include <chrono>
 #include <cstdint>
@@ -41,7 +41,7 @@ struct MockClock {
 
 TEST(TokenBucket, BurstConsumedThenEmpty) {
     MockClock::reset();
-    ::gn::util::TokenBucket<MockClock> bucket(/*rate*/ 1.0, /*burst*/ 3.0,
+    ::gn::ratelimit::TokenBucket<MockClock> bucket(/*rate*/ 1.0, /*burst*/ 3.0,
                                                 MockClock::now());
     EXPECT_TRUE(bucket.try_consume(MockClock::now()));
     EXPECT_TRUE(bucket.try_consume(MockClock::now()));
@@ -51,7 +51,7 @@ TEST(TokenBucket, BurstConsumedThenEmpty) {
 
 TEST(TokenBucket, RefillsByElapsedTimeAndRate) {
     MockClock::reset();
-    ::gn::util::TokenBucket<MockClock> bucket(/*rate*/ 10.0, /*burst*/ 5.0,
+    ::gn::ratelimit::TokenBucket<MockClock> bucket(/*rate*/ 10.0, /*burst*/ 5.0,
                                                 MockClock::now());
     /// drain the burst
     for (int i = 0; i < 5; ++i) {
@@ -67,7 +67,7 @@ TEST(TokenBucket, RefillsByElapsedTimeAndRate) {
 
 TEST(TokenBucket, RefillCappedAtBurst) {
     MockClock::reset();
-    ::gn::util::TokenBucket<MockClock> bucket(/*rate*/ 100.0, /*burst*/ 4.0,
+    ::gn::ratelimit::TokenBucket<MockClock> bucket(/*rate*/ 100.0, /*burst*/ 4.0,
                                                 MockClock::now());
     /// Drain
     for (int i = 0; i < 4; ++i) (void)bucket.try_consume(MockClock::now());
@@ -82,7 +82,7 @@ TEST(TokenBucket, RefillCappedAtBurst) {
 
 TEST(TokenBucket, ResetReplacesPolicyAndRefillsToBurst) {
     MockClock::reset();
-    ::gn::util::TokenBucket<MockClock> bucket(/*rate*/ 1.0, /*burst*/ 1.0,
+    ::gn::ratelimit::TokenBucket<MockClock> bucket(/*rate*/ 1.0, /*burst*/ 1.0,
                                                 MockClock::now());
     EXPECT_TRUE(bucket.try_consume(MockClock::now()));
     EXPECT_FALSE(bucket.try_consume(MockClock::now()));
@@ -99,7 +99,7 @@ TEST(TokenBucket, ResetReplacesPolicyAndRefillsToBurst) {
 
 TEST(RateLimiterMap, FirstRequestPerKeyAllowed) {
     MockClock::reset();
-    ::gn::util::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 1.0);
+    ::gn::ratelimit::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 1.0);
     EXPECT_TRUE(map.allow(/*key*/ 1, MockClock::now()));
     EXPECT_TRUE(map.allow(/*key*/ 2, MockClock::now()));
     EXPECT_TRUE(map.allow(/*key*/ 3, MockClock::now()));
@@ -108,7 +108,7 @@ TEST(RateLimiterMap, FirstRequestPerKeyAllowed) {
 
 TEST(RateLimiterMap, IndependentKeysIsolated) {
     MockClock::reset();
-    ::gn::util::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 2.0);
+    ::gn::ratelimit::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 2.0);
     /// Key 1 burns its burst.
     EXPECT_TRUE(map.allow(1, MockClock::now()));
     EXPECT_TRUE(map.allow(1, MockClock::now()));
@@ -121,7 +121,7 @@ TEST(RateLimiterMap, IndependentKeysIsolated) {
 
 TEST(RateLimiterMap, RefillBetweenCallsAfterTimeAdvance) {
     MockClock::reset();
-    ::gn::util::RateLimiterMap<MockClock> map(/*rate*/ 10.0, /*burst*/ 1.0);
+    ::gn::ratelimit::RateLimiterMap<MockClock> map(/*rate*/ 10.0, /*burst*/ 1.0);
     EXPECT_TRUE(map.allow(7, MockClock::now()));
     EXPECT_FALSE(map.allow(7, MockClock::now()));
     MockClock::advance(110ms);   /// 0.11s × 10/s = 1.1 tokens (capped at burst=1)
@@ -130,7 +130,7 @@ TEST(RateLimiterMap, RefillBetweenCallsAfterTimeAdvance) {
 
 TEST(RateLimiterMap, LruEvictsOldestWhenAtCapacity) {
     MockClock::reset();
-    ::gn::util::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 1.0,
+    ::gn::ratelimit::RateLimiterMap<MockClock> map(/*rate*/ 1.0, /*burst*/ 1.0,
                                                 /*max_entries*/ 2);
     EXPECT_TRUE(map.allow(1, MockClock::now()));
     EXPECT_TRUE(map.allow(2, MockClock::now()));

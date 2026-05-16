@@ -25,21 +25,29 @@ target_compile_features(goodnet_sdk INTERFACE cxx_std_23)
 # `core/plugin/remote_host.cpp` from the worker side. Reuses the CBOR
 # codec by adding `core/plugin/wire_codec.cpp` as a source — the same
 # code compiles into the kernel and the worker stub.
-add_library(goodnet_remote_plugin_stub STATIC
-    cpp/remote_plugin.cpp
-    "${PROJECT_SOURCE_DIR}/core/plugin/wire_codec.cpp"
-)
-add_library(GoodNet::remote_plugin_stub ALIAS goodnet_remote_plugin_stub)
-set_target_properties(goodnet_remote_plugin_stub PROPERTIES
-    POSITION_INDEPENDENT_CODE ON
-    EXPORT_NAME remote_plugin_stub
-)
-target_include_directories(goodnet_remote_plugin_stub PUBLIC
-    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
-    "$<INSTALL_INTERFACE:include/goodnet>"
-)
-target_link_libraries(goodnet_remote_plugin_stub PUBLIC GoodNet::sdk)
-target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_23)
+#
+# Windows path: the wire reader/writer is POSIX socketpair + writev
+# today. Subprocess plugins are unsupported on Windows for the MVP
+# (same shape as `core/plugin/remote_host.cpp` — see _WIN32 stub
+# there). The static library is omitted from the cross-build so the
+# linker stays happy.
+if(NOT WIN32)
+    add_library(goodnet_remote_plugin_stub STATIC
+        cpp/remote_plugin.cpp
+        "${PROJECT_SOURCE_DIR}/core/plugin/wire_codec.cpp"
+    )
+    add_library(GoodNet::remote_plugin_stub ALIAS goodnet_remote_plugin_stub)
+    set_target_properties(goodnet_remote_plugin_stub PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        EXPORT_NAME remote_plugin_stub
+    )
+    target_include_directories(goodnet_remote_plugin_stub PUBLIC
+        "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+        "$<INSTALL_INTERFACE:include/goodnet>"
+    )
+    target_link_libraries(goodnet_remote_plugin_stub PUBLIC GoodNet::sdk)
+    target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_23)
+endif()
 
 # ── Install ──────────────────────────────────────────────────────────────────
 # `find_package(GoodNet REQUIRED)` after `make install` exposes

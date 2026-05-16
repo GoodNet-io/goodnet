@@ -32,7 +32,7 @@ cmake --build build
 ## Load
 
 Statically registered at kernel construction: a host program
-(`apps/goodnet/subcommands/run.cpp`, `examples/two_node/main.cpp`)
+(`apps/goodnetd/subcommands/run.cpp`, `examples/two_node/main.cpp`)
 calls `kernel.set_protocol_layer(std::make_shared<GnetProtocol>())`.
 There is no dlopen path for protocol layers in v1; out-of-tree
 custom protocols ship as host programs that wrap the kernel.

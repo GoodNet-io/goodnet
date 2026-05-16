@@ -34,18 +34,26 @@
           (system: f system (import nixpkgs { inherit system; }));
 
       # `goodnet.lib.compose` — operator-facing constructor.
-      # Bundles the kernel binary + a chosen plugin set + an
-      # optional config + identity into a single derivation. The
-      # output layout matches what `goodnet run` expects out of
+      # Bundles a daemon binary + a chosen plugin set + an optional
+      # config + identity into a single derivation. The output
+      # layout matches what `goodnetd run` expects out of
       # `/etc/goodnet`, so the wrapper script in `bin/goodnet-node`
-      # invokes the real binary against the bundled paths without
-      # any additional plumbing on the operator side.
+      # invokes the real binary against the bundled paths.
       #
-      # An operator's flake takes `goodnet` as a flake input and
-      # writes:
+      # **Daemon binary source** — the kernel repo no longer ships
+      # `goodnetd` since the apps/ tree extraction (2026-05-17). The
+      # `kernel` parameter below now expects a derivation that
+      # provides `bin/goodnetd` — typically pulled as a flake input
+      # from `github:GoodNet-io/goodnetd`. Passing the bare kernel
+      # output (which only ships libraries + plugin .sos) fails the
+      # build with a clear "no such file" pointing at the missing
+      # binary. An operator's flake threads both inputs:
       #
+      #     inputs.goodnet.url   = "github:GoodNet-io/goodnet";
+      #     inputs.goodnetd.url  = "github:GoodNet-io/goodnetd";
+      #     ...
       #     goodnet.lib.compose pkgs {
-      #       kernel  = goodnet.packages.${system}.goodnet-core;
+      #       kernel  = goodnetd.packages.${system}.default;
       #       plugins = with goodnet.packages.${system}; [
       #         goodnet-link-tcp
       #         goodnet-security-noise
@@ -74,12 +82,12 @@
                 cp -L "$so" plugins/
               done
             done
-            ${kernel}/bin/goodnet manifest gen plugins/lib*.so > manifest.json
+            ${kernel}/bin/goodnetd manifest gen plugins/lib*.so > manifest.json
           '';
 
           installPhase = ''
             mkdir -p $out/bin $out/lib/goodnet/plugins $out/etc/goodnet
-            cp ${kernel}/bin/goodnet $out/bin/goodnet
+            cp ${kernel}/bin/goodnetd $out/bin/goodnetd
             cp plugins/lib*.so $out/lib/goodnet/plugins/
             sed "s|plugins/|$out/lib/goodnet/plugins/|g" \
                 manifest.json > $out/etc/goodnet/manifest.json
@@ -92,7 +100,7 @@
               install -m 0600 ${identity} $out/etc/goodnet/identity.bin
             ''}
 
-            makeWrapper $out/bin/goodnet $out/bin/goodnet-node \
+            makeWrapper $out/bin/goodnetd $out/bin/goodnet-node \
               --add-flags "run" \
               --add-flags "--config $out/etc/goodnet/node.json" \
               --add-flags "--manifest $out/etc/goodnet/manifest.json" \
@@ -195,6 +203,15 @@
           # remote Linux builder.
           docker-static = import ./nix/docker.nix {
             inherit pkgs goodnet-core;
+          };
+
+          # Windows MVP cross-build via mingw-w64. Static-plugin
+          # single-`goodnet.exe` with the lean bundle (TCP + UDP +
+          # Noise + Null + heartbeat). Linux-host-only — pkgsCross
+          # runs on Linux and emits Windows PE; no native MSVC path
+          # is wired yet.
+          goodnet-windows = import ./nix/goodnet-windows.nix {
+            inherit pkgs;
           };
         });
 
@@ -336,17 +353,24 @@
                   exec "$build_dir/bin/goodnet-demo" "$@"
                   ;;
                 goodnet|node)
+                  echo "run: the goodnetd daemon binary now ships from" >&2
+                  echo "  github.com/GoodNet-io/goodnetd" >&2
+                  echo "" >&2
+                  echo "  build it standalone:" >&2
+                  echo "    nix build github:GoodNet-io/goodnetd" >&2
+                  echo "    ./result/bin/goodnetd $@" >&2
+                  exit 1
                   build_dir=build-release
                   if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                     cmake -B "$build_dir" -G Ninja \
                       -DCMAKE_BUILD_TYPE=Release \
                       -DGOODNET_BUILD_TESTS=OFF
                   fi
-                  cmake --build "$build_dir" --target goodnet -j"$(nproc)"
+                  cmake --build "$build_dir" --target goodnetd -j"$(nproc)"
                   if [ "$kind" = "node" ]; then
-                    exec "$build_dir/bin/goodnet" run "$@"
+                    exec "$build_dir/bin/goodnetd" run "$@"
                   else
-                    exec "$build_dir/bin/goodnet" "$@"
+                    exec "$build_dir/bin/goodnetd" "$@"
                   fi
                   ;;
                 *)

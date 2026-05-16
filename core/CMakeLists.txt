@@ -90,6 +90,15 @@ target_link_libraries(goodnet_kernel_objects
         ${CMAKE_DL_LIBS}
 )
 
+# Windows: asio's IOCP backend needs `ws2_32` (WSAStartup/Cleanup,
+# socket()/closesocket()) and `mswsock` (TransmitFile, AcceptEx).
+# Without explicit links the linker errors on `__imp_WSAStartup`
+# etc. PUBLIC so downstream binaries (the goodnet CLI) inherit
+# the link line.
+if(WIN32)
+    target_link_libraries(goodnet_kernel_objects PUBLIC ws2_32 mswsock)
+endif()
+
 target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_23)
 
 # Precompiled-header umbrella for the asio / spdlog / fmt block plus
@@ -110,21 +119,37 @@ set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
 # For hosts that load the C ABI in `sdk/core.h` at runtime — non-C++
 # bindings, scripting embeds, hot-reload tools. Same OBJECT library
 # under the hood; one compile, two link variants.
+#
+# Windows: the SHARED .dll wants every referenced symbol resolved at
+# link time, including `GnetProtocol::vtable` defined in
+# `goodnet_protocol_gnet`. On the static-plugin Windows build the
+# .dll has no consumer (the goodnet.exe binary links the STATIC
+# kernel + protocol_gnet archive directly) — skip it so the link
+# stage stays tractable. The shared-kernel hot-reload story is a
+# Linux-only convenience today; Windows hot-reload waits on a
+# proper named-pipe IPC port.
+if(NOT WIN32)
+    add_library(goodnet_kernel_shared SHARED $<TARGET_OBJECTS:goodnet_kernel_objects>)
+    target_link_libraries(goodnet_kernel_shared PUBLIC goodnet_kernel_objects)
+    set_target_properties(goodnet_kernel_shared PROPERTIES
+        EXPORT_NAME  kernel_shared
+        OUTPUT_NAME  goodnet_kernel
+    )
+    add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
 
-add_library(goodnet_kernel_shared SHARED $<TARGET_OBJECTS:goodnet_kernel_objects>)
-target_link_libraries(goodnet_kernel_shared PUBLIC goodnet_kernel_objects)
-set_target_properties(goodnet_kernel_shared PROPERTIES
-    EXPORT_NAME  kernel_shared
-    OUTPUT_NAME  goodnet_kernel
-)
-add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
-
-install(TARGETS goodnet_kernel goodnet_kernel_shared goodnet_kernel_objects
-                goodnet_ctx_accessors
-    EXPORT GoodNetTargets
-    ARCHIVE
-    LIBRARY
-)
+    install(TARGETS goodnet_kernel goodnet_kernel_shared goodnet_kernel_objects
+                    goodnet_ctx_accessors
+        EXPORT GoodNetTargets
+        ARCHIVE
+        LIBRARY
+    )
+else()
+    install(TARGETS goodnet_kernel goodnet_kernel_objects
+                    goodnet_ctx_accessors
+        EXPORT GoodNetTargets
+        ARCHIVE
+    )
+endif()
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"

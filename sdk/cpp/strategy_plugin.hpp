@@ -82,7 +82,12 @@ template <class T>
     try {
         return s.pick_conn(peer_pk, candidates, count, out_chosen);
     } catch (...) {
-        return GN_ERR_NULL_ARG;
+        /// Strategy threw at the C ABI boundary — fold to
+        /// `GN_ERR_INVALID_STATE`. The previous `GN_ERR_NULL_ARG`
+        /// return was wrong-semantic (no argument is null at this
+        /// point, the failure is internal to the strategy) and
+        /// confused diagnostic logs that key on the error code.
+        return GN_ERR_INVALID_STATE;
     }
 }
 
@@ -128,6 +133,22 @@ constexpr bool strategy_has_required_v =
         { T::extension_name() }    -> std::convertible_to<const char*>;
         { T::extension_version() } -> std::convertible_to<std::uint32_t>;
     };
+
+/// Compile-time trait — `1` when the strategy class declares
+/// `static constexpr bool hot_reload_safe = true;`, `0` otherwise.
+/// The kernel reads `gn_plugin_descriptor_t::hot_reload_safe` at
+/// load time; the macro now wires the flag from the class instead
+/// of a hard-coded `0` so a strategy author can opt in to
+/// hot-reload from their own translation unit without editing the
+/// SDK macro.
+template <class T>
+constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
+    if constexpr (requires { { T::hot_reload_safe } -> std::convertible_to<bool>; }) {
+        return T::hot_reload_safe ? std::uint8_t{1} : std::uint8_t{0};
+    } else {
+        return std::uint8_t{0};
+    }
+}();
 
 }  // namespace gn::sdk::detail
 
@@ -190,7 +211,9 @@ constexpr bool strategy_has_required_v =
     const gn_plugin_descriptor_t _gn_strategy_descriptor = {                   \
         /* name              */ PLUGIN_NAME,                                   \
         /* version           */ PLUGIN_VERSION,                                \
-        /* hot_reload_safe   */ 0,                                             \
+        /* hot_reload_safe   */                                                \
+            ::gn::sdk::detail::strategy_hot_reload_safe_v<                     \
+                _gn_strategy_class_t>,                                         \
         /* ext_requires      */ nullptr,                                       \
         /* ext_provides      */ &_gn_strategy_provides[0],                     \
         /* kind              */ GN_PLUGIN_KIND_STRATEGY,                       \

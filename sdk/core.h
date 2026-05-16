@@ -124,14 +124,41 @@ GN_EXPORT gn_core_t* gn_core_create_from_json(const char* json_str);
 GN_EXPORT void gn_core_destroy(gn_core_t* core);
 
 /**
+ * @brief Install a host-supplied `NodeIdentity` from disk.
+ *
+ * Loads the keypair through `NodeIdentity::load_from_file(path)`
+ * and stamps it into the kernel before `gn_core_init` walks the
+ * FSM. Must be called between `gn_core_create` and `gn_core_init`;
+ * `gn_core_init` then skips the fresh-keypair mint when the kernel
+ * already has an identity installed. Lets a chat host or operator
+ * tool keep one Ed25519 identity per system across restarts
+ * rather than minting a throw-away one every launch.
+ *
+ * @param core kernel handle returned by `gn_core_create`.
+ * @param path @borrowed absolute path to a file in the layout
+ *             `NodeIdentity::save_to_file` produced.
+ *
+ * @return `GN_OK` on success; `GN_ERR_NULL_ARG` for null inputs;
+ *         `GN_ERR_INVALID_STATE` when called after
+ *         `gn_core_init` has begun; `GN_ERR_NOT_FOUND` when the
+ *         file does not exist; `GN_ERR_INTEGRITY_FAILED` on a
+ *         decode / verification failure.
+ */
+GN_EXPORT gn_result_t gn_core_install_identity_from_file(
+    gn_core_t*  core,
+    const char* path);
+
+/**
  * @brief Bring the kernel to the `Ready` phase.
  *
  * Generates a fresh `NodeIdentity` (Ed25519 device keypair) when
- * none has been installed by the host, registers the canonical
- * `gnet-v1` protocol layer, and walks the FSM through `Load → Wire
- * → Resolve → Ready`. Plugins (link, security, handler) are NOT
- * loaded here — the host registers them through
- * `gn_core_load_plugin` / `gn_core_register_*` after init returns.
+ * none has been installed by the host (see
+ * `gn_core_install_identity_from_file` for the inject path),
+ * registers the canonical `gnet-v1` protocol layer, and walks the
+ * FSM through `Load → Wire → Resolve → Ready`. Plugins (link,
+ * security, handler) are NOT loaded here — the host registers them
+ * through `gn_core_load_plugin` / `gn_core_register_*` after init
+ * returns.
  *
  * @return `GN_OK` on success; `GN_ERR_INVALID_STATE` if the kernel
  *         is past `Phase::Ready`; `GN_ERR_INTEGRITY_FAILED` when
@@ -596,7 +623,7 @@ GN_EXPORT const host_api_t* gn_core_host_api(gn_core_t* core);
 /** Human-readable version string ("0.1.0", "1.0.0-rc1", …). */
 GN_EXPORT const char* gn_version(void);
 
-/** Packed `(MAJOR << 16) | (MINOR << 8) | PATCH`. */
+/** Packed version in `gn_version_pack` layout — see `sdk/abi.h`. */
 GN_EXPORT uint32_t gn_version_packed(void);
 
 #ifdef __cplusplus

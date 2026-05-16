@@ -14,15 +14,6 @@ namespace gn::plugins::gnet {
 
 namespace {
 
-/// Compare a 32-byte public key buffer against the all-zero pattern.
-/// Mirror of `gn_pk_is_zero` from `sdk/types.h`, kept inline so the
-/// implementation does not depend on cross-TU inlining of the C helper.
-[[nodiscard]] bool pk_buffer_is_zero(const std::uint8_t* pk) noexcept {
-    std::uint8_t acc = 0;
-    for (std::size_t i = 0; i < GN_PUBLIC_KEY_BYTES; ++i) acc |= pk[i];
-    return acc == 0;
-}
-
 [[nodiscard]] bool pk_buffer_eq(const std::uint8_t* a, const std::uint8_t* b) noexcept {
     /// Constant-time compare so the framed-vs-relay-transit branch
     /// downstream (header overhead 14 vs 78 bytes) does not become a
@@ -46,10 +37,30 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
     ::gn::ConnectionContext& ctx,
     std::span<const std::uint8_t> bytes) {
 
-    deframe_buffer_.clear();
+    /// Per-thread scratch buffer — keeps the allocation-reuse benefit
+    /// while eliminating the cross-thread race that occurred when a
+    /// single GnetProtocol instance was driven from more than one
+    /// dispatch thread.
+    static thread_local std::vector<gn_message_t> deframe_buffer;
+    deframe_buffer.clear();
     std::size_t cursor = 0;
 
+    /// Defensive envelope-count cap. A 64 KiB recv buffer packed with
+    /// minimum-size headers can yield up to ~4700 envelopes per
+    /// dispatch — an attacker shape that makes the dispatch handler
+    /// loop the bottleneck and starves siblings. 1024 covers any
+    /// legitimate workload (kernel reads at frame_bytes ceiling, the
+    /// upper bound for one read is `64 KiB / kFixedHeaderSize`); past
+    /// that we treat the input as malformed.
+    constexpr std::size_t kMaxEnvelopesPerCall = 1024;
+
     while (cursor < bytes.size()) {
+        if (deframe_buffer.size() >= kMaxEnvelopesPerCall) {
+            return std::unexpected(::gn::Error{
+                GN_ERR_FRAME_TOO_LARGE,
+                "GNET deframe exceeded envelope-count cap; possible "
+                "minimal-frame flood"});
+        }
         wire::ParsedHeader hdr;
         const auto rc = wire::parse_header(bytes.subspan(cursor), hdr);
 
@@ -139,12 +150,12 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         env.payload      = frame_start + hdr.header_size;
         env.payload_size = hdr.total_length - hdr.header_size;
 
-        deframe_buffer_.push_back(env);
+        deframe_buffer.push_back(env);
         cursor += hdr.total_length;
     }
 
     return ::gn::DeframeResult{
-        .messages       = std::span<const gn_message_t>(deframe_buffer_),
+        .messages       = std::span<const gn_message_t>(deframe_buffer),
         .bytes_consumed = cursor};
 }
 
@@ -157,7 +168,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         return std::unexpected(::gn::Error{
             GN_ERR_INVALID_ENVELOPE, "msg_id must be non-zero"});
     }
-    if (pk_buffer_is_zero(msg.sender_pk)) {
+    if (gn_pk_is_zero(msg.sender_pk)) {
         return std::unexpected(::gn::Error{
             GN_ERR_INVALID_ENVELOPE, "sender_pk must be non-zero"});
     }
@@ -168,7 +179,7 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
 
     /// Decide flags and which pk fields go on the wire.
     std::uint8_t flags = 0;
-    const bool receiver_zero = pk_buffer_is_zero(msg.receiver_pk);
+    const bool receiver_zero = gn_pk_is_zero(msg.receiver_pk);
 
     if (receiver_zero) {
         /// Broadcast — sender on wire so transit nodes preserve identity.

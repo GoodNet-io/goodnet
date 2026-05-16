@@ -37,7 +37,7 @@
 #include <core/crypto/crypto_worker_pool.hpp>
 #include <core/identity/node_identity.hpp>
 #include <core/security/session.hpp>
-#include <core/util/token_bucket.hpp>
+#include <sdk/cpp/token_bucket.hpp>
 
 #include <core/config/config.hpp>
 #include <core/registry/connection.hpp>
@@ -123,7 +123,7 @@ public:
     [[nodiscard]] signal::SignalChannel<ConnEvent>& on_conn_event() noexcept {
         return on_conn_event_;
     }
-    [[nodiscard]] util::RateLimiterMap<>& inject_rate_limiter() noexcept {
+    [[nodiscard]] ::gn::ratelimit::RateLimiterMap<>& inject_rate_limiter() noexcept {
         return inject_rate_limiter_;
     }
     [[nodiscard]] AttestationDispatcher& attestation_dispatcher() noexcept {
@@ -256,7 +256,7 @@ private:
 
     /// Per-source rate limiter for `host_api->inject_*` per
     /// `host-api.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
-    util::RateLimiterMap<>                inject_rate_limiter_{
+    ::gn::ratelimit::RateLimiterMap<>     inject_rate_limiter_{
         100.0, 50.0, 4096};
 
     /// Kernel-internal attestation flow per `attestation.md`. Owns

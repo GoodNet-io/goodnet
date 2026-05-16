@@ -22,6 +22,18 @@
 # The mandatory mesh-framing plugin (plugins/protocols/gnet) is added
 # directly from the root CMakeLists; it links statically into the
 # kernel binary and is not a `dlopen`-able plugin.
+#
+# Windows MVP (mingw cross-build) currently skips plugins that need
+# OpenSSL mingw (TLS, QUIC, WS) or rely on POSIX-only resolver
+# subsystems (handler/dns via c-ares). ICE and store/strategies stay
+# off the first cut until their CI smoke is wired. The lean Windows
+# bundle is kernel + gnet + Noise + Null + TCP + UDP + Heartbeat;
+# the rest will lift in a follow-up cut once each plugin's mingw
+# build is verified.
+set(_GOODNET_WINDOWS_SKIP FALSE)
+if(WIN32)
+    set(_GOODNET_WINDOWS_SKIP TRUE)
+endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/null/CMakeLists.txt")
     add_subdirectory(security/null)
@@ -39,11 +51,13 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/heartbeat/CMakeLists.txt")
     add_subdirectory(handlers/heartbeat)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/store/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/store/CMakeLists.txt")
     add_subdirectory(handlers/store)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/dns/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/dns/CMakeLists.txt")
     add_subdirectory(handlers/dns)
 endif()
 
@@ -55,35 +69,40 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/udp/CMakeLists.txt")
     add_subdirectory(links/udp)
 endif()
 
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tls/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tls/CMakeLists.txt")
     add_subdirectory(links/tls)
 endif()
 
 # WS comes after TLS so the WS test fixture's optional `wss://` slice
 # can see `goodnet_tls_objects` as a CMake target at conditional time.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws/CMakeLists.txt")
     add_subdirectory(links/ws)
 endif()
 
 # ICE before QUIC so that QUIC's `test_quic` fixture (which now
 # integrates an `IceCarrierBridge` for the `quic://<peer-pk-hex>`
 # route per Q.1) sees `goodnet_ice_objects` at conditional time.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ice/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ice/CMakeLists.txt")
     add_subdirectory(links/ice)
 endif()
 
 # QUIC requires OpenSSL 3.5+ for OSSL_QUIC_*_method; the build will
 # fail at compile time on older OpenSSL — kept after udp/tls/ice so
 # its composer test fixture can see all three carrier object libraries.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
     add_subdirectory(links/quic)
 endif()
 
-# Strategy plugins consume `sdk/extensions/strategy.h` (Слайс 9-SDK).
+# Strategy plugins consume `sdk/extensions/strategy.h`.
 # FloatSendRtt is the reference implementation — picks min-RTT
 # conn with hysteresis. Added after every L1 link so its tests can
 # build synthetic candidate sets representing real link surfaces.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/float_send_rtt/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/float_send_rtt/CMakeLists.txt")
     add_subdirectory(strategies/float_send_rtt)
 endif()
 
@@ -94,6 +113,7 @@ endif()
 # so the kernel↔worker round trip has a stable integration smoke
 # without pulling a separate repo. Real workers live in their own gits
 # the same way handlers/links/security plugins do.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/workers/CMakeLists.txt")
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/workers/CMakeLists.txt")
     add_subdirectory(workers)
 endif()

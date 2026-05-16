@@ -10,6 +10,59 @@
 #include <cstring>
 #include <utility>
 
+#include <sdk/link.h>
+#include <sdk/remote/slots.h>
+#include <sdk/remote/wire.h>
+
+#include <core/kernel/plugin_context.hpp>
+#include <core/plugin/wire_codec.hpp>
+
+#if defined(_WIN32)
+
+// Windows subprocess host: stub. The POSIX implementation below
+// (socketpair + fork + execve + writev + waitpid) maps to Win32
+// CreateProcess + named-pipe pair + OVERLAPPED I/O — that port is
+// tracked separately. Until then `RemoteHost::spawn` reports
+// `GN_ERR_NOT_IMPLEMENTED` so `PluginManager` falls back from
+// `kind: remote` plugins gracefully; `manifest` and `static` plugin
+// modes remain fully functional on Windows.
+namespace gn::core {
+
+RemoteHost::~RemoteHost() = default;
+
+gn_result_t RemoteHost::spawn(const std::string&,
+                              std::span<const std::string>,
+                              PluginContext&,
+                              host_api_t,
+                              std::string& diagnostic) {
+    diagnostic = "RemoteHost::spawn: subprocess plugin runtime is "
+                 "POSIX-only; Windows port pending";
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
+gn_result_t RemoteHost::call_init(void** out)              { if (out) *out = nullptr; return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t RemoteHost::call_register(std::uint64_t)       { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t RemoteHost::call_unregister(std::uint64_t)     { return GN_ERR_NOT_IMPLEMENTED; }
+void        RemoteHost::call_shutdown(std::uint64_t)       {}
+void        RemoteHost::terminate() noexcept               {}
+
+const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept { return nullptr; }
+
+void RemoteHost::reader_loop_()                                                       {}
+bool RemoteHost::read_exact_(std::uint8_t*, std::size_t)                              { return false; }
+gn_result_t RemoteHost::write_frame_(std::uint32_t, std::uint32_t, std::uint32_t,
+                                     std::span<const std::uint8_t>)                  { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t RemoteHost::round_trip_(std::uint32_t, const PayloadVec&, ReplyResult&)  { return GN_ERR_NOT_IMPLEMENTED; }
+void RemoteHost::handle_host_call_(std::uint32_t, std::span<const std::uint8_t>)     {}
+void RemoteHost::deliver_reply_(std::uint32_t, std::uint32_t,
+                                 std::span<const std::uint8_t>)                       {}
+void RemoteHost::fail_pending_(gn_result_t, const char*) noexcept                    {}
+void RemoteHost::encode_error_(PayloadVec&, gn_result_t, std::string_view)           {}
+
+}  // namespace gn::core
+
+#else  // POSIX path
+
 #include <fcntl.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -19,13 +72,6 @@
 #include <unistd.h>
 
 extern "C" char** environ;
-
-#include <sdk/link.h>
-#include <sdk/remote/slots.h>
-#include <sdk/remote/wire.h>
-
-#include <core/kernel/plugin_context.hpp>
-#include <core/plugin/wire_codec.hpp>
 
 namespace gn::core {
 
@@ -824,3 +870,5 @@ const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept {
 }
 
 }  // namespace gn::core
+
+#endif  // _WIN32 vs POSIX

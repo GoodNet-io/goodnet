@@ -9,7 +9,7 @@ project(GoodNet
 # string is published (CLI banner, package metadata, Nix derivation).
 # CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
 # rides separately. Drop to empty when cutting `v1.0.0` final.
-set(GOODNET_VERSION_SUFFIX "-rc3" CACHE STRING "Pre-release suffix (e.g. -rc3); empty for stable")
+set(GOODNET_VERSION_SUFFIX "-rc4" CACHE STRING "Pre-release suffix (e.g. -rc4); empty for stable")
 set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
@@ -38,6 +38,14 @@ add_compile_options(
     # (`core/util/log.hpp:42`) instead of the full filesystem
     # location of the source tree.
     "-fmacro-prefix-map=${CMAKE_SOURCE_DIR}/=")
+
+# mingw defaults `off_t` to 32-bit. `core/plugin/plugin_manifest.cpp`
+# static-asserts `sizeof(off_t) >= 8` so the manifest fd-digest path
+# works on >2 GiB plugin binaries. `_FILE_OFFSET_BITS=64` lifts the
+# typedef to 64-bit across the platform headers.
+if(WIN32)
+    add_compile_definitions(_FILE_OFFSET_BITS=64)
+endif()
 
 # spdlog compile-time level ceiling. Release strips TRACE and DEBUG
 # call sites entirely; Debug compiles every level. The ceiling is
@@ -68,6 +76,16 @@ option(GOODNET_BUILD_TESTS            "Build unit + integration tests"   ON)
 option(GOODNET_BUILD_EXAMPLES         "Build example apps"               OFF)
 option(GOODNET_BUILD_BENCH            "Build the comprehensive bench suite (bench/)" OFF)
 option(GOODNET_BUILD_BUNDLED_PLUGINS  "Iterate plugins/ during in-tree builds" ON)
+# Compiles the bench-only `_test_clear_inline_crypto` seam into the
+# kernel. The seam is a guarded entrypoint that zeroes the inline
+# AEAD counters so `bench_showcase` §B.3 can model the post-handshake
+# Noise→Null handoff path. Default OFF — production binaries do not
+# carry the seam at all; the method always returns
+# `GN_ERR_INVALID_STATE` when the macro is undefined.
+option(GOODNET_BENCH_SHOWCASE         "Compile the inline-crypto downgrade seam for bench_showcase" OFF)
+if(GOODNET_BENCH_SHOWCASE)
+    add_compile_definitions(GOODNET_BENCH_SHOWCASE)
+endif()
 
 # Build-acceleration toggles. Defaults pick the right path per build
 # type: Release gets LTO + `-O3`, every type gets the mold linker + a
@@ -108,6 +126,19 @@ if(GOODNET_USE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
     check_ipo_supported(RESULT _goodnet_ipo_ok OUTPUT _goodnet_ipo_msg)
     if(_goodnet_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+        # LTO-companion: tell GCC/Clang that internal calls within
+        # a shared library are not subject to ELF symbol interposition,
+        # so the optimiser may inline and devirtualise across TUs that
+        # land in the same `.so` (kernel objects → libgoodnet_kernel.a;
+        # plugin objects → libgoodnet_<name>.so). The PLT indirection
+        # for `gn_*` exports stays — only the kernel's intra-library
+        # calls collapse. Visibility scope-narrowing is set per-target
+        # in `cmake/AddPlugin.cmake` (CXX_VISIBILITY_PRESET hidden)
+        # so test binaries keep the default visibility they need to
+        # link against gtest's libstdc++ surface.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            add_compile_options(-fno-semantic-interposition)
+        endif()
     else()
         message(STATUS "  LTO requested but compiler declined: ${_goodnet_ipo_msg}")
     endif()
@@ -125,7 +156,15 @@ find_package(fmt    REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(SODIUM REQUIRED IMPORTED_TARGET libsodium)
-find_package(OpenSSL REQUIRED)
+# OpenSSL is consumed by TLS/QUIC/WS/ICE plugins. On Windows mingw
+# cross-builds we skip those plugins (see plugins/CMakeLists.txt),
+# so OpenSSL itself is optional at the root level. Linux configures
+# always discover it — the plugins fail at link if it's missing.
+if(WIN32)
+    find_package(OpenSSL)
+else()
+    find_package(OpenSSL REQUIRED)
+endif()
 # Standalone Asio ships only a pkg-config file in nixpkgs; wrap it
 # into an alias `asio::asio` so target_link_libraries reads the same
 # as if the library shipped a CMake config. ASIO_STANDALONE switches
@@ -196,7 +235,7 @@ endif()
 # dynamic-linkage contract from `find_package(GoodNet)`.
 #
 # Globally surface the option to the C++ preprocessor so kernel and
-# apps code (notably `apps/goodnet/subcommands/run.cpp`) can switch
+# apps code (notably `apps/goodnetd/subcommands/run.cpp`) can switch
 # to `PluginManager::load_static()` at compile time. The macros in
 # `sdk/plugin.h` are guarded on both this define AND
 # `GN_PLUGIN_STATIC_NAME` — defining only the former at the kernel
@@ -205,8 +244,7 @@ if(GOODNET_STATIC_PLUGINS)
     add_compile_definitions(GOODNET_STATIC_PLUGINS=1)
 endif()
 
-if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
-        AND TARGET goodnet)
+if(GOODNET_STATIC_PLUGINS)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/StaticPlugins.cmake")
 
     set(_goodnet_static_plugin_list "")
@@ -228,8 +266,41 @@ if(GOODNET_STATIC_PLUGINS AND GOODNET_BUILD_APPS
     endforeach()
 
     if(_goodnet_static_plugin_list)
-        goodnet_register_static_plugins(goodnet
+        # Bundle the registry + plugin objects into the kernel
+        # static archive. Targeting `goodnet_kernel` directly
+        # (the STATIC variant) — `target_sources($<TARGET_OBJECTS
+        # :p>)` resolves at the archive step, so the plugin .o
+        # files actually land in `libgoodnet_kernel.a`. Targeting
+        # `goodnet_kernel_objects` (OBJECT) drops the TARGET_OBJECTS
+        # generator expression silently. Same registry then reaches
+        # apps/goodnet (links kernel), find_package consumers like
+        # Solas (link kernel), and in-process operator UIs.
+        # `gn_core_init` walks the registry via
+        # `PluginManager::load_static` automatically under the
+        # GOODNET_STATIC_PLUGINS compile gate.
+        goodnet_register_static_plugins(goodnet_kernel
             ${_goodnet_static_plugin_list})
+
+        # Plugin-side PUBLIC link deps that aren't already on
+        # `goodnet_kernel_objects`'s link line. Bundling the
+        # plugin .o files via TARGET_OBJECTS doesn't carry the
+        # INTERFACE_LINK_LIBRARIES; the bundled symbols compile
+        # but the final link of a consumer (apps/goodnet, Solas)
+        # fails with unresolved references unless the host
+        # archive itself surfaces the requirement. Listed plugins
+        # opt in here by name; new plugins with unique link deps
+        # extend the block.
+        find_package(OpenSSL QUIET)
+        if(TARGET goodnet_link_tls AND TARGET OpenSSL::SSL)
+            target_link_libraries(goodnet_kernel PUBLIC
+                OpenSSL::SSL OpenSSL::Crypto)
+        endif()
+
+        # `goodnet_kernel_shared` is currently built from the same
+        # OBJECT lib without the per-plugin TARGET_OBJECTS bundling
+        # — operator UIs that need static plugins in a shared
+        # variant should adjust the recipe; in-tree apps/goodnet
+        # and find_package consumers go through the STATIC variant.
         message(STATUS
             "  Static plugins    : ${_goodnet_static_plugin_list}")
     endif()

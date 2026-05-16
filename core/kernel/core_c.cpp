@@ -11,11 +11,13 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <filesystem>
 #include <memory>
 #include <new>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include <core/identity/node_identity.hpp>
@@ -26,10 +28,14 @@
 
 namespace {
 
+/// Packed kernel version in the canonical layout exposed by
+/// `gn_version_pack` (major:8 << 24 | minor:8 << 16 | patch:16).
+/// `gn_version_packed()` returns this value to plugins; both sides
+/// must agree on the same bit layout so ordered comparison works.
 constexpr std::uint32_t kPackedVersion =
-    (static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR) << 16) |
-    (static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR) << 8)  |
-    static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH);
+    gn_version_pack(static_cast<std::uint32_t>(GN_SDK_VERSION_MAJOR),
+                    static_cast<std::uint32_t>(GN_SDK_VERSION_MINOR),
+                    static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH));
 
 inline constexpr const char kVersionString[] = "1.0.0-dev";
 
@@ -114,6 +120,43 @@ void gn_core_destroy(gn_core_t* core) {
     delete core;
 }
 
+gn_result_t gn_core_install_identity_from_file(gn_core_t*  core,
+                                               const char* path) {
+    if (core == nullptr || path == nullptr) return GN_ERR_NULL_ARG;
+
+    // Same `init_done` gate `gn_core_init` uses — the C ABI
+    // contract is "install before init". Calling on an already-
+    // initialised kernel is the operator's bug; surface it as
+    // INVALID_STATE rather than racing the protocol-layer
+    // registration.
+    if (core->init_done.load(std::memory_order_acquire)) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (core->kernel.has_node_identity()) {
+        return GN_ERR_INVALID_STATE;
+    }
+
+    auto loaded = gn::core::identity::NodeIdentity::load_from_file(path);
+    if (!loaded) {
+        // `NodeIdentity::load_from_file` returns a tl::expected
+        // with a `Error` describing the failure. We don't have
+        // a stable enum mapping yet; surface NOT_FOUND when the
+        // file is plain missing, INTEGRITY_FAILED otherwise so
+        // the operator can distinguish "no key yet" from "key
+        // tampered or unreadable".
+        std::error_code ec;
+        if (!std::filesystem::exists(path, ec)) {
+            return GN_ERR_NOT_FOUND;
+        }
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+
+    const auto pk = loaded->device().public_key();
+    core->kernel.identities().add(pk);
+    core->kernel.set_node_identity(std::move(*loaded));
+    return GN_OK;
+}
+
 gn_result_t gn_core_init(gn_core_t* core) {
     if (core == nullptr) return GN_ERR_NULL_ARG;
 
@@ -123,29 +166,56 @@ gn_result_t gn_core_init(gn_core_t* core) {
         return GN_ERR_INVALID_STATE;
     }
 
-    auto identity = gn::core::identity::NodeIdentity::generate(/*expiry*/ 0);
-    if (!identity.has_value()) {
-        core->init_done.store(false, std::memory_order_release);
-        return GN_ERR_INTEGRITY_FAILED;
+    // Skip the fresh-keypair mint when the host already injected
+    // a NodeIdentity through `gn_core_install_identity_from_file`.
+    // Production hosts that keep one identity per system (chat
+    // clients, operator daemons) want their persisted key to
+    // outlive `gn_core_init`; the throw-away mint is reserved for
+    // ad-hoc CLIs that don't carry state across runs.
+    if (!core->kernel.has_node_identity()) {
+        auto identity = gn::core::identity::NodeIdentity::generate(/*expiry*/ 0);
+        if (!identity.has_value()) {
+            core->init_done.store(false, std::memory_order_release);
+            return GN_ERR_INTEGRITY_FAILED;
+        }
+        const auto pk = identity->device().public_key();
+        core->kernel.identities().add(pk);
+        core->kernel.set_node_identity(std::move(*identity));
     }
-    const auto pk = identity->device().public_key();
-    core->kernel.identities().add(pk);
-    core->kernel.set_node_identity(std::move(*identity));
 
-    /// Register the canonical mesh-framing layer. Plugin-supplied
-    /// alternatives (raw via gn_core_register_protocol; future ssh
-    /// plugin) coexist in the same registry.
-    core->protocol_gnet = std::make_shared<gn::plugins::gnet::GnetProtocol>();
-    gn::core::protocol_layer_id_t gnet_id =
-        gn::core::kInvalidProtocolLayerId;
-    if (const auto rc = core->kernel.protocol_layers().register_layer(
-            core->protocol_gnet, &gnet_id);
-        rc != GN_OK) {
-        core->init_done.store(false, std::memory_order_release);
-        return rc;
-    }
+    /// Protocol layers register through `gn_core_register_protocol`
+    /// (C ABI hosts) or `kernel.protocol_layers().register_layer(...)`
+    /// (in-tree C++ hosts). `gn_core_init` does NOT auto-register the
+    /// gnet layer any more — `core/` includes nothing from `plugins/`
+    /// per `abi-evolution.en.md` §3, and the host program owns the
+    /// decision of which protocols ship alongside its embedding.
 
     walk_to_ready(core->kernel);
+
+#ifdef GOODNET_STATIC_PLUGINS
+    // Static-linkage build: every bundled plugin's entry symbols
+    // ship inside the kernel binary (suffix-renamed per
+    // `sdk/plugin.h` macros) and `gn_plugin_static_registry[]`
+    // carries their addresses. Walk the registry now so embedded
+    // hosts (Solas, in-process operator UIs) don't have to call
+    // `PluginManager::load_static` themselves — the dynamic-load
+    // path in `gn_core_load_plugin` stays available for hosts that
+    // do their own composition.
+    {
+        std::string diag;
+        if (const auto rc = core->plugins.load_static(&diag);
+            rc != GN_OK) {
+            // Don't roll back `init_done` — the kernel is otherwise
+            // healthy and the host might recover by registering
+            // providers in-process; just surface the diagnostic on
+            // stderr the same way `apps/goodnet run` does.
+            (void)std::fprintf(stderr,
+                "gn_core_init: static plugin load failed — %s\n",
+                diag.c_str());
+        }
+    }
+#endif
+
     return GN_OK;
 }
 
@@ -383,7 +453,7 @@ uint64_t gn_core_subscribe(gn_core_t* core,
 
     gn_handler_id_t hid = GN_INVALID_ID;
     const gn_result_t rc = core->kernel.handlers().register_handler(
-        /*protocol_id*/ "gnet-v1",
+        /*protocol_id*/ gn::core::kDefaultProtocolId,
         /*msg_id*/      msg_id,
         /*priority*/    128,
         &kMessageSubVtable,
@@ -573,19 +643,122 @@ gn_result_t gn_core_register_security(
         core->api.host_ctx, meta->name, vtable, self);
 }
 
+namespace {
+
+/// Adapter that wraps a `gn_protocol_layer_vtable_t` + `self` pair
+/// behind the C++-side `IProtocolLayer` the protocol-layer registry
+/// stores. Plugin-supplied C vtables thread through this; the kernel
+/// dispatches the same method shapes whether the layer is C++-native
+/// (statically linked into the host program) or C-vtable (registered
+/// through `gn_core_register_protocol`).
+class VtableProtocolLayer final : public ::gn::IProtocolLayer {
+public:
+    VtableProtocolLayer(const gn_protocol_layer_vtable_t* vtable,
+                         void* self) noexcept
+        : vtable_(vtable), self_(self),
+          protocol_id_cached_(
+              vtable && vtable->protocol_id
+                  ? std::string(vtable->protocol_id(self))
+                  : std::string{}) {}
+
+    ~VtableProtocolLayer() override {
+        if (vtable_ && vtable_->destroy) {
+            vtable_->destroy(self_);
+        }
+    }
+
+    VtableProtocolLayer(const VtableProtocolLayer&)            = delete;
+    VtableProtocolLayer& operator=(const VtableProtocolLayer&) = delete;
+
+    [[nodiscard]] std::string_view protocol_id() const noexcept override {
+        return protocol_id_cached_;
+    }
+
+    [[nodiscard]] std::size_t max_payload_size() const noexcept override {
+        return (vtable_ && vtable_->max_payload_size)
+            ? vtable_->max_payload_size(self_) : 0;
+    }
+
+    [[nodiscard]] std::uint32_t allowed_trust_mask() const noexcept override {
+        return (vtable_ && vtable_->allowed_trust_mask)
+            ? vtable_->allowed_trust_mask(self_)
+            : ::gn::IProtocolLayer::allowed_trust_mask();
+    }
+
+    [[nodiscard]] ::gn::Result<::gn::DeframeResult> deframe(
+        ::gn::ConnectionContext& ctx,
+        std::span<const std::uint8_t> bytes) override {
+        if (!vtable_ || !vtable_->deframe) {
+            return std::unexpected(::gn::Error{
+                GN_ERR_NOT_IMPLEMENTED,
+                "vtable protocol layer: deframe slot absent"});
+        }
+        gn_deframe_result_t out{};
+        const auto rc = vtable_->deframe(
+            self_, &ctx, bytes.data(), bytes.size(), &out);
+        if (rc != GN_OK) {
+            return std::unexpected(::gn::Error{
+                rc, "vtable protocol layer: deframe failed"});
+        }
+        return ::gn::DeframeResult{
+            .messages       = std::span<const gn_message_t>(
+                out.messages, out.count),
+            .bytes_consumed = out.bytes_consumed};
+    }
+
+    [[nodiscard]] ::gn::Result<std::vector<std::uint8_t>> frame(
+        ::gn::ConnectionContext& ctx,
+        const gn_message_t& msg) override {
+        if (!vtable_ || !vtable_->frame) {
+            return std::unexpected(::gn::Error{
+                GN_ERR_NOT_IMPLEMENTED,
+                "vtable protocol layer: frame slot absent"});
+        }
+        std::uint8_t* out_bytes = nullptr;
+        std::size_t   out_size  = 0;
+        void*         out_user_data = nullptr;
+        void (*out_free)(void*, std::uint8_t*) = nullptr;
+        const auto rc = vtable_->frame(
+            self_, &ctx, &msg,
+            &out_bytes, &out_size, &out_user_data, &out_free);
+        if (rc != GN_OK) {
+            return std::unexpected(::gn::Error{
+                rc, "vtable protocol layer: frame failed"});
+        }
+        std::vector<std::uint8_t> buf;
+        if (out_bytes && out_size) {
+            buf.assign(out_bytes, out_bytes + out_size);
+        }
+        if (out_free) {
+            out_free(out_user_data, out_bytes);
+        }
+        return buf;
+    }
+
+private:
+    const gn_protocol_layer_vtable_t* vtable_;
+    void*                              self_;
+    std::string                        protocol_id_cached_;
+};
+
+}  // namespace
+
 gn_result_t gn_core_register_protocol(
     gn_core_t* core,
     const gn_protocol_layer_vtable_t* vtable,
     void* self) {
     if (core == nullptr || vtable == nullptr) return GN_ERR_NULL_ARG;
-    /// Protocol layer is not a vtable kind on `register_vtable` — the
-    /// kernel statically links a single layer. The C ABI entry is
-    /// reserved for future hot-swap; for now hosts that need a
-    /// non-default protocol register their layer through the C++ side
-    /// before init. Returns NOT_IMPLEMENTED until the kernel exposes
-    /// a runtime swap.
-    (void)self;
-    return GN_ERR_NOT_IMPLEMENTED;
+    /// Defensive size-prefix check — vtable producer must have set
+    /// `api_size` to at least the slot offset of every method the
+    /// kernel calls. Matches the gate in
+    /// `core/registry/handler.cpp` for handler vtables.
+    if (vtable->api_size < sizeof(gn_protocol_layer_vtable_t)) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+    auto layer = std::make_shared<VtableProtocolLayer>(vtable, self);
+    gn::core::protocol_layer_id_t id = gn::core::kInvalidProtocolLayerId;
+    return core->kernel.protocol_layers().register_layer(
+        std::move(layer), &id);
 }
 
 gn_handler_id_t gn_core_register_handler(

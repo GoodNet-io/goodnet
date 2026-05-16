@@ -253,7 +253,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
         char proc_path[64];
         (void)std::snprintf(proc_path, sizeof(proc_path),
                             "/proc/self/fd/%d", fd);
-        out.so_handle = ::dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
+        out.so_handle = dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
         /// Keep the fd open across the rest of `load`. glibc's
         /// dlopen caches by path string; closing the fd here lets
         /// the kernel reuse fd N for the next plugin's open, the
@@ -270,16 +270,16 @@ gn_result_t PluginManager::open_one(const std::string& path,
             diag = "dlopen failed for ";
             diag += path;
             diag += ": ";
-            if (const char* err = ::dlerror()) diag += err;
+            if (const char* err = dlerror()) diag += err;
             return GN_ERR_NOT_FOUND;
         }
     } else {
-        out.so_handle = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+        out.so_handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
         if (!out.so_handle) {
             diag = "dlopen failed for ";
             diag += path;
             diag += ": ";
-            if (const char* err = ::dlerror()) diag += err;
+            if (const char* err = dlerror()) diag += err;
             return GN_ERR_NOT_FOUND;
         }
     }
@@ -293,12 +293,12 @@ gn_result_t PluginManager::open_one(const std::string& path,
         }
     }
 
-    out.so_handle = ::dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+    out.so_handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
     if (!out.so_handle) {
         diag = "dlopen failed for ";
         diag += path;
         diag += ": ";
-        if (const char* err = ::dlerror()) diag += err;
+        if (const char* err = dlerror()) diag += err;
         return GN_ERR_NOT_FOUND;
     }
 #endif
@@ -306,17 +306,21 @@ gn_result_t PluginManager::open_one(const std::string& path,
     PluginSymbols syms{};
     auto rc = resolve_symbols(out.so_handle, syms, diag);
     if (rc != GN_OK) {
-        ::dlclose(out.so_handle);
+        dlclose(out.so_handle);
         out.so_handle = nullptr;
+#ifdef __linux__
         if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
+#endif
         return rc;
     }
 
     if (!sdk_version_compatible(syms)) {
         diag = "sdk-version mismatch in " + path;
-        ::dlclose(out.so_handle);
+        dlclose(out.so_handle);
         out.so_handle = nullptr;
+#ifdef __linux__
         if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
+#endif
         return GN_ERR_VERSION_MISMATCH;
     }
 
@@ -427,7 +431,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
             rc = inst.remote->call_init(&inst.self);
         } else {
             auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
-                ::dlsym(inst.so_handle, "gn_plugin_init"));
+                dlsym(inst.so_handle, "gn_plugin_init"));
             const auto init_tag =
                 "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
             rc = safe_call_result(
@@ -466,7 +470,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
                 reinterpret_cast<std::uintptr_t>(inst.self));
         } else {
             auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
-                ::dlsym(inst.so_handle, "gn_plugin_register"));
+                dlsym(inst.so_handle, "gn_plugin_register"));
             rc = safe_call_result(
                 "plugin.gn_plugin_register",
                 reg_fn, inst.self);
@@ -569,7 +573,7 @@ void PluginManager::rollback() {
                     reinterpret_cast<std::uintptr_t>(it->self));
             } else if (it->so_handle) {
                 if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-                        ::dlsym(it->so_handle, "gn_plugin_unregister"))) {
+                        dlsym(it->so_handle, "gn_plugin_unregister"))) {
                     /// `gn_result_t` discarded — the unregister path
                     /// continues to teardown regardless of the
                     /// plugin's reported outcome; we only care that
@@ -632,7 +636,7 @@ void PluginManager::rollback() {
                     reinterpret_cast<std::uintptr_t>(it->self));
             } else if (it->so_handle) {
                 if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-                        ::dlsym(it->so_handle, "gn_plugin_shutdown"))) {
+                        dlsym(it->so_handle, "gn_plugin_shutdown"))) {
                     safe_call_void("plugin.gn_plugin_shutdown",
                         fn, it->self);
                 }
@@ -658,7 +662,7 @@ void PluginManager::rollback() {
 
         if (it->so_handle) {
             if (drained) {
-                ::dlclose(it->so_handle);
+                dlclose(it->so_handle);
             }
             it->so_handle = nullptr;
         }
@@ -669,10 +673,12 @@ void PluginManager::rollback() {
         /// `dlopen("/proc/self/fd/N")` and hit a glibc cache line.
         /// After dlopen has the .so mapped, the fd has no further
         /// purpose.
+#ifdef __linux__
         if (it->integrity_fd >= 0) {
             ::close(it->integrity_fd);
             it->integrity_fd = -1;
         }
+#endif
 
         /// ctx is the last kernel-side owner of the heap allocation.
         /// Reset it after dlclose so any leftover `host_ctx` pointer

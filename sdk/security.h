@@ -57,12 +57,13 @@ GN_VTABLE_API_SIZE_FIRST(gn_handshake_keys_t);
  * @brief Output buffer for variable-length security messages.
  *
  * The plugin allocates `bytes` and pairs it with `free_fn` so the
- * kernel can release it once the bytes have been handed to the transport.
+ * kernel can release it once the bytes have been handed to the
+ * transport. The struct is per-call output — both sides build it
+ * fresh on every API entry — so the size-prefix evolution pattern
+ * (`api_size` first) does not apply; growing the struct requires
+ * a major ABI bump, not a runtime size check.
  */
 typedef struct gn_secure_buffer_s {
-    /** sizeof(gn_secure_buffer_t) at producer build time per
-     *  `abi-evolution.md` §3. */
-    uint32_t api_size;
     uint8_t* bytes;
     size_t   size;
     /**
@@ -83,8 +84,6 @@ typedef struct gn_secure_buffer_s {
      */
     void  (*free_fn)(void* user_data, uint8_t* bytes);
 } gn_secure_buffer_t;
-
-GN_VTABLE_API_SIZE_FIRST(gn_secure_buffer_t);
 
 /**
  * @brief Vtable for an `ISecurityProvider` implementation.

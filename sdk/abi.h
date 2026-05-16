@@ -100,11 +100,19 @@ extern "C" {
 
 /**
  * @brief Pack the SDK version triple into a single uint32_t for ordered
- *        comparison.
+ *        comparison. Layout: `major:8 << 24 | minor:8 << 16 | patch:16`.
+ *        `gn_version_packed()` from `sdk/core.h` returns kernel version
+ *        in this layout.
  */
+#ifdef __cplusplus
+inline constexpr uint32_t gn_version_pack(uint32_t major, uint32_t minor, uint32_t patch) {
+    return (major << 24) | ((minor & 0xff) << 16) | (patch & 0xffff);
+}
+#else
 static inline uint32_t gn_version_pack(uint32_t major, uint32_t minor, uint32_t patch) {
     return (major << 24) | ((minor & 0xff) << 16) | (patch & 0xffff);
 }
+#endif
 
 /**
  * @brief Returns nonzero if a plugin built at @p plugin_major.@p plugin_minor
