@@ -116,6 +116,19 @@ if(GOODNET_USE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
     check_ipo_supported(RESULT _goodnet_ipo_ok OUTPUT _goodnet_ipo_msg)
     if(_goodnet_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
+        # LTO-companion: tell GCC/Clang that internal calls within
+        # a shared library are not subject to ELF symbol interposition,
+        # so the optimiser may inline and devirtualise across TUs that
+        # land in the same `.so` (kernel objects → libgoodnet_kernel.a;
+        # plugin objects → libgoodnet_<name>.so). The PLT indirection
+        # for `gn_*` exports stays — only the kernel's intra-library
+        # calls collapse. Visibility scope-narrowing is set per-target
+        # in `cmake/AddPlugin.cmake` (CXX_VISIBILITY_PRESET hidden)
+        # so test binaries keep the default visibility they need to
+        # link against gtest's libstdc++ surface.
+        if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+            add_compile_options(-fno-semantic-interposition)
+        endif()
     else()
         message(STATUS "  LTO requested but compiler declined: ${_goodnet_ipo_msg}")
     endif()
