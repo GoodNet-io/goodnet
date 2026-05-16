@@ -20,6 +20,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <sdk/abi.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -79,22 +80,24 @@ typedef uint64_t gn_key_id_t;
  * label, creation timestamp, and the kernel-allocated id. Callers
  * use the id with `sign_local_by_id` for explicit key selection.
  *
- * Field order is tuned against `clang-tidy`'s padding analysis:
- * 64-bit fields up front, then the 32-byte public-key block,
- * then the 64-byte label, then the 4-pointer reserved tail, then
- * the small scalars. Adding fields lands before `_reserved` per
- * `abi-evolution.md` §3.
+ * Layout follows the ABI evolution rule from `abi-evolution.md`
+ * §3: `api_size` is the first field so the kernel can size-check
+ * caller storage, and `_reserved` is the last field so new domain
+ * fields land in front of it without disturbing offsets. The
+ * `purpose` enum packs into the same 8-byte slot as `api_size`;
+ * the rest stays 64-bit-aligned without padding holes.
  */
 typedef struct gn_key_descriptor_s {
+    uint32_t            api_size;        /**< sizeof(gn_key_descriptor_t) */
+    gn_key_purpose_t    purpose;
     gn_key_id_t         id;
     int64_t             created_unix_ts;
     uint8_t             public_key[GN_PUBLIC_KEY_BYTES];
     /** NUL-terminated UTF-8; up to 64 bytes including the NUL. */
     char                label[64];
     void*               _reserved[4];
-    uint32_t            api_size;        /**< sizeof(gn_key_descriptor_t) */
-    gn_key_purpose_t    purpose;
 } gn_key_descriptor_t;
+GN_VTABLE_API_SIZE_FIRST(gn_key_descriptor_t);
 
 /**
  * @brief Capability-blob inbound callback.
