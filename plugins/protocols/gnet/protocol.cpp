@@ -46,7 +46,12 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
     ::gn::ConnectionContext& ctx,
     std::span<const std::uint8_t> bytes) {
 
-    deframe_buffer_.clear();
+    /// Per-thread scratch buffer — keeps the allocation-reuse benefit
+    /// while eliminating the cross-thread race that occurred when a
+    /// single GnetProtocol instance was driven from more than one
+    /// dispatch thread.
+    static thread_local std::vector<gn_message_t> deframe_buffer;
+    deframe_buffer.clear();
     std::size_t cursor = 0;
 
     while (cursor < bytes.size()) {
@@ -139,12 +144,12 @@ std::size_t GnetProtocol::max_payload_size() const noexcept {
         env.payload      = frame_start + hdr.header_size;
         env.payload_size = hdr.total_length - hdr.header_size;
 
-        deframe_buffer_.push_back(env);
+        deframe_buffer.push_back(env);
         cursor += hdr.total_length;
     }
 
     return ::gn::DeframeResult{
-        .messages       = std::span<const gn_message_t>(deframe_buffer_),
+        .messages       = std::span<const gn_message_t>(deframe_buffer),
         .bytes_consumed = cursor};
 }
 

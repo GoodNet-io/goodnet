@@ -38,9 +38,11 @@ public:
 
     /// Parse zero or more envelopes out of decrypted byte stream.
     ///
-    /// The returned span borrows from an internal buffer that is
-    /// reused on every call. The kernel must dispatch the messages
-    /// before invoking deframe again on the same instance.
+    /// The returned span borrows from a thread-local buffer that is
+    /// reused across calls on the same thread. The kernel must dispatch
+    /// the messages before invoking deframe again on the same thread.
+    /// Cross-thread invocation on the same instance is safe — each
+    /// thread holds its own buffer.
     [[nodiscard]] ::gn::Result<::gn::DeframeResult> deframe(
         ::gn::ConnectionContext& ctx,
         std::span<const std::uint8_t> bytes) override;
@@ -58,11 +60,6 @@ public:
     /// against `kMaxFrameBytes` minus the worst-case header (relay
     /// transit: fixed header + sender_pk + receiver_pk).
     [[nodiscard]] std::size_t max_payload_size() const noexcept override;
-
-private:
-    /// Buffer of envelopes returned to the caller across one dispatch
-    /// cycle. Reused on every deframe call to avoid per-call allocation.
-    std::vector<gn_message_t> deframe_buffer_;
 };
 
 } // namespace gn::plugins::gnet
