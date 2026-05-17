@@ -33,8 +33,10 @@ path and never produce object files from this tree.
 
 ## Stability
 
-ABI surface is open for reshape until `v1.0.0-rc1`. Post-tag, every
-slot is append-only per `docs/contracts/abi-evolution.en.md`.
+ABI surface is open for reshape through the entire `v1.0.0-rcN`
+cycle; the reshape window closes only on the plain `v1.0.0` tag
+per `docs/contracts/abi-evolution.en.md` §3b. Post-freeze every
+slot is append-only.
 
 ## License
 
