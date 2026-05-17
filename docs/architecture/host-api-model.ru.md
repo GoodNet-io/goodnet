@@ -85,7 +85,7 @@ Slot'ы группируются по теме. Группы — это мент
 
 - `register_vtable(KIND_HANDLER | KIND_LINK, meta, vtable, self, &id)` — handler dispatch chain или link by scheme.
 - `unregister_vtable(id)` — id сам несёт kind tag.
-- `register_security(provider_id, vtable, self)` / `unregister_security(provider_id)` — security provider на trust class. v1 admits ровно одного активного провайдера на `Sessions::create`.
+- `register_security(provider_id, vtable, self)` / `unregister_security(provider_id)` — security provider на trust class. Kernel admits N providers per distinct `provider_id` через StackRegistry; `find_for_trust(trust)` подбирает первый registered provider, чья `allowed_trust_mask` admits заявленный класс.
 - `register_extension(name, version, vtable)` / `unregister_extension(name)` — публикация vtable под именем `gn.<area>` для plugin↔plugin lookup'а.
 
 `register_security` живёт отдельным slot'ом, а не под общим KIND, потому что её trust-mask gate работает по-другому: kernel читает `vtable->allowed_trust_mask()` один раз и потом проверяет на каждом `notify_connect`. У handler/link такой стороны нет.
