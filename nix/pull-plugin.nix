@@ -2,12 +2,11 @@
 #
 # Clones a loadable plugin's git into the kernel's
 # `plugins/<kind>/<name>/` directory so the kernel build sees it
-# again. Each loadable plugin lives in its own repo (e.g.
-# `~/Desktop/projects/GoodNet-io/security-noise/` pre-rc1, or
-# `https://github.com/GoodNet-io/security-noise` once the org repos
-# land); the kernel's `plugins/handlers/`, `plugins/links/`,
-# `plugins/security/` directories stay empty until the operator
-# pulls in what they want for local development.
+# again. Each loadable plugin lives in its own repo at
+# `https://github.com/GoodNet-io/<repo>` (or a local mirror); the
+# kernel's `plugins/handlers/`, `plugins/links/`, `plugins/security/`
+# directories stay empty until the operator pulls in what they
+# want for local development.
 #
 # Repo-name convention.  Plugin repos are named `<kind-singular>
 # -<name>` (e.g. `security-noise`, `link-tcp`,
@@ -24,8 +23,7 @@
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo-name>.git`   (env override)
 #   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
 #      <repo-name>.git`  (default — matches `init-mirrors` output)
-#   3. `https://github.com/GoodNet-io/<repo-name>`  (org repo
-#      post-rc1)
+#   3. `https://github.com/GoodNet-io/<repo-name>`  (GitHub org repo)
 #
 # Refuses to clobber an existing `plugins/<kind>/<name>/`
 # directory; remove it manually first if a re-pull is intended.
