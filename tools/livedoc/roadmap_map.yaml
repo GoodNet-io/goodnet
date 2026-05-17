@@ -52,7 +52,9 @@ features:
 
   "KV storage handler":
     rule:
-      plugin_exists: plugins/handlers/kv
+      any:
+        - plugin_exists: plugins/handlers/store
+        - extension_registered: gn.store
 
   "Gossip sync handler":
     rule:

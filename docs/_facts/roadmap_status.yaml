@@ -19,8 +19,8 @@ features:
   evidence: plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/
     + sdk/
 - name: KV storage handler
-  status: missing
-  evidence: plugins/handlers/kv/ absent
+  status: done
+  evidence: plugins/handlers/store/ present
 - name: Gossip sync handler
   status: missing
   evidence: plugins/handlers/gossip/ absent
