@@ -18,6 +18,7 @@
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
 #include "../connection_context.hpp"
@@ -507,6 +508,32 @@ gn_result_t notify_disconnect(void* host_ctx,
     ev.trust     = snapshot->trust;
     ev.remote_pk = snapshot->remote_pk;
     pc->kernel->on_conn_event().fire(ev);
+
+    /// Notify every registered strategy that this conn went down so
+    /// per-peer winner caches drop the stale id. Walks the same
+    /// `gn.strategy.*` extension set the dispatch path uses; each
+    /// strategy's `on_path_event` slot is non-null by macro
+    /// contract, so the call is unconditional. Failures are
+    /// best-effort — a strategy that throws or returns an error
+    /// does not block the kernel-side cleanup we have already
+    /// committed.
+    {
+        auto strategies =
+            pc->kernel->extensions().query_prefix("gn.strategy.");
+        for (const auto& entry : strategies) {
+            const auto* sapi =
+                static_cast<const gn_strategy_api_t*>(entry.vtable);
+            if (!sapi || !sapi->on_path_event ||
+                sapi->api_size < sizeof(gn_strategy_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn = conn;
+            (void)sapi->on_path_event(
+                sapi->ctx, snapshot->remote_pk.data(),
+                GN_PATH_EVENT_CONN_DOWN, &sample);
+        }
+    }
     return GN_OK;
 }
 
