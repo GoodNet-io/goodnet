@@ -1,6 +1,6 @@
 /// @file   core/kernel/plugin_anchor.hpp
 /// @brief  Per-plugin liveness sentinel + cooperative-cancellation
-///         flag (`plugin-lifetime.md` §4 / §8).
+///         flag (`plugin-lifetime.en.md` §4 / §8).
 ///
 /// Every loaded plugin owns one heap-allocated `PluginAnchor`. The
 /// `shared_ptr<PluginAnchor>` it sits inside threads through three
@@ -26,7 +26,7 @@
 ///     `host_api->is_shutdown_requested()` from inside long-running
 ///     async work. The flag flips on entry to the rollback path, so
 ///     a plugin that observes it can finish its loop early instead
-///     of riding into the drain timeout (`plugin-lifetime.md` §8).
+///     of riding into the drain timeout (`plugin-lifetime.en.md` §8).
 ///
 /// `in_flight` is maintained for diagnostics: the count is logged
 /// alongside the drain-timeout warning so an operator can tell how

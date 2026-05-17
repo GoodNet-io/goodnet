@@ -21,7 +21,7 @@ namespace gn::core {
 /// Currently implemented slots: `register_handler`, `unregister_handler`,
 /// `limits`, `log`, `notify_connect`, `notify_inbound_bytes`,
 /// `notify_disconnect`. Other slots are NULL — plugins guard with
-/// `GN_API_HAS` per `abi-evolution.md` §3.
+/// `GN_API_HAS` per `abi-evolution.en.md` §3.
 [[nodiscard]] host_api_t build_host_api(PluginContext& ctx);
 
 } // namespace gn::core

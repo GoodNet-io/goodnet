@@ -362,7 +362,7 @@ gn_result_t gn_core_disconnect(gn_core_t* core, gn_conn_id_t conn) {
 
 gn_result_t gn_core_get_stats(gn_core_t* core, gn_stats_t* out) {
     if (core == nullptr || out == nullptr) return GN_ERR_NULL_ARG;
-    /// Producer must zero-init `_reserved` per `abi-evolution.md` §4.
+    /// Producer must zero-init `_reserved` per `abi-evolution.en.md` §4.
     for (std::size_t i = 0;
          i < sizeof(out->_reserved) / sizeof(out->_reserved[0]); ++i) {
         if (out->_reserved[i] != nullptr) return GN_ERR_INVALID_ENVELOPE;

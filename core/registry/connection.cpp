@@ -25,7 +25,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
         return GN_ERR_INVALID_ENVELOPE;
     }
 
-    /// `limits.md` §4a cap pre-check before locks: zero means
+    /// `limits.en.md` §4a cap pre-check before locks: zero means
     /// "unlimited"; non-zero rejects when the live count is already
     /// at the cap.
     const std::uint32_t cap = max_connections_.load(std::memory_order_relaxed);
@@ -51,7 +51,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     /// own `peer_pk → list-of-conns` map per `architecture/multi-path.ru.md`
     /// §«Идентичность connection поверх transport'а». Cross-session
     /// identity protection moved entirely to
-    /// `attestation_dispatcher.peer_pin_map` per `attestation.md` §5
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.en.md` §5
     /// step 7-8.
     if (s.records.contains(rec.id)) return GN_ERR_LIMIT_REACHED;
 
@@ -250,7 +250,7 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
     /// most recently published one. Cross-session identity protection
     /// (impostor with different `device_pk` claiming an existing
     /// `peer_pk`) is enforced by
-    /// `attestation_dispatcher.peer_pin_map` per `attestation.md`
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.en.md`
     /// §5 step 7-8, not by this registry.
     static const PublicKey kZeroPk{};
     /// Old pk's index entry only points at `id` if no later conn

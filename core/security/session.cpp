@@ -41,7 +41,7 @@ void SecuritySession::close() noexcept {
         pending_.clear();
     }
     pending_bytes_.store(0, std::memory_order_release);
-    /// Drop the inbound partial-frame buffer per `backpressure.md`
+    /// Drop the inbound partial-frame buffer per `backpressure.en.md`
     /// §9 "Drop on close". A connection closing with bytes mid-frame
     /// loses those bytes; the producer observes the loss through
     /// `GN_CONN_EVENT_DISCONNECTED`.
@@ -372,7 +372,7 @@ gn_result_t SecuritySession::decrypt_transport_stream(
     /// peer feeding garbage that never resolves to a frame boundary
     /// (adversarial or broken) can't grow the kernel's per-conn
     /// memory unboundedly. The link plugin's failure threshold
-    /// (`link.md` §3) catches the tear-down — defence-in-depth with
+    /// (`link.en.md` §3) catches the tear-down — defence-in-depth with
     /// the per-call cap here.
     if (recv_buffer_.size() + wire_bytes.size() > recv_buffer_cap_bytes_) {
         return GN_ERR_LIMIT_REACHED;
@@ -486,7 +486,7 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
     std::span<const std::uint8_t> remote_static_pk_or_empty,
     gn_result_t& out_result,
     std::size_t recv_buffer_cap_bytes) {
-    /// Stack-policy gate per `security-trust.md` §4: the provider
+    /// Stack-policy gate per `security-trust.en.md` §4: the provider
     /// declares which trust classes it may serve through
     /// `allowed_trust_mask`; the kernel rejects any mismatch before
     /// the handshake state is allocated. Refusing here keeps the
@@ -504,7 +504,7 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
             /// returns; the caller maps both gates onto the
             /// `drop.trust_class_mismatch` metric so an operator
             /// watching the counter sees a uniform rate regardless
-            /// of which gate fired. Per `security-trust.md` §4 + §9.
+            /// of which gate fired. Per `security-trust.en.md` §4 + §9.
             out_result = GN_ERR_INVALID_ENVELOPE;
             return nullptr;
         }

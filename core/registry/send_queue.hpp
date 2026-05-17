@@ -90,7 +90,7 @@ struct PerConnQueue {
     /// nonce sequence stays gap-free. Until the stalled batch
     /// drains successfully, the drainer halts new pulls — kernel
     /// queue fills, producers see `GN_ERR_LIMIT_REACHED` per
-    /// `backpressure.md` §1, back-off naturally re-triggers drain
+    /// `backpressure.en.md` §1, back-off naturally re-triggers drain
     /// through subsequent push CAS attempts.
     ///
     /// Protected by `drain_lock_` (the same flag that gates ring

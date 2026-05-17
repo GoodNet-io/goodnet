@@ -2,7 +2,7 @@
 /// @brief  Typed publish/subscribe channel for non-FSM kernel events.
 ///
 /// FSM phase changes go through `Kernel::subscribe` per
-/// `fsm-events.md` §7. Other event families — config reload, plugin
+/// `fsm-events.en.md` §7. Other event families — config reload, plugin
 /// loaded / unloaded, connection state changes — flow through one
 /// `SignalChannel<Event>` per event type.
 ///
@@ -32,7 +32,7 @@ public:
     using Token   = std::uint64_t;
 
     /// Sentinel returned from `subscribe` when the handler is empty;
-    /// matches `GN_INVALID_SUBSCRIPTION_ID` in `conn-events.md` §3.
+    /// matches `GN_INVALID_SUBSCRIPTION_ID` in `conn-events.en.md` §3.
     static constexpr Token kInvalidToken = 0;
 
     SignalChannel()                                = default;
@@ -42,10 +42,10 @@ public:
     /// Register @p handler. Returns a token the caller hands back to
     /// `unsubscribe`. An empty `std::function` (default-constructed
     /// or wrapping a NULL C function pointer) returns `kInvalidToken`
-    /// per `signal-channel.md` §6.1; the subscriber list is unchanged.
+    /// per `signal-channel.en.md` §6.1; the subscriber list is unchanged.
     /// A subscribe past the live-cap (`set_max_subscribers`) also
     /// returns `kInvalidToken`; the host_api thunks surface that to
-    /// callers as `GN_ERR_LIMIT_REACHED` per `conn-events.md` §6.
+    /// callers as `GN_ERR_LIMIT_REACHED` per `conn-events.en.md` §6.
     [[nodiscard]] Token subscribe(Handler handler) {
         if (!handler) return kInvalidToken;
         std::unique_lock lock(mu_);
@@ -77,7 +77,7 @@ public:
     /// lock, drop the lock, then invoke handlers — so handlers may
     /// subscribe or unsubscribe inside their own callback without
     /// deadlocking against the channel. A handler that raises is
-    /// caught per `signal-channel.md` §6.2: the exception is
+    /// caught per `signal-channel.en.md` §6.2: the exception is
     /// discarded and remaining snapshot subscribers still receive
     /// the event.
     void fire(const Event& event) {
@@ -91,7 +91,7 @@ public:
             try {
                 h(event);
             } catch (...) {  // NOLINT(bugprone-empty-catch)
-                /// Per `signal-channel.md` §6.2: drop the exception so
+                /// Per `signal-channel.en.md` §6.2: drop the exception so
                 /// one bad subscriber cannot starve the rest. Plugin
                 /// authors catch internally before returning across the
                 /// C ABI boundary; `std::current_exception` is avoided

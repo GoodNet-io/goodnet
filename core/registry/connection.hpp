@@ -55,7 +55,7 @@ struct ConnectionRecord {
 
     /// Mesh-framing layer this connection routes through. Stamped at
     /// `notify_connect` time from the matching `LinkEntry::protocol_id`.
-    /// Per `protocol-layer.md` §4 the kernel uses this id to look up
+    /// Per `protocol-layer.en.md` §4 the kernel uses this id to look up
     /// the active layer in `ProtocolLayerRegistry` for every dispatch
     /// site (`send`, `notify_inbound_bytes`, `inject`). Default-init
     /// to the canonical `gnet-v1` so test fixtures that insert records
@@ -96,14 +96,14 @@ public:
     ConnectionRegistry& operator=(const ConnectionRegistry&) = delete;
 
     /// Allocate a fresh connection id. Never returns `GN_INVALID_ID`.
-    /// Per `registry.md` §6, this is the only authoritative source of ids.
+    /// Per `registry.en.md` §6, this is the only authoritative source of ids.
     [[nodiscard]] gn_conn_id_t alloc_id() noexcept;
 
     /// Insert @p rec under all three indexes atomically.
     ///
     /// Fails with `GN_ERR_LIMIT_REACHED` if any index already contains
     /// the proposed key OR the live record count already equals the
-    /// `set_max_connections` cap (`limits.md` §4a). No partial state
+    /// `set_max_connections` cap (`limits.en.md` §4a). No partial state
     /// becomes visible on failure.
     [[nodiscard]] gn_result_t insert_with_index(ConnectionRecord rec) noexcept;
 
@@ -115,7 +115,7 @@ public:
     /// Remove the record with id @p id from all three indexes.
     [[nodiscard]] gn_result_t erase_with_index(gn_conn_id_t id) noexcept;
 
-    /// Implements `registry.md` §4a atomic snapshot variant: returns
+    /// Implements `registry.en.md` §4a atomic snapshot variant: returns
     /// the pre-erase record (per-connection counters folded in) and
     /// removes it from all three indexes under one critical section;
     /// `nullopt` when the id was not present.
@@ -153,7 +153,7 @@ public:
     /// completed its handshake and the peer's static public key is
     /// available (Noise `peer_static_pk`, TLS SPKI, etc).
     ///
-    /// Drives `registry.md` §7a post-handshake peer-pk propagation:
+    /// Drives `registry.en.md` §7a post-handshake peer-pk propagation:
     /// until this update fires the responder's `remote_pk` is
     /// whatever placeholder the link plugin passed at
     /// `notify_connect` (typically zeros), so the cross-session pin
@@ -205,7 +205,7 @@ public:
     /// recursion is undefined). The counter snapshot is passed
     /// alongside each record so callers that need byte/frame totals
     /// for status pages do not have to call back. Per
-    /// `conn-events.md` §4.
+    /// `conn-events.en.md` §4.
     void for_each(
         const std::function<bool(const ConnectionRecord&,
                                   const CounterSnapshot&)>& visitor) const;
@@ -316,7 +316,7 @@ private:
     /// the counter starts at 1.
     std::atomic<gn_conn_id_t> next_id_{1};
 
-    /// Live record count + cap (`limits.md` §4a). `live_count_` is
+    /// Live record count + cap (`limits.en.md` §4a). `live_count_` is
     /// incremented on successful insert and decremented on any erase
     /// path. Zero `max_connections_` disables the cap check.
     std::atomic<std::uint32_t> live_count_{0};

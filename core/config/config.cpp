@@ -260,7 +260,7 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         /// `low == 0` makes the falling-edge `BACKPRESSURE_CLEAR`
         /// publisher in every transport unable to fire — `post >= 0`
         /// is always true, so subscribers stay paused forever after
-        /// the first `BACKPRESSURE_SOFT`. Per `backpressure.md` §3
+        /// the first `BACKPRESSURE_SOFT`. Per `backpressure.en.md` §3
         /// the threshold is positive.
         note("limits.pending_queue_bytes_low must be > 0");
         return GN_ERR_LIMIT_REACHED;
@@ -446,7 +446,7 @@ gn_result_t Config::merge_json(std::string_view overlay,
         return rc;
     }
 
-    /// Profile re-evaluation per `config.md` §3a — an overlay that
+    /// Profile re-evaluation per `config.en.md` §3a — an overlay that
     /// carries `profile` switches the baseline that the limits
     /// derive from. Surface the change at warn level so an
     /// operator who only meant to nudge one field sees the

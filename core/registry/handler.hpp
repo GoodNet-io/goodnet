@@ -35,7 +35,7 @@ inline constexpr std::string_view kDefaultHandlerNamespace = "default";
 /// for chain ordering.
 struct HandlerEntry {
     gn_handler_id_t            id           = GN_INVALID_ID;
-    /// Tenant namespace per `handler-registration.md`. Two handlers
+    /// Tenant namespace per `handler-registration.en.md`. Two handlers
     /// on the same `(protocol_id, msg_id)` under different namespaces
     /// coexist; dispatch fans out across every namespace's chain for
     /// the matching pair.
@@ -44,7 +44,7 @@ struct HandlerEntry {
     std::uint32_t              msg_id       = 0;
     std::uint8_t               priority     = 128;
 
-    /// Plugin-supplied vtable. `@borrowed` per `host-api.md` until
+    /// Plugin-supplied vtable. `@borrowed` per `host-api.en.md` until
     /// the matching unregister call returns.
     const gn_handler_vtable_t* vtable       = nullptr;
 
@@ -58,7 +58,7 @@ struct HandlerEntry {
     /// Reference-counted plugin liveness anchor. Copied by value into
     /// every dispatch snapshot; PluginManager observes the underlying
     /// control block through `weak_ptr` during unload to drive the
-    /// quiescence wait before `dlclose` (see `plugin-lifetime.md` §4).
+    /// quiescence wait before `dlclose` (see `plugin-lifetime.en.md` §4).
     std::shared_ptr<void>      lifetime_anchor;
 
     /// Plugin display name from `PluginContext::plugin_name`. Carried
@@ -166,7 +166,7 @@ public:
 
     /// Same shape as `lookup`, but returns the chain together with
     /// the generation counter the registry recorded inside the same
-    /// shared-lock window. Per `handler-registration.md` §6 the
+    /// shared-lock window. Per `handler-registration.en.md` §6 the
     /// generation increments on every successful register and
     /// unregister; a dispatcher that wants to short-circuit on a
     /// stale chain compares `LookupResult::generation` against

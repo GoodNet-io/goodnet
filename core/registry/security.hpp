@@ -42,7 +42,7 @@ struct SecurityEntry {
 
     /// Read the provider's `allowed_trust_mask` through the
     /// `safe_invoke` wrapper. A throwing slot or a missing entry
-    /// collapses to 0 (deny) per `security-trust.md` §4 — the
+    /// collapses to 0 (deny) per `security-trust.en.md` §4 — the
     /// gate cannot trust a provider that cannot enumerate its
     /// admitted classes. Single source of truth so `find_for_trust`
     /// and `SessionRegistry::create` cannot drift apart on the

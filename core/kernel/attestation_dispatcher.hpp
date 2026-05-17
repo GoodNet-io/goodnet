@@ -41,7 +41,7 @@ class SecuritySession;
 /// One instance per kernel (owned by `Kernel`); thread-safe.
 class AttestationDispatcher {
 public:
-    /// Total wire-payload length per `attestation.md` §2:
+    /// Total wire-payload length per `attestation.en.md` §2:
     /// 136 cert + 32 binding + 64 signature.
     static constexpr std::size_t kPayloadBytes =
         identity::kAttestationBytes        // 136
@@ -50,7 +50,7 @@ public:
 
     /// Clock source returning seconds since Unix epoch. Default
     /// reads `std::time(nullptr)`. Tests inject a deterministic
-    /// source per `clock.md` §2.
+    /// source per `clock.en.md` §2.
     using NowSec = std::function<std::int64_t()>;
 
     AttestationDispatcher();
@@ -61,7 +61,7 @@ public:
     /// Replace the wall-clock source. Cleared between tests.
     void set_clock(NowSec clock) noexcept;
 
-    /// Producer step — `attestation.md` §4.
+    /// Producer step — `attestation.en.md` §4.
     ///
     /// Composes the 232-byte payload from the kernel's
     /// `NodeIdentity` and @p session's exported `handshake_hash`,
@@ -72,14 +72,14 @@ public:
     /// (typically by reconnecting on a fresh session).
     ///
     /// Loopback / IntraNode connections are skipped per
-    /// `attestation.md` §4 — the dispatcher exits without
+    /// `attestation.en.md` §4 — the dispatcher exits without
     /// allocating per-connection state when the connection record
     /// reports a non-`Untrusted` trust class.
     void send_self(Kernel&            kernel,
                    gn_conn_id_t       conn,
                    SecuritySession&   session) noexcept;
 
-    /// Consumer step — `attestation.md` §5.
+    /// Consumer step — `attestation.en.md` §5.
     ///
     /// Verifies the 232-byte @p payload against @p session's
     /// `handshake_hash`. On success marks `their_received_valid`
@@ -103,7 +103,7 @@ public:
                    std::span<const std::uint8_t>    payload) noexcept;
 
     /// Drop per-connection state. Called from
-    /// `notify_disconnect` (per `conn-events.md` §2a) so freshly
+    /// `notify_disconnect` (per `conn-events.en.md` §2a) so freshly
     /// allocated ids do not inherit stale flags.
     void on_disconnect(gn_conn_id_t conn) noexcept;
 

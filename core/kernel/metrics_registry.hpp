@@ -3,7 +3,7 @@
 ///         observability and that plugins can extend through the
 ///         `host_api->emit_counter` slot.
 ///
-/// Per `metrics.md` the kernel's counter surface is intentionally
+/// Per `metrics.en.md` the kernel's counter surface is intentionally
 /// minimal: monotonic 64-bit counters keyed by a UTF-8 name. No
 /// labels, no gauges, no histograms — those compose out of an
 /// exporter plugin sitting on top of `iterate`. Keeping the
@@ -80,8 +80,8 @@ public:
     [[nodiscard]] std::size_t iterate(gn_counter_visitor_t visitor,
                                        void* user_data) const;
 
-    /// Cardinality cap (`limits.md` §3a /
-    /// `metrics.md` §3.1). Zero disables the cap entirely.
+    /// Cardinality cap (`limits.en.md` §3a /
+    /// `metrics.en.md` §3.1). Zero disables the cap entirely.
     /// Setting it to a non-zero value below the current
     /// counter count keeps existing counters in place — the cap
     /// only blocks **new** insertions on the slow path.

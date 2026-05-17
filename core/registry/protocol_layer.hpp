@@ -1,7 +1,7 @@
 /// @file   core/registry/protocol_layer.hpp
 /// @brief  Named registry of mesh-framing protocol layers.
 ///
-/// Per `protocol-layer.md` §4 the kernel maintains a registry of one
+/// Per `protocol-layer.en.md` §4 the kernel maintains a registry of one
 /// or more `IProtocolLayer` implementations identified by their
 /// `protocol_id` ("gnet-v1", "raw-v1", "ssh-v1" once the SSH plugin
 /// lands). Each connection records which `protocol_id` drives it at

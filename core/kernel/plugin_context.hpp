@@ -48,7 +48,7 @@ struct PluginContext {
     /// callback sites pair the anchor with a `GateGuard` so the
     /// `in_flight` counter and the `shutdown_requested` flag form
     /// the explicit barrier the rollback path waits on before
-    /// `dlclose` (see `plugin-lifetime.md` §4 and `plugin_anchor.hpp`).
+    /// `dlclose` (see `plugin-lifetime.en.md` §4 and `plugin_anchor.hpp`).
     /// A null anchor means "no quiescence wait needed for entries
     /// from this context" — used by in-tree tests that exercise
     /// registries without a plugin manager.

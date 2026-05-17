@@ -63,7 +63,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
     }
 
     try {
-        /// Per-plugin sub-quota (`limits.md` §4a /
+        /// Per-plugin sub-quota (`limits.en.md` §4a /
         /// `max_timers_per_plugin`). The counter is always
         /// maintained when an anchor is supplied — the cap is
         /// consulted at admit time, but the fetch_sub at the head
@@ -100,7 +100,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
         std::shared_ptr<asio::steady_timer> timer;
         {
             /// Hold `mu_` from the global-cap check through the
-            /// `emplace`. `limits.md` §4 — a cap of zero disables
+            /// `emplace`. `limits.en.md` §4 — a cap of zero disables
             /// enforcement. The pre-fix path released the lock
             /// between the size check and the emplace; two admits
             /// racing through that window could both observe
@@ -226,7 +226,7 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
     /// observe a sub-cap value and both pass the check — the
     /// loser's CAS sees an updated `cur` and re-evaluates against
     /// the cap. A cap of zero disables enforcement per
-    /// `limits.md` §4. Mirrors the `set_timer` per-plugin
+    /// `limits.en.md` §4. Mirrors the `set_timer` per-plugin
     /// admission loop.
     {
         std::uint32_t cur = pending_tasks_.load(std::memory_order_relaxed);

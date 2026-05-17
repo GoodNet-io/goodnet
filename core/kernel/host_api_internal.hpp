@@ -81,7 +81,7 @@ void kernel_initiated_disconnect(const PluginContext* pc,
 
 /// Surface the router's verdict — bumps the `route.outcome.*`
 /// metric counter and logs drops at the right level per
-/// `metrics.md` §4.
+/// `metrics.en.md` §4.
 void route_one_envelope(Kernel& kernel,
                          std::string_view protocol_id,
                          const gn_message_t& env);

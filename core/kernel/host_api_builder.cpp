@@ -1,6 +1,6 @@
 /// @file   core/kernel/host_api_builder.cpp
 /// @brief  Wire the kernel-side host_api thunks into a `host_api_t`
-///         table per `host-api.md`. Slot bodies live in
+///         table per `host-api.en.md`. Slot bodies live in
 ///         `core/kernel/host_api/*.cpp`; their declarations live in
 ///         `host_api_internal.hpp`. Each section comment below
 ///         mirrors the equivalent header section in

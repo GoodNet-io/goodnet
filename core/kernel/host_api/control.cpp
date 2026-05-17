@@ -153,7 +153,7 @@ gn_result_t register_security(void* host_ctx,
     if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    /// Capability gate per `security-trust.md`: only plugins that
+    /// Capability gate per `security-trust.en.md`: only plugins that
     /// declared themselves SECURITY-kind at load time may install
     /// a security provider. HANDLER, LINK, STRATEGY, BRIDGE, UI,
     /// PROTOCOL plugins calling this slot have no business minting
@@ -436,7 +436,7 @@ gn_result_t register_vtable(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
-    /// Capability gate per `security-trust.md`: plugin-kind must
+    /// Capability gate per `security-trust.en.md`: plugin-kind must
     /// match the register-kind being requested. HANDLER-kind
     /// plugins register handler vtables, LINK-kind plugins
     /// register link vtables, anything else (STRATEGY, BRIDGE,

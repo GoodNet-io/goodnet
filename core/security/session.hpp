@@ -9,7 +9,7 @@
 ///
 /// The session is *not* thread-safe by itself — the kernel routes
 /// every call through the connection's strand (single-writer
-/// invariant per `link.md` §4), so internal locking would only
+/// invariant per `link.en.md` §4), so internal locking would only
 /// add overhead. Concurrent sessions on different connections are
 /// independent and may run in parallel.
 
@@ -90,7 +90,7 @@ public:
     ///                         span otherwise
     /// @param recv_buffer_cap_bytes ceiling on the per-conn inbound
     ///                              partial-frame buffer per
-    ///                              `backpressure.md` §9. The caller
+    ///                              `backpressure.en.md` §9. The caller
     ///                              passes
     ///                              `2 * gn_limits_t::max_frame_bytes
     ///                              + kFramePrefixBytes` so an
@@ -173,12 +173,12 @@ public:
     /// Drain zero or more complete transport-phase frames from the
     /// per-conn inbound buffer. The kernel feeds raw transport bytes
     /// (a single TCP read may carry partial, exact, or coalesced
-    /// frames per `link.md` §4); the session accumulates them in
+    /// frames per `link.en.md` §4); the session accumulates them in
     /// `recv_buffer_`, slices each `length`-byte ciphertext range
     /// off the head per the noise §7 wire format, decrypts it
     /// (InlineCrypto fast path or vtable fallback), and pushes one
     /// plaintext per frame onto @p out_plaintexts. The buffer is
-    /// bounded per `backpressure.md` §9; the call returns
+    /// bounded per `backpressure.en.md` §9; the call returns
     /// `GN_ERR_LIMIT_REACHED` if growth would exceed the cap and the
     /// link plugin's failure threshold tears the conn down.
     [[nodiscard]] gn_result_t decrypt_transport_stream(
@@ -214,7 +214,7 @@ public:
     /// already-buffered byte count would exceed @p hard_cap_bytes,
     /// `GN_ERR_INVALID_STATE` when called outside `Handshake` (the
     /// `Transport` path encrypts directly; a `Closed` session has
-    /// nothing to drain into). Per `backpressure.md` §8.
+    /// nothing to drain into). Per `backpressure.en.md` §8.
     [[nodiscard]] gn_result_t enqueue_pending(
         std::vector<std::uint8_t>&& bytes,
         std::uint64_t hard_cap_bytes);
@@ -266,7 +266,7 @@ private:
     /// `unregister_security` and `dlclose`; while at least one
     /// session holds this anchor, the kernel keeps the provider's
     /// `.so` mapped past every in-flight encrypt/decrypt call
-    /// (per `plugin-lifetime.md` §4).
+    /// (per `plugin-lifetime.en.md` §4).
     std::shared_ptr<void> security_anchor_;
     /// Owned (allocated by provider in handshake_open, freed in
     /// handshake_close).
@@ -281,12 +281,12 @@ private:
     /// by `take_pending` once the session reaches `Transport`. Guarded
     /// by `pending_mu_` because `enqueue_pending` (kernel send path)
     /// and `take_pending` (kernel inbound path) may run on different
-    /// threads — see the contract note in §8 of `backpressure.md`.
+    /// threads — see the contract note in §8 of `backpressure.en.md`.
     mutable std::mutex pending_mu_;
     std::vector<std::vector<std::uint8_t>> pending_;
     std::atomic<std::uint64_t>             pending_bytes_{0};
 
-    /// Per-conn inbound partial-frame buffer per `backpressure.md`
+    /// Per-conn inbound partial-frame buffer per `backpressure.en.md`
     /// §9. Stream-class transports deliver any chunk size; the
     /// buffer accumulates bytes that don't yet form a complete
     /// frame and shrinks as `decrypt_transport_stream` slices
@@ -311,7 +311,7 @@ private:
 /// kernel inbound thunk. The prefix is one big-endian uint16; the
 /// per-session inbound buffer cap is computed at `open()` time
 /// from the kernel's `gn_limits_t::max_frame_bytes` per
-/// `backpressure.md` §9. The default ceiling here is the absolute
+/// `backpressure.en.md` §9. The default ceiling here is the absolute
 /// wire-format limit and serves as the open() default when no
 /// caller-supplied value is provided.
 inline constexpr std::size_t   kFramePrefixBytes    = 2;

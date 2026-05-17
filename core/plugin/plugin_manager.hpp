@@ -1,6 +1,6 @@
 /// @file   core/plugin/plugin_manager.hpp
 /// @brief  Loads plugin shared objects, version-checks, and orchestrates
-///         the two-phase activation per `plugin-lifetime.md` §5.
+///         the two-phase activation per `plugin-lifetime.en.md` §5.
 ///
 /// Discovery happens via an explicit path list. Each plugin is
 /// dlopened, version-checked against the kernel SDK triple, mapped
@@ -9,7 +9,7 @@
 /// reordering), and run through the two-phase activation pipeline.
 ///
 /// The reference-counted ownership invariant from
-/// `plugin-lifetime.md` §4 is enforced here: every loaded plugin
+/// `plugin-lifetime.en.md` §4 is enforced here: every loaded plugin
 /// owns a `std::shared_ptr<PluginAnchor>` lifetime anchor that
 /// registry entries copy at registration time. The anchor carries
 /// the `shutdown_requested` flag and the `in_flight` counter that
@@ -19,7 +19,7 @@
 ///
 /// SHA-256 manifest verification and hot-reload land as additive
 /// features once the dispatch generation-counter quiescence wait is
-/// wired (per `plugin-lifetime.md` §6).
+/// wired (per `plugin-lifetime.en.md` §6).
 
 #pragma once
 
@@ -87,7 +87,7 @@ public:
     /// Load every shared object in @p paths, version-check each,
     /// build descriptors via the optional `gn_plugin_descriptor`
     /// symbol, run the ServiceResolver, then two-phase activate
-    /// the ordered set per `plugin-lifetime.md` §5. Returns the
+    /// the ordered set per `plugin-lifetime.en.md` §5. Returns the
     /// first failing step's `gn_result_t` and triggers rollback so
     /// no half-state survives.
     ///
@@ -142,7 +142,7 @@ public:
     /// and the demo. A non-empty manifest puts the loader in
     /// production mode: every path must appear in the manifest with
     /// a matching SHA-256, or `load` fails with
-    /// `GN_ERR_INTEGRITY_FAILED`. See `plugin-manifest.md`.
+    /// `GN_ERR_INTEGRITY_FAILED`. See `plugin-manifest.en.md`.
     void set_manifest(PluginManifest manifest) noexcept;
 
     [[nodiscard]] const PluginManifest& manifest() const noexcept {
@@ -155,7 +155,7 @@ public:
     /// Production deployments call this on the bootstrap thread
     /// before `load` and pair it with a populated manifest; dev
     /// fixtures leave the flag at its default `false`. See
-    /// `plugin-manifest.md` §7. Both `set_manifest_required` and
+    /// `plugin-manifest.en.md` §7. Both `set_manifest_required` and
     /// `set_manifest` are bootstrap-only — the manager does not
     /// guard against concurrent setter calls during an active
     /// session.
@@ -177,7 +177,7 @@ private:
     /// Roll back from a partial init or register pass. Releases
     /// every still-live instance in reverse order, draining each
     /// plugin's lifetime_anchor weak_ptr between shutdown and dlclose
-    /// per `plugin-lifetime.md` §4.
+    /// per `plugin-lifetime.en.md` §4.
     void rollback();
 
     /// Drain a single plugin's lifetime anchor before its `dlclose`.

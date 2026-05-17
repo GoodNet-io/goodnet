@@ -1,7 +1,7 @@
 /// @file   core/registry/link.hpp
 /// @brief  Scheme → transport vtable lookup.
 ///
-/// Per `host-api.md` §6 a scheme is unique across loaded transports.
+/// Per `host-api.en.md` §6 a scheme is unique across loaded transports.
 /// `register_link` rejects duplicates with `GN_ERR_DUPLICATE`.
 /// Lookups are O(1) under a shared mutex; concurrent senders do not
 /// contend on writers when no transport is being (un)registered.
@@ -31,7 +31,7 @@ struct LinkEntry {
     gn_link_id_t            id              = GN_INVALID_ID;
     std::string                  scheme;
     /// Mesh-framing layer this link's connections route through.
-    /// Per `protocol-layer.md` §4 every link declares which layer
+    /// Per `protocol-layer.en.md` §4 every link declares which layer
     /// owns its byte stream; default is the kernel's canonical
     /// `gnet-v1` (`kDefaultProtocolId`). The kernel stamps each
     /// connection's `ConnectionRecord::protocol_id` from this

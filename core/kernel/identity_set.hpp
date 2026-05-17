@@ -55,7 +55,7 @@ public:
 
     /// Return any one identity from the set, or nullopt if empty.
     /// Used by the inbound-bytes thunk for the single-identity case;
-    /// multi-tenant routing per `protocol-layer.md` §6 picks the right
+    /// multi-tenant routing per `protocol-layer.en.md` §6 picks the right
     /// identity from the envelope's `receiver_pk` instead.
     [[nodiscard]] std::optional<PublicKey> any() const {
         std::shared_lock lock(mu_);

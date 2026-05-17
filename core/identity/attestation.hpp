@@ -4,7 +4,7 @@
 /// Proves that `user_pk` authorised `device_pk` to act under its
 /// identity until `expiry_unix_ts`. Peers verify the cert during
 /// security handshake before promoting the connection from
-/// Untrusted to Peer (per `security-trust.md` §3).
+/// Untrusted to Peer (per `security-trust.en.md` §3).
 
 #pragma once
 

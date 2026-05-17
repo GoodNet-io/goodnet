@@ -37,7 +37,7 @@ static_assert(
 }
 
 /// Drop the connection on a per-step verification failure per
-/// `attestation.md` §8: destroy session, snapshot+erase the
+/// `attestation.en.md` §8: destroy session, snapshot+erase the
 /// registry record, publish one DISCONNECTED event with the
 /// captured payload.
 [[nodiscard]] const char* drop_reason_label(gn_drop_reason_t reason) noexcept {
@@ -60,7 +60,7 @@ void disconnect_on_consumer_failure(Kernel&          kernel,
     auto removed = kernel.connections().snapshot_and_erase(conn);
     kernel.send_queues().erase(conn);
 
-    /// Per `metrics.md` §3 every drop site bumps both the named
+    /// Per `metrics.en.md` §3 every drop site bumps both the named
     /// counter and a structured log. Counter without log leaves
     /// operators with a count and no `which conn?` follow-up;
     /// log without counter hides the rate from the dashboard.
@@ -181,7 +181,7 @@ void AttestationDispatcher::send_self(Kernel&          kernel,
                                        gn_conn_id_t     conn,
                                        SecuritySession& session) noexcept try
 {
-    /// Producer step per `attestation.md` §4. Loopback / IntraNode
+    /// Producer step per `attestation.en.md` §4. Loopback / IntraNode
     /// connections skip the exchange — their trust class is final
     /// at notify_connect.
     auto rec = kernel.connections().find_by_id(conn);
@@ -370,7 +370,7 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
             } else {
                 /// Same device_pk, duplicate attestation — drop
                 /// the envelope but do not disconnect (per
-                /// `attestation.md` §9 live re-attestation note).
+                /// `attestation.en.md` §9 live re-attestation note).
                 return static_cast<int>(Outcome::IdentityChange);
             }
         } else {
@@ -447,7 +447,7 @@ void AttestationDispatcher::try_complete_upgrade(Kernel&      kernel,
     /// Loopback/IntraNode anyway.
     ///
     /// The gate enforces the "exactly once" guarantee from
-    /// `attestation.md` §6: a concurrent caller that races
+    /// `attestation.en.md` §6: a concurrent caller that races
     /// through the lock above reaches `upgrade_trust` second
     /// and observes `GN_ERR_LIMIT_REACHED` (the gate refuses
     /// `Peer → Peer`); only the first winner emits the event.

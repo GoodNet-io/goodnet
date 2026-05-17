@@ -104,7 +104,7 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
             static_cast<double>(limits_.inject_rate_burst),
             static_cast<std::size_t>(limits_.inject_rate_lru_cap));
     }
-    /// `limits.md` §4 — wire every cap that lives on a kernel-owned
+    /// `limits.en.md` §4 — wire every cap that lives on a kernel-owned
     /// registry so a single `gn_limits_t` is the source of truth.
     /// `PluginManager` is not kernel-owned; it reads `kernel.limits()`
     /// directly when applying `max_plugins` inside `load`.

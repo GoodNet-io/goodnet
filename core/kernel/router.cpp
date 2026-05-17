@@ -61,7 +61,7 @@ RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
     /// keeps the recorded generation in scope so a future hot-reload
     /// path can compare against the live counter for stale-chain
     /// observability without a second lookup. Per
-    /// `handler-registration.md` §6 the generation bumps on every
+    /// `handler-registration.en.md` §6 the generation bumps on every
     /// register / unregister; an exporter plugin can surface the
     /// gap between recorded and live counters as a "dispatch on
     /// stale chain" rate.

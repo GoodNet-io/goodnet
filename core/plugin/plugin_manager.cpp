@@ -191,7 +191,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
     /// Integrity check before dlopen. An empty manifest is the
     /// developer-mode path; production callers install a manifest
     /// at startup and the kernel refuses every plugin not in it.
-    /// Per `plugin-manifest.md` the integrity check is the kernel's
+    /// Per `plugin-manifest.en.md` the integrity check is the kernel's
     /// only defence between an attacker-controlled plugins
     /// directory and the kernel's own address space — running it
     /// before dlopen rather than after means a tampered binary
@@ -363,7 +363,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         if (out_diagnostic) *out_diagnostic = m;
     };
 
-    /// `limits.md` §4a: reject the whole load if it would push the
+    /// `limits.en.md` §4a: reject the whole load if it would push the
     /// loaded-plugin count above the cap. Zero means "unlimited".
     /// Read from `Kernel::limits()` rather than a local copy so
     /// `gn_limits_t::max_plugins` stays the single source of truth.
@@ -521,7 +521,7 @@ bool PluginManager::drain_anchor(PluginInstance& inst,
                 in_flight);
             ++leaked_handles_;
             /// Persistent counter on the kernel's metrics surface
-            /// (`metrics.md` §3). `leaked_handles_` resets at the
+            /// (`metrics.en.md` §3). `leaked_handles_` resets at the
             /// start of every `rollback()` so the in-test API only
             /// reports the most recent rollback's count; the metric
             /// keeps the cumulative figure across the kernel's
@@ -556,7 +556,7 @@ void PluginManager::rollback() {
         /// `GateGuard::acquire`; long-running plugin loops that poll
         /// `is_shutdown_requested` see the flag and exit cooperatively
         /// during `gn_plugin_unregister` / `gn_plugin_shutdown`
-        /// (`plugin-lifetime.md` §8).
+        /// (`plugin-lifetime.en.md` §8).
         if (it->ctx && it->ctx->plugin_anchor) {
             it->ctx->plugin_anchor->shutdown_requested.store(
                 true, std::memory_order_release);

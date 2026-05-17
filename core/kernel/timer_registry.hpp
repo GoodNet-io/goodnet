@@ -7,9 +7,9 @@
 /// The registry owns one `asio::io_context` and the worker thread
 /// that drives it. The thread serialises every task and timer
 /// callback so plugins observe the single-thread guarantee from
-/// `timer.md` §3 without depending on any transport's executor.
+/// `timer.en.md` §3 without depending on any transport's executor.
 ///
-/// Lifetime safety mirrors `plugin-lifetime.md` §4: each scheduled
+/// Lifetime safety mirrors `plugin-lifetime.en.md` §4: each scheduled
 /// entry stores a `std::weak_ptr<PluginAnchor>` of the calling
 /// plugin. Before invoking the user callback the dispatcher opens a
 /// `GateGuard`; the guard refuses if the anchor expired or the
@@ -66,7 +66,7 @@ public:
 
     /// Cancel a pending timer. Returns `GN_OK` whether the timer
     /// was alive or already fired/cancelled (idempotent per
-    /// `timer.md` §7). `GN_ERR_NULL_ARG` for `GN_INVALID_TIMER_ID`.
+    /// `timer.en.md` §7). `GN_ERR_NULL_ARG` for `GN_INVALID_TIMER_ID`.
     [[nodiscard]] gn_result_t cancel_timer(gn_timer_id_t id) noexcept;
 
     /// Post a task to the service executor. Same lifetime rules as
@@ -81,7 +81,7 @@ public:
 
     /// Cap on simultaneously-pending timers + queued tasks.
     /// Defaults match `gn_limits_t::max_timers` /
-    /// `max_pending_tasks` (`limits.md`); the kernel updates them
+    /// `max_pending_tasks` (`limits.en.md`); the kernel updates them
     /// after `set_limits`.
     void set_max_timers(std::uint32_t v) noexcept;
     void set_max_pending_tasks(std::uint32_t v) noexcept;
