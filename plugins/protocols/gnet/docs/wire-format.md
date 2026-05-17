@@ -185,7 +185,7 @@ authors and future format successors:
   packet id of its own.
 - **Wire format is plugin-private.** The 14-byte header is not part
   of `sdk/protocol.h`. Handlers see only the decoded `gn_message_t`
-  envelope (`protocol-layer.md`); they cannot import GNET-specific
+  envelope (`protocol-layer.en.md`); they cannot import GNET-specific
   types.
 - **Conditional PK fields enable relay and broadcast as first-class
   modes.** A direct connection pays no overhead for identity it

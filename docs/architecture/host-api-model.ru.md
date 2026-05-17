@@ -115,7 +115,7 @@ Slot'ы группируются по теме. Группы — это мент
 - `notify_connect(remote_pk, uri, trust, role, &out_conn)` — link объявляет установленное соединение. Только role=Transport plugins могут вызывать.
 - `notify_inbound_bytes(conn, bytes, size)` — горячий путь link'а: байты идут через security decrypt → protocol deframe → router dispatch.
 - `notify_disconnect(conn, reason)` — link объявляет закрытие.
-- `notify_backpressure(conn, kind, pending_bytes)` — link рапортует пересечение high/low watermark per `backpressure.md`.
+- `notify_backpressure(conn, kind, pending_bytes)` — link рапортует пересечение high/low watermark per `backpressure.en.md`.
 - `kick_handshake(conn)` — после `notify_connect` ядро не запускает initiator's first message синхронно (race с регистрацией socket'а под conn id); link зовёт `kick_handshake` когда socket готов принимать байты.
 - `inject(layer, source, msg_id, bytes, size)` — bridge plugin'ы инжектят foreign-system bytes под собственным identity. `LAYER_MESSAGE` строит envelope и роутит; `LAYER_FRAME` гонит байты через protocol deframer'а.
 
@@ -196,7 +196,7 @@ gn_config_get_int64(api, "links.tcp.bind_port", &port);
 
 Pointer carry'ит scope плагина. Не per-thread — плагин может звать slot'ы из любого потока, который владеет ссылкой на `api`. Не per-conn — соединения адресуются через `gn_conn_id_t`. Lifetime — от возврата `gn_plugin_init` до возврата `gn_plugin_shutdown`. После shutdown'а ядро может dlclose-нуть `.so`, и dereference `host_ctx` через старый `api*` указатель — undefined.
 
-Гарантия из `host-api.md`: `api->host_ctx` стабилен на всю lifetime'у плагина, opaque, и идентифицирует loader-side state ядра для этого плагина. Ничего больше плагин про него знать не должен.
+Гарантия из `host-api.en.md`: `api->host_ctx` стабилен на всю lifetime'у плагина, opaque, и идентифицирует loader-side state ядра для этого плагина. Ничего больше плагин про него знать не должен.
 
 ---
 
@@ -235,11 +235,11 @@ hard-cap'а.
 
 ## Cross-references
 
-- Контракт: [`host-api.md`](../contracts/host-api.en.md) — slot list, error semantics, forbidden patterns, foreign-payload injection, service executor.
-- Контракт: [`abi-evolution.md`](../contracts/abi-evolution.en.md) — size-prefix gating, `_reserved` slot promotion rules.
-- Контракт: [`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) — `gn_plugin_init` / `register` / `unregister` / `shutdown` ordering.
-- Контракт: [`backpressure.md`](../contracts/backpressure.en.md) — high/low watermark publishing.
-- Контракт: [`timer.md`](../contracts/timer.en.md) — service-executor invariants.
-- Контракт: [`config.md`](../contracts/config.en.md) — config tree shape, reload signal.
+- Контракт: [`host-api.en.md`](../contracts/host-api.en.md) — slot list, error semantics, forbidden patterns, foreign-payload injection, service executor.
+- Контракт: [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — size-prefix gating, `_reserved` slot promotion rules.
+- Контракт: [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — `gn_plugin_init` / `register` / `unregister` / `shutdown` ordering.
+- Контракт: [`backpressure.en.md`](../contracts/backpressure.en.md) — high/low watermark publishing.
+- Контракт: [`timer.en.md`](../contracts/timer.en.md) — service-executor invariants.
+- Контракт: [`config.en.md`](../contracts/config.en.md) — config tree shape, reload signal.
 - Архитектура: [`plugin-model`](plugin-model.ru.md) — четыре роли плагина, dlopen pipeline, vtable shapes.
 - Архитектура: [`extension-model`](extension-model.ru.md) — plugin↔plugin coordination через `query_extension_checked`.

@@ -98,7 +98,7 @@ thread-local state survives the dispatch.
 ## 4. Lifetime safety
 
 Every scheduled task carries a **weak observer** of the calling
-plugin's lifetime anchor (`plugin-lifetime.md` §4). Registry
+plugin's lifetime anchor (`plugin-lifetime.en.md` §4). Registry
 entries hold the sentinel through a strong reference (the
 "lifetime anchor"); async tasks like timers and posted callbacks
 hold the matching weak observer so a stale callback cannot extend
@@ -125,14 +125,14 @@ Concrete properties:
    deferring the erase until the current callback returns.
 4. `PluginManager::rollback` cancels every still-pending timer
    whose weak observer matches the plugin being unloaded before
-   draining the lifetime anchor (`plugin-lifetime.md` §4
+   draining the lifetime anchor (`plugin-lifetime.en.md` §4
    quiescence). This keeps the drain loop fast: in-flight timers
    do not extend the plugin's effective lifetime.
 
 A plugin **must not** spawn its own threads to back periodic work.
 The contract is "post your task to the service executor"; everything
-else is a §9 violation in `plugin-lifetime.md`. Periodic plugins
-poll `is_shutdown_requested` (`host-api.md` §10) at the top of
+else is a §9 violation in `plugin-lifetime.en.md`. Periodic plugins
+poll `is_shutdown_requested` (`host-api.en.md` §10) at the top of
 each tick and stop re-arming once the flag flips, so the kernel's
 drain wait completes ahead of the bounded timeout.
 
@@ -189,9 +189,9 @@ race against the self-cleanup path on natural firing.
 
 ## 8. Cross-references
 
-- Reference-counted ownership rule: `plugin-lifetime.md` §4.
-- Cooperative cancellation: `plugin-lifetime.md` §8,
-  `host-api.md` §10.
-- Resource limits: `limits.md` §2.
-- Host-API surface: `host-api.md` §9 (this section is the
+- Reference-counted ownership rule: `plugin-lifetime.en.md` §4.
+- Cooperative cancellation: `plugin-lifetime.en.md` §8,
+  `host-api.en.md` §10.
+- Resource limits: `limits.en.md` §2.
+- Host-API surface: `host-api.en.md` §9 (this section is the
   authoritative semantics; host-api.md cites here).

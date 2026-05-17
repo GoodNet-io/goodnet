@@ -307,7 +307,7 @@ Bridge plugin'ы — типичная композиция «link + handler»: l
 
 Не каждый плагин — loadable. `plugins/protocols/gnet/` и `plugins/protocols/raw/` — STATIC linked прямо в kernel binary. Не проходят dlopen pathway, не нуждаются в manifest verification, не участвуют в dynamic load order'е.
 
-Используют тот же registration API, но в Wire phase напрямую: kernel вызывает их `gn_protocol_layer_vtable_t::deframe` / `frame` через статически прорисованный pointer, не через registry lookup. `protocol-layer.md` обозначает протокольный слой как «single mandatory plugin slot» — kernel binary линкует ровно одну реализацию vtable.
+Используют тот же registration API, но в Wire phase напрямую: kernel вызывает их `gn_protocol_layer_vtable_t::deframe` / `frame` через статически прорисованный pointer, не через registry lookup. `protocol-layer.en.md` обозначает протокольный слой как «single mandatory plugin slot» — kernel binary линкует ровно одну реализацию vtable.
 
 Причина статической линковки. Protocol layer прибит к wire format'у kernel'а; смена protocol implementation ≈ смена ABI всех handler'ов. Это не runtime knob, это compile-time choice. GoodNet ships gnet-v1 как default; raw-v1 — minimal protocol для loopback / intra-node, где framing magic + version избыточны.
 
@@ -349,13 +349,13 @@ Trust class — это explicit ABI parameter at every site, который prod
 
 ## Cross-references
 
-- Контракт: [`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) — phase ordering, two-phase activation, weak-observer pattern, hot-reload, cooperative cancellation.
-- Контракт: [`plugin-manifest.md`](../contracts/plugin-manifest.en.md) — operator manifest, SHA-256 trust root, Linux openat2 race-free verification.
-- Контракт: [`handler-registration.md`](../contracts/handler-registration.en.md) — priority chain, propagation enum, RCU snapshot, reserved msg_id'ы.
-- Контракт: [`link.md`](../contracts/link.en.md) — vtable shape, single-writer invariant, trust-class declaration, handshake role.
-- Контракт: [`security-trust.md`](../contracts/security-trust.en.md) — TrustClass enum, mask gating, attestation upgrade.
-- Контракт: [`protocol-layer.md`](../contracts/protocol-layer.en.md) — single mandatory plugin slot, `deframe` / `frame` shape.
-- Контракт: [`abi-evolution.md`](../contracts/abi-evolution.en.md) — size-prefix evolution, ownership tags.
+- Контракт: [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — phase ordering, two-phase activation, weak-observer pattern, hot-reload, cooperative cancellation.
+- Контракт: [`plugin-manifest.en.md`](../contracts/plugin-manifest.en.md) — operator manifest, SHA-256 trust root, Linux openat2 race-free verification.
+- Контракт: [`handler-registration.en.md`](../contracts/handler-registration.en.md) — priority chain, propagation enum, RCU snapshot, reserved msg_id'ы.
+- Контракт: [`link.en.md`](../contracts/link.en.md) — vtable shape, single-writer invariant, trust-class declaration, handshake role.
+- Контракт: [`security-trust.en.md`](../contracts/security-trust.en.md) — TrustClass enum, mask gating, attestation upgrade.
+- Контракт: [`protocol-layer.en.md`](../contracts/protocol-layer.en.md) — single mandatory plugin slot, `deframe` / `frame` shape.
+- Контракт: [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — size-prefix evolution, ownership tags.
 - Архитектура: [`host-api-model`](host-api-model.ru.md) — KIND-tagged primitives, slot families.
 - Архитектура: [`extension-model`](extension-model.ru.md) — plugin↔plugin координация.
 - Архитектура: [`security-flow`](security-flow.ru.md) — handshake → attestation → trust upgrade trace.

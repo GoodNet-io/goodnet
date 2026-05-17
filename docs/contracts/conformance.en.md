@@ -125,9 +125,9 @@ Link-family concept (`LinkPlugin`, declared in `link_teardown.hpp`):
 
 | Requirement | Source |
 |---|---|
-| `t.listen(uri) -> gn_result_t` | `link.md` §2 |
-| `t.connect(uri) -> gn_result_t` | `link.md` §2 |
-| `t.shutdown() -> void` | `link.md` §9 |
+| `t.listen(uri) -> gn_result_t` | `link.en.md` §2 |
+| `t.connect(uri) -> gn_result_t` | `link.en.md` §2 |
+| `t.shutdown() -> void` | `link.en.md` §9 |
 | `t.set_host_api(api) -> void` | host-stub plumbing (see §5) |
 
 The concept lives in the same header as the fixture so the gate and
@@ -195,7 +195,7 @@ A v2 header sits beside v1 as
 `sdk/test/conformance/<topic>-v2.hpp` with its own concept and
 traits names. v1 stays unchanged until every consumer has migrated;
 v1 is then removed in the next `MAJOR` SDK bump per
-`abi-evolution.md` §3b. The pre-rc1 reshape window from the same
+`abi-evolution.en.md` §3b. The pre-rc1 reshape window from the same
 §3b applies here too: before `v1.0.0-rc1` any conformance header
 may be reshaped freely; after the tag the table above governs.
 

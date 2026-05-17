@@ -94,7 +94,7 @@ security boundary.
 - Operator how-tos — proposed.
 - Observability — the counter surface ships through
   `host_api->emit_counter` / `iterate_counters` per
-  [`metrics.md`](contracts/metrics.en.md); Prometheus and OTLP exporters
+  [`metrics.en.md`](contracts/metrics.en.md); Prometheus and OTLP exporters
   that consume it live as plugins, not kernel code.
 
 ---

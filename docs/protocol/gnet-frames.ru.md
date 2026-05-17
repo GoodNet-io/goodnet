@@ -182,7 +182,7 @@ uint32 BE — per-protocol routing key. Handler регистрируется н�
 
 | msg_id | Owner | Payload |
 |---|---|---|
-| `0x10` | heartbeat (pre-attestation) | `HeartbeatSchema` per `protocol-layer.md` §3.2 |
+| `0x10` | heartbeat (pre-attestation) | `HeartbeatSchema` per `protocol-layer.en.md` §3.2 |
 | `0x11` | attestation dispatcher | 232 байта signed payload, см. [attestation-bytes](attestation-bytes.ru.md) |
 | `0x12` | capability TLV blob | TLV records, см. [capability-tlv.md](../contracts/capability-tlv.en.md) |
 

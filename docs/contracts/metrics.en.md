@@ -129,8 +129,8 @@ v1.1. The currently-emitting reasons:
 | `drop.frame_too_large` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_FRAME_TOO_LARGE` (length past `kMaxFrameBytes`) — hostile-peer signal |
 | `drop.deframe_corrupt` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` — magic / version drift |
 | `drop.queue_hard_cap` | per-link `send` / `send_batch` (TCP / WS / IPC / TLS) | per-conn pending queue past `pending_queue_bytes_hard` |
-| `drop.trust_class_mismatch` | `notify_connect` thunk | declared trust not in `protocol_layer().allowed_trust_mask()` (protocol-side gate, `host_api_builder.cpp:1067`) **or** not in the security provider's `allowed_trust_mask` (security-side gate, `host_api_builder.cpp:1130` after `SessionRegistry::create` returns `INVALID_ENVELOPE`); same counter for both per `security-trust.md` §4 |
-| `drop.attestation_bad_size` / `_replay` / `_parse_failed` / `_bad_signature` / `_expired_or_invalid` / `_identity_change` | `attestation_dispatcher` via `MetricsRegistry::increment_drop_reason` | `attestation.md` §5 step failures — one counter per `gn_drop_reason_t` enum value, sharing the kernel's `drop.*` namespace so operators scrape every rejection class together |
+| `drop.trust_class_mismatch` | `notify_connect` thunk | declared trust not in `protocol_layer().allowed_trust_mask()` (protocol-side gate, `host_api_builder.cpp:1067`) **or** not in the security provider's `allowed_trust_mask` (security-side gate, `host_api_builder.cpp:1130` after `SessionRegistry::create` returns `INVALID_ENVELOPE`); same counter for both per `security-trust.en.md` §4 |
+| `drop.attestation_bad_size` / `_replay` / `_parse_failed` / `_bad_signature` / `_expired_or_invalid` / `_identity_change` | `attestation_dispatcher` via `MetricsRegistry::increment_drop_reason` | `attestation.en.md` §5 step failures — one counter per `gn_drop_reason_t` enum value, sharing the kernel's `drop.*` namespace so operators scrape every rejection class together |
 
 `route.outcome.*` is the **routing-pipeline** namespace ("a
 deframed envelope reached the dispatch chain — what happened
@@ -216,5 +216,5 @@ v1 ships counters only.
   (`emit_counter`, `iterate_counters` slots).
 - Router outcomes: `core/kernel/router.hpp` (`RouteOutcome` enum).
 - Drop reasons: `sdk/types.h` (`gn_drop_reason_t`).
-- Logging surface: `host-api.md` §11 (`log` slot — separate from
+- Logging surface: `host-api.en.md` §11 (`log` slot — separate from
   metrics; the two live independently).

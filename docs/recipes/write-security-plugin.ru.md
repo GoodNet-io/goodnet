@@ -102,7 +102,7 @@ static uint32_t myprov_allowed_trust_mask(void* self) {
 ```
 
 Ядро читает маску один раз при `register_security` и проверяет на
-каждом `SessionRegistry::create` (`security-trust.md` §4): trust class
+каждом `SessionRegistry::create` (`security-trust.en.md` §4): trust class
 соединения, отсутствующий в маске, ⇒ `GN_ERR_INVALID_ENVELOPE` ещё до
 первого handshake-байта + bump `metrics.drop.trust_class_mismatch`.
 
@@ -270,7 +270,7 @@ static gn_result_t myprov_export_keys(void* self_v, void* state_v,
 ```
 
 `handshake_hash` — channel-binding 32-байт для attestation
-(`attestation.md`); peer'ы подписывают его при формировании 232-
+(`attestation.en.md`); peer'ы подписывают его при формировании 232-
 байтного аттестационного payload'а.
 
 ---
@@ -422,7 +422,7 @@ GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self_v) {
 }
 ```
 
-Quiescence-wait (`plugin-lifetime.md` §4) обеспечивает, что после
+Quiescence-wait (`plugin-lifetime.en.md` §4) обеспечивает, что после
 `unregister_security` ни одна in-flight encrypt/decrypt-операция уже
 не входит в plugin'у `.text`.
 

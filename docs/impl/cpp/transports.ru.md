@@ -12,7 +12,7 @@ Stability: v1.x
 не транспорт. Эта глава фиксирует, почему граница нарисована
 именно так и какие повторяющиеся ошибки она ловит.
 
-Контракт от ядра: [`link.md`](../../contracts/link.en.md). Этот
+Контракт от ядра: [`link.en.md`](../../contracts/link.en.md). Этот
 документ — сопровождающий гид: что транспорт обязан выдать на
 своей стороне границы, как threading-модель ядра пересекает
 плагиновую, и какие паттерны спасают от типичных race'ов и
@@ -42,7 +42,7 @@ silent-fail'ов.
 | `meta->name` | scheme — `"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`. Один scheme = один plugin. |
 | `vtable` | `gn_link_vtable_t*` — primary surface (см. [`sdk/link.h`](../../../sdk/link.h)). |
 | `self` | per-plugin state (типично `*Link` C++ объект). |
-| `lifetime_anchor` | `shared_ptr<void>` для quiescence wait per [`plugin-lifetime.md` §4](../../contracts/plugin-lifetime.en.md). |
+| `lifetime_anchor` | `shared_ptr<void>` для quiescence wait per [`plugin-lifetime.en.md` §4](../../contracts/plugin-lifetime.en.md). |
 
 Vtable несёт `listen`, `connect`, `send`, `send_batch`, `disconnect`,
 `extension_name`, `extension_vtable`, `destroy`. Дополнительно

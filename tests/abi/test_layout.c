@@ -12,7 +12,7 @@
  * The numbers were measured on x86_64 Linux gcc15 against the release
  * snapshot of `sdk/`. Grouping below mirrors the header layout. New
  * fields land before each header's `_reserved[]` slot — the reserved
- * trailer absorbs additive evolution per `abi-evolution.md` §3 without
+ * trailer absorbs additive evolution per `abi-evolution.en.md` §3 without
  * shifting any earlier offset.
  *
  * To regenerate after an ABI bump:

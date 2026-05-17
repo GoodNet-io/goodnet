@@ -231,14 +231,14 @@ void Session::start_read() {
 - [`transports.ru.md`](./transports.ru.md) — общий гид по работе
   с link plugin'ом: threading, send/recv, listen vs extension API,
   регулярные грабли. Эта глава раскрывает teardown в деталях.
-- [`link.md` §9](../../contracts/link.en.md) — формальный контракт
+- [`link.en.md` §9](../../contracts/link.en.md) — формальный контракт
   shutdown release
-- [`signal-channel.md`](../../contracts/signal-channel.en.md) — события,
+- [`signal-channel.en.md`](../../contracts/signal-channel.en.md) — события,
   которые ядро фаерит в ответ на `notify_disconnect`
 - [`memory-management.md`](memory-management.ru.md) — borrowed/owned
   семантика на C ABI границе
 - [`error-handling.md`](error-handling.ru.md) — `gn_result_t`
   семантика для `(void)`-cast'а ошибок ожидаемого типа
-- [`plugin-lifetime.md`](../../contracts/plugin-lifetime.en.md) §4 —
+- [`plugin-lifetime.en.md`](../../contracts/plugin-lifetime.en.md) §4 —
   как kernel'у важна caller-thread'овая полнота emit'ов для
   drain budget'а

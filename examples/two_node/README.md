@@ -45,8 +45,8 @@ reading as the shortest end-to-end host before writing your own.
 
 The binary direct-links the TCP transport's OBJECT library and the
 GNET protocol layer for compactness — production hosts that want
-the full plugin-manager flow follow the `apps/goodnetd/subcommands/
-run.cpp` shape instead.
+the full plugin-manager flow consult the `goodnetd` daemon in
+`goodnet-io/goodnetd` for the canonical embedding shape instead.
 
 ## License
 

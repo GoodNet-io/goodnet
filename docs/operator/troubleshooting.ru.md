@@ -43,7 +43,7 @@
 | `GN_ERR_INTEGRITY_FAILED` (-12) | manifest hash mismatch, tampered binary, manifest absent в strict mode, испорченный identity-file | re-run `goodnet manifest gen` или `goodnet identity gen`; рассмотреть compromise host'а |
 | `GN_ERR_INTERNAL` (-13) | ядро поймало exception на C ABI границе | bug плагина; перезагрузить плагин, собрать backtrace |
 | `GN_ERR_NOT_FOUND` (-14) | lookup miss: config key, handler-id, link session, inject-target conn | typo в конфиге или несовпадение состояний; см. §3 |
-| `GN_ERR_OUT_OF_RANGE` (-15) | значение вне допустимого диапазона: array index, config integer выше cap'а из `limits.md` | поправить конфиг |
+| `GN_ERR_OUT_OF_RANGE` (-15) | значение вне допустимого диапазона: array index, config integer выше cap'а из `limits.en.md` | поправить конфиг |
 | `GN_ERR_FRAME_TOO_LARGE` (-16) | wire-frame превышает `kMaxFrameBytes`; счётчик `drop.frame_too_large` | hostile peer signal |
 
 `gn_strerror(rc)` в `sdk/types.h` отдаёт стабильную строку для

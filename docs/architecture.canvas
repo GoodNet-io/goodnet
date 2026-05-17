@@ -141,7 +141,7 @@
 		{
 			"id": "n_error",
 			"type": "text",
-			"text": "# gn_result_t\n`sdk/types.h`\n\n```c\ntypedef enum {\n  GN_OK = 0,\n  GN_ERR_NULL_ARG, GN_ERR_NOT_FOUND,\n  GN_ERR_INVALID_ENVELOPE,\n  GN_ERR_VERSION_MISMATCH,\n  GN_ERR_LIMIT_REACHED,\n  GN_ERR_OUT_OF_RANGE, GN_ERR_INVALID_STATE,\n  ...\n} gn_result_t;\n```\n\nОдин enum для каждого failure mode.\nКонтракт `host-api.md` фиксирует возврат на каждом slot'е.",
+			"text": "# gn_result_t\n`sdk/types.h`\n\n```c\ntypedef enum {\n  GN_OK = 0,\n  GN_ERR_NULL_ARG, GN_ERR_NOT_FOUND,\n  GN_ERR_INVALID_ENVELOPE,\n  GN_ERR_VERSION_MISMATCH,\n  GN_ERR_LIMIT_REACHED,\n  GN_ERR_OUT_OF_RANGE, GN_ERR_INVALID_STATE,\n  ...\n} gn_result_t;\n```\n\nОдин enum для каждого failure mode.\nКонтракт `host-api.en.md` фиксирует возврат на каждом slot'е.",
 			"x": 3313,
 			"y": -200,
 			"width": 475,
@@ -168,7 +168,7 @@
 		{
 			"id": "n_link_iface",
 			"type": "text",
-			"text": "# gn_link_vtable_t\n`sdk/link.h`\n\nLink — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n```c\ngn_result_t (*listen)(void* self, const char* uri);\ngn_result_t (*connect)(void* self, const char* uri,\n                       const uint8_t pk[GN_PUBLIC_KEY_BYTES]);\ngn_result_t (*send)(void* self, gn_conn_id_t,\n                    const uint8_t* bytes, size_t);\ngn_result_t (*close)(void* self, gn_conn_id_t);\nvoid        (*shutdown)(void* self);\nuint32_t    (*properties)(void* self);  // stream/datagram/...\n```\n\nРегистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\nConn-id ownership gate: только владелец схемы может звать\n`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n(`security-trust.md` §6a).",
+			"text": "# gn_link_vtable_t\n`sdk/link.h`\n\nLink — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n```c\ngn_result_t (*listen)(void* self, const char* uri);\ngn_result_t (*connect)(void* self, const char* uri,\n                       const uint8_t pk[GN_PUBLIC_KEY_BYTES]);\ngn_result_t (*send)(void* self, gn_conn_id_t,\n                    const uint8_t* bytes, size_t);\ngn_result_t (*close)(void* self, gn_conn_id_t);\nvoid        (*shutdown)(void* self);\nuint32_t    (*properties)(void* self);  // stream/datagram/...\n```\n\nРегистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\nConn-id ownership gate: только владелец схемы может звать\n`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n(`security-trust.en.md` §6a).",
 			"x": 8674,
 			"y": 1732,
 			"width": 540,
@@ -195,7 +195,7 @@
 		{
 			"id": "n_trust",
 			"type": "text",
-			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
+			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.en.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
 			"x": 11100,
 			"y": 1078,
 			"width": 540,
@@ -213,7 +213,7 @@
 		{
 			"id": "n_kernel",
 			"type": "text",
-			"text": "# Kernel\n`core/kernel/kernel.{hpp,cpp}`\n\nТонкая оркестрация фаз — никаких знаний о wire-форматах,\nтранспортах или security политиках. Ядро держит регистры и\nпозволяет плагинам слать сообщения друг другу.\n\n**Lifecycle FSM** (`plugin-lifetime.md` §2):\n```\ndiscover → dlopen → version-check →\ninit_all → register_all → on_running →\npre_shutdown → unregister_all → shutdown_all → dlclose\n```\n\nTwo-phase activation: все плагины сначала `init`, потом `register`.\nПри сбое — clean rollback без выхода в dispatch.\n\nЯдро владеет: PluginManager, ServiceResolver, Router,\nAttestationDispatcher, MetricsRegistry, TimerRegistry, и набор\nрегистров справа.",
+			"text": "# Kernel\n`core/kernel/kernel.{hpp,cpp}`\n\nТонкая оркестрация фаз — никаких знаний о wire-форматах,\nтранспортах или security политиках. Ядро держит регистры и\nпозволяет плагинам слать сообщения друг другу.\n\n**Lifecycle FSM** (`plugin-lifetime.en.md` §2):\n```\ndiscover → dlopen → version-check →\ninit_all → register_all → on_running →\npre_shutdown → unregister_all → shutdown_all → dlclose\n```\n\nTwo-phase activation: все плагины сначала `init`, потом `register`.\nПри сбое — clean rollback без выхода в dispatch.\n\nЯдро владеет: PluginManager, ServiceResolver, Router,\nAttestationDispatcher, MetricsRegistry, TimerRegistry, и набор\nрегистров справа.",
 			"x": 2143,
 			"y": 344,
 			"width": 540,
@@ -258,7 +258,7 @@
 		{
 			"id": "n_link_reg",
 			"type": "text",
-			"text": "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\nRegistry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n`ipc`, `tls`).\n\n**Conn-id ownership gate** (`security-trust.md` §6a):\nхранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\nЛюбая попытка чужого link'а позвать `notify_*` для conn_id, чей\nscheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`.",
+			"text": "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\nRegistry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n`ipc`, `tls`).\n\n**Conn-id ownership gate** (`security-trust.en.md` §6a):\nхранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\nЛюбая попытка чужого link'а позвать `notify_*` для conn_id, чей\nscheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`.",
 			"x": 4775,
 			"y": 1832,
 			"width": 540,
@@ -267,7 +267,7 @@
 		{
 			"id": "n_sec_reg",
 			"type": "text",
-			"text": "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\nОдин активный provider'ный slot v1 (`security-trust.md` §6).\nВторой `register_security` возвращает `GN_ERR_LIMIT_REACHED`.\n\nПри `Sessions::create` ядро сверяет `trust` конна с\n`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n`metrics.drop.trust_class_mismatch`.",
+			"text": "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\nОдин активный provider'ный slot v1 (`security-trust.en.md` §6).\nВторой `register_security` возвращает `GN_ERR_LIMIT_REACHED`.\n\nПри `Sessions::create` ядро сверяет `trust` конна с\n`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n`metrics.drop.trust_class_mismatch`.",
 			"x": 4186,
 			"y": 1842,
 			"width": 512,
@@ -276,7 +276,7 @@
 		{
 			"id": "n_ext_reg",
 			"type": "text",
-			"text": "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\nГлобальный namespace для plugin↔plugin контрактов\n(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n`register_extension(name, version, vtable)` —\n`query_extension_checked(name, version, &vtable)` —\nверсия сверяется по semver-major + min-minor (`abi-evolution.md`).\n\nЯдро — pure registry; никаких встроенных extension'ов.",
+			"text": "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\nГлобальный namespace для plugin↔plugin контрактов\n(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n`register_extension(name, version, vtable)` —\n`query_extension_checked(name, version, &vtable)` —\nверсия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\nЯдро — pure registry; никаких встроенных extension'ов.",
 			"x": 2976,
 			"y": 1822,
 			"width": 535,
@@ -294,7 +294,7 @@
 		{
 			"id": "n_plug_mgr",
 			"type": "text",
-			"text": "# PluginManager\n`core/plugin/plugin_manager.{hpp,cpp}`\n\ndlopen + ABI version check (`gn_plugin_sdk_version`).\n\nTwo-phase activation (`plugin-lifetime.md` §5):\n1. `init_all` — все плагины строят локальный state\n2. `register_all` — плагины зовут `register_vtable` / `register_security` /\n    `register_extension` под отсортированным порядком зависимостей\n\nTeardown — зеркально, c quiescence через **weak observer** на\nlifetime_anchor каждого плагина. Если плагин не отозвал свои\nin-flight async задачи за drain timeout — ядро **leak'ает\ndlclose**, не вырубает живой код.",
+			"text": "# PluginManager\n`core/plugin/plugin_manager.{hpp,cpp}`\n\ndlopen + ABI version check (`gn_plugin_sdk_version`).\n\nTwo-phase activation (`plugin-lifetime.en.md` §5):\n1. `init_all` — все плагины строят локальный state\n2. `register_all` — плагины зовут `register_vtable` / `register_security` /\n    `register_extension` под отсортированным порядком зависимостей\n\nTeardown — зеркально, c quiescence через **weak observer** на\nlifetime_anchor каждого плагина. Если плагин не отозвал свои\nin-flight async задачи за drain timeout — ядро **leak'ает\ndlclose**, не вырубает живой код.",
 			"x": 583,
 			"y": 404,
 			"width": 540,
@@ -339,7 +339,7 @@
 		{
 			"id": "n_timer",
 			"type": "text",
-			"text": "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\nОдин shared service executor (`timer.md`). Все таймеры\nплагинов парятся с их lifetime_anchor.\nПосле shutdown_requested — pending fire'ы дропаются\nдо того как зайдут в плагин.",
+			"text": "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\nОдин shared service executor (`timer.en.md`). Все таймеры\nплагинов парятся с их lifetime_anchor.\nПосле shutdown_requested — pending fire'ы дропаются\nдо того как зайдут в плагин.",
 			"x": 6818,
 			"y": 1862,
 			"width": 445,
@@ -411,7 +411,7 @@
 		{
 			"id": "n_ipc_plugin",
 			"type": "text",
-			"text": "# link-ipc\n`plugins/links/ipc/`\n\nIndependent git unit. MIT.\n\n`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\nBridge-плагины поверх IPC объявляют `IntraNode` на\n`notify_connect` — null security их пропустит без handshake'а\n(`security-trust.md` §3, bridge-плагины).",
+			"text": "# link-ipc\n`plugins/links/ipc/`\n\nIndependent git unit. MIT.\n\n`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\nBridge-плагины поверх IPC объявляют `IntraNode` на\n`notify_connect` — null security их пропустит без handshake'а\n(`security-trust.en.md` §3, bridge-плагины).",
 			"x": 7452,
 			"y": 1138,
 			"width": 527,

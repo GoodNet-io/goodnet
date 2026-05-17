@@ -152,16 +152,16 @@ nix run .#test  # kernel + все плагины + integration-tests
 
 ### Контракты, которые плагин должен соблюдать
 
-- [`link.md`](../contracts/link.en.md) — link плагин: vtable shape,
+- [`link.en.md`](../contracts/link.en.md) — link плагин: vtable shape,
   shutdown semantics, single-writer, trust class declaration
-- [`handler-registration.md`](../contracts/handler-registration.en.md) —
+- [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
   handler плагин: msg_id range, propagation values, lifetime
-- [`security-trust.md`](../contracts/security-trust.en.md) — security
+- [`security-trust.en.md`](../contracts/security-trust.en.md) — security
   plugin: handshake driver, single-active-per-trust-class,
   attestation hooks
-- [`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) — все
+- [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — все
   плагины: 5 entry symbols, init/register/run/unregister/shutdown
-- [`plugin-manifest.md`](../contracts/plugin-manifest.en.md) — manifest
+- [`plugin-manifest.en.md`](../contracts/plugin-manifest.en.md) — manifest
   + Ed25519 signature, signed-by-vendor verify
 
 ## Цикл разработки app'а
@@ -337,7 +337,7 @@ Kernel и каждая loadable единица версионятся незав
 
 | Тэг | Что означает |
 |---|---|
-| `kernel/v1.0.0-rc3` | ABI freeze. После этого тэга `host_api_t`, `gn_link_vtable_t`, `gn_handler_vtable_t`, `gn_security_provider_vtable_t`, `gn_message_t` shape — стабильны. Любая правка идёт через `_reserved` слот + `api_size` gating per [`abi-evolution.md`](../contracts/abi-evolution.en.md) |
+| `kernel/v1.0.0-rc3` | ABI freeze. После этого тэга `host_api_t`, `gn_link_vtable_t`, `gn_handler_vtable_t`, `gn_security_provider_vtable_t`, `gn_message_t` shape — стабильны. Любая правка идёт через `_reserved` слот + `api_size` gating per [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) |
 | `link-tcp/v1.0.0-rc1` | Plugin's own version. Plugin может бампать без kernel rebump'а пока остаётся compatible с kernel ABI |
 | `bridges-cpp/v1.0.0-rc1` | Binding's version. Может опережать или отставать от kernel — пока его headers компилируются с kernel ABI |
 | `gssh/v1.0.0-rc1` | App's version. Зависит от binding ABI и kernel capi |

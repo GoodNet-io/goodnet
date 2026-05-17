@@ -122,7 +122,7 @@ the start of teardown and `dlclose`:
 2. `gn_plugin_unregister` — registry entries drop their anchor copies.
 3. Cancel still-pending timers and posted tasks for this anchor so the
    drain wait is not extended by entries the plugin did not cooperatively
-   cancel itself (`timer.md` §4 #3).
+   cancel itself (`timer.en.md` §4 #3).
 4. Manager promotes its strong ref to a weak observer and drops the
    ref, leaving only in-flight dispatch snapshots and not-yet-released
    gate guards holding anchors.
@@ -207,7 +207,7 @@ Hot-reload is supported but constrained:
 - Reload sequence: `unregister → quiescence wait → shutdown → dlclose
   → dlopen → version check → init → register`.
 - The quiescence wait observes the dispatch generation counter
-  (`fsm-events.md` §6) reach a value past every in-flight read of the
+  (`fsm-events.en.md` §6) reach a value past every in-flight read of the
   old vtable. A 64-bit counter is used; wraparound across realistic
   deployment lifetimes is not a concern.
 - During quiescence the plugin's registry entry is removed from
@@ -225,7 +225,7 @@ generation-quiescence wait.
 ## 7. Ownership annotation at the C ABI
 
 Every pointer that crosses the plugin boundary carries one of the four
-ownership tags from `abi-evolution.md` §6. The most common cases:
+ownership tags from `abi-evolution.en.md` §6. The most common cases:
 
 | Site | Direction | Tag |
 |---|---|---|
@@ -293,7 +293,7 @@ as under a live kernel.
 
 ## 10. Cross-references
 
-- C ABI evolution: `abi-evolution.md` §3.
-- The host vtable used at registration: `host-api.md`.
-- Quiescence wait mechanics: `fsm-events.md` §6 (generation counter).
-- Handler ordering and priority: `handler-registration.md`.
+- C ABI evolution: `abi-evolution.en.md` §3.
+- The host vtable used at registration: `host-api.en.md`.
+- Quiescence wait mechanics: `fsm-events.en.md` §6 (generation counter).
+- Handler ordering and priority: `handler-registration.en.md`.

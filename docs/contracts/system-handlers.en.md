@@ -19,10 +19,10 @@ each handler's authoritative wire format and behaviour live in
 the spec column below.
 
 The range itself, the inject-boundary gate, and the registration
-gate are spec'd in [`handler-registration.md`](handler-registration.en.md) §2a.
+gate are spec'd in [`handler-registration.en.md`](handler-registration.en.md) §2a.
 The on-disk identifier the helpers act under
 (`gn_key_purpose_t`, sub-key registry, on-disk file) lives in
-[`identity.md`](identity.en.md).
+[`identity.en.md`](identity.en.md).
 
 ---
 
@@ -31,11 +31,11 @@ The on-disk identifier the helpers act under
 | `msg_id` | Handler | Surface | Kernel implementation | Spec |
 |---|---|---|---|---|
 | `0x10` | reserved | — | — | reserved for future system handler |
-| `0x11` | attestation | hard-reserved (kernel intercepts; plugins cannot register) | `core/kernel/attestation_dispatcher.cpp::on_inbound` | [`attestation.md`](attestation.en.md) |
-| `0x12` | identity rotation announce | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` rotation branch in `notify_inbound_bytes` + `core/identity/rotation.cpp` (verify) + `core/registry/connection.cpp::apply_rotation` | [`identity.md`](identity.en.md) §10 |
-| `0x13` | capability blob distribution | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` capability branch in `notify_inbound_bytes` + `core/kernel/capability_blob.cpp` (`CapabilityBlobBus`) | [`capability-tlv.md`](capability-tlv.en.md) |
-| `0x14` | user-level 2FA challenge | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.md`](identity.en.md) §6 |
-| `0x15` | user-level 2FA response | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.md`](identity.en.md) §6 |
+| `0x11` | attestation | hard-reserved (kernel intercepts; plugins cannot register) | `core/kernel/attestation_dispatcher.cpp::on_inbound` | [`attestation.en.md`](attestation.en.md) |
+| `0x12` | identity rotation announce | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` rotation branch in `notify_inbound_bytes` + `core/identity/rotation.cpp` (verify) + `core/registry/connection.cpp::apply_rotation` | [`identity.en.md`](identity.en.md) §10 |
+| `0x13` | capability blob distribution | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` capability branch in `notify_inbound_bytes` + `core/kernel/capability_blob.cpp` (`CapabilityBlobBus`) | [`capability-tlv.en.md`](capability-tlv.en.md) |
+| `0x14` | user-level 2FA challenge | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.en.md`](identity.en.md) §6 |
+| `0x15` | user-level 2FA response | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.en.md`](identity.en.md) §6 |
 | `0x16..0x1F` | reserved | — | — | future expansion |
 
 Two access classes share the range:
@@ -54,7 +54,7 @@ Two access classes share the range:
   event onto a connection it does not own.
 
 Both classes live under `is_identity_range_msg_id()` per
-[`handler-registration.md`](handler-registration.en.md) §2a; the
+[`handler-registration.en.md`](handler-registration.en.md) §2a; the
 distinction between hard-reserved and plugin-registerable is
 made by `is_reserved_system_msg_id()` (only `0x11..0x13` qualify
 today).
@@ -70,9 +70,9 @@ intercept paths.
 
 | Typed slot | Composes | Spec |
 |---|---|---|
-| `host_api->present_capability_blob` | `0x13` payload + 8-byte BE expiry prefix | [`capability-tlv.md`](capability-tlv.en.md) |
-| `host_api->subscribe_capability_blob` | receiver-side fan-out from `0x13` intercept | [`capability-tlv.md`](capability-tlv.en.md) |
-| `host_api->announce_rotation` | `0x12` proof signing + send to live conns | [`identity.md`](identity.en.md) §10 |
+| `host_api->present_capability_blob` | `0x13` payload + 8-byte BE expiry prefix | [`capability-tlv.en.md`](capability-tlv.en.md) |
+| `host_api->subscribe_capability_blob` | receiver-side fan-out from `0x13` intercept | [`capability-tlv.en.md`](capability-tlv.en.md) |
+| `host_api->announce_rotation` | `0x12` proof signing + send to live conns | [`identity.en.md`](identity.en.md) §10 |
 
 The typed slots are not strictly necessary — apps could send raw
 bytes under `0x12` / `0x13` through the regular `host_api->send`
@@ -85,7 +85,7 @@ typed slot: app-level UX and threat model (which factor, how to
 prompt the user, what fallback) drive the challenge / response
 logic, and the kernel only provides the underlying signing
 primitive `host_api->sign_local`. See
-[`identity.md`](identity.en.md) §6 for the recommended
+[`identity.en.md`](identity.en.md) §6 for the recommended
 challenge-response pattern.
 
 ---
@@ -120,9 +120,9 @@ handler without filling the row is a contract bug.
 ## 5. Cross-references
 
 - Reserved-id semantics + register / inject gates:
-  [`handler-registration.md`](handler-registration.en.md) §2a.
+  [`handler-registration.en.md`](handler-registration.en.md) §2a.
 - Identity primitives the handlers act on:
-  [`identity.md`](identity.en.md).
+  [`identity.en.md`](identity.en.md).
 - Per-handler wire formats: rows of §2 above.
-- Capability-blob transport surface: [`capability-tlv.md`](capability-tlv.en.md).
-- Attestation cert + dispatcher: [`attestation.md`](attestation.en.md).
+- Capability-blob transport surface: [`capability-tlv.en.md`](capability-tlv.en.md).
+- Attestation cert + dispatcher: [`attestation.en.md`](attestation.en.md).

@@ -112,7 +112,7 @@ The full sequence per plugin:
    true/false based on path presence + on-disk SHA-256;
 2. **dlopen** — only reached when `verify` returned true;
 3. symbol resolution, SDK-version check, descriptor read;
-4. two-phase activation per `plugin-lifetime.md` §5.
+4. two-phase activation per `plugin-lifetime.en.md` §5.
 
 Step 1 is short-circuited entirely in developer mode.
 
@@ -315,10 +315,11 @@ no diagnostic trail.
 
 ## 9. Cross-references
 
-- Loader semantics: `plugin-lifetime.md` §5 (two-phase activation).
-- Resource limits: `limits.md` §4a (`max_plugins`).
+- Loader semantics: `plugin-lifetime.en.md` §5 (two-phase activation).
+- Resource limits: `limits.en.md` §4a (`max_plugins`).
 - Error codes: `sdk/types.h` `GN_ERR_INTEGRITY_FAILED`.
 - Implementation: `core/plugin/plugin_manifest.{hpp,cpp}` and
   `core/plugin/plugin_manager.cpp::open_one`.
 - Per-package emission: `nix/buildPlugin.nix` (build infrastructure).
-- Aggregate manifest CLI: `apps/goodnetd/subcommands/manifest_gen.cpp`.
+- Aggregate manifest CLI: shipped by the `goodnetd` daemon in
+  `goodnet-io/goodnetd` (`goodnetd manifest gen ...`).

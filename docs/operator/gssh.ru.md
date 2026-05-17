@@ -322,7 +322,7 @@ listen-side не загрузил Noise plugin.
 
 Текущая версия bridge использует kernel link-registry напрямую (раньше
 шёл через extension-API, который возвращает `GN_ERR_NOT_IMPLEMENTED`
-by design per `link.md` §8). Если эта диагностика появилась — значит
+by design per `link.en.md` §8). Если эта диагностика появилась — значит
 link-плагин не загрузился или bin/lib не в одном prefix'е. Проверить
 discovery paths (см. выше).
 

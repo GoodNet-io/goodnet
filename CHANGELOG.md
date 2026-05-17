@@ -222,7 +222,7 @@ source tree fronts both client and server side.
 
 ### Tests as plugin-owned units
 
-Each loadable plugin owns its own conformance tests. `link.md` §9
+Each loadable plugin owns its own conformance tests. `link.en.md` §9
 shutdown contract lives in `sdk/test/conformance/link_teardown.hpp`
 (typed-test fixture exported from the SDK); each link plugin's
 own `tests/test_<link>_conformance.cpp` instantiates the suite
@@ -290,7 +290,7 @@ nix run .#plugin -- <new|pull|install|update> [args]
 
 ### Teardown protocol pinned
 
-`link.md` §9 now spells out the full caller-thread emit invariant:
+`link.en.md` §9 now spells out the full caller-thread emit invariant:
 shutdown latches the flag inside the sessions lock, drains an
 append-only published-ids list rather than the live session map,
 and emits one `notify_disconnect` per id on the caller thread. The
@@ -319,8 +319,8 @@ single teardown-race surface.
   is interpreted on the kernel side, so a compromised plugin
   cannot smuggle `%n` writes or `%s`-without-arg dereferences
   across the C ABI. Substruct shape is gated through
-  `GN_API_HAS_LOG` per `abi-evolution.md` §3a. Per
-  `host-api.md` §11.
+  `GN_API_HAS_LOG` per `abi-evolution.en.md` §3a. Per
+  `host-api.en.md` §11.
 - **Kernel logger** — the named `"gn"` spdlog logger in
   `core/util/log.hpp` carries a console sink (always present)
   and an optional rotating file sink. Custom `%Q` flag renders
@@ -338,7 +338,7 @@ single teardown-race surface.
   kernel re-applies the block on every successful
   `reload_config` / `reload_config_merge` so operators flip
   detail mode, file path, or pattern without restarting.
-  Schema in `config.md` §3; semantics in `host-api.md` §11.4.
+  Schema in `config.en.md` §3; semantics in `host-api.en.md` §11.4.
 - **Hot config reload** — `Kernel::reload_config(text)` and
   `reload_config_merge(overlay)` swap the live state atomically,
   propagate the new `gn_limits_t` to every kernel-owned registry
@@ -375,7 +375,7 @@ single teardown-race surface.
   `gn_config_get_array_size`, `gn_config_get_array_int64`,
   `gn_config_get_array_string` — expand to the LAYER-tagged call,
   so plugin code keeps the typed shape it had before. Per
-  `host-api.md` §2 and `config.md` §3.
+  `host-api.en.md` §2 and `config.en.md` §3.
 - **`Config::load_file(path)` + JSON5 comments** — the kernel itself
   remains library-linkable without a filesystem dependency, but the
   common single-binary deployment now has a one-call entry to read
@@ -393,7 +393,7 @@ single teardown-race surface.
   rejects a burst below half the refill rate. `Config::load_json`
   now auto-validates: a parsed limits set that violates any
   invariant fails the load with `GN_ERR_LIMIT_REACHED` and rolls
-  the kernel state back to the prior load. Per `limits.md` §2.
+  the kernel state back to the prior load. Per `limits.en.md` §2.
 
 - **Counter surface for kernel and plugin metrics** —
   `host_api->emit_counter(name)` and `iterate_counters(visitor)`
@@ -404,7 +404,7 @@ single teardown-race surface.
   `<subsystem>.<event>.<reason>` names. Wire format / scrape
   protocol live in an exporter plugin — the kernel never carries
   HTTP serving or Prometheus rendering code. New header
-  `sdk/metrics.h`. Per `metrics.md` (new contract).
+  `sdk/metrics.h`. Per `metrics.en.md` (new contract).
 - **Plugin integrity manifest** — `PluginManager::set_manifest`
   installs a SHA-256 allowlist that gates every `dlopen`. An empty
   manifest is the developer-mode default (every plugin loads); a
@@ -414,7 +414,7 @@ single teardown-race surface.
   reach the kernel. Manifest format: JSON
   `{"plugins":[{"path":...,"sha256":<64-hex>},...]}`. Streaming
   SHA-256 via libsodium, 64 KiB chunks. New error code
-  `GN_ERR_INTEGRITY_FAILED`. Per `plugin-manifest.md`.
+  `GN_ERR_INTEGRITY_FAILED`. Per `plugin-manifest.en.md`.
 - **Cooperative cancellation for plugins** — every plugin owns a
   `PluginAnchor` carrying an in-flight counter and a
   `shutdown_requested` flag. Async dispatch sites (timer fire,
@@ -426,8 +426,8 @@ single teardown-race surface.
   from inside long-running async work and exit cooperatively
   before the kernel's drain timeout. Drain logs the in-flight
   count alongside the timeout warning, attributing leaked work to
-  the misbehaving plugin. Per `plugin-lifetime.md` §4 + §8 and
-  `host-api.md` §10.
+  the misbehaving plugin. Per `plugin-lifetime.en.md` §4 + §8 and
+  `host-api.en.md` §10.
 - **`nix run .#demo` quickstart** — `examples/two_node` ships a
   single-process binary, `goodnet-demo`, that owns both ends of a
   conversation: two `Kernel` instances each with a fresh
@@ -446,7 +446,7 @@ single teardown-race surface.
   and `inject_frame` for bridge plugins to push foreign-system
   payloads into the mesh under their own identity. Per-source
   token-bucket rate limit (`core/util/token_bucket.hpp`) with
-  explicit `Clock` injection per `clock.md` §2.
+  explicit `Clock` injection per `clock.en.md` §2.
 - **Kernel security pipeline** — per-connection `SecuritySession`
   plus `Sessions` registry that drive the handshake from
   `notify_connect` through encrypt / decrypt at the Transport
@@ -458,7 +458,7 @@ single teardown-race surface.
   XX + IK state machines, dlopen-tested through a two-session
   handshake.
 - **TCP transport** — Boost.Asio strand-per-session writes per
-  `link.md` §4 single-writer, IPv6 dual-stack with
+  `link.en.md` §4 single-writer, IPv6 dual-stack with
   `IPV6_V6ONLY=false` on `::` wildcard.
 - **IPC transport** — Boost.Asio `local::stream_protocol` with
   the same strand shape as TCP; `chmod 0700` on the parent
@@ -527,7 +527,7 @@ single teardown-race surface.
   `GN_CONN_EVENT_BACKPRESSURE_CLEAR` when it drops below
   `pending_queue_bytes_low`. Per-Session `soft_signaled_` atomic
   enforces the rising / falling edge model from
-  `backpressure.md` §3, so a queue oscillating inside the
+  `backpressure.en.md` §3, so a queue oscillating inside the
   hysteresis band never floods the channel. The publisher slot
   is the new `host_api->notify_backpressure(conn, kind, bytes)`,
   guarded by the kind-based transport role gate so only
@@ -535,7 +535,7 @@ single teardown-race surface.
 - **Backpressure hard cap** — TCP / IPC / WS / TLS transports now
   refuse fresh sends once the per-connection write queue holds
   more than `gn_limits_t::pending_queue_bytes_hard` bytes per
-  `backpressure.md` §3. Each Session carries an atomic
+  `backpressure.en.md` §3. Each Session carries an atomic
   `bytes_buffered_` counter incremented on enqueue, drained on
   the matching `async_write` completion. `host_api->send` /
   `send_batch` return `GN_ERR_LIMIT_REACHED` past the cap; the
@@ -559,7 +559,7 @@ single teardown-race surface.
 - **Handshake-phase pending queue** — `host_api->send` buffers
   application data while the connection's `SecuritySession` is
   in `Handshake`. Each framed plaintext sits on the session's
-  pending queue (per `backpressure.md` §8), capped at
+  pending queue (per `backpressure.en.md` §8), capped at
   `gn_limits_t::pending_handshake_bytes` (default 256 KiB,
   `GN_ERR_LIMIT_REACHED` past the cap). The phase check, cap
   check, and queue insert all run under one mutex so a
@@ -616,7 +616,7 @@ single teardown-race surface.
   callback after `delay_ms`), `cancel_timer` (idempotent), and
   `post_to_executor` (run-now task). Every scheduled entry holds
   a `weak_ptr<void>` of the calling plugin's quiescence sentinel
-  (`plugin-lifetime.md` §4); a callback whose plugin already
+  (`plugin-lifetime.en.md` §4); a callback whose plugin already
   unloaded is dropped silently. `gn_limits_t::max_timers` and
   `max_pending_tasks` (default `4096`) cap the queue. New
   `docs/contracts/timer.md`. SDK_VERSION_MINOR bumped to 1.4.
@@ -627,7 +627,7 @@ single teardown-race surface.
   key from kernel config (`links.tls.cert_path` /
   `links.tls.key_path`); client defaults to `verify_none`
   because the kernel's identity / Noise pipeline is the
-  authentication gate (`security-trust.md` §3 single source).
+  authentication gate (`security-trust.en.md` §3 single source).
   Capability descriptor adds `EncryptedPath`.
 
 ### Changed
@@ -695,7 +695,7 @@ single teardown-race surface.
   option leaves the connection on the default scheduler instead
   of failing the accept.
 - **Per-peer device-key pinning across sessions
-  (`registry.md` §8a).** ConnectionRegistry exposes
+  (`registry.en.md` §8a).** ConnectionRegistry exposes
   `pin_device_pk` / `get_pinned_device_pk` /
   `clear_pinned_device_pk`. The map keys on `peer_pk` and outlives
   connection records, so a peer that disconnects and reconnects
@@ -706,7 +706,7 @@ single teardown-race surface.
   tests pin the API edges; an integration regression on the
   cross-session disconnect path is wired through the dispatcher.
 - **PluginManager `set_manifest_required(true)` knob
-  (`plugin-manifest.md` §7).** The flag turns the empty-manifest
+  (`plugin-manifest.en.md` §7).** The flag turns the empty-manifest
   case into a hard error: `load` returns
   `GN_ERR_INTEGRITY_FAILED` with a diagnostic that names "manifest
   required but empty" followed by the rejected path. The dev-mode
@@ -723,7 +723,7 @@ single teardown-race surface.
   mode accordingly. The regression suite asserts the handshake
   fails when the client opts in (the default) and the peer
   presents a self-signed cert that chains to nothing trusted.
-- **FFI spec: subscriber failure modes (`signal-channel.md` §6).**
+- **FFI spec: subscriber failure modes (`signal-channel.en.md` §6).**
   `SignalChannel::subscribe` now rejects an empty `std::function`
   and returns the invalid-token sentinel; the subscriber list is
   unchanged. `SignalChannel::fire` wraps each handler invocation
@@ -734,7 +734,7 @@ single teardown-race surface.
   contract that callbacks may raise. Tests cover the null-handler
   path and the multi-subscriber-with-thrower path.
 - **FFI spec: kernel-side validation of plugin-provided vtables
-  (`abi-evolution.md` §3a).** `LinkRegistry::register_link`
+  (`abi-evolution.en.md` §3a).** `LinkRegistry::register_link`
   and `SecurityRegistry::register_provider` now reject vtables
   whose `api_size` is smaller than the minimum the kernel knows
   about; the rejection returns `GN_ERR_VERSION_MISMATCH` before
@@ -742,7 +742,7 @@ single teardown-race surface.
   not carry `api_size` (documented in §3a). Tests cover the
   zero-`api_size`, truncated, and exactly-minimum cases.
 - **Registry-wide caps from `gn_limits_t` are now enforced
-  (`limits.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
+  (`limits.en.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
   `ExtensionRegistry::register_extension`, `PluginManager::load`, and
   `HandlerRegistry::register_handler` reject registrations that
   would push the live count past `max_connections`,
@@ -756,13 +756,13 @@ single teardown-race surface.
   promised "every check-site reads from live `gn_limits_t`" no
   longer overpromises — the new §4a enumerates exactly which
   registries enforce which cap.
-- **Registry contract honesty (`registry.md` §4).** The §4 paragraph
+- **Registry contract honesty (`registry.en.md` §4).** The §4 paragraph
   that promised a deletion-generation increment on a
   `gn_endpoint_t` snapshot stream is replaced with a description
   of what the registry actually offers: `get_endpoint` returns the
   view by value, no cache-invalidation channel exists, consumers
   re-read or prune their cache on the `DISCONNECTED` event from
-  `conn-events.md` §2a. The previous wording named a stream the
+  `conn-events.en.md` §2a. The previous wording named a stream the
   kernel never exposed; the rewrite removes the lie.
 - **Standalone Asio.** The networking dependency now ships as
   the `asio` package (Christopher Kohlhoff's standalone build,
@@ -772,7 +772,7 @@ single teardown-race surface.
   mechanical `boost::asio::` → `asio::` rename. Build is
   header-only end-to-end.
 - **Connection registry — atomic snapshot variant
-  (`registry.md` §4a).** `ConnectionRegistry` exposes a
+  (`registry.en.md` §4a).** `ConnectionRegistry` exposes a
   snapshot-and-erase primitive that captures the pre-erase
   record (the `gn_endpoint_t` view plus `§8` per-connection
   counters) and removes the entry from all three indexes
@@ -780,7 +780,7 @@ single teardown-race surface.
   pk bytes; kernel-side storage holds no reference past the
   call.
 - **`notify_disconnect` — DISCONNECTED ordering and at-most-once
-  semantics (`conn-events.md` §2a).** The thunk drops the
+  semantics (`conn-events.en.md` §2a).** The thunk drops the
   security session, then runs the atomic snapshot+erase, then
   publishes one DISCONNECTED whose payload is the captured
   pre-removal record state. A call against an absent or
@@ -799,11 +799,11 @@ single teardown-race surface.
   `crypto_sign_ed25519_pk_to_curve25519` /
   `crypto_sign_ed25519_sk_to_curve25519`), and the conversion
   lives inside the security provider. The kernel and handlers
-  see only the Ed25519 representation. `identity.md` §7
+  see only the Ed25519 representation. `identity.en.md` §7
   cross-reference updated to point at the curve-conversion
   paragraph rather than the file as a whole.
 - **Capability TLV: `protocol-set` and `protocol-list` types
-  (`capability-tlv.md` §2).** Type `0x0001` `protocol-set` is a
+  (`capability-tlv.en.md` §2).** Type `0x0001` `protocol-set` is a
   bitmap of supported `gn.protocol.<name>` slugs in declaration
   order; type `0x0002` `protocol-list` carries the canonical
   UTF-8 newline-separated ordering. Generic TLV codec
@@ -818,12 +818,12 @@ single teardown-race surface.
   minimum is enforced by exclusion. Existing loopback test
   passes — both ends negotiate 1.3.
 - **Attestation gate for `Untrusted → Peer` upgrade
-  (`attestation.md`, `security-trust.md` §3,
-  `handler-registration.md` §2a).** Trust no longer promotes
+  (`attestation.en.md`, `security-trust.en.md` §3,
+  `handler-registration.en.md` §2a).** Trust no longer promotes
   automatically when a Noise session reaches Transport phase.
   The kernel-internal `AttestationDispatcher` exchanges a
   232-byte payload on system msg_id `0x11` over the secured
-  channel — 136-byte attestation cert (per `identity.md` §4) +
+  channel — 136-byte attestation cert (per `identity.en.md` §4) +
   32-byte session `handshake_hash` binding + 64-byte Ed25519
   signature pinning the cert to this session. Both peers must
   send their own and verify the other's before
@@ -856,7 +856,7 @@ single teardown-race surface.
   the wipe rule. The regression suite asserts the observable
   flips from non-zero to zero across the listen call.
 - **WebSocket transport gates every control-frame path through
-  the per-connection hard cap (`backpressure.md` §3.1).** Pong
+  the per-connection hard cap (`backpressure.en.md` §3.1).** Pong
   replies to peer-initiated pings, graceful-close echoes, and
   host-initiated close frames share the same budget that
   `host_api->send` already respects. A peer flooding pings cannot
@@ -901,7 +901,7 @@ upgrade-fires-once contract under both flags, the no-upgrade
 paths under each flag alone, the `Loopback`-class no-upgrade
 case, and the `on_disconnect` state-clear claim. The
 `HandlerRegistry_Args.RejectsReservedAttestationMsgId` test
-covers `handler-registration.md` §2a's plugin-side rejection.
+covers `handler-registration.en.md` §2a's plugin-side rejection.
 
 ## [0.1.0] — 2026-04-28
 
@@ -921,7 +921,7 @@ security pipeline that drives the handshake land in v0.2.0; see
 - **SDK** — C ABI plugin boundary (`gn_message_t`, `gn_endpoint_t`,
   `host_api_t`, vtable types for handler / transport / security /
   protocol), C++ convenience wrappers, ABI evolution rules
-  (`abi-evolution.md`).
+  (`abi-evolution.en.md`).
 - **Crypto** — full Noise XX and IK state machines on libsodium
   primitives: X25519 (`crypto_scalarmult`), ChaCha20-Poly1305 IETF AEAD,
   BLAKE2b, RFC-2104 HMAC-BLAKE2b, Noise §4.3 HKDF. CipherState,

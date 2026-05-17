@@ -23,7 +23,7 @@
 
 ## Шаг 1. SDK header для vtable
 
-Плагин-author объявляет structure в собственном public include — либо в дереве `sdk/extensions/<area>.h` (когда контракт ожидается стабильным и шарится несколькими плагинами), либо внутри своего `include/<plugin>/api.h`. Layout стабилизируется при первой публикации и подчиняется правилам `abi-evolution.md`: первое поле — `uint32_t api_size`, новые поля добавляются перед `_reserved[N]`, ничего не переезжает.
+Плагин-author объявляет structure в собственном public include — либо в дереве `sdk/extensions/<area>.h` (когда контракт ожидается стабильным и шарится несколькими плагинами), либо внутри своего `include/<plugin>/api.h`. Layout стабилизируется при первой публикации и подчиняется правилам `abi-evolution.en.md`: первое поле — `uint32_t api_size`, новые поля добавляются перед `_reserved[N]`, ничего не переезжает.
 
 ```c
 /* include/peer_info/api.h */
@@ -164,9 +164,9 @@ static void resolve_peer_info(const host_api_t* api) {
 Provider снимает регистрацию двумя путями:
 
 1. Явно через `host_api->unregister_extension(host_ctx, "gn.peer-info")` — например, когда плагин хочет перезарегистрироваться под другой версией, не выгружаясь сам.
-2. Автоматически — при `gn_plugin_unregister` ядро через lifetime-anchor (`plugin-lifetime.md` §4) проходит по плагин-owned subscriptions / extensions / handlers / links и снимает их.
+2. Автоматически — при `gn_plugin_unregister` ядро через lifetime-anchor (`plugin-lifetime.en.md` §4) проходит по плагин-owned subscriptions / extensions / handlers / links и снимает их.
 
-Consumer, держащий cached vtable pointer, должен либо подписаться на FSM-события `plugin-lifetime.md` для invalidation, либо ре-резолвить через `query_extension_checked` перед каждым critical use, либо принять, что provider стабилен на всё время сборки (типичный случай для in-tree плагинов).
+Consumer, держащий cached vtable pointer, должен либо подписаться на FSM-события `plugin-lifetime.en.md` для invalidation, либо ре-резолвить через `query_extension_checked` перед каждым critical use, либо принять, что provider стабилен на всё время сборки (типичный случай для in-tree плагинов).
 
 `unregister_extension` идемпотентен — снятие отсутствующего имени возвращает `GN_ERR_NOT_FOUND`, без побочных эффектов.
 

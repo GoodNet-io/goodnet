@@ -59,16 +59,16 @@ Semantics:
 - `DISCONNECTED` — fired by `notify_disconnect` when the call
   removes a real registry record. Full specification in §2a.
 - `TRUST_UPGRADED` — fired when a connection transitions from
-  `Untrusted` to `Peer` (see `security-trust.md` §3 one-way upgrade).
+  `Untrusted` to `Peer` (see `security-trust.en.md` §3 one-way upgrade).
 - `BACKPRESSURE_SOFT` — fired when a transport's send-queue
-  crosses `pending_queue_bytes_high` (see `limits.md` §2 watermark
-  rows and `backpressure.md` §3 for the rising-edge model).
+  crosses `pending_queue_bytes_high` (see `limits.en.md` §2 watermark
+  rows and `backpressure.en.md` §3 for the rising-edge model).
   Subscribers should slow down their producers; the kernel does
   not enforce.
 - `BACKPRESSURE_CLEAR` — fired when the queue drops below
   `pending_queue_bytes_low`.
 - `IDENTITY_ROTATED` — fired when a peer rotates its `user_pk`
-  (per `identity.md` §10 rotation continuity). The kernel
+  (per `identity.en.md` §10 rotation continuity). The kernel
   verifies the inbound `RotationProof` against the pinned
   `user_pk`, advances `peer_pin_map[remote_pk].user_pk`
   atomically, then fires this event on every conn to the same
@@ -89,7 +89,7 @@ Semantics:
   return. Other event kinds leave the `_reserved` slot zero.
 
 The `BACKPRESSURE_*` event kinds are reserved at v1.0 but the
-producer ships in `backpressure.md`. Subscribers register a single
+producer ships in `backpressure.en.md`. Subscribers register a single
 callback that demultiplexes on `event->kind`; until the producer
 fires those kinds, subscribers simply never see them.
 
@@ -107,7 +107,7 @@ cleanup path, and no plugin code constructs a DISCONNECTED event.
 **Effect.** Drops the security session for `conn`, blocking
 until any in-flight session handle has been released, then
 removes the registry record for `conn` atomically with the
-payload snapshot (`registry.md` §4a), then publishes one
+payload snapshot (`registry.en.md` §4a), then publishes one
 DISCONNECTED event whose payload reflects the captured
 pre-removal record state. Subscriber callbacks fire
 synchronously on the calling thread before the call returns;
@@ -120,7 +120,7 @@ synthetic re-delivery.
 
 | Status | Meaning | Side effects |
 |---|---|---|
-| `GN_OK` | record removed and event published | security session destroyed; record erased from all three keys (`registry.md` §1); every existing subscriber invoked once before return |
+| `GN_OK` | record removed and event published | security session destroyed; record erased from all three keys (`registry.en.md` §1); every existing subscriber invoked once before return |
 | `GN_ERR_NOT_FOUND` | no record matched `conn` at the moment the registry critical section started; also returned when `conn == GN_INVALID_ID` | session-destroy attempt is idempotent; no event published; no registry state changed |
 | `GN_ERR_NULL_ARG` | `host_ctx == NULL` | none |
 | `GN_ERR_NOT_IMPLEMENTED` | calling plugin's kind is not `GN_PLUGIN_KIND_LINK` (`sdk/plugin.h` `gn_plugin_kind_t`); `GN_PLUGIN_KIND_UNKNOWN` is permitted as a legacy carve-out for descriptors that predate the `kind` field | none |
@@ -144,7 +144,7 @@ or a kernel-side log without an ABI break.
 | `pending_bytes` | zero (used only by `BACKPRESSURE_*`) |
 | `_reserved[*]` | zero |
 
-The per-connection counters from `registry.md` §8 are not
+The per-connection counters from `registry.en.md` §8 are not
 surfaced through this event. Consumers that need them read
 `get_endpoint` while the conn is alive; after removal, the conn
 is gone by design and the counters with it.
@@ -157,7 +157,7 @@ is gone by design and the counters with it.
   nothing.
 - Between the snapshot capture inside the registry critical
   section and the event publish, no other observer finds the
-  record under any of the three keys (`registry.md` §1).
+  record under any of the three keys (`registry.en.md` §1).
   Readers whose lookup completed before the critical section
   return their captured snapshot normally.
 - A subscriber callback may invoke `notify_disconnect` against
@@ -221,7 +221,7 @@ as an internal routing tag carried in the top bits of
 `gn_subscription_id_t`; plugins do not pass it explicitly.
 
 Every subscription carries a weak observer of the calling plugin's
-lifetime anchor (`plugin-lifetime.md` §4); a callback whose
+lifetime anchor (`plugin-lifetime.en.md` §4); a callback whose
 plugin already unloaded is dropped silently. `unsubscribe` is
 idempotent — calling on an already-removed id returns `GN_OK`.
 
@@ -239,18 +239,18 @@ same thread for every event kind**:
   handshake completion (typically the transport's strand again,
   since the upgrade is fired from inside `notify_inbound_bytes`).
 - `BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` — the transport's
-  strand for the affected connection (`backpressure.md` §3).
+  strand for the affected connection (`backpressure.en.md` §3).
 
 A subscriber that maintains state across event kinds **must**
 guard it with a lock or post every event through
-`host_api->set_timer(delay_ms = 0, …)` (`timer.md` §2) to
+`host_api->set_timer(delay_ms = 0, …)` (`timer.en.md` §2) to
 serialise processing on the kernel's service executor. The
 kernel does not synthesise a unified order across publishing
 threads.
 
 Subscribers must be cheap; long work is posted back through
 `set_timer(0, …)`. Re-entry is permitted under the
-`signal-channel.md` snapshot rule: a callback that calls
+`signal-channel.en.md` snapshot rule: a callback that calls
 `subscribe_conn_state` or `unsubscribe` while a fire is in
 progress runs to completion against the snapshot taken before
 the change — newly-added subscribers do not see the in-flight
@@ -315,7 +315,7 @@ Plugins that need a complete picture of current state subscribe
 | `for_each_connection` | iteration ran | host_ctx / visitor null | — |
 
 The subscription cap is `gn_limits_t::max_subscriptions` (default
-256, `limits.md` §2). The cap is enforced **per channel** so a
+256, `limits.en.md` §2). The cap is enforced **per channel** so a
 saturated `subscribe_conn_state` cannot drain the slots that
 `subscribe_config_reload` needs — operators tune one knob and
 both channels honour it independently. A plugin must not subscribe
@@ -326,8 +326,8 @@ per plugin instance.
 
 ## 7. Cross-references
 
-- Quiescence anchor: `plugin-lifetime.md` §4.
-- Service executor for deferred work: `timer.md`.
-- Trust upgrade rule: `security-trust.md` §3.
-- Backpressure watermarks: `limits.md` §2 (future
-  `backpressure.md`).
+- Quiescence anchor: `plugin-lifetime.en.md` §4.
+- Service executor for deferred work: `timer.en.md`.
+- Trust upgrade rule: `security-trust.en.md` §3.
+- Backpressure watermarks: `limits.en.md` §2 (future
+  `backpressure.en.md`).

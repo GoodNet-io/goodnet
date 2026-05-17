@@ -222,7 +222,7 @@ Rules:
   length. No size change → ABI stays binary-compatible.
 - When all four slots are spent, the next addition is a `MAJOR` bump.
 - Slot count is documented per struct; see the contract owning the
-  struct (e.g. `protocol-layer.md` for `gn_message_t`).
+  struct (e.g. `protocol-layer.en.md` for `gn_message_t`).
 
 **Slot-count convention** — pinned project-wide so a future
 contributor adding a struct copies the right number:
@@ -343,8 +343,8 @@ CI runs both on every push.
 
 ## 8. Cross-references
 
-- `host-api.md` — the actual public table that uses size-prefix.
-- `plugin-lifetime.md` — when version negotiation runs (between init
+- `host-api.en.md` — the actual public table that uses size-prefix.
+- `plugin-lifetime.en.md` — when version negotiation runs (between init
   and register).
-- `protocol-layer.md` — the `gn_message_t` envelope and its
+- `protocol-layer.en.md` — the `gn_message_t` envelope and its
   `_reserved[4]`.

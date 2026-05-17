@@ -112,6 +112,6 @@ A component that requires both has two inputs, not one.
   ([`impl/cpp/clock.ru.md`](../impl/cpp/clock.ru.md) currently;
   Rust / Python / Zig / Go follow alongside their bindings).
 - Timer ownership invariant (one timer per slot, cancel before replace):
-  `timer.md` §4 and `plugin-lifetime.md` §4.
+  `timer.en.md` §4 and `plugin-lifetime.en.md` §4.
 - Generation counter (logical clock for dispatch quiescence; not real
-  time): `fsm-events.md` §6.
+  time): `fsm-events.en.md` §6.

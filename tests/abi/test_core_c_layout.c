@@ -2,7 +2,7 @@
  * @file   tests/abi/test_core_c_layout.c
  * @brief  Compile-time pin of every caller-allocated struct in `sdk/core.h`.
  *
- * Per `docs/contracts/abi-evolution.md` §7 and `core-c.md` §3, the
+ * Per `docs/contracts/abi-evolution.md` §7 and `core-c.en.md` §3, the
  * library-as-binary surface ships a layout pin alongside the per-vtable
  * pin in `test_layout.c`. The library boundary is the only place where
  * a non-C++ host (Rust binding, Python ctypes layer, Go cgo wrapper,
@@ -19,7 +19,7 @@
  *   1. `gn_stats_t` — the only caller-allocated value struct declared
  *      in `sdk/core.h`. Caller passes it to `gn_core_get_stats` for
  *      the kernel to fill; layout is part of the binding contract.
- *      Reserved-tail evolution per `abi-evolution.md` §4.
+ *      Reserved-tail evolution per `abi-evolution.en.md` §4.
  *
  *   2. `gn_core_t` — opaque handle, layout deliberately private. The
  *      pin records that the only thing crossing the boundary is a
@@ -34,7 +34,7 @@
  * The numbers were measured on x86_64 Linux gcc15 against the release
  * snapshot of `sdk/`. New fields land before `gn_stats_t::_reserved`
  * — the reserved trailer absorbs additive evolution per
- * `abi-evolution.md` §3 without shifting any earlier offset.
+ * `abi-evolution.en.md` §3 without shifting any earlier offset.
  */
 
 #include <stddef.h>

@@ -20,7 +20,7 @@ backend may swap.
 
 ## 1. Purpose
 
-`uri.md` §1 declares that the URI parser is pure string work — no
+`uri.en.md` §1 declares that the URI parser is pure string work — no
 DNS lookup, no decoding. The connect path that turns a
 `connect("tcp://example.com:443")` into a `notify_connect` needs
 the hostname turned into an IP literal before it reaches the
@@ -39,7 +39,7 @@ registry, so:
 
 The resolver helper exists to make hostname → IP-literal
 conversion uniform across transports without smuggling DNS into
-either the URI parser (`uri.md`) or the kernel C ABI (`host-api.md`).
+either the URI parser (`uri.en.md`) or the kernel C ABI (`host-api.en.md`).
 
 ---
 
@@ -99,7 +99,7 @@ dependency is shared by every transport already.
 | empty string / unparseable | returns `ResolveError::Kind::UnparseableUri` |
 
 The query string (`?peer=<hex>` etc) is preserved verbatim
-through the canonical-form rewrite — `uri.md` §6 carries the same
+through the canonical-form rewrite — `uri.en.md` §6 carries the same
 guarantee for the parser path.
 
 ### Address family preference
@@ -134,8 +134,8 @@ stateless so the contract is observable as a pure function.
 
 ## 4. Cross-references
 
-- URI parser this composes with: `uri.md`.
-- Why hostnames cannot reach the registry literally: `uri.md` §4
+- URI parser this composes with: `uri.en.md`.
+- Why hostnames cannot reach the registry literally: `uri.en.md` §4
   (canonical form) — `host` is normalised to a literal before the
   registry sees the URI.
-- Transport ownership of DNS: `link.md` §2.
+- Transport ownership of DNS: `link.en.md` §2.

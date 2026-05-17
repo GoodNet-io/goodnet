@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
-**Implements:** size-prefix evolution per `abi-evolution.md`
+**Implements:** size-prefix evolution per `abi-evolution.en.md`
 **Last verified:** 2026-05-08
 **Stability:** stable for v1.x; new entries appended at the tail.
 
@@ -139,7 +139,7 @@ typedef struct host_api_s {
 
     /* ── Transport-side notifications ────────────────────────────────── */
     /* `trust` and `role` are computed by the transport per             */
-    /* `link.md` §3 and §3a; the kernel forwards both into the     */
+    /* `link.en.md` §3 and §3a; the kernel forwards both into the     */
     /* security session.                                                 */
     gn_result_t (*notify_connect)(void* host_ctx,
                                   const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
@@ -151,7 +151,7 @@ typedef struct host_api_s {
     /* Stream-class transports (TCP, IPC, TLS-over-TCP) deliver any   */
     /* chunk size — a single call may cross zero, one, or many        */
     /* security-frame boundaries. The kernel buffers partial bytes on */
-    /* the per-conn security session (`backpressure.md` §9) and fires */
+    /* the per-conn security session (`backpressure.en.md` §9) and fires */
     /* the protocol layer once per complete frame; the transport      */
     /* keeps no per-call assumption about byte-to-frame correspondence. */
     gn_result_t (*notify_inbound_bytes)(void* host_ctx, gn_conn_id_t conn,
@@ -164,7 +164,7 @@ typedef struct host_api_s {
     /* v1 admits at most one active provider per kernel; a second       */
     /* register_security call returns GN_ERR_LIMIT_REACHED. The         */
     /* incumbent stays active. Multi-provider per-trust-class selection  */
-    /* lands with StackRegistry in v1.x. See `security-trust.md` §6.    */
+    /* lands with StackRegistry in v1.x. See `security-trust.en.md` §6.    */
     gn_result_t (*register_security)(
         void* host_ctx, const char* provider_id,
         const struct gn_security_provider_vtable_s* vtable,
@@ -446,7 +446,7 @@ The kernel guarantees:
   macro from `sdk/abi.h` which combines size-prefix presence with
   a null-pointer check).
 
-Per `plugin-lifetime.md` §4, async tasks capture a weak observer of the
+Per `plugin-lifetime.en.md` §4, async tasks capture a weak observer of the
 plugin's reference-counted handle and upgrade before using `api`.
 
 `unregister_extension` is on `host_api_t` so plugins can withdraw
@@ -455,7 +455,7 @@ an entry without dragging the whole plugin through `gn_plugin_shutdown`
 different version while staying loaded calls `unregister_extension`
 on the old name first. The kernel **also** auto-reaps a plugin's
 extensions on shutdown via the lifetime-anchor drain
-(`plugin-lifetime.md` §4), so a plugin that does not call
+(`plugin-lifetime.en.md` §4), so a plugin that does not call
 `unregister_extension` does not leak the entry — automatic reap is
 the safety net, manual call is the explicit path.
 
@@ -475,7 +475,7 @@ uses extensions (`query_extension_checked`), not loader internals.
 
 Every function pointer returns `gn_result_t`. Negative values are
 errors; plugins **must** propagate or handle them. Silently dropping a
-non-`GN_OK` return is a contract violation per `fsm-events.md` §4.
+non-`GN_OK` return is a contract violation per `fsm-events.en.md` §4.
 
 The kernel records every error in `metrics.host_api.<entry>.errors`
 with the result code as label. This is the surface for production
@@ -500,12 +500,12 @@ Plugins **must not**:
 
 ## 7. Cross-references
 
-- Evolution rules: `abi-evolution.md` §3 (size-prefix), §4
+- Evolution rules: `abi-evolution.en.md` §3 (size-prefix), §4
   (`_reserved`).
-- Init / shutdown ordering: `plugin-lifetime.md`.
-- Handler registration semantics: `handler-registration.md`.
-- Transport registration semantics: `link.md` §6.
-- Error propagation requirements: `fsm-events.md` §4.
+- Init / shutdown ordering: `plugin-lifetime.en.md`.
+- Handler registration semantics: `handler-registration.en.md`.
+- Transport registration semantics: `link.en.md` §6.
+- Error propagation requirements: `fsm-events.en.md` §4.
 
 ---
 
@@ -549,7 +549,7 @@ envelope before the handler chain sees it. Conn-aware handlers
 the bridge-source conn carries the edge identity that handlers use
 for `send`/`disconnect` back at the foreign system. Producers that
 synthesise envelopes outside `inject` and `notify_inbound_bytes`
-leave `conn_id == GN_INVALID_ID`; per `handler-registration.md` §3a
+leave `conn_id == GN_INVALID_ID`; per `handler-registration.en.md` §3a
 handlers MUST tolerate that as `CONTINUE`, never `REJECT`.
 
 Failure modes:
@@ -559,7 +559,7 @@ Failure modes:
 | `source` does not refer to a known connection | `GN_ERR_NOT_FOUND` |
 | `bytes == NULL && size > 0` (MESSAGE) or `bytes == NULL || size == 0` (FRAME) | `GN_ERR_NULL_ARG` |
 | `size > limits.max_payload_bytes` (MESSAGE) or `size > limits.max_frame_bytes` (FRAME) | `GN_ERR_PAYLOAD_TOO_LARGE` |
-| `msg_id == 0` (MESSAGE; envelope invariant per `protocol-layer.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
+| `msg_id == 0` (MESSAGE; envelope invariant per `protocol-layer.en.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
 | FRAME deframe yields no envelopes / partial input | `GN_ERR_DEFRAME_INCOMPLETE` |
 | Rate budget exceeded for `source` | `GN_ERR_LIMIT_REACHED` |
 | Unknown `layer` value | `GN_ERR_INVALID_ENVELOPE` |
@@ -617,7 +617,7 @@ foreign mesh) to the GoodNet mesh. v1 admits one canonical shape:
    as any in-process plugin, but the foreign socket lives in the
    bridge's own process and the kernel never sees it.
 2. The bridge calls `notify_connect` on its IPC link with
-   `gn_trust_class = IntraNode` (per `security-trust.md` §3); the
+   `gn_trust_class = IntraNode` (per `security-trust.en.md` §3); the
    kernel admits the conn under the null security provider, whose
    mask permits `IntraNode` (`plugins/security/null/null.cpp:139`).
    No Noise handshake runs on the bridge edge.
@@ -655,7 +655,7 @@ single-thread executor reserved for plugin service tasks.
 fire-and-forget work hands the kernel `delay_ms = 0` and an empty
 `out_id`. They sit at the v1.x ABI tail; consumers built against
 earlier prereleases must guard with `GN_API_HAS` from `sdk/abi.h`
-before calling. `timer.md` is the authoritative specification:
+before calling. `timer.en.md` is the authoritative specification:
 
 - §2 — slot signatures and invariants
 - §3 — single-thread serialisation guarantee
@@ -667,7 +667,7 @@ before calling. `timer.md` is the authoritative specification:
 - §7 — error returns
 
 A plugin **must** route its async work through these slots; private
-threads outliving `gn_plugin_shutdown` violate `plugin-lifetime.md`
+threads outliving `gn_plugin_shutdown` violate `plugin-lifetime.en.md`
 §9 and are not supported.
 
 ---
@@ -697,7 +697,7 @@ the flag is how the plugin earns the fast path: the kernel logs the
 in-flight count alongside the drain timeout, so a plugin that
 ignores the flag is observably the noisy one.
 
-`plugin-lifetime.md` §8 covers the patterns: periodic timers stop
+`plugin-lifetime.en.md` §8 covers the patterns: periodic timers stop
 re-arming, posted multi-step tasks return without scheduling the
 next step, queue-drain workers treat the flag as the loop's exit
 predicate.
@@ -710,7 +710,7 @@ The `log` field of `host_api_t` is a substruct, `gn_log_api_t`,
 declared in `sdk/log.h`. It carries two function pointers — the
 level-filter fast path and the literal-buffer hand-off — plus the
 size prefix that gates access to future additions per
-`abi-evolution.md` §3a.
+`abi-evolution.en.md` §3a.
 
 ```c
 typedef struct gn_log_api_s {

@@ -7,7 +7,7 @@
               backend interface may grow new methods through
               size-prefix evolution.
 
-> Not to be confused with [`hostname-resolver.md`](hostname-resolver.en.md),
+> Not to be confused with [`hostname-resolver.en.md`](hostname-resolver.en.md),
 > the SDK helper that rewrites `tcp://example.com:443` into an IP
 > literal at connect time. That helper resolves URI hosts; this
 > handler is a networked TTL'd key-value database that nodes use
@@ -69,7 +69,7 @@ Seven envelopes under `protocol_id = "gnet-v1"`:
 | `0x0616` | symmetric | `DNS_SYNC` |
 
 These ids are outside the kernel-reserved `0x10..0x1F` range (see
-[`system-handlers.md`](system-handlers.en.md) §2). The
+[`system-handlers.en.md`](system-handlers.en.md) §2). The
 `0x0610..0x0616` block sits next to the legacy `apps/store`
 range (`0x0600..0x0606`) that `gn.handler.store` keeps, so a
 node hosting both plugins in the same process routes traffic
@@ -229,10 +229,10 @@ The reference `MemoryDnsBackend` ships in-tree as slice 1.
 - Extension ABI: [`sdk/extensions/dns.h`](../../sdk/extensions/dns.h)
 - Reference implementation: `plugins/handlers/dns/`
 - Reserved-id semantics:
-  [`handler-registration.md`](handler-registration.en.md) §2a +
-  [`system-handlers.md`](system-handlers.en.md) §1
+  [`handler-registration.en.md`](handler-registration.en.md) §2a +
+  [`system-handlers.en.md`](system-handlers.en.md) §1
 - The DIFFERENT thing called "DNS":
-  [`hostname-resolver.md`](hostname-resolver.en.md) — the SDK
+  [`hostname-resolver.en.md`](hostname-resolver.en.md) — the SDK
   helper for `tcp://example.com:443` → IP-literal rewriting at
   connect time. That is a pure-function URI rewrite, not a
   network service.

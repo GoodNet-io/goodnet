@@ -12,7 +12,7 @@ boundaries with the corresponding limit / feature.
 ## 1. Purpose
 
 Kernel-side JSON document accessed by plugins through the typed
-unified `config_get(KEY, TYPE, INDEX, …)` slot in `host-api.md` §2.
+unified `config_get(KEY, TYPE, INDEX, …)` slot in `host-api.en.md` §2.
 One holder per running kernel. The kernel writes through
 `Config::load_json(text)`; plugins read through the host-API
 slots. The kernel does **not** itself touch the filesystem — the
@@ -252,7 +252,7 @@ expect the baseline shift sees the cause in the audit trail.
 Wholesale `load_json` does not log the change because the
 operator is replacing the document by definition.
 
-Cross-field invariants land in `limits.md` §3 and are enforced
+Cross-field invariants land in `limits.en.md` §3 and are enforced
 inside `load_json` (auto-validate). Every load that returns
 `GN_OK` has passed:
 
@@ -341,7 +341,7 @@ kernel into a path-handling argument.
   keys they read. A typo in an operator's config silently maps
   to a `GN_ERR_NOT_FOUND` and the plugin falls through to
   its built-in default — the operator gets no warning. v1.1
-  adds a `reads_config` whitelist in `plugin-manifest.md` so
+  adds a `reads_config` whitelist in `plugin-manifest.en.md` so
   the kernel logs unknown-key warnings at load time and gates
   per-section reads against the plugin's declared scope.
 - **Capability gate for sensitive values.** Any loaded plugin
@@ -349,7 +349,7 @@ kernel into a path-handling argument.
   malicious plugin from reading `links.tls.key_path`. The
   same `reads_config` mechanism above is the v1.1 fix. v1
   assumes the plugins directory is operator-controlled and
-  every loaded plugin is trusted (see `plugin-manifest.md` §3).
+  every loaded plugin is trusted (see `plugin-manifest.en.md` §3).
 - **Adding new value types.** The current `config_get` covers
   `INT64`, `BOOL`, `DOUBLE`, `STRING`, `ARRAY_SIZE` and indexed
   `INT64` / `STRING` array elements. Future minor releases add
@@ -364,8 +364,8 @@ kernel into a path-handling argument.
 
 ## 8. Cross-references
 
-- Limit field semantics + cross-field invariants: `limits.md`.
-- Plugin-facing `config_get`: `host-api.md` §2.
+- Limit field semantics + cross-field invariants: `limits.en.md`.
+- Plugin-facing `config_get`: `host-api.en.md` §2.
 - Live propagation of limits through registries:
   `Kernel::set_limits` in `core/kernel/kernel.cpp`.
-- Plugin trust + integrity: `plugin-manifest.md`.
+- Plugin trust + integrity: `plugin-manifest.en.md`.

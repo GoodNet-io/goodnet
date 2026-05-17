@@ -51,7 +51,7 @@ load-distribution.
 Cross-session identity protection (impostor с другим device_pk
 claiming existing peer_pk) живёт на
 `attestation_dispatcher.peer_pin_map` per
-[`attestation.md`](../contracts/attestation.en.md) §5 step 7-8 —
+[`attestation.en.md`](../contracts/attestation.en.md) §5 step 7-8 —
 это primary security gate, не registry uniqueness.
 
 История миграций тоже plugin-side: если плагину нужно помнить, что час

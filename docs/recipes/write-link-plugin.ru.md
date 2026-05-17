@@ -100,7 +100,7 @@ static const char* tcpx_scheme(void* self) {
 Парсинг URI делает ядро через [uri.md](../contracts/uri.en.md). Authority-
 часть link разбирает сам: `tcp+x://[::1]:9000`, `tcp+x://192.0.2.5:443`.
 Если link принимает hostname-формы — резолвинг идёт через
-`resolve_uri_host` (`hostname-resolver.md` §2); operator'ам рекомендуется
+`resolve_uri_host` (`hostname-resolver.en.md` §2); operator'ам рекомендуется
 pre-resolve'ить hostnames до конфига и передавать IP литералы.
 
 ---
@@ -179,10 +179,10 @@ Hot-path требования (sdk/host_api.h §`notify_inbound_bytes`):
 - malloc'ов на горячем пути избегаем — ядро спроектировано так, что
   передача chunk'а в `notify_inbound_bytes` не аллоцирует на стороне
   link'а;
-- single-writer-инвариант (`link.md` §4) распространяется только на
+- single-writer-инвариант (`link.en.md` §4) распространяется только на
   send-сторону; reader — естественно один.
 
-§6a `security-trust.md` (conn-id ownership gate): попытка одного link
+§6a `security-trust.en.md` (conn-id ownership gate): попытка одного link
 сделать `notify_inbound_bytes` на чужой `gn_conn_id_t` вернёт
 `GN_ERR_NOT_FOUND` — anchor'ы сравниваются.
 
@@ -200,7 +200,7 @@ drainer выкладывает batch на link's writev. Link обязан:
 
 - Уважать single-writer per-conn: kernel CAS-сериализует drain'еры,
   но link MUST сам serialise control-replies (ping/pong, close echo)
-  с teми же socket-FD per [`link.md` §4](../contracts/link.en.md).
+  с teми же socket-FD per [`link.en.md` §4](../contracts/link.en.md).
 - Отдавать `GN_OK` если bytes accepted в socket buffer; на свой
   internal hard cap (peer flood control replies past
   `pending_queue_bytes_hard`) — disconnect, не возвращать
@@ -208,7 +208,7 @@ drainer выкладывает batch на link's writev. Link обязан:
   internal).
 - Эмитить `notify_backpressure(SOFT/CLEAR)` если link имеет
   собственное окно зрения на write-buffer drain rate —
-  rising/falling edge per [`backpressure.md` §3](../contracts/backpressure.en.md).
+  rising/falling edge per [`backpressure.en.md` §3](../contracts/backpressure.en.md).
 
 `gn_result_t` возвраты: `GN_OK` принят в socket-buffer;
 `GN_ERR_NOT_FOUND` нет такого conn'а; `GN_ERR_INVALID_STATE`
@@ -287,7 +287,7 @@ Inbound от loopback (`127.0.0.1` / `::1`) — `GN_TRUST_LOOPBACK` (см.
 `disconnect(conn)` — идемпотентен, второй вызов возвращает `GN_OK`
 no-op. После завершения teardown link обязан позвать
 `notify_disconnect(conn, reason)`, иначе ядро будет держать
-`ConnectionRegistry`-запись и блокировать quiescence-wait (`link.md`
+`ConnectionRegistry`-запись и блокировать quiescence-wait (`link.en.md`
 §9).
 
 `reason = GN_OK` — clean close; иное — код, спровоцировавший teardown.
@@ -323,7 +323,7 @@ static void tcpx_destroy(void* self_v) {
 ## 10. Шаг 8. Объявление trust class и handshake-роли
 
 `gn_trust_class_t` — позиционный аргумент `notify_connect`. Не
-выводится из defaults: `link.md` §3 + `security-trust.md` §3
+выводится из defaults: `link.en.md` §3 + `security-trust.en.md` §3
 требуют, чтобы транспорт сам объявил класс по наблюдаемым свойствам:
 
 | Свойство | Class |

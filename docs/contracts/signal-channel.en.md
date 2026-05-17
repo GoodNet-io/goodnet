@@ -11,14 +11,14 @@
 
 Typed publish/subscribe primitive for non-FSM kernel events. The
 kernel's eight-phase FSM transitions flow through
-`Kernel::subscribe` per `fsm-events.md` §7; everything else — config
+`Kernel::subscribe` per `fsm-events.en.md` §7; everything else — config
 reload, plugin loaded / unloaded, connection state changes,
 extension lifecycle — uses one `SignalChannel<Event>` per event
 type.
 
 The channel is internal to the kernel. Plugins do not see it
 directly; cross-plugin notifications are mediated through extension
-vtables or through the host API entries in `host-api.md` §2.
+vtables or through the host API entries in `host-api.en.md` §2.
 
 ---
 
@@ -100,7 +100,7 @@ chosen executor.
 `std::function`, or a `nullptr` C function pointer wrapped through
 the C ABI bridge). The rejection returns an invalid token (zero,
 matching the `GN_INVALID_SUBSCRIPTION_ID` sentinel from
-`conn-events.md` §3) and does not append to the subscriber list.
+`conn-events.en.md` §3) and does not append to the subscriber list.
 Plugins that pass NULL get a no-op subscription rather than a
 fire-time crash.
 
@@ -124,7 +124,7 @@ a return code or a logged error.
 A handler is free to call back into kernel registries
 (`ConnectionRegistry`, `HandlerRegistry`, etc.) during `fire`;
 those have their own locks and admit re-entry by design. The
-exception is `for_each_connection` (`conn-events.md` §4): the
+exception is `for_each_connection` (`conn-events.en.md` §4): the
 visitor holds a per-shard read lock and self-deadlocks on any
 mutating call to the connection registry.
 
@@ -141,8 +141,8 @@ runtime per handler.
 ## 7. Cross-references
 
 - FSM phase events that do **not** flow through `SignalChannel`:
-  `fsm-events.md` §7.
+  `fsm-events.en.md` §7.
 - Extension surfaces a plugin would use instead:
-  `host-api.md` §2 (`register_extension`, `query_extension_checked`).
-- C ABI vtable size validation: `abi-evolution.md` §3 (consumer
+  `host-api.en.md` §2 (`register_extension`, `query_extension_checked`).
+- C ABI vtable size validation: `abi-evolution.en.md` §3 (consumer
   responsibility) and §3a (kernel-side defensive check).

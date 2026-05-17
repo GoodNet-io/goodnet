@@ -37,10 +37,10 @@ network byte order on the C ABI:
 | `max_relay_ttl` | 32 | 4 | forwarded message hop count |
 | `max_plugins` | 32 | 64 | dlopen ceiling |
 | `max_extensions` | 32 | 256 | extension registry size |
-| `max_subscriptions` | 32 | 256 | per-channel `SignalChannel` subscriber cap (`conn-events.md` §3); kept independent of `max_extensions` so saturating one extension pool does not bleed into the conn-state event surface |
-| `max_timers` | 32 | 4096 | active one-shot timers (`timer.md` §6) |
+| `max_subscriptions` | 32 | 256 | per-channel `SignalChannel` subscriber cap (`conn-events.en.md` §3); kept independent of `max_extensions` so saturating one extension pool does not bleed into the conn-state event surface |
+| `max_timers` | 32 | 4096 | active one-shot timers (`timer.en.md` §6) |
 | `max_pending_tasks` | 32 | 4096 | queued service-executor tasks (`set_timer` fire-and-forget) |
-| `pending_handshake_bytes` | 32 | 256 KiB | per-conn cap on app data buffered while a security session is in `Handshake` (`backpressure.md` §8) |
+| `pending_handshake_bytes` | 32 | 256 KiB | per-conn cap on app data buffered while a security session is in `Handshake` (`backpressure.en.md` §8) |
 | `max_storage_table_entries` | 64 | 10 000 | storage handler bound |
 | `max_storage_value_bytes` | 64 | `max_payload_bytes` | per-entry size |
 | `_reserved[6]` | 32×6 | 0 | size-prefix evolution |
@@ -155,7 +155,7 @@ enqueue(frame):
 ```
 
 The counter is observable through the per-connection metrics surface
-exported by the registry (`registry.md` §8). No separate aggregation
+exported by the registry (`registry.en.md` §8). No separate aggregation
 pass is needed.
 
 ---
@@ -176,8 +176,8 @@ the relay path.
 ## 8. Cross-references
 
 - TrustClass policy gates which limits apply to which connections:
-  `security-trust.md`.
+  `security-trust.en.md`.
 - Backpressure callback triggered by watermark crossings:
-  `fsm-events.md` §4.2.
+  `fsm-events.en.md` §4.2.
 - Per-protocol payload max declared by the protocol implementation:
-  `protocol-layer.md` §3.
+  `protocol-layer.en.md` §3.

@@ -27,7 +27,7 @@ extensions are wire-additive, no version bump required.
 The blob is exchanged in-band over the secured GNET channel
 once the handshake completes — it rides as the payload of an
 application message under reserved msg_id `0x13`
-(`identity.md` §9). The kernel itself does not encode or decode
+(`identity.en.md` §9). The kernel itself does not encode or decode
 the blob — plugins encode and decode it through the header-only
 `sdk/cpp/capability_tlv.hpp`. Two dedicated host_api slots front
 the transport:
@@ -160,5 +160,5 @@ to implement; the contract here scopes only the one-frame case.
 - Frame layer that wraps the blob: `plugins/protocols/gnet/docs/wire-format.md`.
 - Transport capability flags referenced by `transport-set`:
   `sdk/extensions/link.h` (`GN_LINK_CAP_*`).
-- Limits the value size honours: `limits.md` §2
+- Limits the value size honours: `limits.en.md` §2
   (`max_payload_bytes`).

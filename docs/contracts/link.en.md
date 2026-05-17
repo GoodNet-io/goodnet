@@ -37,7 +37,7 @@ Declared in `sdk/link.h`. Slot list:
 | `extension_vtable(self)` | plugin → kernel | extension vtable for stats / runtime tweaks |
 | `destroy(self)` | kernel → plugin | called once after `unregister_link` and quiescence |
 
-The vtable starts with `uint32_t api_size` per `abi-evolution.md` §3.
+The vtable starts with `uint32_t api_size` per `abi-evolution.en.md` §3.
 
 ---
 
@@ -45,7 +45,7 @@ The vtable starts with `uint32_t api_size` per `abi-evolution.md` §3.
 
 The link **must** call `host_api->notify_connect` with an explicit
 `gn_trust_class_t` computed from observable connection properties per
-`security-trust.md` §3:
+`security-trust.en.md` §3:
 
 | Connection property | Declared TrustClass |
 |---|---|
@@ -61,11 +61,11 @@ After a security handshake completes, the kernel may upgrade
 A link on a loopback path **must** declare `Loopback` regardless
 of any opt-in flag in the security configuration; the trust class is
 what lets the kernel permit `null+raw` stacks per
-`security-trust.md` §4.
+`security-trust.en.md` §4.
 
 A link plugin that accepts hostname URIs runs the resolution
-through `hostname-resolver.md` §2's `resolve_uri_host` at `connect` /
-`listen` time. Per `hostname-resolver.md` §1a the operator-facing recommendation
+through `hostname-resolver.en.md` §2's `resolve_uri_host` at `connect` /
+`listen` time. Per `hostname-resolver.en.md` §1a the operator-facing recommendation
 is to pre-resolve hostnames before configuring the kernel —
 production deployments should hand IP literals through; the
 hostname path is for dev / test convenience and inherits the OS
@@ -114,7 +114,7 @@ most one drainer per connection runs at a time, gated by
 arriving at the link from `host_api->send` never overlap. Link
 implementations still **must** uphold the invariant for paths the
 kernel does not drive — peer-initiated control replies (WebSocket
-pong, graceful close echo per `backpressure.md` §3.1), TLS
+pong, graceful close echo per `backpressure.en.md` §3.1), TLS
 renegotiation, link-internal keep-alive — because those go through
 the same socket-FD without crossing the kernel queue. A link that
 fans out application sends through extra worker threads on top of
@@ -131,7 +131,7 @@ model and no contract is needed.
 
 ## 5. Async lifetime through reference-counted ownership
 
-Per `plugin-lifetime.md` §4, every async task posted by the link
+Per `plugin-lifetime.en.md` §4, every async task posted by the link
 captures a weak observer of the link's reference-counted handle
 and upgrades to a strong reference before dereferencing link
 state. A failed upgrade — the last strong reference was dropped — is
@@ -156,7 +156,7 @@ intended lifetime.
 ## 6. Link registration
 
 Links register through the universal `register_vtable` slot in
-`host_api_t`; see `host-api.md` §2 for the canonical signature.
+`host_api_t`; see `host-api.en.md` §2 for the canonical signature.
 The link-specific shape:
 
 - `kind = GN_REGISTER_LINK`
@@ -182,9 +182,9 @@ The link-specific shape:
   `unregister_vtable(id)` routes back to `LinkRegistry`
   without naming the kind a second time.
 
-Rules from `host-api.md` §2 apply:
+Rules from `host-api.en.md` §2 apply:
 
-- Only inside `gn_plugin_register` (phase 5 per `plugin-lifetime.md` §2).
+- Only inside `gn_plugin_register` (phase 5 per `plugin-lifetime.en.md` §2).
 - `scheme` is unique across loaded links; duplicate scheme returns
   `GN_ERR_LIMIT_REACHED`.
 - `vtable` is `@borrowed` for the lifetime, valid until
@@ -312,7 +312,7 @@ The plugin returns its `(name, vtable)` pair from the two
 `extension_*` slots in §2; the kernel publishes them through
 `register_extension`. Consumers query through
 `query_extension_checked(name, version, &out_vtable)` per
-`host-api.md` §2 and call `unregister_extension(name)` to release.
+`host-api.en.md` §2 and call `unregister_extension(name)` to release.
 
 Capability flags (low byte values, OR-able):
 
@@ -371,7 +371,7 @@ Implementation pattern lives in
 [`docs/impl/cpp/concurrency.md`](../impl/cpp/concurrency.ru.md).
 
 Without step 3 the kernel-side `ConnectionRegistry` keeps the
-records past link shutdown. Per `plugin-lifetime.md` §4 those
+records past link shutdown. Per `plugin-lifetime.en.md` §4 those
 records hold the security plugin's lifetime anchor —
 `PluginManager::drain_anchor` then blocks for the full quiescence
 budget while the anchor refuses to expire, and the manager logs
@@ -386,8 +386,8 @@ is about to disappear.
 
 ## 10. Cross-references
 
-- Plugin lifetime + liveness probe rules: `plugin-lifetime.md`.
-- TrustClass policy: `security-trust.md`.
-- Connection registration semantics: `registry.md`.
-- Host API entries used: `host-api.md` §2.
-- Extension query semantics: `host-api.md` §2 (`query_extension_checked`).
+- Plugin lifetime + liveness probe rules: `plugin-lifetime.en.md`.
+- TrustClass policy: `security-trust.en.md`.
+- Connection registration semantics: `registry.en.md`.
+- Host API entries used: `host-api.en.md` §2.
+- Extension query semantics: `host-api.en.md` §2 (`query_extension_checked`).

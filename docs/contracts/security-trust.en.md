@@ -104,7 +104,7 @@ Promotion to `Peer` is **gated on attestation**: the kernel does
 not call `upgrade_trust` when the security session reaches
 `Transport`. Instead, both peers first exchange a 232-byte
 attestation payload over the secured channel (per
-`attestation.md`); the kernel-internal attestation dispatcher
+`attestation.en.md`); the kernel-internal attestation dispatcher
 holds the trust class at `Untrusted` until the local side has
 sent and the remote side's payload has verified. A peer that
 completes Noise but fails to provide a valid attestation stays
@@ -139,13 +139,13 @@ transports do not duplicate it:
 
 A bridge plugin that re-publishes foreign-system payloads
 (MQTT, HTTP, OPC-UA) into the mesh runs out-of-process and opens
-an IPC link to the kernel — see `host-api.md` §8.1 for the v1
+an IPC link to the kernel — see `host-api.en.md` §8.1 for the v1
 shape. The bridge's IPC conn declares `gn_trust_class = IntraNode`
 on `notify_connect`; the null security provider's
 `allowed_trust_mask` already permits `IntraNode`
 (`plugins/security/null/null.cpp:139`), so the bridge edge runs
 without a Noise handshake. No new ABI is needed — the trust class
-exists, the security mask permits it, and `host-api.md` §8.1
+exists, the security mask permits it, and `host-api.en.md` §8.1
 names the canonical pattern.
 
 A bridge that mistakenly declares `Untrusted` on its IPC link
@@ -173,7 +173,7 @@ declaration above avoids both failure modes.
 
 A security provider implements the vtable declared in
 `sdk/security.h`. The first field carries `api_size` so the kernel
-gates additive evolution per `abi-evolution.md` §3.
+gates additive evolution per `abi-evolution.en.md` §3.
 
 ```c
 typedef struct gn_security_provider_vtable_s {
@@ -385,10 +385,10 @@ consistency, buffer sizing, rekey semantics — lives in
 
 ## 8a. Identity rotation under trust
 
-User-key rotation is a kernel primitive (`identity.md` §10) that
+User-key rotation is a kernel primitive (`identity.en.md` §10) that
 preserves trust without an explicit policy entry on this surface:
 
-- `mesh_address` is device-derived (`identity.md` §3 decouple), so
+- `mesh_address` is device-derived (`identity.en.md` §3 decouple), so
   a `user_pk` rotation does **not** change the address. The peer's
   `TrustClass` stays at whatever it was immediately before the
   rotation arrived (`Peer` in the typical case).
@@ -422,8 +422,8 @@ above.
 
 - Wire details for the canonical security provider:
   `plugins/security/noise/docs/handshake.md`.
-- Transport-side TrustClass declaration: `link.md` §3.
-- Stack registration: `host-api.md` §2 (`register_*`).
+- Transport-side TrustClass declaration: `link.en.md` §3.
+- Stack registration: `host-api.en.md` §2 (`register_*`).
 - Kernel error on a trust-class mismatch: `GN_ERR_INVALID_ENVELOPE`
   from `notify_connect` (`core/kernel/host_api_builder.cpp:1067-1068`,
   protocol-layer gate) and from `SessionRegistry::create`

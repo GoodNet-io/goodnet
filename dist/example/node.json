@@ -29,7 +29,7 @@
   // entries here are common overrides plus the cardinality cap from
   // Wave 9.1 that has no per-profile default.
   "limits": {
-    // Metrics cardinality (metrics.md §2.1). 0 disables; reject-new
+    // Metrics cardinality (metrics.en.md §2.1). 0 disables; reject-new
     // past cap bumps `metrics.cardinality_rejected`. 8192 covers a
     // typical exporter scrape; tune up only if you've audited the
     // actual counter names your plugins emit.

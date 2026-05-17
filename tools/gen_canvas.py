@@ -149,7 +149,7 @@ NODES: dict[str, tuple[str, str]] = {
         "} gn_result_t;\n"
         "```\n\n"
         "Один enum для каждого failure mode.\n"
-        "Контракт `host-api.md` фиксирует возврат на каждом slot'е."
+        "Контракт `host-api.en.md` фиксирует возврат на каждом slot'е."
     ),
 
     # ── SDK interfaces ──────────────────────────────────────────────────────
@@ -194,7 +194,7 @@ NODES: dict[str, tuple[str, str]] = {
         "Регистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\n"
         "Conn-id ownership gate: только владелец схемы может звать\n"
         "`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n"
-        "(`security-trust.md` §6a)."
+        "(`security-trust.en.md` §6a)."
     ),
     "n_security_iface": (
         "gn_security_provider_vtable_t",
@@ -235,7 +235,7 @@ NODES: dict[str, tuple[str, str]] = {
         "GN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n"
         "```\n\n"
         "**Один путь апгрейда:** `Untrusted → Peer` после успешной\n"
-        "взаимной аттестации (см. `attestation.md`). Любой другой\n"
+        "взаимной аттестации (см. `attestation.en.md`). Любой другой\n"
         "переход отбит ядром синхронно.\n\n"
         "Loopback и IntraNode фиксируются на `notify_connect`\n"
         "и не меняются."
@@ -259,7 +259,7 @@ NODES: dict[str, tuple[str, str]] = {
         "Тонкая оркестрация фаз — никаких знаний о wire-форматах,\n"
         "транспортах или security политиках. Ядро держит регистры и\n"
         "позволяет плагинам слать сообщения друг другу.\n\n"
-        "**Lifecycle FSM** (`plugin-lifetime.md` §2):\n"
+        "**Lifecycle FSM** (`plugin-lifetime.en.md` §2):\n"
         "```\n"
         "discover → dlopen → version-check →\n"
         "init_all → register_all → on_running →\n"
@@ -321,7 +321,7 @@ NODES: dict[str, tuple[str, str]] = {
         "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\n"
         "Registry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n"
         "`ipc`, `tls`).\n\n"
-        "**Conn-id ownership gate** (`security-trust.md` §6a):\n"
+        "**Conn-id ownership gate** (`security-trust.en.md` §6a):\n"
         "хранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\n"
         "Любая попытка чужого link'а позвать `notify_*` для conn_id, чей\n"
         "scheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`."
@@ -329,7 +329,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_sec_reg": (
         "SecurityRegistry",
         "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\n"
-        "Один активный provider'ный slot v1 (`security-trust.md` §6).\n"
+        "Один активный provider'ный slot v1 (`security-trust.en.md` §6).\n"
         "Второй `register_security` возвращает `GN_ERR_LIMIT_REACHED`.\n\n"
         "При `Sessions::create` ядро сверяет `trust` конна с\n"
         "`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n"
@@ -342,7 +342,7 @@ NODES: dict[str, tuple[str, str]] = {
         "(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n"
         "`register_extension(name, version, vtable)` —\n"
         "`query_extension_checked(name, version, &vtable)` —\n"
-        "версия сверяется по semver-major + min-minor (`abi-evolution.md`).\n\n"
+        "версия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\n"
         "Ядро — pure registry; никаких встроенных extension'ов."
     ),
     "n_session_reg": (
@@ -358,7 +358,7 @@ NODES: dict[str, tuple[str, str]] = {
         "PluginManager",
         "# PluginManager\n`core/plugin/plugin_manager.{hpp,cpp}`\n\n"
         "dlopen + ABI version check (`gn_plugin_sdk_version`).\n\n"
-        "Two-phase activation (`plugin-lifetime.md` §5):\n"
+        "Two-phase activation (`plugin-lifetime.en.md` §5):\n"
         "1. `init_all` — все плагины строят локальный state\n"
         "2. `register_all` — плагины зовут `register_vtable` / `register_security` /\n"
         "    `register_extension` под отсортированным порядком зависимостей\n\n"
@@ -409,7 +409,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_timer": (
         "TimerRegistry",
         "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\n"
-        "Один shared service executor (`timer.md`). Все таймеры\n"
+        "Один shared service executor (`timer.en.md`). Все таймеры\n"
         "плагинов парятся с их lifetime_anchor.\n"
         "После shutdown_requested — pending fire'ы дропаются\n"
         "до того как зайдут в плагин."
@@ -491,7 +491,7 @@ NODES: dict[str, tuple[str, str]] = {
         "`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\n"
         "Bridge-плагины поверх IPC объявляют `IntraNode` на\n"
         "`notify_connect` — null security их пропустит без handshake'а\n"
-        "(`security-trust.md` §3, bridge-плагины)."
+        "(`security-trust.en.md` §3, bridge-плагины)."
     ),
     "n_tls_plugin": (
         "link-tls",

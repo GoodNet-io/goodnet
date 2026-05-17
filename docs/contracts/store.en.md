@@ -60,7 +60,7 @@ Seven envelopes under `protocol_id = "gnet-v1"`:
 | `0x0606` | symmetric | `STORE_SYNC` |
 
 These ids are outside the kernel-reserved `0x10..0x1F` range (see
-[`system-handlers.md`](system-handlers.en.md) §2); the allocation
+[`system-handlers.en.md`](system-handlers.en.md) §2); the allocation
 is inherited from the legacy `apps/store` wire layer so existing
 observers keep their decoders.
 
@@ -218,7 +218,7 @@ The reference `MemoryStore` ships in-tree. Future backends:
 - Extension ABI: [`sdk/extensions/store.h`](../../sdk/extensions/store.h)
 - Reference implementation: `plugins/handlers/store/`
 - Reserved-id semantics:
-  [`handler-registration.md`](handler-registration.en.md) §2a +
-  [`system-handlers.md`](system-handlers.en.md) §1
+  [`handler-registration.en.md`](handler-registration.en.md) §2a +
+  [`system-handlers.en.md`](system-handlers.en.md) §1
 - Legacy origin (archived):
   `~/Desktop/projects/GoodNet_legacy/apps/store/`

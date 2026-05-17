@@ -127,7 +127,7 @@ function(add_plugin NAME)
     # Operators that ran `make install` on this tree get every plugin's
     # `.so` under `${prefix}/lib/goodnet/plugins/`; the kernel's
     # PluginManager finds them through the manifest
-    # (see `plugin-manifest.md`). OBJECT builds (static-plugin mode)
+    # (see `plugin-manifest.en.md`). OBJECT builds (static-plugin mode)
     # skip the install — they are linked into the host binary at build
     # time and have no standalone artefact to ship.
     #

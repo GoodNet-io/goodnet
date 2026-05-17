@@ -106,7 +106,7 @@ operator-side бинаря под MIT.
 | Direction | Kernel → plugin (vtable callbacks) | App → kernel (`gn_core_*`) |
 | Loaded as | `dlopen`'ed shared object | Statically linked into app binary |
 | Lifetime | Within kernel's `gn_core_t` lifetime | Owns `gn_core_t` lifetime |
-| Contract source | `host-api.md`, `link.md`, `handler-registration.md`, `security-trust.md` | `core-c.md` |
+| Contract source | `host-api.en.md`, `link.en.md`, `handler-registration.en.md`, `security-trust.en.md` | `core-c.en.md` |
 | Repo | Часть kernel git'а (`sdk/cpp/`) | Отдельный git (`bridges/cpp/`) |
 | License | GPL-2 + linking exception (часть kernel artefact'а) | MIT |
 | Distribution | Header artefact в kernel SDK install | Standalone INTERFACE target `GoodNet::cpp` |
@@ -147,7 +147,7 @@ Lifecycle проводится через цепочку `init()` → `start()` 
 до неудачного перехода. `stop()` — `noexcept`, идемпотентный.
 Destructor вызывает `gn_core_destroy`, который сам walk'ает FSM
 через `PreShutdown → Shutdown` и drain'ит plugin anchors per
-[`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) §4.
+[`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) §4.
 
 `native()` — escape hatch, возвращает `gn_core_t*` для вызовов
 `host_api_t` слотов, которые `Core` ещё не surfaced (timer
@@ -245,7 +245,7 @@ worker pool размером `max(1, hardware_concurrency()/2)` thread'ов на
 будущие минорные релизы могут расширить пул, контракт это допускает.
 
 Канонический spec threading'а subscribers и callback'ов —
-[`conn-events.md` §3](../contracts/conn-events.en.md). Ключевые факты,
+[`conn-events.en.md` §3](../contracts/conn-events.en.md). Ключевые факты,
 на которых строится binding:
 
 - `CONNECTED` / `DISCONNECTED` / `BACKPRESSURE_*` — на link plugin'a
@@ -269,7 +269,7 @@ Trampoline'ы (`message_trampoline`, `conn_event_trampoline`,
 — разной для разных event kind'ов, см. список выше. Subscriber что
 поддерживает state across event kinds **обязан** guard'ить его lock'ом
 или posting'ом каждого event'а через `host_api->set_timer(0, …)` на
-service executor thread (per `conn-events.md` §3). **Lambda не должна
+service executor thread (per `conn-events.en.md` §3). **Lambda не должна
 блокировать**: блокирующее IO, mutex с contention, sleep, длительная
 computation останавливают I/O drain для всех connections, sharing'их
 этот worker. Идиоматично — скопировать payload в очередь и
@@ -514,9 +514,9 @@ surface, на остаток escape hatch'и `core.host_api()` и
   таблица, escape hatch через `Core::host_api()`
 - [`handler-patterns`](handler-patterns.ru.md) — handler внутри
   плагина vs handler из app'а через `register_handler`
-- [`core-c.md`](../contracts/core-c.en.md) — full contract operator-side
+- [`core-c.en.md`](../contracts/core-c.en.md) — full contract operator-side
   C ABI, который binding оборачивает
-- [`abi-evolution.md`](../contracts/abi-evolution.en.md) — правила
+- [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — правила
   совместимости pre-rc1 и post-rc1
 - [`error-handling`](../impl/cpp/error-handling.ru.md) —
   `gn_result_t` и mapping в C++ exceptions / `std::expected`

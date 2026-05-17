@@ -123,7 +123,7 @@ operator-manifest — отдельный шаг, выполняется снар
 `gn_plugin_init` получает `host_api*`, у которого уже выставлен
 `api->host_ctx`. Плагин сохраняет указатель в свою `self` и больше
 ничего не регистрирует — registration живёт в фазе 5
-(`plugin-lifetime.md` §5).
+(`plugin-lifetime.en.md` §5).
 
 ```c
 #include <stdlib.h>
@@ -174,7 +174,7 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(const host_api_t* api,
 ```
 
 `api` валиден до возврата из `gn_plugin_shutdown` — захватывать его в
-process-global запрещено (`plugin-lifetime.md` §9): плагин может быть
+process-global запрещено (`plugin-lifetime.en.md` §9): плагин может быть
 hot-reload'нут.
 
 ---
@@ -277,7 +277,7 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self_v) {
 
 Симметрия фаз 8 → 9. `unregister` снимает handler из цепочки для
 будущих диспетчей; in-flight цепочки доходят до конца на снимке
-старого вектора (`plugin-lifetime.md` §6). После завершения
+старого вектора (`plugin-lifetime.en.md` §6). После завершения
 quiescence-wait ядро вызывает `gn_plugin_shutdown` — теперь можно
 освобождать память, в которую могли смотреть посекундные продолжения.
 

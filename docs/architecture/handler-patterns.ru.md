@@ -9,7 +9,7 @@ handler.
 
 [`plugin-model`](plugin-model.ru.md) описывает 4 vtable kind'а на
 уровне «handler — один из них». [`routing`](routing.ru.md) показывает
-дorgan dispatcher chain. [`handler-registration.md`](../contracts/handler-registration.en.md) —
+дorgan dispatcher chain. [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
 формальный contract. Эта глава — про **повседневные паттерны**: как
 typical handler выглядит, как handlers композятся между собой,
 куда не надо лезть.
@@ -335,9 +335,9 @@ gossip-out, чтобы не fan-out'ить чаще раза в секунду.
 Несколько msg_id зарезервированы под kernel-internal протокол:
 
 - `0x10` — heartbeat (per heartbeat plugin convention)
-- `0x12` — capability TLV (per [`capability-tlv.md`](../contracts/capability-tlv.en.md))
+- `0x12` — capability TLV (per [`capability-tlv.en.md`](../contracts/capability-tlv.en.md))
 - `0x11` — attestation dispatch (kernel-managed,
-  [`attestation.md`](../contracts/attestation.en.md))
+  [`attestation.en.md`](../contracts/attestation.en.md))
 
 Plugin может зарегистрировать handler на эти msg_id, но обычно не
 надо — kernel сам processes их через специальные dispatcher'ы. Если
@@ -499,7 +499,7 @@ Integration tests с реальным kernel'ом — через
 
 ## Cross-references
 
-- [`handler-registration.md`](../contracts/handler-registration.en.md) —
+- [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
   формальный contract: vtable shape, propagation rules, snapshot
   dispatch invariants
 - [`recipes/write-handler-plugin.md`](../recipes/write-handler-plugin.ru.md) —
@@ -515,7 +515,7 @@ Integration tests с реальным kernel'ом — через
   resolved'ится через `query_extension_checked`
 - [`overview`](overview.ru.md) §«Что знает ядро» — kernel agnostic
   про handlers, registry-only
-- [`capability-tlv.md`](../contracts/capability-tlv.en.md) — wire
+- [`capability-tlv.en.md`](../contracts/capability-tlv.en.md) — wire
   format для capability negotiation msg ids
-- [`limits.md`](../contracts/limits.en.md) — `max_handlers_per_msg_id`
+- [`limits.en.md`](../contracts/limits.en.md) — `max_handlers_per_msg_id`
   и другие quota

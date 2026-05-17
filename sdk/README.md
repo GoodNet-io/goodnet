@@ -24,7 +24,7 @@ path and never produce object files from this tree.
 | `cpp/uri.hpp`          | RFC 3986 URI parser + `gn::is_valid_scheme` ABNF check |
 | `cpp/link_plugin.hpp`  | `GN_LINK_PLUGIN(Class, "scheme")` macro |
 | `abi.h`                | Size-prefix evolution helpers (`GN_API_HAS`) |
-| `abi-evolution.md` etc. (in `docs/contracts/`) | Versioning rules every consumer reads before extending the surface |
+| `abi-evolution.en.md` etc. (in `docs/contracts/`) | Versioning rules every consumer reads before extending the surface |
 
 ## Targets exported
 
