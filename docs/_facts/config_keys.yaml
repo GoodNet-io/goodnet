@@ -4,85 +4,91 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 177
+    line: 315
 - name: ice.check_interval_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 156
+    line: 294
 - name: ice.consent_max_failures
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 152
+    line: 281
+- name: ice.consent_max_recovery
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 290
 - name: ice.keepalive_interval_s
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 148
+    line: 277
 - name: ice.path_mtu
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 168
+    line: 306
 - name: ice.session_timeout_s
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 144
+    line: 273
 - name: ice.turn_password
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 133
+    line: 261
 - name: ice.turn_servers
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 95
+    line: 216
 - name: ice.turn_tcp
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 184
+    line: 351
 - name: ice.turn_tls
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 192
+    line: 360
 - name: ice.turn_username
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 120
+    line: 247
 - name: links.tls.cert_path
   type: string
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 493
+    line: 554
 - name: links.tls.key_path
   type: string
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 502
+    line: 563
 - name: links.tls.verify_peer
   type: bool
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 386
+    line: 447
 - name: udp.new_conn_burst
   type: int64
   family: udp

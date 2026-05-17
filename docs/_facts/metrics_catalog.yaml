@@ -5,14 +5,14 @@ counters:
   - emit_counter
   sources:
   - file: plugins/links/ipc/ipc.cpp
-    line: 594
+    line: 660
   - file: plugins/links/ipc/ipc.cpp
-    line: 622
+    line: 688
   - file: plugins/links/tcp/tcp.cpp
     line: 726
   - file: plugins/links/tcp/tcp.cpp
     line: 766
   - file: plugins/links/tls/tls.cpp
-    line: 774
+    line: 864
   - file: plugins/links/tls/tls.cpp
-    line: 812
+    line: 902

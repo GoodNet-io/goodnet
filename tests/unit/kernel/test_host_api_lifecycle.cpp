@@ -577,3 +577,62 @@ TEST(HostApiRegisterSecurity, HostEmbeddingAccepted) {
               GN_OK);
     EXPECT_TRUE(k.security().is_active());
 }
+
+// ── register_vtable kind gate ──────────────────────────────────────
+
+TEST(HostApiRegisterVtable, HandlerKindRequiredForHandlerVtable) {
+    Kernel k;
+    /// LINK-kind plugin tries to register a HANDLER vtable —
+    /// capability gate refuses before the registry sees it.
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    gn_handler_vtable_t hvt{};
+    hvt.api_size = sizeof(hvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "test.handler";
+    meta.msg_id   = 1;
+    meta.priority = 128;
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_HANDLER,
+                                    &meta, &hvt, nullptr, &id),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(HostApiRegisterVtable, LinkKindRequiredForLinkVtable) {
+    Kernel k;
+    /// HANDLER-kind plugin tries to register a LINK vtable.
+    auto ctx = make_handler_ctx(k);
+    auto api = build_host_api(ctx);
+
+    gn_link_vtable_t lvt{};
+    lvt.api_size = sizeof(lvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "tcp";
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_LINK,
+                                    &meta, &lvt, nullptr, &id),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(HostApiRegisterVtable, MatchingKindAccepted) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);   // LINK kind
+    auto api = build_host_api(ctx);
+
+    gn_link_vtable_t lvt{};
+    lvt.api_size = sizeof(lvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "tcp";
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_LINK,
+                                    &meta, &lvt, nullptr, &id),
+              GN_OK);
+    EXPECT_NE(id, 0u);
+}

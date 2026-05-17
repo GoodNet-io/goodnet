@@ -436,6 +436,24 @@ gn_result_t register_vtable(void* host_ctx,
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
+    /// Capability gate per `security-trust.md`: plugin-kind must
+    /// match the register-kind being requested. HANDLER-kind
+    /// plugins register handler vtables, LINK-kind plugins
+    /// register link vtables, anything else (STRATEGY, BRIDGE,
+    /// UI, SECURITY, PROTOCOL) is refused at the slot. The
+    /// embedding host (UNKNOWN) keeps full access — same
+    /// rationale as `register_security`: operator authority,
+    /// not plugin-author.
+    const bool host_embedding = pc->kind == GN_PLUGIN_KIND_UNKNOWN;
+    if (kind == GN_REGISTER_HANDLER && !host_embedding &&
+        pc->kind != GN_PLUGIN_KIND_HANDLER) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (kind == GN_REGISTER_LINK && !host_embedding &&
+        pc->kind != GN_PLUGIN_KIND_LINK) {
+        return GN_ERR_INVALID_STATE;
+    }
+
     switch (kind) {
     case GN_REGISTER_HANDLER: {
         gn_handler_id_t inner = GN_INVALID_ID;
