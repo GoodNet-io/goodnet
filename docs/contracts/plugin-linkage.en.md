@@ -2,6 +2,9 @@
 
 **Status:** active · v1
 **Implements:** `sdk/plugin.h` + `core/plugin/plugin_manager.{hpp,cpp}`
+**Stability:** stable for v1.x; the three shipped modes
+(`dynamic`, `static`, `remote`) and the design slot for a fourth
+host-side custom runtime are append-only.
 
 Three ways a plugin's code lands in front of the kernel today,
 plus one in design. The C ABI in `sdk/plugin.h` is the only stable

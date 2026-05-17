@@ -3,6 +3,9 @@
 **Status:** active · v1
 **Implements:** `sdk/remote/{wire,slots}.h` + a single-threaded
 reference runtime.
+**Stability:** stable for v1.x; new opcodes append at the tail
+of `gn_wire_op_t`, slot ids land per the reserved blocks in
+`sdk/remote/slots.h`.
 
 The proof-of-concept binary is `plugins/workers/remote_echo`;
 the kernel-side runtime lives in `core/plugin/remote_host.{hpp,cpp}`;
