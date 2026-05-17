@@ -401,9 +401,10 @@ def main(argv):
                    "parody rows live in `## Cross-implementation "
                    "throughput` and are NOT directly comparable — see "
                    "`docs/perf/methodology.en.md` §1.3 (pairing rule). "
-                   "Real-QUIC fixture pending — see "
-                   "`bench_real_e2e.cpp` TODO block; iroh row appears "
-                   "once Real-QUIC lands._")
+                   "Real-QUIC fixture is not wired; the QuicLink "
+                   "carrier-bring-up path needs a LinkCarrier + "
+                   "`composer_listen` / `composer_connect` fixture "
+                   "before the iroh row can land here._")
         out.append("")
         out.append("| Payload | " + " | ".join(stacks) + " |")
         out.append("|---|" + "---|" * len(stacks))
