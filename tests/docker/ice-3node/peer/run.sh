@@ -6,7 +6,7 @@
 # 1. Template the kernel config out of environment vars handed in
 #    by docker-compose (PEER_NAME, STUN_URI, TURN_URI, WAIT_FOR_PEER,
 #    SIGNAL_DIR).
-# 2. Boot the goodnet kernel with ICE + heartbeat + noise loaded.
+# 2. Boot the goodnetd daemon with ICE + heartbeat + noise loaded.
 # 3. Run the harness:
 #    * publish our pubkey to the shared signal dir
 #    * wait for the peer's pubkey
@@ -49,12 +49,12 @@ cat /etc/goodnet/peer.json
 # Boot the kernel. Production builds wire the harness binary in
 # place of this stub which only prints + sleeps so the
 # scaffolding can be inspected with `docker compose logs peer_a`.
-if command -v goodnet >/dev/null 2>&1; then
-    echo "[peer-${PEER_NAME}] starting goodnet kernel"
-    exec goodnet --config /etc/goodnet/peer.json
+if command -v goodnetd >/dev/null 2>&1; then
+    echo "[peer-${PEER_NAME}] starting goodnetd"
+    exec goodnetd run --config /etc/goodnet/peer.json
 fi
 
-echo "[peer-${PEER_NAME}] NOTE: goodnet binary not in PATH" \
+echo "[peer-${PEER_NAME}] NOTE: goodnetd binary not in PATH" \
      "— peer harness stub keeps container alive for inspection." \
-     "Replace with the harness binary in a follow-up slice."
+     "Replace with the harness binary when it lands."
 exec sleep infinity
