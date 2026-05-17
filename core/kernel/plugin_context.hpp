@@ -21,8 +21,9 @@ class Kernel;
 
 struct PluginContext {
     /// Liveness canary. Every host_api thunk in
-    /// `host_api_builder.cpp` reads this field via `ctx_live`
-    /// before any other field; a mismatch means the context has
+    /// `core/kernel/host_api/*.cpp` reads this field via `ctx_live`
+    /// (declared in `core/kernel/host_api_internal.hpp`) before
+    /// any other field; a mismatch means the context has
     /// already been destroyed (the plugin retained `host_api`
     /// past its own `dlclose`) and the thunk drops the call
     /// instead of dereferencing `pc->plugin_name` /

@@ -15,7 +15,7 @@
 /// `gn_log_*` macros in `sdk/convenience.h`, which call the
 /// `host_api_t::log` substruct (`should_log` / `emit`). The kernel
 /// bridges those plugin calls back into this same singleton logger
-/// in `core/kernel/host_api_builder.cpp` (`thunk_log_emit`).
+/// in `core/kernel/host_api/control.cpp` (`log_emit`).
 ///
 /// The singleton has a default-construction path (lazy `kernel()`
 /// call brings up a basic stderr logger) and an explicit one
