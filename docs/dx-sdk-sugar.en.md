@@ -1,7 +1,5 @@
 # GoodNet SDK sugar — DX helpers for plugin & app authors
 
-> Last updated 2026-05-12 (DX Tier 1 + Tier 2 landed).
-
 This page indexes every `sdk/cpp/*.hpp` helper that exists to keep
 plugin authors out of C-ABI boilerplate. Each section pins:
 
@@ -34,8 +32,9 @@ Same pattern for handler plugins. Class needs static
 `handle_message(const gn_message_t&)`; optional `on_init`,
 `on_shutdown`, `extension_*` (see header for the SFINAE probe).
 
-Heartbeat plugin migrated to this macro 2026-05-12 — went from
-119 LOC plugin_entry to 19 LOC.
+The heartbeat plugin uses this macro and ships a 19 LOC
+`plugin_entry.cpp` against the typical ~120 LOC the raw C ABI
+needs — see `plugins/handlers/heartbeat/plugin_entry.cpp`.
 
 ### `GN_STRATEGY_PLUGIN(Class, "plugin_name", "version")`
 
@@ -148,7 +147,8 @@ const auto parts = parse_uri_strict(uri, "udp");
 if (!parts || parts->is_path_style()) return GN_ERR_INVALID_ENVELOPE;
 ```
 
-UDP plugin migrated 2026-05-12.
+The UDP plugin uses `parse_uri_strict` against the `udp` scheme,
+see `plugins/links/udp/udp.cpp`.
 
 ---
 

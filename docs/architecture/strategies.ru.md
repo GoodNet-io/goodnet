@@ -295,7 +295,7 @@ Strategy plugin **усиливает суверенитет** только ес�
 Strategy plugins что explicitly декларируют trade-off'ы оставляют
 operator'у sovereignty над выбором между strategies.
 
-## Реализованный surface — `gn.strategy.*` (2026-05-12)
+## Реализованный surface — `gn.strategy.*`
 
 Первая landed strategy family — `gn.strategy.*` — kernel-mediated:
 плагин не владеет send pipe'ом сам, а отвечает на kernel-side
