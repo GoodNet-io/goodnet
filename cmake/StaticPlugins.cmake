@@ -27,7 +27,7 @@
 #
 #     if(GOODNET_STATIC_PLUGINS)
 #         include(StaticPlugins)
-#         goodnet_register_static_plugins(goodnet
+#         goodnet_register_static_plugins(goodnet_kernel
 #             goodnet_security_null
 #             goodnet_link_ipc
 #             goodnet_handler_heartbeat
