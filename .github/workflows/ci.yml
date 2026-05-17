@@ -22,6 +22,27 @@ jobs:
       - name: nix flake check
         run: nix flake check --print-build-logs
 
+  livedoc-check:
+    # Source-derived facts in `docs/` (slot tables, RFC coverage,
+    # metrics catalog, version pin, contract→header round-trips)
+    # are produced by `tools/livedoc.py`. The `--check` flag
+    # re-derives the facts and exits non-zero if any in-tree
+    # markdown / canvas / svg differs from what the current
+    # source would emit. PRs land green by running `python3
+    # tools/livedoc.py --all` locally before pushing — the
+    # tree-resident artefacts and the kernel sources go through
+    # CI in lockstep.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Run livedoc --check
+        run: nix develop --command python3 tools/livedoc.py --check
+
   build-and-test:
     runs-on: ubuntu-latest
     timeout-minutes: 20
