@@ -3,7 +3,7 @@
 
 #include <core/plugin/runtimes/dynamic.hpp>
 
-#include <dlfcn.h>
+#include <core/plugin/dl_compat.hpp>
 
 #ifdef __linux__
 #include <fcntl.h>
