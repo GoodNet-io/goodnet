@@ -8,10 +8,15 @@
  * The kernel calls `pick_conn` with a snapshot of all live conns to
  * a destination; the strategy returns the chosen `gn_conn_id_t`.
  *
- * One strategy plugin is active per node (operator config selects
- * which); multiple registrations conflict at plugin load time.
- * Future minors of this contract may add per-class strategies (one
- * per app priority band) — gate on `api_size` to detect.
+ * The kernel admits multiple strategy plugins concurrently and walks
+ * the registered chain in registration order on each `send_to`; the
+ * first strategy that returns a real conn wins. A strategy with no
+ * opinion on the current candidate set returns `GN_ERR_NOT_FOUND` so
+ * the next strategy gets a turn. Single-strategy deployments work
+ * unchanged; the chain is just the natural admission of composite
+ * setups (e.g. `rtt-optimal` + a `cost-aware` fallback). Future
+ * minors of this contract may add per-class strategies (one per app
+ * priority band) — gate on `api_size` to detect.
  *
  * See `docs/architecture/strategies.ru.md` for the design rationale
  * and the `gn.float-send.*` family of strategies built on this

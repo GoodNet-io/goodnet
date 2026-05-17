@@ -697,11 +697,17 @@ typedef struct host_api_s {
      * single-candidate path and falls back to "first conn" on multi-
      * candidate sets — strategies are an optional plugin family.
      *
+     * Multi-strategy chains: when more than one `gn.strategy.*`
+     * extension is registered, the kernel walks them in
+     * registration order on each call and uses the first conn
+     * returned by any strategy's `pick_conn`. A strategy that has
+     * no opinion on the candidate set returns `GN_ERR_NOT_FOUND`
+     * and the chain advances to the next. If every registered
+     * strategy passes, the kernel falls back to the head of the
+     * candidate set per `strategy.h` §3.
+     *
      * Returns the underlying `send` result. Maps:
      *   - `GN_ERR_NOT_FOUND`         no live conn to peer_pk
-     *   - `GN_ERR_LIMIT_REACHED`     more than one `gn.strategy.*`
-     *                                 extension registered
-     *     (convention: exactly one active strategy per node)
      *   - whatever `gn_strategy_api_t::pick_conn` returns on its
      *     own error paths (e.g. strategy refuses to pick).
      */
