@@ -16,7 +16,7 @@ _Security pipeline: dial → notify_connect → Noise → attestation → trust 
 - [Handshake (Noise XX)](#handshake-noise-xx)
 - [Connection FSM по фазам безопасности](#connection-fsm-по-фазам-безопасности)
 - [Аттестация](#аттестация)
-- [Single-active-provider invariant](#single-active-provider-invariant)
+- [Distinct-provider-id invariant](#distinct-provider-id-invariant)
 - [Replay protection](#replay-protection)
 - [Identity vs trust](#identity-vs-trust)
 - [Application visibility events](#application-visibility-events)
@@ -139,7 +139,7 @@ incoming-байты.
 trust-классом и handshake-ролью. Kernel выделяет `gn_conn_id_t`,
 создаёт `SecuritySession` через `SessionRegistry::create`, проверяет
 trust против маски активного security-provider'а (см. §
-[Single-active-provider invariant](#single-active-provider-invariant))
+[Distinct-provider-id invariant](#distinct-provider-id-invariant))
 и публикует `GN_CONN_EVENT_CONNECTED`.
 
 **Handshake.** Сессия в фазе `Handshake`. Каждый
@@ -205,33 +205,30 @@ v1 не вводит wait-time bound. Plugin'ы, которым нужен deadl
 
 ---
 
-## Single-active-provider invariant
+## Distinct-provider-id invariant
 
-`SecurityRegistry` хранит ровно одного активного security-provider'а
-на всё ядро. Второй вызов `register_security` возвращает
-`GN_ERR_LIMIT_REACHED` без вытеснения существующего
-([security-trust.en.md §6](../contracts/security-trust.en.md)). Это
-гарантирует, что в node lifetime есть единственная конкретная
-crypto-реализация, которую может видеть оператор.
+`SecurityRegistry` admits N security providers concurrently
+через StackRegistry — одну entry per **distinct** `provider_id`.
+Повторный `register_security` под уже зарегистрированным id
+возвращает `GN_ERR_LIMIT_REACHED` без вытеснения incumbent'а
+([security-trust.en.md §6](../contracts/security-trust.en.md));
+свежий id присоединяется к admission set.
 
-На каждый трансклаcс существует одна допустимая комбинация:
+На каждый trust class kernel выбирает провайдера через
+`find_for_trust(trust)` — первый registered provider, чья
+`allowed_trust_mask` admits заявленный класс:
 
 - `Untrusted` / `Peer` обслуживаются провайдером, чей
   `allowed_trust_mask` включает соответствующий бит. У noise
   маска — все четыре класса; у null — только `Loopback | IntraNode`.
-- Попытка завести соединение в классе, который провайдер не
-  принимает, отклоняется на `SessionRegistry::create` с
-  `GN_ERR_INVALID_ENVELOPE` и инкрементом
-  `metrics.drop.trust_class_mismatch`.
+- Попытка завести соединение в классе, который ни один из
+  зарегистрированных провайдеров не принимает, отклоняется на
+  `SessionRegistry::create` с `GN_ERR_INVALID_ENVELOPE` и
+  инкрементом `metrics.drop.trust_class_mismatch`.
 
-Эта инвариантность опирается на `register_security` как на единственную
-точку входа. Plugin не может обойти регистр — kernel не линкует ни
-одного провайдера статически, в `core/` лежат только заголовки
+Plugin не может обойти регистр — kernel не линкует ни одного
+провайдера статически, в `core/` лежат только заголовки
 интерфейса. Источник конкретики — всегда загруженный плагин.
-
-В v1.x запланирован `StackRegistry` с per-trust-class селекцией
-(null для `Loopback`, noise для `Peer` на одном узле); до тех пор
-single-active — основной режим.
 
 ---
 

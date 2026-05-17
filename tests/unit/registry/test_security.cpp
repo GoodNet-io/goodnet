@@ -44,9 +44,9 @@ TEST(SecurityRegistry_Args, RegisterRejectsNullVtable) {
     EXPECT_FALSE(r.is_active());
 }
 
-// ── single-active rule ───────────────────────────────────────────────────
+// ── register / coexistence rules ─────────────────────────────────────────
 
-TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
+TEST(SecurityRegistry_Register, FirstRegisterSucceeds) {
     SecurityRegistry r;
     int dummy_self = 0;
     EXPECT_FALSE(r.is_active());
@@ -62,7 +62,7 @@ TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
     EXPECT_EQ(cur.self, &dummy_self);
 }
 
-TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
+TEST(SecurityRegistry_Register, DistinctIdsCoexist) {
     SecurityRegistry r;
     int self_a = 0, self_b = 0;
     ASSERT_EQ(r.register_provider("noise",
@@ -84,7 +84,7 @@ TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
     EXPECT_EQ(cur.self, &self_a);
 }
 
-TEST(SecurityRegistry_SingleActive, DuplicateIdRejected) {
+TEST(SecurityRegistry_Register, DuplicateIdRejected) {
     SecurityRegistry r;
     int self_a = 0, self_b = 0;
     ASSERT_EQ(r.register_provider("noise",

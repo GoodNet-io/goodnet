@@ -157,8 +157,8 @@ nix run .#test  # kernel + все плагины + integration-tests
 - [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
   handler плагин: msg_id range, propagation values, lifetime
 - [`security-trust.en.md`](../contracts/security-trust.en.md) — security
-  plugin: handshake driver, single-active-per-trust-class,
-  attestation hooks
+  plugin: handshake driver, multi-provider StackRegistry с
+  first-match-per-trust-class admission, attestation hooks
 - [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — все
   плагины: 5 entry symbols, init/register/run/unregister/shutdown
 - [`plugin-manifest.en.md`](../contracts/plugin-manifest.en.md) — manifest

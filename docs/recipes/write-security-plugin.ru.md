@@ -106,9 +106,11 @@ static uint32_t myprov_allowed_trust_mask(void* self) {
 соединения, отсутствующий в маске, ⇒ `GN_ERR_INVALID_ENVELOPE` ещё до
 первого handshake-байта + bump `metrics.drop.trust_class_mismatch`.
 
-Single-active per-provider invariant: повторный `register_security`
-вернёт `GN_ERR_LIMIT_REACHED`. v1.x StackRegistry разрешит multi-
-provider per trust class.
+Duplicate-id invariant: повторный `register_security` под уже
+зарегистрированным `provider_id` отдаёт `GN_ERR_LIMIT_REACHED`.
+Свежий id присоединяется в `StackRegistry` без выселения
+incumbent'а — kernel admits N distinct providers concurrently и
+выбирает по trust class через `find_for_trust`.
 
 ```c
 GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self_v) {
@@ -475,7 +477,7 @@ Quiescence-wait (`plugin-lifetime.en.md` §4) обеспечивает, что �
 ## 14. Cross-refs
 
 - [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass,
-  per-component admission gates §4, single-active provider §6,
+  per-component admission gates §4, multi-provider StackRegistry §6,
   conn-id ownership gate §6a, replay protection §6.
 - [attestation.en.md](../contracts/attestation.en.md) — 232-байтный
   payload, kernel-internal dispatcher, gating `Untrusted → Peer`.
