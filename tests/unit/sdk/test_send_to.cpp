@@ -39,6 +39,15 @@ PluginContext make_ctx(Kernel& k) {
     return ctx;
 }
 
+PluginContext make_ctx_kind(Kernel& k, gn_plugin_kind_t kind) {
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    ctx.kind          = kind;
+    ctx.plugin_name   = "test-rtt-kind";
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+    return ctx;
+}
+
 /// Fake link vtable that just counts `send` calls per conn.
 struct FakeLink {
     std::atomic<int>          send_calls{0};
@@ -356,6 +365,62 @@ TEST(HostApiPathEvent, NotifyRttSampleFiresRttUpdateToStrategy) {
     EXPECT_EQ(spy.events[0].conn, cid);
 
     (void)api.unregister_extension(&ctx, "gn.strategy.spy");
+}
+
+/// SECURITY plugins do not legitimately observe RTT; the role
+/// gate rejects them before they touch the connection registry.
+TEST(HostApiPathEvent, NotifyRttSampleSecurityKindRejected) {
+    Kernel k;
+    auto ctx = make_ctx_kind(k, GN_PLUGIN_KIND_SECURITY);
+    auto api = build_host_api(ctx);
+
+    EXPECT_EQ(api.notify_rtt_sample(&ctx, /*conn*/ 7, /*rtt*/ 1000),
+              GN_ERR_NOT_IMPLEMENTED)
+        << "security plugins must not push RTT samples";
+}
+
+/// An unknown conn id is GN_ERR_NOT_FOUND. Plugins that observe
+/// RTT against a conn that was already torn down see the
+/// diagnostic instead of silently failing.
+TEST(HostApiPathEvent, NotifyRttSampleUnknownConnIsNotFound) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    EXPECT_EQ(api.notify_rtt_sample(&ctx, /*conn*/ 9'999, 1000),
+              GN_ERR_NOT_FOUND);
+}
+
+/// Folding multiple samples into the EWMA smooths a single
+/// outlier toward the long-running mean. The kernel surfaces the
+/// smoothed value through `get_endpoint`; this test asserts the
+/// smoothing landed observably (sample N reflects fewer-than-N
+/// units of swing on the snapshot).
+TEST(HostApiPathEvent, NotifyRttSampleEwmaSmoothing) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0x42};
+    gn_conn_id_t cid = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "fake://h:0",
+                                   GN_TRUST_LOOPBACK,
+                                   GN_ROLE_RESPONDER, &cid),
+              GN_OK);
+
+    /// Steady-state seed at 10ms, then an outlier at 80ms. EWMA
+    /// next = (7·prev + sample) / 8 = (70 + 80) / 8 = 18.75ms.
+    /// The smoothed value is much closer to the steady state than
+    /// to the outlier — that's the whole point of the EWMA.
+    ASSERT_EQ(api.notify_rtt_sample(&ctx, cid, 10'000), GN_OK);
+    ASSERT_EQ(api.notify_rtt_sample(&ctx, cid, 80'000), GN_OK);
+
+    gn_endpoint_t ep{};
+    ASSERT_EQ(api.get_endpoint(&ctx, cid, &ep), GN_OK);
+    /// Expected post-EWMA: (7 * 10000 + 80000) / 8 = 18750us.
+    /// Assert via tight bound so the test catches a regression
+    /// that drops smoothing entirely (which would show 80000us).
+    EXPECT_NEAR(static_cast<double>(ep.last_rtt_us), 18750.0, 50.0);
 }
 
 /// Zero is the "no sample" sentinel — the kernel silently drops
