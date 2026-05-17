@@ -78,7 +78,7 @@ if (r == GN_OK) {
 
 ## Шаг 3. Default fallback
 
-`config_get` отсутствующего ключа возвращает `GN_ERR_NOT_FOUND`. Это normal case: плагин-default значение остаётся в коде, операторская конфигурация только переопределяет. Никакого warning'а ядро при этом не пишет — schema discovery ляжет в v1.1 (`config.en.md` §7).
+`config_get` отсутствующего ключа возвращает `GN_ERR_NOT_FOUND`. Это normal case: плагин-default значение остаётся в коде, операторская конфигурация только переопределяет. Никакого warning'а ядро при этом не пишет — schema discovery запланирован как расширение (`config.en.md` §7).
 
 ```c
 #define MY_PLUGIN_DEFAULT_INTERVAL_MS  30000
