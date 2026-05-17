@@ -84,7 +84,7 @@ A production install plants files in five locations.
 
 | Path | Owner | Mode | What |
 |---|---|---|---|
-| `/usr/bin/goodnet` | root | 0755 | Multicall binary — `run`, `config validate`, `plugin hash`, `manifest gen`, `identity gen`, `identity show`, `version` |
+| `/usr/bin/goodnetd` | root | 0755 | Multicall binary — `run`, `config validate`, `plugin hash`, `manifest gen`, `identity gen`, `identity show`, `version` |
 | `/usr/lib/goodnet/lib*.so` | root | 0644 | Plugin shared objects: transports, security providers, protocol layers, handlers |
 | `/etc/goodnet/node.json` | root | 0644 | Kernel config (limits, log shape, profile selector) |
 | `/etc/goodnet/plugins.json` | root | 0644 | Plugin manifest — `{ path, sha256 }` per loadable .so. Trust root for `dlopen` |
@@ -141,7 +141,7 @@ The unit also pins three lifecycle behaviours:
 - `Restart=no` — a node failure is a configuration or plugin error
   surfaced loudly. Operators wanting auto-restart drop in
   `Restart=on-failure` plus `RestartSec=5s` via a unit override.
-- `ExecStartPre=/usr/bin/goodnet config validate` — catches malformed
+- `ExecStartPre=/usr/bin/goodnetd config validate` — catches malformed
   config at unit-start time rather than mid-handshake.
 
 Two situations call for an override: a JIT plugin (future scripting,
@@ -165,7 +165,7 @@ Each node owns its identity. Generate it on the host that will run
 the node — secret seeds never leave the box.
 
 ```sh
-sudo -u goodnet goodnet identity gen \
+sudo -u goodnet goodnetd identity gen \
     --out /etc/goodnet/identity.bin
 ```
 
@@ -173,7 +173,7 @@ The file lands at mode `0600`. The command prints the public surface
 to stdout:
 
 ```
-goodnet identity gen: wrote /etc/goodnet/identity.bin (mode 0600)
+goodnetd identity gen: wrote /etc/goodnet/identity.bin (mode 0600)
 address:    7f3c...d219    (52-character base32 in operator UI; hex shown here)
 user_pk:    ...
 device_pk:  ...
@@ -186,7 +186,7 @@ peers' catalogues.
 To inspect an existing identity without rewriting it:
 
 ```sh
-sudo -u goodnet goodnet identity show /etc/goodnet/identity.bin
+sudo -u goodnet goodnetd identity show /etc/goodnet/identity.bin
 ```
 
 Secret seeds are never printed, even when the file is readable.
@@ -215,7 +215,7 @@ shape:
 
 Field semantics:
 
-- `pk` — the peer's address from `goodnet identity show`. 52
+- `pk` — the peer's address from `goodnetd identity show`. 52
   characters base32 in the operator-facing form; the kernel
   accepts both base32 and hex.
 - `name` — operator-facing label for logs and dashboards. Not
@@ -267,7 +267,7 @@ After installing or upgrading plugin .so files, regenerate the
 manifest:
 
 ```sh
-sudo goodnet manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
+sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
 sudo install -m 0644 /tmp/plugins.json /etc/goodnet/plugins.json
 ```
 
@@ -287,7 +287,7 @@ not write manifests by hand; `manifest gen` is the supported path.
 To verify a single plugin's hash without regenerating the manifest:
 
 ```sh
-goodnet plugin hash /usr/lib/goodnet/libgoodnet_security_noise.so
+goodnetd plugin hash /usr/lib/goodnet/libgoodnet_security_noise.so
 ```
 
 Output is lowercase hex SHA-256, comparable directly against a
@@ -314,7 +314,7 @@ To add a new plugin to a running deployment:
 1. Stop the unit: `sudo systemctl stop goodnet`.
 2. Install the new .so: `sudo install -m 0644 new-plugin.so /usr/lib/goodnet/`.
 3. Regenerate the manifest as in §5.1 above.
-4. Validate the resulting config: `sudo goodnet config validate
+4. Validate the resulting config: `sudo goodnetd config validate
    /etc/goodnet/node.json`.
 5. Start the unit: `sudo systemctl start goodnet`.
 

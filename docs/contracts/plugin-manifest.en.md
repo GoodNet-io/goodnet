@@ -277,12 +277,12 @@ manifest is — the kernel reads the operator manifest at load and
 ignores the per-package JSON entirely.
 
 The per-package JSON is for downstream tooling:
-- `goodnet manifest gen <so>...` reads each `<so>` and the
+- `goodnetd manifest gen <so>...` reads each `<so>` and the
   adjacent `<so>.json` to assemble the operator manifest;
 - distribution tarballs ship `<so>` + `<so>.json` paired so the
   receiver can rebuild the operator manifest without re-hashing
   every binary;
-- `goodnet plugin hash <so>` corroborates the per-package
+- `goodnetd plugin hash <so>` corroborates the per-package
   integrity field independently of the operator manifest.
 
 ### 8.3 Failure modes

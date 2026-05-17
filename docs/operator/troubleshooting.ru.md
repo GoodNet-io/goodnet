@@ -40,7 +40,7 @@
 | `GN_ERR_VERSION_MISMATCH` (-9) | major plugin SDK не совпадает с ядром, либо identity-file unsupported version | пересобрать плагин против актуального SDK |
 | `GN_ERR_LIMIT_REACHED` (-10) | cap из `gn_limits_t` исчерпан | поднять лимит в `node.json` или разгрузить узел |
 | `GN_ERR_INVALID_STATE` (-11) | вызов в неподходящей фазе FSM (handshake-only op в transport-сессии, `set_timer` после shutdown) | bug плагина; собрать journal-выписку и завести issue |
-| `GN_ERR_INTEGRITY_FAILED` (-12) | manifest hash mismatch, tampered binary, manifest absent в strict mode, испорченный identity-file | re-run `goodnet manifest gen` или `goodnet identity gen`; рассмотреть compromise host'а |
+| `GN_ERR_INTEGRITY_FAILED` (-12) | manifest hash mismatch, tampered binary, manifest absent в strict mode, испорченный identity-file | re-run `goodnetd manifest gen` или `goodnetd identity gen`; рассмотреть compromise host'а |
 | `GN_ERR_INTERNAL` (-13) | ядро поймало exception на C ABI границе | bug плагина; перезагрузить плагин, собрать backtrace |
 | `GN_ERR_NOT_FOUND` (-14) | lookup miss: config key, handler-id, link session, inject-target conn | typo в конфиге или несовпадение состояний; см. §3 |
 | `GN_ERR_OUT_OF_RANGE` (-15) | значение вне допустимого диапазона: array index, config integer выше cap'а из `limits.en.md` | поправить конфиг |
@@ -63,7 +63,7 @@ register. Любая ошибка приводит к полному rollback'у
 
 - `plugin integrity check failed: no manifest entry for path: <path>` —
   путь не перечислен в `/etc/goodnet/plugins.json`. Re-run
-  `goodnet manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json`
+  `goodnetd manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json`
   после установки нового `.so` и переустановить файл, см.
   [install.en.md](../install.en.md) §3.3.
 - `plugin integrity check failed: <path>: digest mismatch` — SHA-256
@@ -145,7 +145,7 @@ journalctl -u goodnet --since=boot | grep "register_vtable.*kind=LINK"
 - проверить, что security-плагин загружен на обоих узлах
   (`libgoodnet_security_noise.so`); без него класс `Trusted` не
   достижим;
-- сверить identity peer'а: `goodnet identity show /etc/goodnet/identity.bin`
+- сверить identity peer'а: `goodnetd identity show /etc/goodnet/identity.bin`
   на обеих сторонах — `address` должен совпадать с записью в
   `peers.json`;
 - наличие listening socket на удалённой стороне — см. предыдущий
@@ -175,7 +175,7 @@ journalctl -u goodnet --since=boot | grep "register_vtable.*kind=LINK"
 либо несоответствует своему magic-prefix. Журнал содержит одну из:
 
 - `file size != 77 bytes` — обрезанный файл; восстановить из
-  бэкапа или regen через `goodnet identity gen --out
+  бэкапа или regen через `goodnetd identity gen --out
   /etc/goodnet/identity.bin`;
 - `magic prefix mismatch` — файл не GoodNet-identity (v1 layout);
 - `unsupported identity-file version` — формат от другой major
@@ -190,11 +190,11 @@ peer'а (см. [identity](../contracts/identity.en.md) §3).
 
 Sentinel «без срока истечения» — verify-путь пропускает проверку
 дедлайна для `expiry == 0` (per [identity](../contracts/identity.en.md)
-§4). `goodnet identity gen` без явного `--expiry` создаёт файл с
+§4). `goodnetd identity gen` без явного `--expiry` создаёт файл с
 `expiry=0` и его нормально загружают и старая, и новая версия
 ядра. Если на `expiry=0`-файле всё равно появляется
 `signature mismatch` — значит повреждены seed-байты, а не sentinel:
-лечится `goodnet identity gen --out /etc/goodnet/identity.bin`.
+лечится `goodnetd identity gen --out /etc/goodnet/identity.bin`.
 
 ### Config reload не отрабатывает
 
@@ -202,7 +202,7 @@ Hot-reload `node.json` v1.x. Если редактирование файла + 
 reload goodnet` не подхватилось:
 
 - счётчик `config_reload.fail` растёт после неудачного парса;
-- проверить JSON-синтаксис: `goodnet config validate
+- проверить JSON-синтаксис: `goodnetd config validate
   /etc/goodnet/node.json` — отдаёт `GN_ERR_INVALID_CONFIG` с
   именем поля при cross-field validation failure (limits.en.md §3);
 - большинство `limits.*` менять hot нельзя — они определяют
@@ -259,9 +259,9 @@ decrypted v1 не выставляет.
 | journal | `journalctl -u goodnet --since="1 hour ago"` | recent records |
 | journal | `journalctl -u goodnet --since=boot \| grep ERROR` | error-level записи с момента старта |
 | metrics | exporter scrape (см. exporter-плагин) | snapshot всех counter'ов через `iterate_counters` |
-| CLI | `goodnet config validate /etc/goodnet/node.json` | offline-валидация конфигурации |
-| CLI | `goodnet identity show /etc/goodnet/identity.bin` | address, user_pk, device_pk, expiry — без секретов |
-| CLI | `goodnet manifest gen /usr/lib/goodnet/lib*.so` | regen plugin manifest |
+| CLI | `goodnetd config validate /etc/goodnet/node.json` | offline-валидация конфигурации |
+| CLI | `goodnetd identity show /etc/goodnet/identity.bin` | address, user_pk, device_pk, expiry — без секретов |
+| CLI | `goodnetd manifest gen /usr/lib/goodnet/lib*.so` | regen plugin manifest |
 | CLI | `ldd /usr/lib/goodnet/<plugin>.so` | проверить runtime deps |
 
 Каждый плагин эмитит логи под собственным namespace prefix через
@@ -275,7 +275,7 @@ journal-grep на `<plugin-name>` отфильтровывает строки н
 
 **После upgrade плагина kernel не стартует.** Журнал содержит
 `integrity check failed: <path>: digest mismatch`. Решение:
-re-run `sudo goodnet manifest gen /usr/lib/goodnet/lib*.so >
+re-run `sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so >
 /tmp/plugins.json` и переустановить файл, см.
 [install.en.md](../install.en.md) §3.3.
 

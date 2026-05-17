@@ -44,7 +44,7 @@ CI gates пока только linux x86_64 / aarch64. Реальная macOS
 nix build .#packages.aarch64-darwin.goodnet-core
 # или
 nix build .#packages.x86_64-darwin.goodnet-core
-./result/bin/goodnet version
+./result/bin/goodnetd version
 ```
 
 ## Windows

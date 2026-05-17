@@ -200,17 +200,18 @@ App не register'ит handlers через kernel registry runtime. App
 
 App'ы что shipped:
 
-- **`goodnet`** (operator multicall) — kernel-side ops:
-  `run`, `identity gen|show`, `manifest gen`, `plugin hash`,
-  `config validate`, `version`. Этот один — внутри kernel git'а
-  потому что работает с kernel internals, не consumer.
+- **`goodnetd`** (operator multicall daemon, Linux convention) —
+  kernel-side ops: `run`, `identity gen|show`, `manifest gen`,
+  `plugin hash`, `config validate`, `version`. Живёт отдельно
+  в `github.com/GoodNet-io/goodnetd`; работает с kernel
+  internals, не consumer.
 - **`gssh`** — SSH-over-GoodNet tunnel: `gssh user@<peer-pk>`,
   `gssh --bridge`, `gssh --listen`. Свой git, MIT, использует
   `bridges/cpp` + `sdk/core.h`.
 
 Подробный walkthrough: см.
-[`recipes/test-plugin.md`](../recipes/test-plugin.ru.md) +
-[`impl/cpp/cmake-integration.md`](../impl/cpp/cmake-integration.ru.md).
+[`recipes/test-plugin.ru.md`](../recipes/test-plugin.ru.md) +
+[`impl/cpp/cmake-integration.ru.md`](../impl/cpp/cmake-integration.ru.md).
 
 ## Цикл разработки binding'а
 

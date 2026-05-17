@@ -357,7 +357,7 @@ PluginTeardown (multiplugin shutdown ordering). Эти тесты гонятся
    этот event, висят. Лекарство — unblock на CONNECTED если
    `trust != UNTRUSTED`.
 
-4. **expiry=0 sentinel в attestation cert.** `goodnet identity gen`
+4. **expiry=0 sentinel в attestation cert.** `goodnetd identity gen`
    без `--expiry` ставит 0 = «no expiry». Naive verify path
    проверяет `expiry_unix_ts <= now_unix_ts` — true когда оба
    ноль — fail'ит как «attestation signature mismatch» (хотя

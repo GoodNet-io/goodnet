@@ -23,7 +23,7 @@ hot-update plugins without touching the kernel binary.
 
 `make build-static` compiles every bundled plugin as an
 `add_library(... OBJECT)` and links every plugin's code into the
-`goodnet` binary itself. Entry symbols carry a per-plugin suffix
+`goodnetd` binary itself. Entry symbols carry a per-plugin suffix
 (`gn_plugin_init_link_tcp`, `gn_plugin_register_link_ipc`, …) so
 they don't collide at link time; the `GN_PLUGIN_*_NAME` macros in
 `sdk/plugin.h` drive the rename. A generated `static_plugins.cpp`

@@ -14,7 +14,7 @@ A production install lays down four things on the host:
 
 | Path | Owner | What |
 |---|---|---|
-| `/usr/bin/goodnet` | root | Multicall CLI binary — `goodnet run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
+| `/usr/bin/goodnet` | root | Multicall CLI binary — `goodnetd run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
 | `/usr/lib/goodnet/lib*.so` | root | Plugin shared objects (transports, security providers, protocol layers, handlers) |
 | `/etc/goodnet/node.json` | root | Kernel config — limits, log shape, profile selector |
 | `/etc/goodnet/plugins.json` | root | Plugin manifest — path + SHA-256 per loadable .so |
@@ -86,7 +86,7 @@ common knobs:
 Validate the config before loading it:
 
 ```sh
-goodnet config validate /etc/goodnet/node.json
+goodnetd config validate /etc/goodnet/node.json
 ```
 
 The systemd unit's `ExecStartPre=` runs this same check; an
@@ -99,7 +99,7 @@ The example manifest carries placeholder zero hashes. Regenerate
 against your installed plugin .so paths:
 
 ```sh
-sudo goodnet manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
+sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
 sudo install -m 0644 /tmp/plugins.json /etc/goodnet/plugins.json
 ```
 
@@ -111,7 +111,7 @@ the new hash.
 ### 3.4 Generate the node identity
 
 ```sh
-goodnet identity gen --out /etc/goodnet/identity.bin
+goodnetd identity gen --out /etc/goodnet/identity.bin
 ```
 
 The file lands at mode `0600` and carries the magic-prefixed
@@ -123,7 +123,7 @@ to make the kernel pick the new file up on next start.
 Inspect a saved identity without revealing the secret keys:
 
 ```sh
-goodnet identity show /etc/goodnet/identity.bin
+goodnetd identity show /etc/goodnet/identity.bin
 ```
 
 The command prints `address`, `user_pk`, `device_pk`, `expiry`
@@ -165,7 +165,7 @@ file rather than the shipped one.
 ```sh
 systemctl status goodnet               # current state, last log lines
 journalctl -u goodnet -f               # live log tail
-goodnet config validate /etc/goodnet/node.json   # re-validate after edits
+goodnetd config validate /etc/goodnet/node.json   # re-validate after edits
 sudo systemctl reload goodnet          # re-read /etc/goodnet/node.json (v1.x)
 sudo systemctl restart goodnet         # full restart with kernel teardown
 ```
