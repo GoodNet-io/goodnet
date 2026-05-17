@@ -311,12 +311,12 @@ intended outcome.
 
 To add a new plugin to a running deployment:
 
-1. Stop the unit: `sudo systemctl stop goodnet`.
+1. Stop the unit: `sudo systemctl stop goodnetd`.
 2. Install the new .so: `sudo install -m 0644 new-plugin.so /usr/lib/goodnet/`.
 3. Regenerate the manifest as in §5.1 above.
 4. Validate the resulting config: `sudo goodnetd config validate
    /etc/goodnet/node.json`.
-5. Start the unit: `sudo systemctl start goodnet`.
+5. Start the unit: `sudo systemctl start goodnetd`.
 
 No hot-load path in v1: plugins join the kernel through
 `PluginManager::load` once at startup. Subsequent additions
@@ -369,9 +369,8 @@ keys. A `reads_config` whitelist that surfaces typos is planned.
 
 ### 6.4 Hot reload
 
-v1 ships a one-shot config load. `systemctl reload goodnet`
-executes `Config::reload_config(text)` and re-derives limits (per
-[config](../contracts/config.en.md) §3a).
+`systemctl reload goodnetd` executes `Kernel::reload_config(text)`
+and re-derives limits (per [config](../contracts/config.en.md) §3a).
 
 Picked up by reload:
 
@@ -390,7 +389,7 @@ Requires full restart:
 - Identity rotation (new `--identity` path).
 - Adding or removing a plugin (see §5.4).
 
-When in doubt, `systemctl restart goodnet`. The 30-second
+When in doubt, `systemctl restart goodnetd`. The 30-second
 TimeoutStopSec drains in-flight async cleanly; downtime is seconds,
 not minutes.
 
@@ -477,15 +476,15 @@ ties stderr to the journal; operators read via `journalctl`.
 ### 8.1 Live tail
 
 ```sh
-journalctl -u goodnet -f
+journalctl -u goodnetd -f
 ```
 
 Filters work as expected:
 
 ```sh
-journalctl -u goodnet --since "1 hour ago"
-journalctl -u goodnet -p warning            # WARN+
-journalctl -u goodnet | grep "plugin"
+journalctl -u goodnetd --since "1 hour ago"
+journalctl -u goodnetd -p warning           # WARN+
+journalctl -u goodnetd | grep "plugin"
 ```
 
 ### 8.2 Log levels

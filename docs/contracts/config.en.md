@@ -327,15 +327,11 @@ kernel into a path-handling argument.
 
 ## 7. Out of scope at v1
 
-- **Runtime reload.** v1 ships a one-shot load. An application
-  that needs hot reload constructs a fresh `Config`, loads,
-  validates, swaps it with the running instance, and re-runs
-  `Kernel::set_limits`. A kernel-side `Config::reload` entry
-  plus a plugin-facing reload signal channel is planned.
-- **Layered config.** Defaults → site override → per-deploy
-  override merge is the embedding application's responsibility
-  in v1 — the application composes the JSON document before
-  calling `load_json`. A layered API may surface as a planned
+- **Unified layered API.** `Config::load_json` for the canonical
+  defaults plus successive `Config::merge_json` overlays cover
+  three-layer composition (defaults → site → per-deploy) at the
+  embedding side. A single-call `set_layers([…])` entry that
+  takes the layer array atomically may surface as a planned
   extension if real deployments drive one.
 - **Per-plugin schema discovery.** Plugins do not register the
   keys they read. A typo in an operator's config silently maps

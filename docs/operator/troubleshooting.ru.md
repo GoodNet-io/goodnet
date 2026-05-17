@@ -126,8 +126,8 @@ issue в репозитории плагина.
 ядро не открывает listening socket. Команда:
 
 ```
-sudo systemctl status goodnet
-journalctl -u goodnet --since=boot | grep "register_vtable.*kind=LINK"
+sudo systemctl status goodnetd
+journalctl -u goodnetd --since=boot | grep "register_vtable.*kind=LINK"
 ```
 
 Отсутствие записи означает, что плагин не зарегистрирован — см. §2.
@@ -206,7 +206,7 @@ reload goodnet` не подхватилось:
   /etc/goodnet/node.json` — отдаёт `GN_ERR_INVALID_CONFIG` с
   именем поля при cross-field validation failure (limits.en.md §3);
 - большинство `limits.*` менять hot нельзя — они определяют
-  at-startup allocations; нужен `systemctl restart goodnet`.
+  at-startup allocations; нужен `systemctl restart goodnetd`.
 
 ---
 
@@ -254,10 +254,10 @@ decrypted v1 не выставляет.
 
 | Инструмент | Команда | Что показывает |
 |---|---|---|
-| systemd | `systemctl status goodnet` | состояние юнита, последние строки журнала |
-| journal | `journalctl -u goodnet -f` | live-tail логов ядра и всех плагинов |
-| journal | `journalctl -u goodnet --since="1 hour ago"` | recent records |
-| journal | `journalctl -u goodnet --since=boot \| grep ERROR` | error-level записи с момента старта |
+| systemd | `systemctl status goodnetd` | состояние юнита, последние строки журнала |
+| journal | `journalctl -u goodnetd -f` | live-tail логов ядра и всех плагинов |
+| journal | `journalctl -u goodnetd --since="1 hour ago"` | recent records |
+| journal | `journalctl -u goodnetd --since=boot \| grep ERROR` | error-level записи с момента старта |
 | metrics | exporter scrape (см. exporter-плагин) | snapshot всех counter'ов через `iterate_counters` |
 | CLI | `goodnetd config validate /etc/goodnet/node.json` | offline-валидация конфигурации |
 | CLI | `goodnetd identity show /etc/goodnet/identity.bin` | address, user_pk, device_pk, expiry — без секретов |
@@ -282,7 +282,7 @@ re-run `sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so >
 **SSH через gssh теряет connection после нескольких минут.**
 Heartbeat extension (`gn.heartbeat`) должен быть зарегистрирован
 на обоих узлах. Команда:
-`journalctl -u goodnet --since=boot | grep heartbeat` на обеих
+`journalctl -u goodnetd --since=boot | grep heartbeat` на обеих
 сторонах. Если плагин загружен только на одной стороне, RTT-зонды
 не доходят и одна из сторон закрывает conn по своему inactivity-таймеру.
 

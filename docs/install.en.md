@@ -163,11 +163,11 @@ file rather than the shipped one.
 ## 5. Operating the running node
 
 ```sh
-systemctl status goodnet               # current state, last log lines
-journalctl -u goodnet -f               # live log tail
+systemctl status goodnetd              # current state, last log lines
+journalctl -u goodnetd -f              # live log tail
 goodnetd config validate /etc/goodnet/node.json   # re-validate after edits
-sudo systemctl reload goodnet          # re-read /etc/goodnet/node.json (v1.x)
-sudo systemctl restart goodnet         # full restart with kernel teardown
+sudo systemctl reload goodnetd         # re-read /etc/goodnet/node.json
+sudo systemctl restart goodnetd        # full restart with kernel teardown
 ```
 
 Hot reload of the kernel config (without process restart) lands in
