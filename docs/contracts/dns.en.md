@@ -1,6 +1,6 @@
 # Contract: DNS handler
 
-**Status:** active · v1.0.0-rc1
+**Status:** active · v1
 **Owner:** `plugins/handlers/dns/`
 **Last verified:** 2026-05-13
 **Stability:** v1.x; wire layout below is locked, the `IDnsBackend`
