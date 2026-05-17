@@ -156,168 +156,168 @@ slots:
   signature: gn_result_t (*)(void *, const char *, const struct gn_security_provider_vtable_s
     *, void *)
   file: sdk/host_api.h
-  line: 342
+  line: 345
   family: Security registration
   doc: a security provider with the kernel.
 - name: unregister_security
   signature: gn_result_t (*)(void *, const char *)
   file: sdk/host_api.h
-  line: 347
+  line: 350
   family: Security registration
   doc: ''
 - name: inject
   signature: gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, uint32_t, const
     uint8_t *, size_t)
   file: sdk/host_api.h
-  line: 377
+  line: 380
   family: Foreign-payload injection
   doc: plugins inject foreign-system bytes into the mesh
 - name: kick_handshake
   signature: gn_result_t (*)(void *, gn_conn_id_t)
   file: sdk/host_api.h
-  line: 397
+  line: 400
   family: Foreign-payload injection
   doc: the local side of a security handshake into action.
 - name: set_timer
   signature: gn_result_t (*)(void *, uint32_t, gn_task_fn_t, void *, gn_timer_id_t
     *)
   file: sdk/host_api.h
-  line: 413
+  line: 416
   family: Service executor (timer.en.md is the authoritative spec)
   doc: a one-shot callback after  ms.
 - name: cancel_timer
   signature: gn_result_t (*)(void *, gn_timer_id_t)
   file: sdk/host_api.h
-  line: 423
+  line: 426
   family: Service executor (timer.en.md is the authoritative spec)
   doc: a pending timer.
 - name: subscribe_conn_state
   signature: gn_result_t (*)(void *, gn_conn_state_cb_t, void *, void (*)(void *),
     gn_subscription_id_t *)
   file: sdk/host_api.h
-  line: 444
+  line: 447
   family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: to the connection-event channel.
 - name: subscribe_config_reload
   signature: gn_result_t (*)(void *, gn_config_reload_cb_t, void *, void (*)(void
     *), gn_subscription_id_t *)
   file: sdk/host_api.h
-  line: 459
+  line: 462
   family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: to the config-reload channel.
 - name: unsubscribe
   signature: gn_result_t (*)(void *, gn_subscription_id_t)
   file: sdk/host_api.h
-  line: 471
+  line: 474
   family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: a subscription.
 - name: for_each_connection
   signature: gn_result_t (*)(void *, gn_conn_visitor_t, void *)
   file: sdk/host_api.h
-  line: 481
+  line: 484
   family: Connection iteration
   doc: every currently-registered connection under a
 - name: notify_backpressure
   signature: gn_result_t (*)(void *, gn_conn_id_t, gn_conn_event_kind_t, uint64_t)
   file: sdk/host_api.h
-  line: 499
+  line: 502
   family: Connection iteration
   doc: a backpressure transition for  — soft
 - name: emit_counter
   signature: void (*)(void *, const char *)
   file: sdk/host_api.h
-  line: 521
+  line: 524
   family: Metrics (metrics.en.md)
   doc: the kernel-side counter at  by one.
 - name: iterate_counters
   signature: uint64_t (*)(void *, gn_counter_visitor_t, void *)
   file: sdk/host_api.h
-  line: 532
+  line: 535
   family: Metrics (metrics.en.md)
   doc: every registered counter;  is invoked
 - name: is_shutdown_requested
   signature: int32_t (*)(void *)
   file: sdk/host_api.h
-  line: 556
+  line: 559
   family: Cooperative cancellation (plugin-lifetime.en.md §8)
   doc: once the kernel begins teardown for this plugin.
 - name: register_local_key
   signature: gn_result_t (*)(void *, gn_key_purpose_t, const char *, gn_key_id_t *)
   file: sdk/host_api.h
-  line: 582
+  line: 585
   family: Identity primitives (identity.en.md §5)
   doc: ''
 - name: delete_local_key
   signature: gn_result_t (*)(void *, gn_key_id_t)
   file: sdk/host_api.h
-  line: 587
+  line: 590
   family: Identity primitives (identity.en.md §5)
   doc: ''
 - name: list_local_keys
   signature: gn_result_t (*)(void *, gn_key_descriptor_t *, size_t, size_t *)
   file: sdk/host_api.h
-  line: 590
+  line: 593
   family: Identity primitives (identity.en.md §5)
   doc: ''
 - name: sign_local
   signature: gn_result_t (*)(void *, gn_key_purpose_t, const uint8_t *, size_t, uint8_t[64])
   file: sdk/host_api.h
-  line: 595
+  line: 598
   family: Identity primitives (identity.en.md §5)
   doc: ''
 - name: sign_local_by_id
   signature: gn_result_t (*)(void *, gn_key_id_t, const uint8_t *, size_t, uint8_t[64])
   file: sdk/host_api.h
-  line: 600
+  line: 603
   family: Identity primitives (identity.en.md §5)
   doc: ''
 - name: get_peer_user_pk
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
   file: sdk/host_api.h
-  line: 620
+  line: 623
   family: Peer identity readers (identity.en.md §5)
   doc: ''
 - name: get_peer_device_pk
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
   file: sdk/host_api.h
-  line: 624
+  line: 627
   family: Peer identity readers (identity.en.md §5)
   doc: ''
 - name: get_handshake_hash
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])
   file: sdk/host_api.h
-  line: 628
+  line: 631
   family: Peer identity readers (identity.en.md §5)
   doc: ''
 - name: present_capability_blob
   signature: gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)
   file: sdk/host_api.h
-  line: 651
+  line: 654
   family: Capability TLV transport (capability-tlv.en.md)
   doc: ''
 - name: subscribe_capability_blob
   signature: gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void
     *), gn_subscription_id_t *)
   file: sdk/host_api.h
-  line: 657
+  line: 660
   family: Capability TLV transport (capability-tlv.en.md)
   doc: ''
 - name: announce_rotation
   signature: gn_result_t (*)(void *, int64_t)
   file: sdk/host_api.h
-  line: 683
+  line: 686
   family: Identity rotation (identity.en.md §7)
   doc: ''
 - name: send_to
   signature: gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *,
     size_t)
   file: sdk/host_api.h
-  line: 721
+  line: 724
   family: Peer-addressed messaging (host-api.en.md)
   doc: outbound send.
 - name: notify_rtt_sample
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint64_t)
   file: sdk/host_api.h
-  line: 761
+  line: 764
   family: Path observability (host-api.en.md)
   doc: a per-connection RTT sample observed by the
