@@ -19,12 +19,12 @@ operator can let nodes publish + observe small records (peer
 descriptors, service announcements, capability advertisements,
 metrics) without standing up an external DB.
 
-The handler owns a pluggable `IStore` backend (memory reference
-in slice 1; sqlite + DHT + Redis planned) and a wire dispatcher
-that maps the seven `STORE_*` envelope types onto the backend.
-Local callers reach the same surface through the
-[`gn.store`](../../sdk/extensions/store.h) extension vtable —
-no wire framing, no conn-id needed.
+The handler owns a pluggable `IStore` backend — a memory
+backend and a SQLite backend ship today; DHT and Redis backends
+are planned. A wire dispatcher maps the seven `STORE_*` envelope
+types onto the backend. Local callers reach the same surface
+through the [`gn.store`](../../sdk/extensions/store.h) extension
+vtable — no wire framing, no conn-id needed.
 
 ---
 
@@ -180,8 +180,8 @@ The reference `MemoryStore` ships in-tree. Future backends:
 
 | Backend | Persistence | Notes |
 |---|---|---|
-| `MemoryStore` (this slice) | none | hash-map; loses state across restart |
-| `SqliteStore` (planned, slice 2) | file | prepared stmts; production reference |
+| `MemoryStore` (ships today) | none | hash-map; loses state across restart |
+| `SqliteStore` (ships today) | file | prepared stmts; production reference |
 | `DhtStore` (planned) | distributed | Kademlia over GoodNet itself |
 | `RedisStore` (planned) | external | clustered, hot failover |
 
@@ -202,10 +202,10 @@ The reference `MemoryStore` ships in-tree. Future backends:
   cleanup driver.
 - **`get_prefix` is unordered.** The reference backend iterates
   the hash-map; future ordered backends MAY guarantee an order
-  but slice-1 callers cannot rely on it.
+  but callers cannot rely on it.
 - **Subscriptions are per-conn for wire callers**, per-cb for
   in-process callers. Wire subscriptions die with the conn
-  through `PerConnMap`-style cleanup (planned, slice 2).
+  through `PerConnMap`-style cleanup (planned).
 - **The handler is `priority = 200`** — below identity-bearing
   system handlers (240+) but above application handlers (default
   128). Adjust via plugin manifest if a node hosts a handler

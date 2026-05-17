@@ -28,12 +28,14 @@ small records — peer descriptors, service announcements,
 capability advertisements, metrics — without standing up an
 external DB.
 
-The handler owns a pluggable `IDnsBackend` backend (memory
-reference in slice 1; sqlite reference in slice 2; DHT + Redis
-planned) and a wire dispatcher that maps the seven `DNS_*`
-envelope types onto the backend. Local callers reach the same
-surface through the [`gn.dns`](../../sdk/extensions/dns.h)
-extension vtable — no wire framing, no conn-id needed.
+The handler is wired against the `gn.store` extension as its
+backing store (records ride through the KV / TTL / subscribe /
+sync surface there) and ships a wire dispatcher that maps the
+seven `DNS_*` envelope types onto that store. A future
+`IDnsBackend` split (memory / sqlite / DHT / Redis references)
+is sketched in §4. Local callers reach the same surface through
+the [`gn.dns`](../../sdk/extensions/dns.h) extension vtable — no
+wire framing, no conn-id needed.
 
 ---
 
@@ -185,15 +187,20 @@ Each method is **synchronous and called from a single thread** —
 the handler funnels every call through one mutex so the backend
 sees serialised access. Backends MAY ignore their own locking.
 
-The reference `MemoryDnsBackend` ships in-tree as slice 1.
-`SqliteDnsBackend` lands in slice 2.
+The DNS handler currently uses the `gn.store` extension as its
+backing store (see `plugins/handlers/store/`) — records ride
+through the store's KV / TTL / subscribe / sync surface, and
+the DNS handler adds the typed `RrType` / `name` shape on top.
+A dedicated `IDnsBackend` abstraction with the table below is
+sketched for an eventual split when an operator wants a DNS-
+optimised backing store (file / DHT / clustered cache):
 
 | Backend | Persistence | Notes |
 |---|---|---|
-| `MemoryDnsBackend` (slice 1) | none | hash-map; loses state across restart |
-| `SqliteDnsBackend` (slice 2) | file | prepared stmts; production reference |
-| `DhtDnsBackend` (planned) | distributed | Kademlia over GoodNet itself |
-| `RedisDnsBackend` (planned) | external | clustered, hot failover |
+| `MemoryDnsBackend` | none | hash-map; loses state across restart |
+| `SqliteDnsBackend` | file | prepared stmts; production reference |
+| `DhtDnsBackend` | distributed | Kademlia over GoodNet itself |
+| `RedisDnsBackend` | external | clustered, hot failover |
 
 ---
 
