@@ -42,6 +42,9 @@ set(_goodnet_kernel_sources
     plugin/plugin_manifest.cpp
     plugin/wire_codec.cpp
     plugin/remote_host.cpp
+    plugin/runtimes/dynamic.cpp
+    plugin/runtimes/static.cpp
+    plugin/runtimes/remote.cpp
     # Static-registry stub. Dynamic builds keep this empty array; the
     # static-linkage build replaces this TU with a generated one via
     # `cmake/StaticPlugins.cmake`.

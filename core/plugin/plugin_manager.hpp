@@ -37,7 +37,10 @@
 #include <core/kernel/plugin_context.hpp>
 #include <core/kernel/service_resolver.hpp>
 #include <core/plugin/plugin_manifest.hpp>
+#include <core/plugin/plugin_runtime.hpp>
 #include <core/plugin/static_registry.hpp>
+
+#include <map>
 
 namespace gn::core {
 
@@ -74,6 +77,15 @@ struct PluginInstance {
     /// dtor calls `terminate()` so a leaked instance still reaps
     /// its child process.
     std::unique_ptr<RemoteHost>       remote;
+
+    /// Borrowed pointer to the runtime that loaded this instance.
+    /// PluginManager owns the runtime singletons (kept alive for
+    /// the manager's lifetime); the instance is dispatched through
+    /// `runtime->init(*this)` etc. instead of switching on the
+    /// linkage fields above. The pointer is set when the instance
+    /// is loaded and remains valid until the instance is destroyed
+    /// during rollback.
+    IPluginRuntime*                   runtime{nullptr};
 };
 
 class PluginManager {
@@ -165,6 +177,23 @@ public:
         return manifest_required_;
     }
 
+    /// Register an additional plugin runtime under @p kind. The
+    /// kernel ships built-in runtimes for "dynamic", "static", and
+    /// "remote"; hosts that bundle their own (Wasm, FFI-via-IPC,
+    /// etc.) register them through this slot. Returns
+    /// `GN_ERR_LIMIT_REACHED` when @p kind is already registered.
+    [[nodiscard]] gn_result_t register_runtime(
+        std::string kind, std::unique_ptr<IPluginRuntime> runtime);
+
+    /// Look up the runtime registered for @p kind. Returns nullptr
+    /// when no runtime is registered under that kind.
+    [[nodiscard]] IPluginRuntime* runtime_for(
+        std::string_view kind) const noexcept;
+
+    /// Kernel reference for runtime impls that need to construct a
+    /// `PluginContext` (every built-in runtime does this in `load`).
+    [[nodiscard]] Kernel& kernel() noexcept { return kernel_; }
+
 private:
     /// Build a ServiceDescriptor from the loaded plugin. Reads the
     /// optional `gn_plugin_descriptor` symbol; absence yields an
@@ -206,6 +235,16 @@ private:
     std::size_t                     leaked_handles_{0};
     PluginManifest                  manifest_;
     bool                            manifest_required_{false};
+
+    /// Plugin runtimes keyed by manifest "kind" string. Populated
+    /// with the three built-in entries ("dynamic", "static",
+    /// "remote") in the constructor; hosts add custom entries
+    /// through `register_runtime`. The map outlives every
+    /// PluginInstance — instances borrow `IPluginRuntime*` via
+    /// `PluginInstance::runtime`, so the registry must drop after
+    /// `shutdown()` clears `instances_`.
+    std::map<std::string, std::unique_ptr<IPluginRuntime>,
+             std::less<>>           runtimes_;
 };
 
 } // namespace gn::core

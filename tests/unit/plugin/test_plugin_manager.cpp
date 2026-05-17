@@ -449,3 +449,94 @@ TEST(PluginManager_Remote, MissingManifestEntryRejectedByIntegrity) {
 }
 
 #endif  // GOODNET_REMOTE_ECHO_PATH
+
+// ── Runtime registry — PluginRuntime polymorphism ────────────────────────
+//
+// PluginManager carries a map of `IPluginRuntime` instances keyed by
+// the manifest "kind" string. The kernel ships three built-in
+// runtimes (`dynamic`, `static`, `remote`); hosts can plug in
+// additional runtimes through `register_runtime`. Lifecycle dispatch
+// goes through `PluginInstance::runtime` set at load time, so each
+// runtime owns its kind-specific entry-symbol resolution without
+// any per-call switch.
+
+#include <core/plugin/plugin_runtime.hpp>
+
+namespace {
+
+class FakeRuntime final : public gn::core::IPluginRuntime {
+public:
+    int init_calls{0};
+    int register_calls{0};
+    int unregister_calls{0};
+    int shutdown_calls{0};
+
+    gn_result_t init(gn::core::PluginInstance& /*inst*/) override {
+        ++init_calls;
+        return GN_OK;
+    }
+    gn_result_t register_plugin(
+        gn::core::PluginInstance& /*inst*/) override {
+        ++register_calls;
+        return GN_OK;
+    }
+    void unregister(gn::core::PluginInstance& /*inst*/) override {
+        ++unregister_calls;
+    }
+    void shutdown(gn::core::PluginInstance& /*inst*/) override {
+        ++shutdown_calls;
+    }
+    [[nodiscard]] std::string_view name() const noexcept override {
+        return "fake";
+    }
+};
+
+} // namespace
+
+TEST(PluginRuntime_Registry, BuiltinKindsRegisteredAtConstruction) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_NE(pm.runtime_for("dynamic"), nullptr);
+    EXPECT_NE(pm.runtime_for("static"),  nullptr);
+    EXPECT_NE(pm.runtime_for("remote"),  nullptr);
+    EXPECT_EQ(pm.runtime_for("dynamic")->name(), "dynamic");
+    EXPECT_EQ(pm.runtime_for("static")->name(),  "static");
+    EXPECT_EQ(pm.runtime_for("remote")->name(),  "remote");
+}
+
+TEST(PluginRuntime_Registry, UnknownKindReturnsNullptr) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.runtime_for("nonexistent"), nullptr);
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeAddsToMap) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("fake",
+                                    std::make_unique<FakeRuntime>()),
+              GN_OK);
+    auto* r = pm.runtime_for("fake");
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->name(), "fake");
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeRejectsDuplicateKind) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("dynamic",
+                                    std::make_unique<FakeRuntime>()),
+              GN_ERR_LIMIT_REACHED)
+        << "dynamic is already registered by the constructor; "
+           "re-registration must be rejected so a host cannot "
+           "silently displace a built-in runtime";
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeRejectsNullArgs) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("", std::make_unique<FakeRuntime>()),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(pm.register_runtime("nullrt", nullptr),
+              GN_ERR_NULL_ARG);
+}

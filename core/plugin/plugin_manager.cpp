@@ -28,6 +28,9 @@
 #include <core/kernel/kernel.hpp>
 #include <core/kernel/safe_invoke.hpp>
 #include <core/plugin/remote_host.hpp>
+#include <core/plugin/runtimes/dynamic.hpp>
+#include <core/plugin/runtimes/remote.hpp>
+#include <core/plugin/runtimes/static.hpp>
 #include <core/util/log.hpp>
 
 #include <sdk/plugin.h>
@@ -108,9 +111,32 @@ ServiceDescriptor descriptor_from_symbol(const PluginSymbols& syms,
 
 } // namespace
 
-PluginManager::PluginManager(Kernel& kernel) noexcept : kernel_(kernel) {}
+PluginManager::PluginManager(Kernel& kernel) noexcept : kernel_(kernel) {
+    /// Populate the runtime registry with the three built-in
+    /// linkage kinds. Hosts can add custom entries (Wasm, FFI) by
+    /// calling `register_runtime` before `load`. The map outlives
+    /// every PluginInstance — instances borrow these pointers
+    /// through `PluginInstance::runtime`.
+    runtimes_.emplace("dynamic", std::make_unique<DynamicRuntime>());
+    runtimes_.emplace("static",  std::make_unique<StaticRuntime>());
+    runtimes_.emplace("remote",  std::make_unique<RemoteRuntime>());
+}
 
 PluginManager::~PluginManager() { shutdown(); }
+
+gn_result_t PluginManager::register_runtime(
+    std::string kind, std::unique_ptr<IPluginRuntime> runtime) {
+    if (runtime == nullptr || kind.empty()) return GN_ERR_NULL_ARG;
+    auto [_, inserted] = runtimes_.emplace(std::move(kind),
+                                             std::move(runtime));
+    return inserted ? GN_OK : GN_ERR_LIMIT_REACHED;
+}
+
+IPluginRuntime* PluginManager::runtime_for(
+    std::string_view kind) const noexcept {
+    auto it = runtimes_.find(kind);
+    return it == runtimes_.end() ? nullptr : it->second.get();
+}
 
 gn_result_t PluginManager::open_one(const std::string& path,
                                     PluginInstance& out,
@@ -183,6 +209,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
             out.descriptor.plugin_name = path;
         }
 
+        out.runtime    = runtime_for("remote");
         out.self       = nullptr;
         out.registered = false;
         return GN_OK;
@@ -347,7 +374,8 @@ gn_result_t PluginManager::open_one(const std::string& path,
     out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
 
     out.api  = build_host_api(*out.ctx);
-    out.self = nullptr;
+    out.runtime    = runtime_for("dynamic");
+    out.self       = nullptr;
     out.registered = false;
     return GN_OK;
 }
@@ -464,94 +492,23 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 }
 
 gn_result_t PluginManager::init_one(PluginInstance& inst) {
-    if (inst.remote) {
-        return inst.remote->call_init(&inst.self);
-    }
-    if (inst.static_entry) {
-        if (inst.static_entry->init == nullptr) return GN_OK;
-        return inst.static_entry->init(&inst.api, &inst.self);
-    }
-    auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
-        dlsym(inst.so_handle, "gn_plugin_init"));
-    const auto init_tag =
-        "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
-    return safe_call_result(
-        init_tag.c_str(),
-        init_fn, &inst.api, &inst.self);
+    if (inst.runtime == nullptr) return GN_ERR_INVALID_STATE;
+    return inst.runtime->init(inst);
 }
 
 gn_result_t PluginManager::register_one(PluginInstance& inst) {
-    if (inst.remote) {
-        return inst.remote->call_register(
-            reinterpret_cast<std::uintptr_t>(inst.self));
-    }
-    if (inst.static_entry) {
-        if (inst.static_entry->reg == nullptr) return GN_OK;
-        return inst.static_entry->reg(inst.self);
-    }
-    auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
-        dlsym(inst.so_handle, "gn_plugin_register"));
-    return safe_call_result(
-        "plugin.gn_plugin_register",
-        reg_fn, inst.self);
+    if (inst.runtime == nullptr) return GN_ERR_INVALID_STATE;
+    return inst.runtime->register_plugin(inst);
 }
 
 void PluginManager::unregister_one(PluginInstance& inst) {
-    if (inst.remote) {
-        /// Remote-linkage path: `unregister` becomes a PLUGIN_CALL
-        /// frame and the worker mirrors the in-process plugin's
-        /// unregister entry-point. The `gn_result_t` is discarded
-        /// same as the other branches — teardown continues
-        /// regardless.
-        (void)inst.remote->call_unregister(
-            reinterpret_cast<std::uintptr_t>(inst.self));
-        return;
-    }
-    if (inst.so_handle) {
-        if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-                dlsym(inst.so_handle, "gn_plugin_unregister"))) {
-            /// `gn_result_t` discarded — the unregister path
-            /// continues to teardown regardless of the plugin's
-            /// reported outcome; we only care that no exception
-            /// escapes the C ABI boundary.
-            (void)safe_call_result(
-                "plugin.gn_plugin_unregister",
-                fn, inst.self);
-        }
-        return;
-    }
-    if (inst.static_entry && inst.static_entry->unreg) {
-        /// Static-linkage path: dlsym would return null for the
-        /// suffix-renamed entry, so we read the function pointer
-        /// the registry already provides. Same noexcept guarantees
-        /// apply across the C ABI.
-        (void)safe_call_result(
-            "plugin.gn_plugin_unregister",
-            inst.static_entry->unreg, inst.self);
-    }
+    if (inst.runtime == nullptr) return;
+    inst.runtime->unregister(inst);
 }
 
 void PluginManager::shutdown_one(PluginInstance& inst) {
-    if (inst.remote) {
-        /// `call_shutdown` is void (no return code). The worker
-        /// reaps state and acks the PLUGIN_CALL but we do not
-        /// branch on its reply.
-        inst.remote->call_shutdown(
-            reinterpret_cast<std::uintptr_t>(inst.self));
-        return;
-    }
-    if (inst.so_handle) {
-        if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-                dlsym(inst.so_handle, "gn_plugin_shutdown"))) {
-            safe_call_void("plugin.gn_plugin_shutdown",
-                fn, inst.self);
-        }
-        return;
-    }
-    if (inst.static_entry && inst.static_entry->shutdown) {
-        safe_call_void("plugin.gn_plugin_shutdown",
-            inst.static_entry->shutdown, inst.self);
-    }
+    if (inst.runtime == nullptr) return;
+    inst.runtime->shutdown(inst);
 }
 
 bool PluginManager::drain_anchor(PluginInstance& inst,
@@ -789,7 +746,8 @@ gn_result_t PluginManager::load_static(std::string* out_diagnostic) {
             inst.descriptor.plugin_name = e->name;
         }
 
-        inst.api = build_host_api(*inst.ctx);
+        inst.api     = build_host_api(*inst.ctx);
+        inst.runtime = runtime_for("static");
 
         instances_.push_back(std::move(inst));
     }

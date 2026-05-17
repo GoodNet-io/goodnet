@@ -34,37 +34,27 @@ class IPluginRuntime {
 public:
     virtual ~IPluginRuntime() = default;
 
-    /// Open the plugin and populate @p out. On failure @p out is
-    /// untouched and @p diag carries the human-readable reason.
-    /// The runtime is responsible for the kind-specific integrity
-    /// check (digest verification for dlopen / fork-and-hash for
-    /// remote / no-op for static-linked) before any plugin code
-    /// runs.
-    virtual gn_result_t load(
-        const std::string& path,
-        const PluginManifest& manifest,
-        PluginInstance& out,
-        std::string& diag) = 0;
-
-    /// Invoke `gn_plugin_init(api, &self)` or the runtime's
-    /// equivalent. The instance's `self` field is filled on success.
-    virtual gn_result_t init(
-        PluginInstance& inst,
-        const host_api_t* api) = 0;
+    /// Invoke `gn_plugin_init` (or the runtime's equivalent). The
+    /// instance's `self` field is filled on success. The `api`
+    /// pointer is the per-instance host_api table the runtime
+    /// passes to the plugin's init entry — dynamic plugins reach
+    /// `&inst.api` directly, remote workers carry the table over
+    /// the wire.
+    virtual gn_result_t init(PluginInstance& inst) = 0;
 
     /// Invoke `gn_plugin_register(self)` or the runtime's equivalent.
     virtual gn_result_t register_plugin(PluginInstance& inst) = 0;
 
     /// Invoke `gn_plugin_unregister(self)`. Best-effort: failures are
-    /// logged but do not abort the rollback chain.
-    virtual gn_result_t unregister(PluginInstance& inst) = 0;
+    /// surfaced to the caller but the rollback chain continues
+    /// regardless. Returns GN_OK on every successful dispatch and
+    /// the plugin's own status code when the entry returned an
+    /// error.
+    virtual void unregister(PluginInstance& inst) = 0;
 
-    /// Invoke `gn_plugin_shutdown(self)`. Void return — same reason.
+    /// Invoke `gn_plugin_shutdown(self)`. Void return — same
+    /// best-effort discipline as `unregister`.
     virtual void shutdown(PluginInstance& inst) = 0;
-
-    /// Tear down the load-time state — `dlclose` for dynamic, no-op
-    /// for static, terminate-and-reap for remote.
-    virtual void close(PluginInstance& inst) = 0;
 
     /// Stable identifier; matches the manifest entry's `kind`
     /// string. The default "dynamic" / "static" / "remote" runtimes
