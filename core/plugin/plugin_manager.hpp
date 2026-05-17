@@ -186,6 +186,19 @@ private:
     [[nodiscard]] bool drain_anchor(PluginInstance& inst,
                                     const std::weak_ptr<PluginAnchor>& watch);
 
+    /// Per-instance lifecycle dispatchers. Each branches on the
+    /// instance's linkage state (`remote != nullptr` → subprocess,
+    /// `static_entry != nullptr` → static-registry, otherwise →
+    /// dlopen) so the load / load_static loops and the rollback path
+    /// reach the right entry point without duplicating the
+    /// three-way switch at every site. These wrap the same logic the
+    /// future `IPluginRuntime` registry will dispatch through — the
+    /// extraction here makes that migration mechanical.
+    [[nodiscard]] gn_result_t init_one(PluginInstance& inst);
+    [[nodiscard]] gn_result_t register_one(PluginInstance& inst);
+    void unregister_one(PluginInstance& inst);
+    void shutdown_one(PluginInstance& inst);
+
     Kernel&                         kernel_;
     std::vector<PluginInstance>     instances_;
     bool                            active_{false};

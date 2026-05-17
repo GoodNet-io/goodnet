@@ -423,21 +423,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 
     /// Phase 4: init_all.
     for (auto& inst : instances_) {
-        gn_result_t rc = GN_OK;
-        if (inst.remote) {
-            /// Subprocess worker: the lifecycle entry-points cross
-            /// the wire as PLUGIN_CALL frames. `self` becomes the
-            /// worker-side opaque returned in the reply.
-            rc = inst.remote->call_init(&inst.self);
-        } else {
-            auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
-                dlsym(inst.so_handle, "gn_plugin_init"));
-            const auto init_tag =
-                "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
-            rc = safe_call_result(
-                init_tag.c_str(),
-                init_fn, &inst.api, &inst.self);
-        }
+        const auto rc = init_one(inst);
         if (rc != GN_OK) {
             note("gn_plugin_init failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -464,17 +450,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 
     /// Phase 5: register_all.
     for (auto& inst : instances_) {
-        gn_result_t rc = GN_OK;
-        if (inst.remote) {
-            rc = inst.remote->call_register(
-                reinterpret_cast<std::uintptr_t>(inst.self));
-        } else {
-            auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
-                dlsym(inst.so_handle, "gn_plugin_register"));
-            rc = safe_call_result(
-                "plugin.gn_plugin_register",
-                reg_fn, inst.self);
-        }
+        const auto rc = register_one(inst);
         if (rc != GN_OK) {
             note("gn_plugin_register failed for " + inst.descriptor.plugin_name);
             rollback();
@@ -485,6 +461,97 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
 
     active_ = true;
     return GN_OK;
+}
+
+gn_result_t PluginManager::init_one(PluginInstance& inst) {
+    if (inst.remote) {
+        return inst.remote->call_init(&inst.self);
+    }
+    if (inst.static_entry) {
+        if (inst.static_entry->init == nullptr) return GN_OK;
+        return inst.static_entry->init(&inst.api, &inst.self);
+    }
+    auto* init_fn = reinterpret_cast<gn_plugin_init_fn>(
+        dlsym(inst.so_handle, "gn_plugin_init"));
+    const auto init_tag =
+        "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
+    return safe_call_result(
+        init_tag.c_str(),
+        init_fn, &inst.api, &inst.self);
+}
+
+gn_result_t PluginManager::register_one(PluginInstance& inst) {
+    if (inst.remote) {
+        return inst.remote->call_register(
+            reinterpret_cast<std::uintptr_t>(inst.self));
+    }
+    if (inst.static_entry) {
+        if (inst.static_entry->reg == nullptr) return GN_OK;
+        return inst.static_entry->reg(inst.self);
+    }
+    auto* reg_fn = reinterpret_cast<gn_plugin_register_fn>(
+        dlsym(inst.so_handle, "gn_plugin_register"));
+    return safe_call_result(
+        "plugin.gn_plugin_register",
+        reg_fn, inst.self);
+}
+
+void PluginManager::unregister_one(PluginInstance& inst) {
+    if (inst.remote) {
+        /// Remote-linkage path: `unregister` becomes a PLUGIN_CALL
+        /// frame and the worker mirrors the in-process plugin's
+        /// unregister entry-point. The `gn_result_t` is discarded
+        /// same as the other branches — teardown continues
+        /// regardless.
+        (void)inst.remote->call_unregister(
+            reinterpret_cast<std::uintptr_t>(inst.self));
+        return;
+    }
+    if (inst.so_handle) {
+        if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
+                dlsym(inst.so_handle, "gn_plugin_unregister"))) {
+            /// `gn_result_t` discarded — the unregister path
+            /// continues to teardown regardless of the plugin's
+            /// reported outcome; we only care that no exception
+            /// escapes the C ABI boundary.
+            (void)safe_call_result(
+                "plugin.gn_plugin_unregister",
+                fn, inst.self);
+        }
+        return;
+    }
+    if (inst.static_entry && inst.static_entry->unreg) {
+        /// Static-linkage path: dlsym would return null for the
+        /// suffix-renamed entry, so we read the function pointer
+        /// the registry already provides. Same noexcept guarantees
+        /// apply across the C ABI.
+        (void)safe_call_result(
+            "plugin.gn_plugin_unregister",
+            inst.static_entry->unreg, inst.self);
+    }
+}
+
+void PluginManager::shutdown_one(PluginInstance& inst) {
+    if (inst.remote) {
+        /// `call_shutdown` is void (no return code). The worker
+        /// reaps state and acks the PLUGIN_CALL but we do not
+        /// branch on its reply.
+        inst.remote->call_shutdown(
+            reinterpret_cast<std::uintptr_t>(inst.self));
+        return;
+    }
+    if (inst.so_handle) {
+        if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
+                dlsym(inst.so_handle, "gn_plugin_shutdown"))) {
+            safe_call_void("plugin.gn_plugin_shutdown",
+                fn, inst.self);
+        }
+        return;
+    }
+    if (inst.static_entry && inst.static_entry->shutdown) {
+        safe_call_void("plugin.gn_plugin_shutdown",
+            inst.static_entry->shutdown, inst.self);
+    }
 }
 
 bool PluginManager::drain_anchor(PluginInstance& inst,
@@ -563,34 +630,7 @@ void PluginManager::rollback() {
         }
 
         if (it->registered) {
-            if (it->remote) {
-                /// Remote-linkage path: `unregister` becomes a
-                /// PLUGIN_CALL frame and the worker mirrors the
-                /// in-process plugin's unregister entry-point. The
-                /// `gn_result_t` is discarded same as the other
-                /// branches — teardown continues regardless.
-                (void)it->remote->call_unregister(
-                    reinterpret_cast<std::uintptr_t>(it->self));
-            } else if (it->so_handle) {
-                if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-                        dlsym(it->so_handle, "gn_plugin_unregister"))) {
-                    /// `gn_result_t` discarded — the unregister path
-                    /// continues to teardown regardless of the
-                    /// plugin's reported outcome; we only care that
-                    /// no exception escapes the C ABI boundary.
-                    (void)safe_call_result(
-                        "plugin.gn_plugin_unregister",
-                        fn, it->self);
-                }
-            } else if (it->static_entry && it->static_entry->unreg) {
-                /// Static-linkage path: dlsym would return null for
-                /// the suffix-renamed entry, so we read the function
-                /// pointer the registry already provides. Same
-                /// noexcept guarantees apply across the C ABI.
-                (void)safe_call_result(
-                    "plugin.gn_plugin_unregister",
-                    it->static_entry->unreg, it->self);
-            }
+            unregister_one(*it);
             it->registered = false;
         }
 
@@ -628,25 +668,7 @@ void PluginManager::rollback() {
         const bool drained = drain_anchor(*it, watch);
 
         if (it->self) {
-            if (it->remote) {
-                /// `call_shutdown` is void (no return code). The
-                /// worker reaps state and acks the PLUGIN_CALL but
-                /// we do not branch on its reply.
-                it->remote->call_shutdown(
-                    reinterpret_cast<std::uintptr_t>(it->self));
-            } else if (it->so_handle) {
-                if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-                        dlsym(it->so_handle, "gn_plugin_shutdown"))) {
-                    safe_call_void("plugin.gn_plugin_shutdown",
-                        fn, it->self);
-                }
-            } else if (it->static_entry && it->static_entry->shutdown) {
-                /// Static-linkage path — see the matching branch in
-                /// the unregister step above. The static registry
-                /// supplies the function pointer directly.
-                safe_call_void("plugin.gn_plugin_shutdown",
-                    it->static_entry->shutdown, it->self);
-            }
+            shutdown_one(*it);
             it->self = nullptr;
         }
 
@@ -772,27 +794,24 @@ gn_result_t PluginManager::load_static(std::string* out_diagnostic) {
         instances_.push_back(std::move(inst));
     }
 
-    /// Phase 4: init each plugin.
-    for (std::size_t i = 0; i < instances_.size(); ++i) {
-        auto& inst  = instances_[i];
-        const auto* e = &gn_plugin_static_registry[i];
-        if (!e->init) continue;
-        const auto rc = e->init(&inst.api, &inst.self);
+    /// Phase 4: init each plugin through the shared linkage-aware
+    /// dispatcher.
+    for (auto& inst : instances_) {
+        const auto rc = init_one(inst);
         if (rc != GN_OK) {
-            note(std::string("gn_plugin_init failed: ") + e->name);
+            note(std::string("gn_plugin_init failed: ") +
+                 inst.descriptor.plugin_name);
             rollback();
             return rc;
         }
     }
 
-    /// Phase 5: register each plugin.
-    for (std::size_t i = 0; i < instances_.size(); ++i) {
-        auto& inst  = instances_[i];
-        const auto* e = &gn_plugin_static_registry[i];
-        if (!e->reg) continue;
-        const auto rc = e->reg(inst.self);
+    /// Phase 5: register each plugin through the shared dispatcher.
+    for (auto& inst : instances_) {
+        const auto rc = register_one(inst);
         if (rc != GN_OK) {
-            note(std::string("gn_plugin_register failed: ") + e->name);
+            note(std::string("gn_plugin_register failed: ") +
+                 inst.descriptor.plugin_name);
             rollback();
             return rc;
         }
