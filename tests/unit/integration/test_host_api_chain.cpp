@@ -142,7 +142,7 @@ TEST(HostApiChain, NotifyConnectMissingSchemePrefixRejected) {
     /// `host_api_t::notify_connect` derives the link scheme from the
     /// URI's `scheme://` prefix; the prefix doubles as the
     /// `LinkRegistry` key for the conn-id ownership gate
-    /// (`security-trust.md` §6a). A URI without a scheme prefix has no
+    /// (`security-trust.en.md` §6a). A URI without a scheme prefix has no
     /// route for ownership attribution — reject up front so a hostile
     /// caller cannot register an unattributable conn record.
     KernelHarness h;
@@ -253,7 +253,7 @@ TEST(HostApiChain, NotifyConnectOversizedUriRejected) {
 }
 
 TEST(HostApiChain, NotifyConnectSchemeNotOwnedByCallerRejected) {
-    /// Caller-anchor gate per `security-trust.md` §6a (ingress side).
+    /// Caller-anchor gate per `security-trust.en.md` §6a (ingress side).
     /// A link plugin may only announce conns whose derived scheme it
     /// owns in `LinkRegistry`. Without this gate a TCP plugin could
     /// register an orphan conn under `ws` that no plugin can serve.

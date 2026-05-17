@@ -1,6 +1,6 @@
 /// @file   tests/unit/kernel/test_plugin_anchor.cpp
 /// @brief  PluginAnchor + GateGuard cooperative-cancellation
-///         semantics per `plugin-lifetime.md` §4 and §8.
+///         semantics per `plugin-lifetime.en.md` §4 and §8.
 ///
 /// Pins:
 ///   * GateGuard refuses on a stale anchor;
@@ -212,7 +212,7 @@ TEST(PluginAnchor, IsShutdownRequestedLatchesAcrossRepeatedCalls) {
     ctx.plugin_anchor->shutdown_requested.store(true,
         std::memory_order_release);
 
-    /// `host-api.md` §10: once set, every subsequent call returns
+    /// `host-api.en.md` §10: once set, every subsequent call returns
     /// non-zero through the rest of the plugin's lifetime.
     for (int i = 0; i < 16; ++i) {
         EXPECT_NE(api.is_shutdown_requested(&ctx), 0)

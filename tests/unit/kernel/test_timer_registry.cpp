@@ -77,7 +77,7 @@ TEST(TimerRegistry_Schedule, CancelTwiceIsOk) {
 TEST(TimerRegistry_Schedule, RejectsNullCallback) {
     /// `fn == nullptr` is the only NULL_ARG path on `set_timer`;
     /// `out_id == nullptr` is the legal fire-and-forget shape per
-    /// `timer.md` §2 / `host-api.md` §9.
+    /// `timer.en.md` §2 / `host-api.en.md` §9.
     TimerRegistry r;
     gn_timer_id_t id = GN_INVALID_TIMER_ID;
     EXPECT_EQ(r.set_timer(10, nullptr, nullptr, {}, &id),
@@ -142,7 +142,7 @@ TEST(TimerRegistry_Anchor, CancelForAnchorRemovesMatchingTimers) {
 // ── fire-and-forget set_timer(0, ...) ────────────────────────────────────
 
 TEST(TimerRegistry_SetTimer, AcceptsNullOutIdForFireAndForget) {
-    /// `host-api.md` §9 / `timer.md` §2 / `conn-events.md` §3.5
+    /// `host-api.en.md` §9 / `timer.en.md` §2 / `conn-events.en.md` §3.5
     /// promise that fire-and-forget callers pass `out_id = NULL`.
     /// Pre-fix the kernel rejected with NULL_ARG and the second
     /// call dereferenced *out_id, segfaulting under ASan.
@@ -207,7 +207,7 @@ TEST(TimerRegistry_Quota, RejectsPastMaxTimers) {
 }
 
 TEST(TimerRegistry_Quota, ZeroPendingCapMeansUnlimited) {
-    /// `limits.md` §4 — a cap left at the `set_*` default of zero
+    /// `limits.en.md` §4 — a cap left at the `set_*` default of zero
     /// is treated as unlimited. Mirrors the `set_timer` per-plugin
     /// behaviour exercised by `ZeroPerPluginCapMeansUnlimited`.
     /// The flip cap=1 → 0 makes the test fail on the pre-fix path
@@ -231,7 +231,7 @@ TEST(TimerRegistry_Quota, ZeroPendingCapMeansUnlimited) {
 }
 
 TEST(TimerRegistry_Quota, ZeroMaxTimersCapMeansUnlimited) {
-    /// Same `limits.md` §4 rule for the global `max_timers` cap
+    /// Same `limits.en.md` §4 rule for the global `max_timers` cap
     /// in `set_timer`. Flip from cap=2 → 0 demonstrates the
     /// transition: the third admit at cap=2 is rejected, then
     /// cap=0 admits the same call. Pre-fix code rejected at

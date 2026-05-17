@@ -1,6 +1,6 @@
 /// @file   tests/unit/kernel/test_host_api_config.cpp
 /// @brief  `host_api->config_get` argument validation and type-tag
-///         rejection per `host-api.md` §2.
+///         rejection per `host-api.en.md` §2.
 
 #include <gtest/gtest.h>
 

@@ -649,7 +649,7 @@ TEST(SecuritySessionStream, RecvBufferCapHonoursOpenParameter) {
     /// default ceiling is ~128 KiB, so a 4097-byte chunk under
     /// this cap returns LIMIT_REACHED while the same chunk under
     /// the default would not. The cap follows operator-tuned
-    /// `gn_limits_t::max_frame_bytes` per `backpressure.md` §9.
+    /// `gn_limits_t::max_frame_bytes` per `backpressure.en.md` §9.
     FakeProvider prov;
     auto vt = make_vtable();
     SecuritySession session;

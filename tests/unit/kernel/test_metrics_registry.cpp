@@ -1,6 +1,6 @@
 /// @file   tests/unit/kernel/test_metrics_registry.cpp
 /// @brief  Pin the kernel's named-counter store invariants per
-///         `metrics.md`: increment is monotonic, iterate visits
+///         `metrics.en.md`: increment is monotonic, iterate visits
 ///         every counter once, name lookup is heterogenous,
 ///         RouteOutcome/drop_reason names are stable.
 

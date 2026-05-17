@@ -80,7 +80,7 @@ TEST(HandlerRegistry_Args, RejectsEmptyProtocolId) {
 }
 
 TEST(HandlerRegistry_Args, RejectsVtableWithSmallerApiSize) {
-    /// `abi-evolution.md` §3a: a producer-declared `api_size` smaller
+    /// `abi-evolution.en.md` §3a: a producer-declared `api_size` smaller
     /// than the kernel's struct minimum is rejected before any slot
     /// lookup. Mirrors the `register_link` and
     /// `register_provider` defensive size-prefix check.
@@ -135,9 +135,9 @@ TEST(HandlerRegistry_Args, CarriesPluginNameOntoEntry) {
 }
 
 TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
-    /// Per `handler-registration.md` §2a — `0x11` is reserved for
+    /// Per `handler-registration.en.md` §2a — `0x11` is reserved for
     /// the kernel-internal attestation dispatcher
-    /// (`attestation.md` §3). Plugin registration must be rejected
+    /// (`attestation.en.md` §3). Plugin registration must be rejected
     /// regardless of `protocol_id`.
     HandlerRegistry reg;
     gn_handler_id_t id = GN_INVALID_ID;

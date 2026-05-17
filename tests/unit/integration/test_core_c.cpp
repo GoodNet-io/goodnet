@@ -225,7 +225,7 @@ TEST(CoreC, GetStatsZeroedAfterStart) {
 }
 
 TEST(CoreC, GetStatsRejectsNonZeroReserved) {
-    /// `abi-evolution.md` §4: producer-side `_reserved` slots MUST be
+    /// `abi-evolution.en.md` §4: producer-side `_reserved` slots MUST be
     /// zero on entry. A non-zero slot signals stack garbage and the
     /// thunk rejects with `GN_ERR_INVALID_ENVELOPE` rather than
     /// proceeding with an ABI-mismatched struct.
@@ -471,7 +471,7 @@ TEST(CoreC, RegisterProtocolApiSizeMismatchRejected) {
 
     /// api_size below the producer's `sizeof(gn_protocol_layer_vtable_t)`
     /// means the consumer's struct is older than the producer's —
-    /// `abi-evolution.md` §3a says the kernel refuses the registration
+    /// `abi-evolution.en.md` §3a says the kernel refuses the registration
     /// instead of letting a partial vtable through.
     gn_protocol_layer_vtable_t vt = make_stub_vtable();
     vt.api_size = 4;

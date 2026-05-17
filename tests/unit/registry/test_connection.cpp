@@ -307,7 +307,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, FoldsPerConnectionCounters) {
 
 /// Cross-shard non-deadlock under contention: two threads each hold
 /// the snapshot+erase critical section on a different shard. The
-/// `scoped_lock` deadlock-avoidance from `registry.md` §3 must hold
+/// `scoped_lock` deadlock-avoidance from `registry.en.md` §3 must hold
 /// for the new path too.
 TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentCrossShardNoDeadlock) {
     constexpr int kRounds = 64;
@@ -366,7 +366,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentCrossShardNoDeadlock) {
 
 /// Two threads race snapshot+erase against the same id. Exactly
 /// one observes the record; the other returns `nullopt`. Holds
-/// the `registry.md` §4a atomicity guarantee under contention.
+/// the `registry.en.md` §4a atomicity guarantee under contention.
 TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentSameIdExactlyOneSucceeds) {
     constexpr int kRounds = 256;
     ConnectionRegistry reg;
@@ -529,7 +529,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
                 ++insert_ok;
 
                 /// All three indexes return the same record without
-                /// external synchronisation — `registry.md` §3
+                /// external synchronisation — `registry.en.md` §3
                 /// invariant.
                 auto by_id  = reg.find_by_id(id);
                 auto by_uri = reg.find_by_uri(uri);

@@ -3,7 +3,7 @@
 ///
 /// Exercises two contracts on `host_api->notify_connect` /
 /// `notify_disconnect` per `docs/contracts/host-api.md` and
-/// `security-trust.md` §4:
+/// `security-trust.en.md` §4:
 ///
 ///   * `notify_connect` consults `IProtocolLayer::allowed_trust_mask()`
 ///     and refuses connections whose declared trust class is not in
@@ -13,7 +13,7 @@
 ///   * `notify_disconnect` snapshots and erases the connection
 ///     record atomically, so the published `DISCONNECTED` event
 ///     payload carries the snapshotted trust class and remote_pk
-///     per `conn-events.md` §2a.
+///     per `conn-events.en.md` §2a.
 
 #include <gtest/gtest.h>
 
@@ -237,7 +237,7 @@ TEST(HostApiNotifyDisconnect, MissingConnReturnsNotFound) {
 
     /// Disconnect of a never-inserted id reports
     /// `GN_ERR_NOT_FOUND` and fires no event — per
-    /// `conn-events.md` §2 each event must correspond to a real
+    /// `conn-events.en.md` §2 each event must correspond to a real
     /// lifecycle transition; an id that was never registered has
     /// none.
     constexpr gn_conn_id_t kUnknownConn = 99999;
@@ -282,7 +282,7 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
 }
 
 /// Two threads race the same `notify_disconnect(conn)` through the C
-/// ABI. Per `conn-events.md` §2a the channel publishes exactly one
+/// ABI. Per `conn-events.en.md` §2a the channel publishes exactly one
 /// DISCONNECTED for the single underlying lifecycle transition; the
 /// losing thread reports `GN_ERR_NOT_FOUND`.
 TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
@@ -350,7 +350,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
         << "one DISCONNECTED per real removal, regardless of contention";
 }
 
-/// `conn-events.md` §2a Returns row: `conn == GN_INVALID_ID`
+/// `conn-events.en.md` §2a Returns row: `conn == GN_INVALID_ID`
 /// collapses to `GN_ERR_NOT_FOUND` (no record matches the
 /// sentinel id).
 TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsNotFound) {
@@ -361,7 +361,7 @@ TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsNotFound) {
               GN_ERR_NOT_FOUND);
 }
 
-/// `conn-events.md` §2a Returns row: NULL host_ctx returns
+/// `conn-events.en.md` §2a Returns row: NULL host_ctx returns
 /// `GN_ERR_NULL_ARG` and changes no state.
 TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
     Kernel k;
@@ -370,7 +370,7 @@ TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
     EXPECT_EQ(api.notify_disconnect(nullptr, 1, GN_OK), GN_ERR_NULL_ARG);
 }
 
-/// `conn-events.md` §2a Returns row: a non-transport plugin
+/// `conn-events.en.md` §2a Returns row: a non-transport plugin
 /// receives `GN_ERR_NOT_IMPLEMENTED` from `notify_disconnect`
 /// (host-api.md kind gate).
 TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
@@ -381,7 +381,7 @@ TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
               GN_ERR_NOT_IMPLEMENTED);
 }
 
-/// `conn-events.md` §2a Concurrency clause: a subscriber callback
+/// `conn-events.en.md` §2a Concurrency clause: a subscriber callback
 /// may invoke `notify_disconnect` against the same `conn`
 /// re-entrantly. The re-entrant call observes the record already
 /// removed and reports `GN_ERR_NOT_FOUND` without
@@ -495,7 +495,7 @@ TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
               GN_ERR_INVALID_STATE);
 
     /// shutdown query — poisoned ctx surfaces as
-    /// `shutdown_requested = 1` per `host-api.md` §10 so a
+    /// `shutdown_requested = 1` per `host-api.en.md` §10 so a
     /// stale long-running loop bails instead of running with
     /// freed state.
     EXPECT_EQ(api.is_shutdown_requested(&ctx), 1);

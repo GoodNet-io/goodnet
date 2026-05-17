@@ -2,7 +2,7 @@
 /// @brief  End-to-end coverage of `Kernel::drain_namespace`.
 ///
 /// Pins the operator-driven graceful tenant teardown shape from
-/// `handler-registration.md` §2:
+/// `handler-registration.en.md` §2:
 ///
 /// 1. drain returns the count of erased registrations.
 /// 2. The drained namespace's chains are gone immediately; other

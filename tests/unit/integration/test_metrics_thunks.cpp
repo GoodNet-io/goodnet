@@ -3,7 +3,7 @@
 ///
 /// Drives the metrics surface through the public host_api the same
 /// way a plugin would: emit a counter, then iterate to read it
-/// back. Pins the contract from `metrics.md` end-to-end through
+/// back. Pins the contract from `metrics.en.md` end-to-end through
 /// `build_host_api` rather than against the in-process
 /// `MetricsRegistry` directly.
 
@@ -102,7 +102,7 @@ TEST(HostApiMetrics, NullNameIsDroppedSilently) {
 
 TEST(HostApiMetrics, FrameTooLargeBumpsDropCounter) {
     /// `notify_inbound_bytes` rejects frames above `max_frame_bytes`
-    /// per `host-api.md`. Per `metrics.md` §3 the rejection is paired
+    /// per `host-api.en.md`. Per `metrics.en.md` §3 the rejection is paired
     /// with both a counter increment (`drop.frame_too_large`) and a
     /// structured warn line carrying `(conn, observed, configured)`.
     /// This test covers the counter half so dashboards see the rate.

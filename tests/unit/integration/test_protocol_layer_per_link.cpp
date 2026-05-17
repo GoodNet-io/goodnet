@@ -3,7 +3,7 @@
 ///         protocol_id its link declared at registration.
 ///
 /// Pins the per-link protocol-layer selection contract from
-/// `protocol-layer.md` §4: when a link plugin registers under a
+/// `protocol-layer.en.md` §4: when a link plugin registers under a
 /// scheme with a `protocol_id` other than the kernel default, every
 /// connection on that scheme records the declared id. The dispatch
 /// path (`thunk_send`, `thunk_notify_inbound_bytes`, `thunk_inject`)

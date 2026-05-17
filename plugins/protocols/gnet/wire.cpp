@@ -33,7 +33,7 @@ gn_result_t parse_header(std::span<const std::uint8_t> bytes,
     /// v1.1 sender survives parsing on a v1 reader instead of
     /// dropping the connection. The deframe path stays
     /// strict on the bits it understands; the rest are
-    /// invisible. Operator surface stays in `metrics.md` once the
+    /// invisible. Operator surface stays in `metrics.en.md` once the
     /// v1.1 spec lands a per-flag counter.
     const std::uint8_t flags = raw_flags & ~kReservedBitsMask;
 

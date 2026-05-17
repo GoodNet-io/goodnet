@@ -131,7 +131,7 @@ TEST(PluginManager_Quiescence, TimeoutLeaksHandleSafely) {
     /// Persistent counter on the kernel's metrics surface tracks
     /// the cumulative figure across the kernel's lifetime —
     /// `leaked_handles()` is per-rollback, the metric is total.
-    /// Per `metrics.md` §3.
+    /// Per `metrics.en.md` §3.
     EXPECT_EQ(k.metrics().value("plugin.leak.dlclose_skipped"), 1u)
         << "metric counter must record every leak event";
 
@@ -178,7 +178,7 @@ TEST(PluginManager_Quiescence, MetricCounterAccumulatesAcrossRollbacks) {
            "rate-graph view";
 }
 
-/// `limits.md` §4a: `gn_limits_t::max_plugins` cap blocks loads
+/// `limits.en.md` §4a: `gn_limits_t::max_plugins` cap blocks loads
 /// whose path count exceeds it. Read directly from `kernel.limits()`
 /// inside `PluginManager::load`, the single source of truth.
 TEST(PluginManager_MaxPlugins, RejectsBeyondCap) {
@@ -211,7 +211,7 @@ TEST(PluginManager_MaxPlugins, ZeroPathsAboveCapRejected) {
     EXPECT_EQ(pm.size(), 0u);
 }
 
-/// `plugin-manifest.md`: the manifest is the kernel's only defence
+/// `plugin-manifest.en.md`: the manifest is the kernel's only defence
 /// between an attacker-controlled plugins directory and its own
 /// address space. An empty manifest is the developer-mode path; a
 /// non-empty manifest puts the loader in production mode and every
@@ -270,7 +270,7 @@ TEST(PluginManager_Manifest, HashMismatchRejected) {
 }
 
 TEST(PluginManager_Manifest, RequiredFlagRefusesEmptyManifest) {
-    /// `plugin-manifest.md` §7: the required flag turns the empty-
+    /// `plugin-manifest.en.md` §7: the required flag turns the empty-
     /// manifest case into a hard error, naming "manifest required
     /// but empty: <path>" in the diagnostic. The default flow with
     /// the flag clear continues to permit empty-manifest loads.

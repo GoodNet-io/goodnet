@@ -264,7 +264,7 @@ struct BenchNode {
 /// `api->send(env->conn_id, ...)`, which depends on `env->conn_id`
 /// being populated by the protocol layer. The C SDK marks that
 /// field as version-gated (`gn_message_t::api_size` check per
-/// `abi-evolution.md` §3); the bench stays on the path the
+/// `abi-evolution.en.md` §3); the bench stays on the path the
 /// protocol-layer ABI guarantees end-to-end and approximates RTT
 /// as 2× the one-way figure.
 struct RxCounter {
@@ -328,7 +328,7 @@ inline gn_propagation_t rx_echo_handle(void* self, const gn_message_t* env) {
     /// (`sdk/types.h` §gn_message_t.conn_id). Gate on the
     /// envelope's `api_size` so we never read past a producer
     /// built before the conn_id field landed — degrade silently
-    /// to no echo per `handler-registration.md` §3a.
+    /// to no echo per `handler-registration.en.md` §3a.
     if (r->api && r->api->send
         && env->api_size
                >= offsetof(gn_message_t, conn_id) + sizeof(env->conn_id)

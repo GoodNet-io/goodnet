@@ -1,6 +1,6 @@
 /// @file   tests/integration/test_trust_class_metric.cpp
 /// @brief  Pin `metrics.drop.trust_class_mismatch` symmetry across
-///         the two trust-class gates per `security-trust.md` §4 +
+///         the two trust-class gates per `security-trust.en.md` §4 +
 ///         §9. The protocol-side gate at `host_api_builder.cpp:1067`
 ///         already bumped the counter; this test pins the matching
 ///         security-side bump after `SessionRegistry::create`

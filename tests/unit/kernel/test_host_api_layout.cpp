@@ -123,7 +123,7 @@ TEST(HostApiLayout, LogVtablePopulated) {
 
 TEST(HostApiLayout, ReservedTailZeroed) {
     /// `_reserved` slots MUST be zero in the produced table per
-    /// `abi-evolution.md` §4. A non-zero slot would mean the builder
+    /// `abi-evolution.en.md` §4. A non-zero slot would mean the builder
     /// wrote past the contract's named tail; a future SDK that
     /// promotes a reserved slot to a real entry would inherit
     /// garbage.

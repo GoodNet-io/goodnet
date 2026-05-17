@@ -239,7 +239,7 @@ TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
 // ── §3a vtable api_size validation ───────────────────────────────────────
 
 TEST(SecurityRegistry_VtableApiSize, RejectsZeroApiSize) {
-    /// `abi-evolution.md` §3a: zero-init vtable carries an api_size
+    /// `abi-evolution.en.md` §3a: zero-init vtable carries an api_size
     /// of zero, smaller than the kernel's minimum; reject before
     /// activation.
     SecurityRegistry r;

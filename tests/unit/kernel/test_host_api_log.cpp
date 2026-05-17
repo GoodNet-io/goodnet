@@ -1,7 +1,7 @@
 /// @file   tests/unit/kernel/test_host_api_log.cpp
 /// @brief  Plugin-facing log substruct (`gn_log_api_t`) hands a fully
 ///         formatted buffer to the kernel sink without ever
-///         interpreting format specifiers, per `host-api.md` §11.
+///         interpreting format specifiers, per `host-api.en.md` §11.
 ///
 /// `should_log` is the level-filter fast path; `emit` is the literal
 /// hand-off. Together they close the format-string class of attack

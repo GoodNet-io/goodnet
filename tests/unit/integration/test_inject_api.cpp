@@ -112,7 +112,7 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     EXPECT_EQ(cap.last_msg_id, 0x77u);
     EXPECT_EQ(cap.last_sender,   peer_pk);
     EXPECT_EQ(cap.last_receiver, local_pk);
-    /// Per `host-api.md` §8: kernel stamps `env.conn_id = source` so
+    /// Per `host-api.en.md` §8: kernel stamps `env.conn_id = source` so
     /// conn-aware handlers (heartbeat RTT, future per-link gates) can
     /// route back through the bridge edge directly. Pre-fix this read
     /// zero (build_envelope zero-inits, no stamp site in thunk_inject).
@@ -337,7 +337,7 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
                             framed->data(), framed->size()),
               GN_OK);
     EXPECT_EQ(cap.calls.load(), 1);
-    /// Per `host-api.md` §8: LAYER_FRAME stamps `env.conn_id = source`
+    /// Per `host-api.en.md` §8: LAYER_FRAME stamps `env.conn_id = source`
     /// on every dispatched envelope, mirroring `notify_inbound_bytes`
     /// post-deframe. Pre-fix this read zero (no stamp site in the
     /// thunk's deframe loop).

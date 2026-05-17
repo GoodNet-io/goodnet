@@ -3,7 +3,7 @@
 ///
 /// Drives `inject(LAYER_MESSAGE)` and `inject(LAYER_FRAME)` through the
 /// host_api thunks and verifies that the kernel's `inject_rate_limiter`
-/// (per `host-api.md` §8) refuses traffic past the bucket budget with
+/// (per `host-api.en.md` §8) refuses traffic past the bucket budget with
 /// `GN_ERR_LIMIT_REACHED`. The bucket is reconfigured to a tight,
 /// non-refilling shape so the assertion runs deterministically under
 /// sanitizer slowdown without depending on wall-clock timing.
@@ -35,7 +35,7 @@ using namespace gn::core;
 using namespace gn::plugins::gnet;
 
 /// Kernel + GnetProtocol + handler-kind plugin context. Inject thunks
-/// run as if invoked by a handler/bridge plugin per `host-api.md` §8.
+/// run as if invoked by a handler/bridge plugin per `host-api.en.md` §8.
 struct InjectHarness {
     std::unique_ptr<Kernel>       kernel = std::make_unique<Kernel>();
     std::shared_ptr<GnetProtocol> proto  = std::make_shared<GnetProtocol>();
@@ -365,7 +365,7 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
 
 // ── drop counters fire alongside per-cap rejections ───────────────────────
 //
-// Per `metrics.md` §3 every drop site bumps a `drop.<reason>` counter
+// Per `metrics.en.md` §3 every drop site bumps a `drop.<reason>` counter
 // next to its structured warn line. The cap rejections in `inject`
 // pair with `GN_DROP_PAYLOAD_TOO_LARGE` (MESSAGE), `GN_DROP_FRAME_TOO_LARGE`
 // (FRAME), and the rate-limit branch with `GN_DROP_RATE_LIMITED`.

@@ -3,7 +3,7 @@
 ///
 /// Pins the contract from `docs/contracts/host-api.md` §6 (scheme is
 /// unique across loaded transports; lookups are O(1) under a shared
-/// mutex) and `link.md` §4 (id is allocated by the kernel, never
+/// mutex) and `link.en.md` §4 (id is allocated by the kernel, never
 /// by transports themselves).
 
 #include <gtest/gtest.h>
@@ -246,7 +246,7 @@ TEST(LinkRegistry_Concurrency, FourThreadsRegisterUnregister) {
 // ── §3a vtable api_size validation ───────────────────────────────────────
 
 TEST(LinkRegistry_VtableApiSize, RejectsZeroApiSize) {
-    /// `abi-evolution.md` §3a: a vtable that declares an api_size
+    /// `abi-evolution.en.md` §3a: a vtable that declares an api_size
     /// smaller than the kernel's known minimum is from an SDK older
     /// than the slots the kernel intends to call. Reject before any
     /// slot lookup.

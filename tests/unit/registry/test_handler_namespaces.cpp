@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_handler_namespaces.cpp
 /// @brief  Pins the namespace axis of `HandlerRegistry`.
 ///
-/// Per `handler-registration.md` §2 a handler registration scopes
+/// Per `handler-registration.en.md` §2 a handler registration scopes
 /// to a tenant `namespace_id`; two handlers under the same
 /// `(protocol_id, msg_id)` pair but different namespaces coexist;
 /// `drain_by_namespace` removes every chain in one namespace

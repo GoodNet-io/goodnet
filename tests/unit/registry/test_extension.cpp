@@ -3,7 +3,7 @@
 ///
 /// Pins the contract from `docs/contracts/abi-evolution.md` §2 (semver
 /// compatibility: major must match, registered minor must be >= requested
-/// minor) and `host-api.md` §2 (`query_extension_checked`,
+/// minor) and `host-api.en.md` §2 (`query_extension_checked`,
 /// `register_extension`). Concurrent register/query is exercised under
 /// the contract's claim that lookups stay sub-microsecond against
 /// concurrent writers.
