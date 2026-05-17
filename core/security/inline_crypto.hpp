@@ -105,14 +105,12 @@ public:
     /// then falls through to the provider vtable, which is a
     /// copy-through for `gn.security.null`).
     ///
-    /// This is the inline-crypto half of the post-handshake
-    /// Noise→Null handoff PoC in `bench/showcase` §B.3. A
-    /// production-shape kernel-side handoff is a v1.x followup;
-    /// the hook is gated through
-    /// `SecuritySession::_test_clear_inline_crypto`, which checks
-    /// the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` env var before
-    /// calling here. Without the env var, nothing in the build
-    /// reaches this method.
+    /// The inline-crypto half of the post-handshake Noise→Null
+    /// handoff PoC used by `bench/showcase` §B.3. The hook is
+    /// gated through `SecuritySession::_test_clear_inline_crypto`,
+    /// which checks the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`
+    /// env var before calling here. Without the env var, nothing
+    /// in the build reaches this method.
     void clear_for_test() noexcept;
 
 private:

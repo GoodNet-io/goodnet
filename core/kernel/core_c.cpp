@@ -612,11 +612,11 @@ gn_result_t gn_core_load_plugins_batch(gn_core_t* core,
 
 gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name) {
     if (core == nullptr || name == nullptr) return GN_ERR_NULL_ARG;
-    /// PluginManager today only exposes `shutdown()` (full teardown),
-    /// not per-name unload. v1.x roadmap: per-name reload (host-api.en.md
-    /// §10 hot-reload section). For now the per-name path returns
-    /// `NOT_IMPLEMENTED`; hosts that need full-teardown go through
-    /// `gn_core_destroy` + new `gn_core_create`.
+    /// PluginManager only exposes `shutdown()` (full teardown), not
+    /// per-name unload — returns `NOT_IMPLEMENTED`. Hosts that need
+    /// full-teardown go through `gn_core_destroy` + new
+    /// `gn_core_create`. Per-name reload is sketched in
+    /// `host-api.en.md` §10.
     (void)name;
     (void)core;
     return GN_ERR_NOT_IMPLEMENTED;
