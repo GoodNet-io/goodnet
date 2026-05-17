@@ -10,14 +10,14 @@ shape of a config or a systemd unit.
 |---|---|
 | `example/`  | Reference `node.json` (kernel config) and `plugins.json` (manifest); dropped into `/etc/goodnet/` and adjusted per deployment |
 | `migrate/`  | Procedure for post-rc1 plugin spinoff out of the monorepo (`spinoff-cookbook.md`) |
-| `systemd/`  | `goodnet.service` unit with `NoNewPrivileges`, `ProtectSystem`, `MemoryDenyWriteExecute`, etc. — drop into `/etc/systemd/system/` |
+| `systemd/`  | `goodnetd.service` unit with `NoNewPrivileges`, `ProtectSystem`, `MemoryDenyWriteExecute`, etc. — drop into `/etc/systemd/system/` |
 
 ## Use
 
 ```sh
 sudo cp dist/example/node.json    /etc/goodnet/node.json
 sudo cp dist/example/plugins.json /etc/goodnet/plugins.json
-sudo cp dist/systemd/goodnet.service /etc/systemd/system/goodnet.service
+sudo cp dist/systemd/goodnetd.service /etc/systemd/system/goodnetd.service
 sudo systemctl enable --now goodnet
 ```
 

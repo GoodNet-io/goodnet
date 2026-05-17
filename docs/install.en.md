@@ -27,7 +27,7 @@ Plus one user account and one state directory the systemd unit creates:
 | `/var/lib/goodnet/` | `goodnet:goodnet`, mode `0750` | Plugin state (DHT routing tables, sync DBs, etc.) |
 
 The kernel does not need root, raw sockets, or the host namespace
-tree. The systemd unit (`dist/systemd/goodnet.service`) drops every
+tree. The systemd unit (`dist/systemd/goodnetd.service`) drops every
 privilege the kernel does not require — see §4 for the hardening
 matrix.
 
@@ -134,15 +134,15 @@ and exits 0; secret seeds never reach stdout.
 ## 4. Installing the systemd unit
 
 ```sh
-sudo install -m 0644 dist/systemd/goodnet.service \
-                     /etc/systemd/system/goodnet.service
+sudo install -m 0644 dist/systemd/goodnetd.service \
+                     /etc/systemd/system/goodnetd.service
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin goodnet
 sudo systemctl daemon-reload
 sudo systemctl enable --now goodnet
 ```
 
 The unit applies a hardening sandbox documented in
-`dist/systemd/goodnet.service`:
+`dist/systemd/goodnetd.service`:
 
 | Knob | Effect |
 |---|---|

@@ -109,7 +109,7 @@ Logs flow through journald, not any path above. See §8.
 
 ## 3. systemd unit reference
 
-The shipped unit `dist/systemd/goodnet.service` applies a
+The shipped unit `dist/systemd/goodnetd.service` applies a
 defence-in-depth sandbox. Each flag restricts a specific kernel
 surface; together they reduce the blast radius of a hypothetical
 plugin RCE to roughly "read the plugin's state directory and emit
@@ -148,7 +148,7 @@ Two situations call for an override: a JIT plugin (future scripting,
 embedded WASM runtime) needs `MemoryDenyWriteExecute=` cleared; a
 host where journald is not the log sink needs `StandardOutput=` /
 `StandardError=` overridden. Both go in
-`/etc/systemd/system/goodnet.service.d/override.conf` so package
+`/etc/systemd/system/goodnetd.service.d/override.conf` so package
 upgrades do not stomp on local edits.
 
 ---
@@ -404,7 +404,7 @@ process, ordered by After= chains".
 
 ### 7.1 Kernel unit
 
-`goodnet.service` (§3) is the foundation. Dependent units bind to
+`goodnetd.service` (§3) is the foundation. Dependent units bind to
 it through ordering directives.
 
 ### 7.2 gssh listen
@@ -444,8 +444,8 @@ own units. Standard pattern:
 ```ini
 [Unit]
 Description=Custom GoodNet app
-After=network-online.target goodnet.service
-Requires=goodnet.service
+After=network-online.target goodnetd.service
+Requires=goodnetd.service
 
 [Service]
 ExecStart=/usr/local/bin/my-app --config /etc/my-app/config.json
@@ -460,7 +460,7 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-`After=goodnet.service` orders start; `Requires=` propagates
+`After=goodnetd.service` orders start; `Requires=` propagates
 stops. Apps talking to the kernel through IPC (e.g., goodnet-panel)
 need `Requires=`; apps running their own kernel in-process do not.
 
@@ -555,7 +555,7 @@ The shipped unit does not pin specific ceilings; relevant knobs:
 A typical override file pinning these:
 
 ```ini
-# /etc/systemd/system/goodnet.service.d/limits.conf
+# /etc/systemd/system/goodnetd.service.d/limits.conf
 [Service]
 LimitNOFILE=8192
 MemoryMax=2G
