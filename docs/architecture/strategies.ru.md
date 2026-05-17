@@ -325,7 +325,8 @@ gn_result_t (*on_path_event)(void* ctx,
 
 `gn.float-send.*` (если когда-нибудь landed) может построиться
 поверх `gn.strategy.*` plugin'а как обёртка, добавляющая send
-pipe + per-peer cache. Pre-v1 — только `gn.strategy.*` shipped.
+pipe + per-peer cache. v1 ships только `gn.strategy.*`; кэрнел
+сам walk'ает chain через `host_api->send_to`.
 
 ### Reference impl — `gn.strategy.rtt-optimal`
 
