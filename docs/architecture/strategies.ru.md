@@ -169,7 +169,10 @@ Composition contract фиксируется в plugin's README. Перенос �
 
 ## Composition pattern
 
-App выбирает конкретный strategy namespace явно:
+Под планируемый `gn.float-send.*` family (см. §Reserved категории —
+v1 ships только `gn.strategy.*`, кэрнел walk'ает chain сам; см.
+§«Принцип transparency» ниже) app выбирает конкретный strategy
+namespace явно:
 
 ```cpp
 const gn_float_send_api_t* fs = nullptr;
