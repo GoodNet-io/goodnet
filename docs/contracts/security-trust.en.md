@@ -318,12 +318,15 @@ from loaded plugins. `core/` contains only interface declarations.
 This separation prevents the kernel from accidentally exposing a
 plaintext path through pure source-level reachability.
 
-v1 admits **at most one active security provider per kernel**. A
-second `register_security` call returns `GN_ERR_LIMIT_REACHED`
-(`core/registry/security.cpp:33`); the existing provider is
-unaffected. Multi-provider per-trust-class selection — running a
-null provider for `Loopback` traffic and Noise for `Peer` /
-`Untrusted` on the same kernel — lands in v1.x via StackRegistry.
+The kernel admits multiple active security providers per kernel
+via the StackRegistry — one entry per **distinct** `provider_id`.
+A second `register_security` call carrying an already-registered
+id returns `GN_ERR_LIMIT_REACHED`
+(`core/registry/security.cpp:45-46`); a call with a fresh id is
+admitted and joins the registry. The kernel's per-trust-class
+admission (e.g. null on `Loopback` / `IntraNode`, Noise on
+`Untrusted` / `Peer`) reads through `find_for_trust` against the
+union of registered providers' masks.
 
 ---
 
