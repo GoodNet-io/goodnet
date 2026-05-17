@@ -188,8 +188,8 @@ is at the top.
 - "Memory cost per connection is X KiB" — the bench bodies
   open ~1-10 conns (or a single conn) and report RSS Δ.
   Per-conn extrapolation requires `bench_tcp_scale` which
-  iterates conn counts and the aggregator's not yet rendering
-  that as a curve (followup).
+  iterates conn counts; the aggregator does not yet render that
+  as a curve.
 
 ---
 

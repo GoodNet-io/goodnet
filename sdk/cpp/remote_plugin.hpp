@@ -15,8 +15,9 @@
 /// Single-threaded by design: the reader loop and HOST_CALL writes
 /// share one thread, so `host_api` slots may only be called from
 /// inside an entry-point that the reader dispatched. Multi-threaded
-/// workers need a response demultiplexer per request_id — pinned in
-/// `docs/contracts/remote-plugin.en.md` §9 as a follow-up.
+/// workers would need a response demultiplexer per request_id —
+/// shape pinned in `docs/contracts/remote-plugin.en.md` §9; not
+/// wired in this reference stub.
 
 #pragma once
 

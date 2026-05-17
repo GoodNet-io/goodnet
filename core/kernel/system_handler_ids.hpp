@@ -36,8 +36,9 @@ inline constexpr std::uint32_t kIdentityRangeEnd      = 0x1F;
 inline constexpr std::uint32_t kAttestationMsgId      = 0x11;
 
 /// Identity-rotation announcement — `docs/contracts/identity.en.md`
-/// §7. 150-byte signed proof. The follow-up rotation patch wires
-/// the receiver-side kernel handler.
+/// §7. 150-byte signed proof. The receiver-side kernel handler
+/// lives in `core/kernel/host_api/notifications.cpp::notify_inbound_bytes`
+/// (rotation branch).
 inline constexpr std::uint32_t kIdentityRotationMsgId = 0x12;
 
 /// Capability-blob distribution — `docs/contracts/capability-tlv.en.md`.
