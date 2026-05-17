@@ -46,3 +46,16 @@ def test_write_emits_yaml(tiny_repo):
     text = path.read_text()
     assert "keys:" in text
     assert "links.tcp.cap" in text
+
+
+def test_write_honours_monkeypatched_facts_path(tiny_repo):
+    """Defence-in-depth against the default-argument trap that
+    silently corrupted `docs/_facts/host_api.yaml` (commit
+    2474cd7). Pins that `config_keys.write()` resolves
+    FACTS_PATH at call time so the conftest fixture reaches it."""
+    expected = tiny_repo / "docs" / "_facts" / "config_keys.yaml"
+    returned = config_keys.write()
+    assert returned == expected, (
+        f"write() must write to the monkeypatched FACTS_PATH "
+        f"({expected}), got {returned}"
+    )

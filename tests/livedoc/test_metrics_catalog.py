@@ -56,3 +56,13 @@ def test_write_emits_yaml(tiny_repo):
     text = path.read_text()
     assert "counters:" in text
     assert "links.tcp.hit" in text
+
+
+def test_write_honours_monkeypatched_facts_path(tiny_repo):
+    """Same regression coverage as test_config_keys — pin
+    `metrics_catalog.write()` against the default-argument trap
+    that silently rewrote the real `docs/_facts/host_api.yaml`
+    in commit 2474cd7."""
+    expected = tiny_repo / "docs" / "_facts" / "metrics_catalog.yaml"
+    returned = metrics_catalog.write()
+    assert returned == expected
