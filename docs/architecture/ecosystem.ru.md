@@ -73,8 +73,10 @@ _Plugin dlopen pipeline: discover → load → init → register._
 
 Разные темпы разработки. Plugin для нового transport может
 иметь rapid iteration (несколько раз в день), kernel ABI
-заморожен после rc1 — релизный темп раз в полгода. Если они в
-одном git'е — каждый rebase плагина тащит kernel и наоборот.
+замораживается на plain `v1.0.0` (per
+[`abi-evolution.en.md`](../contracts/abi-evolution.en.md) §3b)
+— релизный темп ядра раз в полгода. Если они в одном git'е —
+каждый rebase плагина тащит kernel и наоборот.
 
 Разные лицензии. Strategic плагины (tcp/noise/heartbeat) под GPL-2
 для anti-enclosure. Apps и bindings — MIT чтобы downstream пользователи
