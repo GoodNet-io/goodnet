@@ -163,10 +163,12 @@ typedef struct host_api_s {
                                      gn_result_t reason);
 
     /* ── Security registration ───────────────────────────────────────── */
-    /* v1 admits at most one active provider per kernel; a second       */
-    /* register_security call returns GN_ERR_LIMIT_REACHED. The         */
-    /* incumbent stays active. Multi-provider per-trust-class selection  */
-    /* lands with StackRegistry in v1.x. See `security-trust.en.md` §6.    */
+    /* The kernel admits N security providers concurrently via the      */
+    /* StackRegistry — one entry per distinct `provider_id`. A second   */
+    /* call with an already-registered id returns                       */
+    /* GN_ERR_LIMIT_REACHED; a call with a fresh id is admitted and     */
+    /* joins the per-trust-class admission set. See                     */
+    /* `security-trust.en.md` §6.                                       */
     gn_result_t (*register_security)(
         void* host_ctx, const char* provider_id,
         const struct gn_security_provider_vtable_s* vtable,
