@@ -1,5 +1,5 @@
 /// @file   core/registry/security.hpp
-/// @brief  Security-provider registry (StackRegistry v1.x preview).
+/// @brief  Security-provider registry (multi-provider StackRegistry).
 ///
 /// Holds N security providers concurrently, each declaring which
 /// `gn_trust_class_t` values it admits via its
@@ -9,13 +9,12 @@
 /// `IntraNode` and `noise` on `Untrusted` / `Peer` in the same
 /// process without an operator config switch.
 ///
-/// Per `docs/contracts/security-trust.en.md` §5 this is the
-/// "StackRegistry v1.x" the v1.0-rc series promised. The
-/// `register_provider` contract now allows multiple distinct
-/// `provider_id`s; only duplicate ids still return
-/// `GN_ERR_LIMIT_REACHED`. `current()` stays for backwards-compat
-/// — returns the first registered provider, which is what
-/// callers that don't carry a trust class observe.
+/// `register_provider` admits multiple distinct `provider_id`s;
+/// only duplicate ids return `GN_ERR_LIMIT_REACHED`. `current()`
+/// is kept for callers that do not carry a trust class — it
+/// returns the first registered provider. See
+/// `docs/contracts/security-trust.en.md` §4 for the per-component
+/// mask gate this registry feeds.
 
 #pragma once
 

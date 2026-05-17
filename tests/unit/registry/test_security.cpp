@@ -71,8 +71,7 @@ TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
 
     /// StackRegistry contract: registering a SECOND provider with a
     /// DISTINCT id (`null` alongside `noise`) succeeds — that is the
-    /// canonical "null on loopback + noise on peer" stack the v1.x
-    /// design promised.
+    /// canonical "null on loopback + noise on peer" composite stack.
     EXPECT_EQ(r.register_provider("null",
                                    make_dummy_vtable(), &self_b),
               GN_OK);
@@ -151,7 +150,7 @@ TEST(SecurityRegistry_Unregister, AllowsReregisterAfterRemoval) {
 
 // ── current() / is_active() ──────────────────────────────────────────────
 
-// ── find_for_trust (StackRegistry v1.x preview) ──────────────────────────
+// ── find_for_trust (multi-provider StackRegistry) ────────────────────────
 
 namespace {
 
