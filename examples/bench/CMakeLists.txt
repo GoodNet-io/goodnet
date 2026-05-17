@@ -2,8 +2,7 @@
 #
 # Two GoodNet kernels in one process, real loopback TCP under Noise XX,
 # Bob loops `host_api->send` against Alice as fast as the kernel
-# accepts. Reports payload Gbps. Mirrors the legacy `cli/bench.cpp`
-# matrix used to land the ~11 Gbit/s reference.
+# accepts. Reports payload Gbps.
 
 add_executable(goodnet_bench main.cpp)
 
