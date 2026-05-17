@@ -153,6 +153,19 @@ gn_result_t register_security(void* host_ctx,
     if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+    /// Capability gate per `security-trust.md`: only plugins that
+    /// declared themselves SECURITY-kind at load time may install
+    /// a security provider. HANDLER, LINK, STRATEGY, BRIDGE, UI,
+    /// PROTOCOL plugins calling this slot have no business minting
+    /// a provider entry — refuse with `NOT_AUTHORISED`-style code
+    /// (`INVALID_STATE`, since we have no dedicated capability
+    /// code yet) and let the loader log the misuse. The
+    /// embedding host (`GN_PLUGIN_KIND_UNKNOWN`) keeps full access
+    /// because it carries the operator's authority directly.
+    if (pc->kind != GN_PLUGIN_KIND_SECURITY &&
+        pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        return GN_ERR_INVALID_STATE;
+    }
     return pc->kernel->security().register_provider(
         provider_id, vtable, security_self, pc->plugin_anchor);
 }

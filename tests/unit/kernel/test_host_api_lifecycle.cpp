@@ -502,3 +502,78 @@ TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
 
     ctx.magic = PluginContext::kMagicLive;
 }
+
+// ── register_security capability gate ──────────────────────────────
+
+/// Stub security provider vtable — the gate fires before the
+/// provider ever runs, so an empty shell is enough to drive the
+/// path through `register_security`.
+gn_security_provider_vtable_t make_stub_security_vt() {
+    gn_security_provider_vtable_t v{};
+    v.api_size = sizeof(v);
+    return v;
+}
+
+TEST(HostApiRegisterSecurity, HandlerKindPluginRejected) {
+    Kernel k;
+    auto ctx = make_handler_ctx(k);
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    /// HANDLER-kind plugin has no business installing a security
+    /// provider — `register_security` capability is reserved for
+    /// SECURITY-kind plugins. The gate should refuse before the
+    /// registry sees the vtable.
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_ERR_INVALID_STATE);
+    EXPECT_FALSE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, LinkKindPluginRejected) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);  // GN_PLUGIN_KIND_LINK
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_ERR_INVALID_STATE);
+    EXPECT_FALSE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, SecurityKindPluginAccepted) {
+    Kernel k;
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    ctx.kind          = GN_PLUGIN_KIND_SECURITY;
+    ctx.plugin_name   = "test-security";
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_OK);
+    EXPECT_TRUE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, HostEmbeddingAccepted) {
+    Kernel k;
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    /// `GN_PLUGIN_KIND_UNKNOWN` is the embedding host's marker —
+    /// the operator's CLI / library host that drove `gn_core_create`
+    /// directly. It carries the operator's authority and is not
+    /// gated by the per-kind capability narrowing.
+    ctx.kind          = GN_PLUGIN_KIND_UNKNOWN;
+    ctx.plugin_name   = "test-host";
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_OK);
+    EXPECT_TRUE(k.security().is_active());
+}
