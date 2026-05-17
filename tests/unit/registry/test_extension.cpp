@@ -233,6 +233,58 @@ TEST(ExtensionRegistry_QueryPrefix, EmptyPrefixReturnsAll) {
     EXPECT_EQ(all.size(), 2u);
 }
 
+/// `query_prefix` returns matches in registration order so the
+/// strategy chain (and every other prefix-walking consumer) sees
+/// the same deterministic walk regardless of the underlying hash-
+/// map iteration order. Names are picked so the lex order differs
+/// from registration order — the only acceptable ordering is the
+/// registration sequence.
+TEST(ExtensionRegistry_QueryPrefix, PreservesRegistrationOrder) {
+    ExtensionRegistry r;
+    int va = 0, vb = 0, vc = 0;
+    ASSERT_EQ(r.register_extension("gn.strategy.zeta",
+                                    gn_version_pack(1, 0, 0), &va),
+              GN_OK);
+    ASSERT_EQ(r.register_extension("gn.strategy.alpha",
+                                    gn_version_pack(1, 0, 0), &vb),
+              GN_OK);
+    ASSERT_EQ(r.register_extension("gn.strategy.mid",
+                                    gn_version_pack(1, 0, 0), &vc),
+              GN_OK);
+
+    auto group = r.query_prefix("gn.strategy.");
+    ASSERT_EQ(group.size(), 3u);
+    EXPECT_EQ(group[0].name, "gn.strategy.zeta");
+    EXPECT_EQ(group[1].name, "gn.strategy.alpha");
+    EXPECT_EQ(group[2].name, "gn.strategy.mid");
+}
+
+/// Re-registering a previously-unregistered name pushes it to
+/// the **end** of the registration sequence — the entry behaves
+/// like a freshly registered one.
+TEST(ExtensionRegistry_QueryPrefix, ReregistrationGoesToTail) {
+    ExtensionRegistry r;
+    int va = 0, vb = 0;
+    ASSERT_EQ(r.register_extension("gn.strategy.first",
+                                    gn_version_pack(1, 0, 0), &va),
+              GN_OK);
+    ASSERT_EQ(r.register_extension("gn.strategy.second",
+                                    gn_version_pack(1, 0, 0), &vb),
+              GN_OK);
+
+    ASSERT_EQ(r.unregister_extension("gn.strategy.first"), GN_OK);
+    ASSERT_EQ(r.register_extension("gn.strategy.first",
+                                    gn_version_pack(1, 0, 0), &va),
+              GN_OK);
+
+    auto group = r.query_prefix("gn.strategy.");
+    ASSERT_EQ(group.size(), 2u);
+    EXPECT_EQ(group[0].name, "gn.strategy.second")
+        << "second kept its original seq; should now lead";
+    EXPECT_EQ(group[1].name, "gn.strategy.first")
+        << "first was re-registered; should be at the tail";
+}
+
 // ── concurrent stress ────────────────────────────────────────────────────
 
 /// Hammer register / unregister / query from multiple threads. Reader
