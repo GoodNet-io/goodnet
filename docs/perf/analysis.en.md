@@ -451,11 +451,14 @@ not asserted, not assumed.
   connection bring-up + peer-side wire signal so both halves of
   a session migrate symmetrically without bench harness
   reaching into private state.
-- **Kernel-side strategy event emission** — `notify_connect` /
-  `notify_disconnect` do not yet fire `CONN_UP` / `CONN_DOWN`
-  events to strategy plugins. B.5 + B.6 fire `on_path_event`
-  manually; when the kernel-side hook lands, the bench
-  stand-ins delete cleanly.
+- **Kernel-side strategy event emission** — `notify_connect`
+  fires `CONN_UP` (`core/kernel/host_api/notifications.cpp:133`)
+  and `notify_disconnect` fires `CONN_DOWN`
+  (`core/kernel/host_api/notifications.cpp:558`) to every
+  registered strategy. B.5 + B.6 nevertheless inject their own
+  `on_path_event` calls so the bench can drive specific event
+  timing without staging a full kernel connect/disconnect dance;
+  the manual injection is bench-side convenience, not a gap.
 - **Network mobility** — AF_NETLINK socket on `RTM_NEWLINK` /
   `RTM_DELLINK` is not wired; B.6 mobility bench simulates the
   event through a synthetic second carrier. With the netlink
