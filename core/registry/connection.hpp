@@ -226,11 +226,12 @@ public:
 
     /// Fold an RTT sample into the EWMA(α = 1/8) per RFC 6298. A
     /// zero observation seeds the EWMA on the first call. Returns
-    /// true if the conn was found and the sample applied; false
-    /// when the id is unknown (silently ignored, mirrors the other
-    /// counter mutators).
-    bool update_rtt_sample(gn_conn_id_t id,
-                           std::uint64_t rtt_us) noexcept;
+    /// the smoothed value the kernel stored on the conn, or
+    /// `std::nullopt` when the id is unknown (silently ignored,
+    /// mirrors the other counter mutators).
+    [[nodiscard]] std::optional<std::uint64_t> update_rtt_sample(
+        gn_conn_id_t id,
+        std::uint64_t rtt_us) noexcept;
 
     /// Per-peer identity pinning. A peer's `remote_pk` (mesh
     /// address — derived from `device_pk` only after the

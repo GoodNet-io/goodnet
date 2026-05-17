@@ -426,18 +426,19 @@ gn_result_t notify_rtt_sample(void* host_ctx,
     auto rec = pc->kernel->connections().find_by_id(conn);
     if (!rec) return GN_ERR_NOT_FOUND;
 
-    if (!pc->kernel->connections().update_rtt_sample(conn, rtt_us)) {
-        return GN_ERR_NOT_FOUND;
-    }
+    auto smoothed =
+        pc->kernel->connections().update_rtt_sample(conn, rtt_us);
+    if (!smoothed) return GN_ERR_NOT_FOUND;
 
-    /// Republish to every strategy so chain models stay current
+    /// Republish the EWMA-smoothed value (not the raw sample) so
+    /// strategy chain models stay stable across outlier samples
     /// without each strategy maintaining its own probe.
     auto strategies =
         pc->kernel->extensions().query_prefix("gn.strategy.");
     if (!strategies.empty()) {
         gn_path_sample_t sample{};
         sample.conn   = conn;
-        sample.rtt_us = rtt_us;
+        sample.rtt_us = *smoothed;
         for (const auto& entry : strategies) {
             const auto* sapi =
                 static_cast<const gn_strategy_api_t*>(entry.vtable);

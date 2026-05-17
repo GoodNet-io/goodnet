@@ -318,6 +318,6 @@ slots:
 - name: notify_rtt_sample
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint64_t)
   file: sdk/host_api.h
-  line: 760
+  line: 761
   family: Path observability (host-api.en.md)
   doc: a per-connection RTT sample observed by the

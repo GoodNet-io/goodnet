@@ -359,13 +359,15 @@ void ConnectionRegistry::set_pending_bytes(gn_conn_id_t id,
     it->second->pending_queue_bytes.store(bytes, std::memory_order_relaxed);
 }
 
-bool ConnectionRegistry::update_rtt_sample(
+std::optional<std::uint64_t> ConnectionRegistry::update_rtt_sample(
     gn_conn_id_t id, std::uint64_t rtt_us) noexcept {
-    if (id == GN_INVALID_ID || rtt_us == 0) return false;
+    if (id == GN_INVALID_ID || rtt_us == 0) return std::nullopt;
     const Shard& s = shard_for(id);
     std::shared_lock lock(s.mu);
     auto it = s.counters.find(id);
-    if (it == s.counters.end() || it->second == nullptr) return false;
+    if (it == s.counters.end() || it->second == nullptr) {
+        return std::nullopt;
+    }
     /// EWMA(α = 1/8) per RFC 6298: next = (7·prev + sample) / 8.
     /// The first sample (prev == 0) seeds the EWMA — a single
     /// observation jumps the recorded value to the observation
@@ -380,7 +382,7 @@ bool ConnectionRegistry::update_rtt_sample(
             (prev == 0) ? rtt_us : ((prev * 7 + rtt_us) / 8);
         if (slot.compare_exchange_weak(prev, next,
                                          std::memory_order_relaxed)) {
-            return true;
+            return next;
         }
     }
 }

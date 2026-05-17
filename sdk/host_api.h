@@ -740,10 +740,11 @@ typedef struct host_api_s {
      * from its PING/PONG protocol. The kernel folds each sample
      * into a per-conn EWMA(α = 1/8) per RFC 6298 and stores the
      * smoothed value in `ConnectionRegistry::counters.last_rtt_us`
-     * so `get_endpoint` snapshots reflect it. The kernel also
-     * republishes the sample to every registered strategy
-     * through `on_path_event(GN_PATH_EVENT_RTT_UPDATE, sample)`
-     * so the chain ranks conns by latency without each strategy
+     * so `get_endpoint` snapshots reflect it. The kernel
+     * republishes the *smoothed* value (not the raw sample) to
+     * every registered strategy through
+     * `on_path_event(GN_PATH_EVENT_RTT_UPDATE, sample)` so the
+     * chain ranks conns by latency without each strategy
      * maintaining its own probe.
      *
      * Restricted to LINK or HANDLER kind callers (UNKNOWN — host

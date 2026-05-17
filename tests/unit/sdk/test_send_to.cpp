@@ -251,6 +251,7 @@ struct SpyStrategy {
         std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES> pk{};
         gn_path_event_t                                kind{};
         gn_conn_id_t                                   conn{GN_INVALID_ID};
+        std::uint64_t                                  rtt_us{0};
     };
     std::mutex                mu;
     std::vector<Event>        events;
@@ -273,7 +274,10 @@ struct SpyStrategy {
             std::memcpy(e.pk.data(), peer_pk, GN_PUBLIC_KEY_BYTES);
         }
         e.kind = ev;
-        if (sample != nullptr) e.conn = sample->conn;
+        if (sample != nullptr) {
+            e.conn   = sample->conn;
+            e.rtt_us = sample->rtt_us;
+        }
         std::lock_guard lk(s->mu);
         s->events.push_back(e);
         return GN_OK;
@@ -361,6 +365,51 @@ TEST(HostApiPathEvent, NotifyRttSampleFiresRttUpdateToStrategy) {
     ASSERT_EQ(spy.events.size(), 1u);
     EXPECT_EQ(spy.events[0].kind, GN_PATH_EVENT_RTT_UPDATE);
     EXPECT_EQ(spy.events[0].conn, cid);
+    EXPECT_EQ(spy.events[0].rtt_us, 10'000u);
+
+    (void)api.unregister_extension(&ctx, "gn.strategy.spy");
+}
+
+/// Subsequent samples fold into EWMA(α = 1/8); the kernel
+/// republishes the *smoothed* value to strategies, not the raw
+/// observation. Strategy chain models stay stable across
+/// individual outliers without each plugin maintaining its own
+/// probe.
+TEST(HostApiPathEvent, NotifyRttSampleStrategySeesSmoothedNotRaw) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    SpyStrategy spy;
+    auto vt = SpyStrategy::make_vtable(spy);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.spy",
+                                       GN_EXT_STRATEGY_VERSION, &vt),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xAB, 0xCD};
+    gn_conn_id_t cid = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "fake://h:0",
+                                   GN_TRUST_LOOPBACK,
+                                   GN_ROLE_RESPONDER, &cid),
+              GN_OK);
+    {
+        std::lock_guard lk(spy.mu);
+        spy.events.clear();
+    }
+
+    /// Seed at 10ms, then drive an 80ms outlier. EWMA stores
+    /// next = (7·10000 + 80000) / 8 = 18750us; raw is 80000us.
+    /// The strategy must see the smoothed 18750, not the raw 80000.
+    ASSERT_EQ(api.notify_rtt_sample(&ctx, cid, 10'000), GN_OK);
+    ASSERT_EQ(api.notify_rtt_sample(&ctx, cid, 80'000), GN_OK);
+
+    std::lock_guard lk(spy.mu);
+    ASSERT_EQ(spy.events.size(), 2u);
+    EXPECT_EQ(spy.events[0].rtt_us, 10'000u)
+        << "seed sample is published verbatim";
+    EXPECT_EQ(spy.events[1].rtt_us, 18'750u)
+        << "second sample must arrive smoothed; raw 80000 leaks "
+           "the outlier into the strategy's model";
 
     (void)api.unregister_extension(&ctx, "gn.strategy.spy");
 }

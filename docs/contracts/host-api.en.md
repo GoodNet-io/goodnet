@@ -338,8 +338,9 @@ typedef struct host_api_s {
     /* ── Per-conn RTT sample publish (strategy.en.md §3 + RFC 6298) ─────── */
     /* Link plugins + the heartbeat handler push observed RTT samples */
     /* through this slot. The kernel folds each sample into a per-    */
-    /* conn EWMA(alpha = 1/8) and republishes to every registered     */
-    /* strategy through `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`.    */
+    /* conn EWMA(alpha = 1/8) and republishes the *smoothed* value to */
+    /* every registered strategy through                              */
+    /* `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`.                     */
     /* LINK / HANDLER / UNKNOWN kinds can publish; other kinds get    */
     /* GN_ERR_NOT_IMPLEMENTED. Zero rtt_us is the no-sample sentinel  */
     /* and silently dropped; unknown conn id returns GN_ERR_NOT_FOUND. */
