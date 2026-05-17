@@ -70,7 +70,7 @@ agnostic, plugins сами координируются (см.
 
 Четыре namespace зарезервированы под известные strategy categories:
 
-| Namespace | Категория | Что решает | Reserved with rc1 |
+| Namespace | Категория | Что решает | Reserved |
 |---|---|---|---|
 | `gn.float-send.<strategy>` | smart routing | какой путь выбрать для исходящего сообщения, когда несколько доступны | да |
 | `gn.dht.<strategy>` | distributed routing | как найти peer'а или ресурс по ключу через сеть peer'ов | да |
