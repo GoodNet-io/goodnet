@@ -34,7 +34,9 @@ def compute() -> dict:
     return {"rfcs": out}
 
 
-def write(path: Path = FACTS_PATH) -> Path:
+def write(path: Path | None = None) -> Path:
+    if path is None:
+        path = FACTS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(compute(), sort_keys=False,
                                     allow_unicode=True))

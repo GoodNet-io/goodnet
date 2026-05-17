@@ -99,7 +99,9 @@ def collect() -> dict:
     return {"keys": keys}
 
 
-def write(path: Path = FACTS_PATH) -> Path:
+def write(path: Path | None = None) -> Path:
+    if path is None:
+        path = FACTS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(collect(), sort_keys=False,
                                     allow_unicode=True))

@@ -213,8 +213,10 @@ def _yaml_dump(facts: VtableFacts) -> str:
     return yaml.safe_dump(d, sort_keys=False, width=80, allow_unicode=True)
 
 
-def write_all(out_dir: Path = FACTS_ROOT) -> dict[str, Path]:
+def write_all(out_dir: Path | None = None) -> dict[str, Path]:
     """Run every extractor; return name → written-path map."""
+    if out_dir is None:
+        out_dir = FACTS_ROOT
     out_dir.mkdir(parents=True, exist_ok=True)
     targets = {
         "host_api": extract_host_api,
