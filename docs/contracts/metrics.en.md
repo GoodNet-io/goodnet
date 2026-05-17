@@ -130,6 +130,7 @@ v1.1. The currently-emitting reasons:
 | `drop.deframe_corrupt` | `notify_inbound_bytes` thunk | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` — magic / version drift |
 | `drop.queue_hard_cap` | per-link `send` / `send_batch` (TCP / WS / IPC / TLS) | per-conn pending queue past `pending_queue_bytes_hard` |
 | `drop.trust_class_mismatch` | `notify_connect` thunk | declared trust not in `protocol_layer().allowed_trust_mask()` (protocol-side gate, `core/kernel/host_api/notifications.cpp:81`) **or** not in the security provider's `allowed_trust_mask` (security-side gate, `core/kernel/host_api/notifications.cpp:184` after `SessionRegistry::create` returns `INVALID_ENVELOPE`); same counter for both per `security-trust.en.md` §4 |
+| `drop.capability_blob_too_large` | `present_capability_blob` thunk | declared blob size past the per-process `limits.max_capability_blob_bytes` cap; the thunk returns `GN_ERR_PAYLOAD_TOO_LARGE` and the blob never reaches the bus (`capability-tlv.en.md`) |
 | `drop.attestation_bad_size` / `_replay` / `_parse_failed` / `_bad_signature` / `_expired_or_invalid` / `_identity_change` | `attestation_dispatcher` via `MetricsRegistry::increment_drop_reason` | `attestation.en.md` §5 step failures — one counter per `gn_drop_reason_t` enum value, sharing the kernel's `drop.*` namespace so operators scrape every rejection class together |
 
 `route.outcome.*` is the **routing-pipeline** namespace ("a

@@ -58,7 +58,9 @@ Existing counters keep incrementing across the cap.
 Every envelope routed through `Router::route_inbound` increments
 exactly one of these. The mapping is enumerated in
 `core/kernel/metrics_registry.cpp::route_outcome_metric_name` and
-the increment fires from `host_api_builder.cpp::dispatch_inbound`.
+the increment fires from
+`core/kernel/host_api/internal.cpp::route_one_envelope`, which
+wraps each `Router::route_inbound` call.
 
 | Counter | Producer | Meaning |
 |---|---|---|
@@ -89,12 +91,13 @@ the emitter column lists the call site.
 
 | Counter | Producer | Trigger |
 |---|---|---|
-| `drop.frame_too_large` | `host_api_builder.cpp::notify_inbound_bytes`; `inject` thunk | `parse_header` returns `GN_ERR_FRAME_TOO_LARGE`; injected payload above `limits.max_frame_bytes` |
-| `drop.payload_too_large` | `host_api_builder.cpp::inject` thunk | injected payload above `limits.max_payload_bytes` |
+| `drop.frame_too_large` | `core/kernel/host_api/notifications.cpp::notify_inbound_bytes`; `inject` thunk | `parse_header` returns `GN_ERR_FRAME_TOO_LARGE`; injected payload above `limits.max_frame_bytes` |
+| `drop.payload_too_large` | `core/kernel/host_api/notifications.cpp::inject` thunk | injected payload above `limits.max_payload_bytes` |
 | `drop.queue_hard_cap` | TCP / WS / IPC / TLS link plugins | per-connection pending queue past `pending_queue_bytes_hard` |
-| `drop.deframe_corrupt` | `host_api_builder.cpp::notify_inbound_bytes` | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` (magic / version drift) |
-| `drop.rate_limited` | `host_api_builder.cpp::inject` thunk | per-source token bucket ran dry |
-| `drop.trust_class_mismatch` | `host_api_builder.cpp::notify_connect` thunk (protocol gate); same thunk after `SessionRegistry::create` returns `INVALID_ENVELOPE` (security gate) | declared trust outside the plugin's `allowed_trust_mask`, see [security-trust](../contracts/security-trust.en.md) §4 |
+| `drop.deframe_corrupt` | `core/kernel/host_api/notifications.cpp::notify_inbound_bytes` | `parse_header` returns `GN_ERR_DEFRAME_CORRUPT` (magic / version drift) |
+| `drop.rate_limited` | `core/kernel/host_api/notifications.cpp::inject` thunk | per-source token bucket ran dry |
+| `drop.trust_class_mismatch` | `core/kernel/host_api/notifications.cpp::notify_connect` thunk (protocol gate); same thunk after `SessionRegistry::create` returns `INVALID_ENVELOPE` (security gate) | declared trust outside the plugin's `allowed_trust_mask`, see [security-trust](../contracts/security-trust.en.md) §4 |
+| `drop.capability_blob_too_large` | `core/kernel/host_api/identity.cpp::present_capability_blob` thunk | declared blob size past `limits.max_capability_blob_bytes`; thunk returns `GN_ERR_PAYLOAD_TOO_LARGE` and the blob never reaches the bus, see [capability-tlv](../contracts/capability-tlv.en.md) |
 | `drop.attestation_bad_size` | `core/kernel/attestation_dispatcher.cpp` | attestation envelope size below the wire minimum |
 | `drop.attestation_replay` | `core/kernel/attestation_dispatcher.cpp` | nonce already seen for the same identity |
 | `drop.attestation_parse_failed` | `core/kernel/attestation_dispatcher.cpp` | TLV parse error inside the attestation envelope |
@@ -145,7 +148,8 @@ The two protocol layers compiled into the kernel binary
 currently emit any plugin-side counters. Their drop paths surface
 through the kernel's `drop.*` namespace
 (`drop.frame_too_large`, `drop.deframe_corrupt`) because the
-deframe call lives in `host_api_builder.cpp::notify_inbound_bytes`,
+deframe call lives in
+`core/kernel/host_api/notifications.cpp::notify_inbound_bytes`,
 upstream of the protocol layer.
 
 A future revision may add `gnet.frame.malformed` /
@@ -273,7 +277,9 @@ worked example.
   pipeline behind the `drop.attestation_*` family.
 - Implementation: `core/kernel/metrics_registry.{hpp,cpp}` —
   enum-to-name mapping for `route.outcome.*` and `drop.*`.
-- Implementation: `core/kernel/host_api_builder.cpp` —
-  `thunk_emit_counter` and the kernel-side increment sites.
+- Implementation: `core/kernel/host_api/control.cpp::emit_counter`
+  is the slot bridge; kernel-side increment sites live in
+  `core/kernel/host_api/*.cpp` thunks alongside the rejections
+  they record.
 - SDK header: `sdk/metrics.h` (visitor type), `sdk/host_api.h`
   (slot declarations), `sdk/types.h` (`gn_drop_reason_t`).
