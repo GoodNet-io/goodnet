@@ -2,8 +2,7 @@
 /// @brief  Throughput benchmark — two GoodNet kernels in one process,
 ///         talking over TCP under a Noise XX handshake. Bob loops
 ///         `host_api->send(...)` against Alice as fast as the kernel
-///         accepts. Reports payload Gbps; intended as the rebuild's
-///         baseline measurement vs the legacy 11 Gbit/s reference.
+///         accepts. Reports payload Gbps.
 ///
 /// Usage:
 ///         goodnet-bench [count] [size_kb] [conns]
