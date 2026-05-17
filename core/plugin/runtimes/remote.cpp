@@ -34,4 +34,17 @@ void RemoteRuntime::shutdown(PluginInstance& inst) {
         reinterpret_cast<std::uintptr_t>(inst.self));
 }
 
+void RemoteRuntime::close(PluginInstance& inst, bool /*drained*/) {
+    /// `drained` does not gate the terminate path: the worker is a
+    /// separate address space, so its `.text` cannot have async
+    /// callbacks racing the kernel's `.text` after the GOODBYE. The
+    /// `RemoteHost` destructor calls terminate() too, but doing it
+    /// here explicitly keeps the dlclose-vs-terminate ordering
+    /// symmetric with the dynamic-linkage close path above.
+    if (inst.remote) {
+        inst.remote->terminate();
+        inst.remote.reset();
+    }
+}
+
 }  // namespace gn::core

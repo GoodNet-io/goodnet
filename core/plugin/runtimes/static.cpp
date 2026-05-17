@@ -46,4 +46,11 @@ void StaticRuntime::shutdown(PluginInstance& inst) {
                     inst.static_entry->shutdown, inst.self);
 }
 
+void StaticRuntime::close(PluginInstance& /*inst*/, bool /*drained*/) {
+    /// Static-linkage plugins are linked into the kernel binary
+    /// itself — there is nothing to unload. `static_entry` is a
+    /// borrowed pointer into a build-time array; clearing it
+    /// would not change observable behaviour.
+}
+
 }  // namespace gn::core

@@ -470,6 +470,7 @@ public:
     int register_calls{0};
     int unregister_calls{0};
     int shutdown_calls{0};
+    int close_calls{0};
 
     gn_result_t init(gn::core::PluginInstance& /*inst*/) override {
         ++init_calls;
@@ -485,6 +486,10 @@ public:
     }
     void shutdown(gn::core::PluginInstance& /*inst*/) override {
         ++shutdown_calls;
+    }
+    void close(gn::core::PluginInstance& /*inst*/,
+               bool /*drained*/) override {
+        ++close_calls;
     }
     [[nodiscard]] std::string_view name() const noexcept override {
         return "fake";

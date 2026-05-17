@@ -19,6 +19,7 @@ public:
     gn_result_t register_plugin(PluginInstance& inst) override;
     void unregister(PluginInstance& inst) override;
     void shutdown(PluginInstance& inst) override;
+    void close(PluginInstance& inst, bool drained) override;
 
     [[nodiscard]] std::string_view name() const noexcept override {
         return "remote";

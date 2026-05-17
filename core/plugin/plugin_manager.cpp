@@ -629,35 +629,13 @@ void PluginManager::rollback() {
             it->self = nullptr;
         }
 
-        if (it->remote) {
-            /// Remote-linkage final phase: send GOODBYE, join the
-            /// reader thread, reap the worker process. The unique_ptr
-            /// destructor would do this too, but running it
-            /// explicitly here keeps the dlclose-vs-terminate
-            /// ordering symmetric with the dlopen path.
-            it->remote->terminate();
-            it->remote.reset();
+        /// Hand off the kind-specific load-state teardown to the
+        /// runtime. Dynamic: dlclose if drained, plus the integrity
+        /// fd. Remote: terminate + reset the RemoteHost. Static:
+        /// nothing — entry symbols live in the kernel binary.
+        if (it->runtime != nullptr) {
+            it->runtime->close(*it, drained);
         }
-
-        if (it->so_handle) {
-            if (drained) {
-                dlclose(it->so_handle);
-            }
-            it->so_handle = nullptr;
-        }
-
-        /// Close the integrity fd that pinned the inode through the
-        /// dlopen call. It only stayed open so the kernel could not
-        /// reuse the fd number for the next plugin's
-        /// `dlopen("/proc/self/fd/N")` and hit a glibc cache line.
-        /// After dlopen has the .so mapped, the fd has no further
-        /// purpose.
-#ifdef __linux__
-        if (it->integrity_fd >= 0) {
-            ::close(it->integrity_fd);
-            it->integrity_fd = -1;
-        }
-#endif
 
         /// ctx is the last kernel-side owner of the heap allocation.
         /// Reset it after dlclose so any leftover `host_ctx` pointer

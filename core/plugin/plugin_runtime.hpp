@@ -56,6 +56,15 @@ public:
     /// best-effort discipline as `unregister`.
     virtual void shutdown(PluginInstance& inst) = 0;
 
+    /// Release the kind-specific load state: `dlclose` for dynamic
+    /// (only when @p drained, otherwise leak the handle to keep
+    /// async callbacks safe per `plugin-lifetime.en.md` §4),
+    /// `terminate` + `reset` for remote, no-op for static. The
+    /// caller (`PluginManager::rollback`) runs the anchor-quiescence
+    /// wait between `shutdown` and this entry; @p drained is the
+    /// wait's outcome.
+    virtual void close(PluginInstance& inst, bool drained) = 0;
+
     /// Stable identifier; matches the manifest entry's `kind`
     /// string. The default "dynamic" / "static" / "remote" runtimes
     /// claim those three keys.
