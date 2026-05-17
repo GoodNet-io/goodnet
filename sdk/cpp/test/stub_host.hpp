@@ -63,7 +63,7 @@ struct LinkStub {
     std::vector<std::vector<std::uint8_t>> inbound;
     std::vector<gn_conn_id_t>              inbound_owners;
 
-    /// Optional caller-thread pin for the `link.md` §9 regression:
+    /// Optional caller-thread pin for the `link.en.md` §9 regression:
     /// `shutdown()` must fire `notify_disconnect` on the caller's
     /// thread, not through an async strand-bound continuation
     /// (which would drop on `ioc_.stop()`). Tests set

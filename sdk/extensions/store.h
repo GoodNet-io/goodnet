@@ -19,7 +19,7 @@
  * @par msg_id allocation
  * The handler subscribes to `0x0600..0x0606` under `protocol_id`
  * `"gnet-v1"`. These ids are outside the kernel-reserved
- * `0x10..0x1F` range (see `system-handlers.md` §2); plugin
+ * `0x10..0x1F` range (see `system-handlers.en.md` §2); plugin
  * registration is unrestricted.
  */
 #ifndef GOODNET_SDK_EXTENSIONS_STORE_H
@@ -97,7 +97,7 @@ typedef void (*gn_store_event_cb_t)(void* user_data,
  * @brief Vtable surfaced as the `gn.store` extension.
  *
  * Versioned with @ref GN_EXT_STORE_VERSION. Begins with `api_size`
- * for size-prefix evolution per `abi-evolution.md` §3.
+ * for size-prefix evolution per `abi-evolution.en.md` §3.
  *
  * The `ctx` field carries the handler's `self` pointer; every entry
  * receives it as its first argument.

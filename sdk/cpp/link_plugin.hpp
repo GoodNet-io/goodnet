@@ -10,7 +10,7 @@
 ///    link's C++ method shapes.
 /// 3. The `gn.link.<scheme>` extension vtable plus its thunks
 ///    (steady slots functional, composer slots returning
-///    `GN_ERR_NOT_IMPLEMENTED` per `link.md` §8 staged delivery).
+///    `GN_ERR_NOT_IMPLEMENTED` per `link.en.md` §8 staged delivery).
 /// 4. The `gn_plugin_descriptor_t` table.
 ///
 /// What the producer still owns: the implementation class with its
@@ -45,7 +45,7 @@
 ///
 /// Static `capabilities()` is preferred over a per-instance method
 /// because the kernel snapshots the value during plugin registration
-/// and never re-reads it (per `link.md` §8 capabilities are
+/// and never re-reads it (per `link.en.md` §8 capabilities are
 /// stable for the plugin's lifetime).
 
 #pragma once

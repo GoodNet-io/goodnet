@@ -233,7 +233,7 @@ typedef struct host_api_s {
      * | `index` past array length | `GN_ERR_OUT_OF_RANGE` |
      * | unknown @p type enum value | `GN_ERR_INVALID_ENVELOPE` |
      *
-     * Per `host-api.md` §2 and `config.md` §3.
+     * Per `host-api.en.md` §2 and `config.en.md` §3.
      *
      * @param key            dotted JSON path (`"foo.bar.baz"`).
      * @param type           expected node type; see @ref gn_config_value_type_t.
@@ -289,9 +289,9 @@ typedef struct host_api_s {
      *                  the call. A URI without a `scheme://` prefix is
      *                  rejected with `GN_ERR_INVALID_ENVELOPE` — the
      *                  link scheme is the registry key for the conn-id
-     *                  ownership gate (`security-trust.md` §6a).
+     *                  ownership gate (`security-trust.en.md` §6a).
      * @param trust     TrustClass computed from observable connection
-     *                  properties per `link.md` §3.
+     *                  properties per `link.en.md` §3.
      * @param role      Handshake role: initiator for outbound, responder
      *                  for inbound.
      * @param out_conn  Kernel-allocated connection id on success.
@@ -331,7 +331,7 @@ typedef struct host_api_s {
     /**
      * @brief Register a security provider with the kernel.
      *
-     * Stack policy from `security-trust.md` §4: a node uses one
+     * Stack policy from `security-trust.en.md` §4: a node uses one
      * default provider per trust class; v1 simplification holds a
      * single active provider total. Plugins register their vtable
      * and self pointer; the kernel calls encrypt / decrypt /
@@ -366,7 +366,7 @@ typedef struct host_api_s {
      * `limits.max_frame_bytes`. Used by relay-style tunnels that move
      * opaque inner frames between mesh peers.
      *
-     * Per `host-api.md` §8.
+     * Per `host-api.en.md` §8.
      *
      * @param layer    @ref GN_INJECT_LAYER_MESSAGE or @ref GN_INJECT_LAYER_FRAME
      * @param source   existing connection that originated the foreign bytes
@@ -404,7 +404,7 @@ typedef struct host_api_s {
      * `fn(user_data)` runs on the kernel's single-thread service
      * executor. The kernel pairs every timer with a weak observer
      * of the calling plugin's lifetime anchor; a callback whose
-     * plugin already unloaded is dropped silently (`timer.md` §4).
+     * plugin already unloaded is dropped silently (`timer.en.md` §4).
      *
      * @return `GN_OK` on success, `GN_ERR_NULL_ARG` on null
      *         argument, `GN_ERR_LIMIT_REACHED` when
@@ -430,7 +430,7 @@ typedef struct host_api_s {
      * The kernel pairs each subscription with a weak observer of
      * the calling plugin's lifetime anchor; a callback whose
      * plugin already unloaded is dropped silently per
-     * `conn-events.md` §3.
+     * `conn-events.en.md` §3.
      *
      * `cb` runs on the publishing thread with a borrowed
      * @ref gn_conn_event_t pointer.
@@ -454,7 +454,7 @@ typedef struct host_api_s {
      * `subscribe_conn_state`, with no per-event payload — the
      * callback signals only that a reload completed; the plugin
      * re-reads `host_api->config_get` for the keys it cares
-     * about per `config.md` §2.
+     * about per `config.en.md` §2.
      */
     gn_result_t (*subscribe_config_reload)(void* host_ctx,
                                             gn_config_reload_cb_t cb,
@@ -487,7 +487,7 @@ typedef struct host_api_s {
      *        (queue crossed `pending_queue_bytes_high`) or clear
      *        (queue dropped below `pending_queue_bytes_low`).
      *        Link plugins call this once per rising / falling
-     *        edge per `backpressure.md` §3. Restricted to
+     *        edge per `backpressure.en.md` §3. Restricted to
      *        link-role callers; other plugin kinds get
      *        @ref GN_ERR_NOT_IMPLEMENTED.
      *
@@ -718,7 +718,7 @@ typedef struct host_api_s {
      * value (typically not done; the slot is `@borrowed` for the plugin
      * lifetime) MUST zero the field on copy.
      *
-     * Per `abi-evolution.md` §4: the producer zero-initialises every
+     * Per `abi-evolution.en.md` §4: the producer zero-initialises every
      * `_reserved` array on every value-type struct in this SDK; the
      * consumer treats unknown reserved contents as undefined and never
      * reads them. New fields are added by promoting a slot to a named

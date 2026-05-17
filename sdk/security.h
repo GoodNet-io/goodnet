@@ -39,7 +39,7 @@ extern "C" {
  */
 typedef struct gn_handshake_keys_s {
     /** sizeof(gn_handshake_keys_t) at producer build time per
-     *  `abi-evolution.md` §3. */
+     *  `abi-evolution.en.md` §3. */
     uint32_t api_size;
     uint8_t  send_cipher_key[GN_CIPHER_KEY_BYTES];
     uint8_t  recv_cipher_key[GN_CIPHER_KEY_BYTES];
@@ -88,7 +88,7 @@ typedef struct gn_secure_buffer_s {
 /**
  * @brief Vtable for an `ISecurityProvider` implementation.
  *
- * Per `security-trust.md`, every entry that creates or routes a
+ * Per `security-trust.en.md`, every entry that creates or routes a
  * connection takes @ref gn_trust_class_t explicitly.
  */
 typedef struct gn_security_provider_vtable_s {
@@ -216,7 +216,7 @@ typedef struct gn_security_provider_vtable_s {
      * this once at `register_security` time and enforces the gate on
      * every `SessionRegistry::create`; a connection whose trust class is not
      * in the mask is rejected before any handshake byte rides — per
-     * `security-trust.md` §4.
+     * `security-trust.en.md` §4.
      *
      * Examples:
      *   - NoiseProvider: `1u<<UNTRUSTED | 1u<<PEER | 1u<<LOOPBACK | 1u<<INTRA_NODE`

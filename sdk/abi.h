@@ -82,7 +82,7 @@ extern "C" {
  *
  * Every C ABI vtable in `sdk/` carries `api_size` as its first field
  * so a consumer can read the size byte-precisely without knowing the
- * rest of the struct's layout (`abi-evolution.md` §3). Place this at
+ * rest of the struct's layout (`abi-evolution.en.md` §3). Place this at
  * file scope immediately after the struct's typedef so a rebase that
  * accidentally moves another field above `api_size` fails to compile.
  */

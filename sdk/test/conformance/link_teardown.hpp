@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   sdk/test/conformance/link_teardown.hpp
-/// @brief  `link.md` §9 shutdown conformance — typed-test contract.
+/// @brief  `link.en.md` §9 shutdown conformance — typed-test contract.
 ///
 /// Shared body of `LinkTeardownConformance.ShutdownReleasesEvery
 /// Session`. Each link plugin instantiates the suite for its own
@@ -58,7 +58,7 @@ using namespace std::chrono_literals;
 /// Host stub shared across every typed-fixture instantiation.
 /// `main_tid` is set by the test before any async work starts; the
 /// disconnect callback only increments `on_main_disconnects` when
-/// the call lands on that thread, which lets the post-fix `link.md`
+/// the call lands on that thread, which lets the post-fix `link.en.md`
 /// §9 invariant be checked without racing the worker thread.
 struct ConformanceHost {
     std::mutex                  mu;

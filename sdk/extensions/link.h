@@ -75,7 +75,7 @@ extern "C" {
 typedef struct gn_link_caps_s {
     uint32_t flags;          /**< OR of `GN_LINK_CAP_*` */
     uint32_t max_payload;    /**< soft MTU in bytes; 0 = unlimited */
-    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.md` §4 */
+    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.en.md` §4 */
 } gn_link_caps_t;
 
 /**
@@ -88,7 +88,7 @@ typedef struct gn_link_stats_s {
     uint64_t frames_in;
     uint64_t frames_out;
     uint64_t active_connections;
-    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.md` §4 */
+    uint64_t _reserved[4];   /**< MUST be zero; see `abi-evolution.en.md` §4 */
 } gn_link_stats_t;
 
 /**
@@ -176,7 +176,7 @@ typedef struct gn_link_api_s {
      *        `gn_link_vtable_t::send`; intended for composer
      *        plugins that have a kernel `gn_conn_id_t` in hand.
      *
-     * Single-writer invariant per `link.md` §4 applies.
+     * Single-writer invariant per `link.en.md` §4 applies.
      *
      * @param bytes @borrowed for the duration of the call.
      */
@@ -185,7 +185,7 @@ typedef struct gn_link_api_s {
 
     /**
      * @brief Scatter-gather send. Single-writer invariant covers the
-     *        whole batch; `link.md` §4.
+     *        whole batch; `link.en.md` §4.
      *
      * @param batch @borrowed array of byte spans for the duration
      *              of the call; each span's bytes are also @borrowed.
@@ -209,7 +209,7 @@ typedef struct gn_link_api_s {
      *        manage connection state at L2.
      *
      * Returns @ref GN_ERR_NOT_IMPLEMENTED on baseline links in
-     * v1.0.x — see contract `link.md` §8.
+     * v1.0.x — see contract `link.en.md` §8.
      *
      * @param uri @borrowed for the duration of the call.
      */
@@ -304,7 +304,7 @@ typedef struct gn_link_api_s {
      */
     void* ctx;
 
-    void* _reserved[4];      /**< MUST be zero; see `abi-evolution.md` §4 */
+    void* _reserved[4];      /**< MUST be zero; see `abi-evolution.en.md` §4 */
 } gn_link_api_t;
 
 GN_VTABLE_API_SIZE_FIRST(gn_link_api_t);

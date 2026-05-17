@@ -117,7 +117,7 @@ GN_EXPORT gn_core_t* gn_core_create_from_json(const char* json_str);
  * @brief Tear down the kernel and free the handle.
  *
  * Walks the FSM through `PreShutdown → Shutdown`, drains plugin
- * anchors per `plugin-lifetime.md` §4 (default 1 s), publishes
+ * anchors per `plugin-lifetime.en.md` §4 (default 1 s), publishes
  * `DISCONNECTED` for every live connection, and frees the handle.
  * `gn_core_destroy(NULL)` is a no-op.
  */
@@ -235,7 +235,7 @@ GN_EXPORT const gn_limits_t* gn_core_limits(gn_core_t* core);
  *
  * @param core   Kernel handle returned by gn_core_create().
  * @param limits @borrowed; must be zero-initialised per
- *               `abi-evolution.md` §4.
+ *               `abi-evolution.en.md` §4.
  */
 GN_EXPORT gn_result_t gn_core_set_limits(gn_core_t* core,
                                          const gn_limits_t* limits);
@@ -335,7 +335,7 @@ GN_EXPORT gn_result_t gn_core_disconnect(gn_core_t* core, gn_conn_id_t conn);
  */
 typedef struct gn_stats_s {
     /** sizeof(gn_stats_t) at producer build time per
-     *  `abi-evolution.md` §3. */
+     *  `abi-evolution.en.md` §3. */
     uint32_t api_size;
     uint64_t connections_active;       /**< live entries in `ConnectionRegistry` */
     uint64_t handlers_registered;      /**< live entries in `HandlerRegistry`    */
@@ -432,7 +432,7 @@ GN_EXPORT void gn_core_off_conn_state(gn_core_t* core, uint64_t token);
  * with `RTLD_NOW | RTLD_LOCAL` and drives the 5+1 plugin entry
  * symbols (`gn_plugin_sdk_version`, `gn_plugin_init`,
  * `gn_plugin_register`, `gn_plugin_unregister`, `gn_plugin_shutdown`,
- * optional `gn_plugin_descriptor`) per `plugin-lifetime.md` §3.
+ * optional `gn_plugin_descriptor`) per `plugin-lifetime.en.md` §3.
  *
  * @param core              Kernel handle returned by gn_core_create().
  * @param so_path           @borrowed exe-relative path to the .so.
@@ -486,7 +486,7 @@ GN_EXPORT gn_result_t gn_core_load_plugins_batch(
 /**
  * @brief Unload a previously loaded plugin by name.
  *
- * Walks the shutdown sequence per `plugin-lifetime.md` §4 (publish
+ * Walks the shutdown sequence per `plugin-lifetime.en.md` §4 (publish
  * `shutdown_requested`, `gn_plugin_unregister`, drain anchor,
  * `gn_plugin_shutdown`, `dlclose`).
  *
@@ -507,7 +507,7 @@ GN_EXPORT gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name);
  *
  * @param core   Kernel handle returned by gn_core_create().
  * @param meta   @borrowed metadata (name, api_size). Must be
- *               zero-initialised per `abi-evolution.md` §4.
+ *               zero-initialised per `abi-evolution.en.md` §4.
  * @param vtable @borrowed for the lifetime of the registration.
  * @param self   @borrowed plugin instance pointer.
  */

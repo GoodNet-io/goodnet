@@ -44,7 +44,7 @@ typedef struct gn_heartbeat_stats_s {
  * it as its first argument. Versioned with @ref GN_EXT_HEARTBEAT_VERSION.
  *
  * Begins with `api_size` for size-prefix evolution per
- * `abi-evolution.md` §3. Consumers query the extension through
+ * `abi-evolution.en.md` §3. Consumers query the extension through
  * `host_api->query_extension_checked` which validates `api_size`
  * against the consumer's compile-time minimum before any slot fires.
  */

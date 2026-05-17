@@ -80,7 +80,7 @@ typedef uint64_t gn_key_id_t;
  * label, creation timestamp, and the kernel-allocated id. Callers
  * use the id with `sign_local_by_id` for explicit key selection.
  *
- * Layout follows the ABI evolution rule from `abi-evolution.md`
+ * Layout follows the ABI evolution rule from `abi-evolution.en.md`
  * §3: `api_size` is the first field so the kernel can size-check
  * caller storage, and `_reserved` is the last field so new domain
  * fields land in front of it without disturbing offsets. The
@@ -110,7 +110,7 @@ GN_VTABLE_API_SIZE_FIRST(gn_key_descriptor_t);
  * expiration; the kernel does not parse the blob payload.
  *
  * Subscribers running long work post back through
- * `host_api->set_timer(0, …)` per `timer.md` §2.
+ * `host_api->set_timer(0, …)` per `timer.en.md` §2.
  */
 typedef void (*gn_capability_blob_cb_t)(
     void*               user_data,

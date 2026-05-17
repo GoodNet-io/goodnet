@@ -29,7 +29,7 @@
  * block sits next to the legacy `0x0600..0x0606` range that
  * `gn.handler.store` keeps so a node hosting both plugins routes
  * unambiguously by `msg_id`. These ids are outside the kernel-
- * reserved `0x10..0x1F` range (see `system-handlers.md` §2).
+ * reserved `0x10..0x1F` range (see `system-handlers.en.md` §2).
  */
 #ifndef GOODNET_SDK_EXTENSIONS_DNS_H
 #define GOODNET_SDK_EXTENSIONS_DNS_H
@@ -118,7 +118,7 @@ typedef void (*gn_dns_emit_cb_t)(void* user, const gn_dns_record_t* record);
  * @brief Vtable surfaced as the `gn.dns` extension.
  *
  * Versioned with @ref GN_EXT_DNS_VERSION. Begins with `api_size`
- * for size-prefix evolution per `abi-evolution.md` §3.
+ * for size-prefix evolution per `abi-evolution.en.md` §3.
  *
  * The `ctx` field carries the handler's `self` pointer; every
  * entry receives it as its first argument.

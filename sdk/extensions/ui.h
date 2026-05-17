@@ -141,7 +141,7 @@ typedef gn_result_t (*gn_ui_render_fn)(
  * @brief Vtable surfaced as the `gn.ui` extension.
  *
  * Versioned with @ref GN_EXT_UI_VERSION. Begins with `api_size`
- * for size-prefix evolution per `abi-evolution.md` §3. Consumers
+ * for size-prefix evolution per `abi-evolution.en.md` §3. Consumers
  * query the extension through `host_api->query_extension_checked`
  * which validates `api_size` against the consumer's compile-time
  * minimum before any slot fires.

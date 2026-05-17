@@ -32,7 +32,7 @@ extern "C" {
  */
 typedef struct gn_endpoint_s {
     /** sizeof(gn_endpoint_t) at the producer's build time; see
-     *  `abi-evolution.md` §3. Zero is permitted in v1.0 — pre-3.1
+     *  `abi-evolution.en.md` §3. Zero is permitted in v1.0 — pre-3.1
      *  callsites that have not been migrated to set the field still
      *  produce a usable snapshot under the v1.0 layout. */
     uint32_t          api_size;
