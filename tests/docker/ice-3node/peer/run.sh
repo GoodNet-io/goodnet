@@ -16,9 +16,9 @@
 # Exits 0 on success, non-zero on timeout. The scenario test scripts
 # assert on the `.done` file in run_all.sh.
 #
-# Slice-1 scope: scaffolding only — the harness binary that does the
-# connect dance is intentionally not in tree yet; this script prints
-# the template config + a placeholder waiter so an operator running
+# Scaffolding only — the harness binary that does the connect
+# dance is not in tree yet; this script prints the template
+# config + a placeholder waiter so an operator running
 # `docker compose up` sees the wiring is correct before the C++
 # harness lands.
 

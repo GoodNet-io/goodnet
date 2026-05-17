@@ -15,9 +15,9 @@
 #   0  — every scenario produced both .done files
 #   1  — at least one scenario timed out / failed
 #
-# Slice-1 scope: the loop machinery + per-scenario teardown lands
-# now; the actual connect-and-write-done logic depends on the peer
-# harness binary (`peer/run.sh` placeholder) which is a follow-up.
+# The loop machinery + per-scenario teardown is in place; the
+# actual connect-and-write-done logic depends on the peer harness
+# binary (`peer/run.sh` placeholder), which is not yet in tree.
 # Running this script today brings up the topology cleanly and
 # always reports timeout — useful for shape-checking the compose
 # wiring before the harness binary exists.
