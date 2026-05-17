@@ -369,16 +369,16 @@
             echo "    bypass any single commit with: git commit --no-verify"
           '';
 
-          # `nix run .#run -- <demo|node|goodnet> [args]` — single
-          # umbrella over the three runnable artefacts. Builds the
-          # corresponding target into a Release tree and execs it
-          # with the trailing args. \`demo\` self-contained two-node
-          # quickstart; \`node\` = \`goodnet run\` alias; \`goodnet\`
-          # = the operator multicall CLI direct.
+          # `nix run .#run -- <demo|node|goodnetd> [args]` — single
+          # umbrella. \`demo\` builds + runs the self-contained
+          # two-node quickstart from `examples/two_node/`; \`node\`
+          # and \`goodnetd\` redirect the operator to the standalone
+          # `GoodNet-io/goodnetd` repo since the daemon binary no
+          # longer ships from this monorepo.
           gn-run = pkgs.writeShellScriptBin "gn-run" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               if [ $# -lt 1 ]; then
-                echo "run: usage: nix run .#run -- <demo|node|goodnet> [args]" >&2
+                echo "run: usage: nix run .#run -- <demo|node|goodnetd> [args]" >&2
                 exit 1
               fi
               kind="$1"; shift
@@ -394,7 +394,7 @@
                   cmake --build "$build_dir" --target goodnet_demo -j"$(nproc)"
                   exec "$build_dir/bin/goodnet-demo" "$@"
                   ;;
-                goodnet|node)
+                goodnet|goodnetd|node)
                   echo "run: the goodnetd daemon binary now ships from" >&2
                   echo "  github.com/GoodNet-io/goodnetd" >&2
                   echo "" >&2
@@ -402,21 +402,9 @@
                   echo "    nix build github:GoodNet-io/goodnetd" >&2
                   echo "    ./result/bin/goodnetd $@" >&2
                   exit 1
-                  build_dir=build-release
-                  if [ ! -f "$build_dir/CMakeCache.txt" ]; then
-                    cmake -B "$build_dir" -G Ninja \
-                      -DCMAKE_BUILD_TYPE=Release \
-                      -DGOODNET_BUILD_TESTS=OFF
-                  fi
-                  cmake --build "$build_dir" --target goodnetd -j"$(nproc)"
-                  if [ "$kind" = "node" ]; then
-                    exec "$build_dir/bin/goodnetd" run "$@"
-                  else
-                    exec "$build_dir/bin/goodnetd" "$@"
-                  fi
                   ;;
                 *)
-                  echo "run: unknown kind $kind (demo|node|goodnet)" >&2
+                  echo "run: unknown kind $kind (demo|node|goodnetd)" >&2
                   exit 1
                   ;;
               esac
