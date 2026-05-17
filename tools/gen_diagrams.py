@@ -1571,9 +1571,8 @@ def gen_host_api_kinds():
            "  · KIND enum (or channel id, or type tag) selects routing\n"
            "  · adding a new kind = enum value + kernel side; ABI stable\n"
            f"  · {_n} functional slots on host_api_t today + {_r} reserved\n"
-           "History: pre-RC dedupe 41 → 21 KIND-tagged; post-RC growth\n"
-           "re-introduced notify_*, key/sign, cap-blob and send_to\n"
-           f"families → {_n} today.",
+           "  · KIND-tagged primitives + notify_*, key/sign, cap-blob,\n"
+           "    send_to families",
            shape="note", color=SURFACE2, fontcolor=BORDER,
            style="filled", fillcolor="#181825", fontsize="9")
     g.edge("k_config", "discipline", style="invis")
