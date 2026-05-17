@@ -3,11 +3,11 @@
  * @brief  Extension vtable: `gn.store` — distributed key-value
  *         database surfaced as a system handler.
  *
- * The legacy `goodnetd-dns` / `apps/store` surface was a routing
- * layer that doubled as a full key-value DB: TTL'd entries,
- * prefix queries, subscribe-and-notify on write, and bulk sync
- * across nodes by `since_timestamp` watermark. This extension
- * brings that surface forward as a v1 handler plugin.
+ * The legacy `apps/store` surface was a routing layer that
+ * doubled as a full key-value DB: TTL'd entries, prefix queries,
+ * subscribe-and-notify on write, and bulk sync across nodes by
+ * `since_timestamp` watermark. This extension brings that surface
+ * forward as a v1 handler plugin.
  *
  * The plugin owns a pluggable `IStore` backend (a memory backend
  * and a SQLite backend ship today; further backends like DHT /
