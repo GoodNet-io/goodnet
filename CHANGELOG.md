@@ -114,11 +114,18 @@ and walks the registered chain in registration order on each
 `host_api->send_to`. The first strategy that returns a real
 conn wins. A strategy with no opinion on the candidate set
 returns `GN_ERR_NOT_FOUND` and the chain advances to the next.
-The pre-rc4 single-strategy gate
-(`GN_ERR_LIMIT_REACHED` when more than one was registered) is
-removed. Single-strategy deployments work unchanged; the chain
-is the natural admission of composite setups
-(`rtt-optimal` + a `cost-aware` fallback).
+The previous single-strategy gate (`GN_ERR_LIMIT_REACHED` on a
+second registration) is removed. Single-strategy deployments
+work unchanged; the chain is the natural admission of composite
+setups (`rtt-optimal` + a `cost-aware` fallback).
+
+`ExtensionRegistry::query_prefix` sorts results by the
+monotonic registration sequence so the strategy walk is
+deterministic regardless of the underlying hash-map iteration
+order. `(GN_OK, GN_INVALID_ID)` from a strategy is treated as
+`GN_ERR_NOT_FOUND` for chain advancement, mirroring the
+documented lenient interpretation on
+`gn_strategy_api_t::pick_conn`.
 
 ### gn_ctx_make_for_test / gn_ctx_destroy SDK test helpers
 
