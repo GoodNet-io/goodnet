@@ -150,9 +150,9 @@ Plugin slots (carried by `PLUGIN_CALL`):
 
 "contract only" means the slot id is pinned in `sdk/remote/slots.h`
 but neither `RemoteHost` (kernel) nor `goodnet_remote_plugin_stub`
-(worker) currently dispatch it. A future commit can wire the proxy
-on either side without renumbering; bindings in other languages
-can lock against the IDs today.
+(worker) currently dispatch it. A future revision can wire the
+proxy on either side without renumbering; bindings in other
+languages can lock against the IDs today.
 
 Security-vtable wiring in particular needs careful `gn_secure_buffer_t`
 zero-on-drop handling at every wire boundary — encode the bytes,
@@ -223,15 +223,15 @@ Workers must not call `host_api` slots after observing `GOODBYE`.
 The reference stub library raises a single-threaded contract: a
 worker may only call `host_api` while servicing a `PLUGIN_CALL`
 the kernel sent (the reader loop is the only thread). Multi-
-threaded workers add a response demultiplexer keyed by
-`request_id`; deferred to a follow-up plan.
+threaded workers would add a response demultiplexer keyed by
+`request_id`; not wired in the reference stub.
 
 ## §10 — Reference implementations
 
 - **Kernel side**: `core/plugin/remote_host.{hpp,cpp}` — spawns the
   worker, drives the framing reader thread, exposes `call_init /
   call_register / call_unregister / call_shutdown` to the
-  `PluginManager` (integration is a follow-up; the proof currently
+  `PluginManager` (full integration is not yet wired; the proof currently
   drives `RemoteHost` directly).
 - **Worker stub (C++)**: `sdk/cpp/remote_plugin.{hpp,cpp}` plus
   `goodnet_remote_plugin_stub` static library. Workers fill in a
