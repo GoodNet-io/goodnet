@@ -116,6 +116,13 @@ the corresponding counter. The mapping is enumerated in
 enum values land alongside their metric name in one place — the
 external surface stays stable across releases.
 
+Some `drop.*` counters do not flow through `gn_drop_reason_t` and
+are emitted directly via `metrics().increment("drop.<name>")`
+when the rejection is outside the framing / routing pipeline
+(e.g. `drop.capability_blob_too_large` from the identity-layer
+size cap). The same namespace lets an operator scrape all
+rejection classes together regardless of the emission path.
+
 #### Drop counter discipline
 
 `drop.*` is the operator-facing namespace for "the kernel
