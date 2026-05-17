@@ -412,8 +412,8 @@ nix run .#plugin -- <new|pull|install|update> [args]
   (see https://github.com/NixOS/nix/issues/12281). Each plugin's
   `flake.lock` therefore needs `--allow-dirty-locks` to refresh.
   Workaround stays in place until each plugin extracts to its
-  `goodnet-io/<repo>` GitHub URL post-rc1.
-- **No per-plugin GitHub repositories yet.** The `goodnet-io`
+  `GoodNet-io/<repo>` GitHub URL post-rc1.
+- **No per-plugin GitHub repositories yet.** The `GoodNet-io`
   organisation is empty; bundled plugins ship in-tree until
   rc1 cuts and the per-plugin repos go live.
 - **No registered domain.** Documentation references the GitHub

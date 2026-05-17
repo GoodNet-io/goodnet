@@ -219,14 +219,14 @@ default plugin set loaded:
 
 | Prefix | Owner repository | Typical events |
 |---|---|---|
-| `link_tcp.*` | `goodnet-io/link-tcp` | `link_tcp.dial.success`, `link_tcp.dial_fail.timeout`, `link_tcp.dial_fail.refused`, `link_tcp.dial_fail.unreachable` |
-| `link_udp.*` | `goodnet-io/link-udp` | dial / receive outcomes mirroring TCP |
-| `link_ws.*` | `goodnet-io/link-ws` | handshake, upgrade, disconnect reasons |
-| `link_ipc.*` | `goodnet-io/link-ipc` | accept / connect outcomes for AF_UNIX peers |
-| `link_tls.*` | `goodnet-io/link-tls` | TLS handshake outcomes, alert codes |
-| `security_noise.*` | `goodnet-io/security-noise` | handshake state transitions, decrypt failures |
-| `security_null.*` | `goodnet-io/security-null` | session lifecycle for the no-op provider |
-| `heartbeat.*` | `goodnet-io/handler-heartbeat` | `heartbeat.ping`, `heartbeat.pong`, `heartbeat.miss` |
+| `link_tcp.*` | `GoodNet-io/link-tcp` | `link_tcp.dial.success`, `link_tcp.dial_fail.timeout`, `link_tcp.dial_fail.refused`, `link_tcp.dial_fail.unreachable` |
+| `link_udp.*` | `GoodNet-io/link-udp` | dial / receive outcomes mirroring TCP |
+| `link_ws.*` | `GoodNet-io/link-ws` | handshake, upgrade, disconnect reasons |
+| `link_ipc.*` | `GoodNet-io/link-ipc` | accept / connect outcomes for AF_UNIX peers |
+| `link_tls.*` | `GoodNet-io/link-tls` | TLS handshake outcomes, alert codes |
+| `security_noise.*` | `GoodNet-io/security-noise` | handshake state transitions, decrypt failures |
+| `security_null.*` | `GoodNet-io/security-null` | session lifecycle for the no-op provider |
+| `heartbeat.*` | `GoodNet-io/handler-heartbeat` | `heartbeat.ping`, `heartbeat.pong`, `heartbeat.miss` |
 
 The exact name set per plugin is the plugin owner's contract; the
 kernel-side guarantee is only that any name a plugin emits is

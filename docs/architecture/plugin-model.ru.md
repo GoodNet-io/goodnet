@@ -325,7 +325,7 @@ Tests тоже plugin-bound. SDK exposes `<sdk/test/conformance/link_teardown.hp
 
 Cross-plugin integration tests, требующие нескольких плагинов плюс kernel (например, noise + tcp + handler), живут в отдельном repo `goodnet-integration-tests`, который pull'ится в `tests/integration/` slot тем же setup механизмом.
 
-После rc1 каждый plugin получает org repo `goodnet-io/<kind>-<name>` (например `goodnet-io/security-noise`, `goodnet-io/link-tcp`). До rc1 mirror'ы локальные, чтобы не публиковать незавершённый surface.
+После rc1 каждый plugin получает org repo `GoodNet-io/<kind>-<name>` (например `GoodNet-io/security-noise`, `GoodNet-io/link-tcp`). До rc1 mirror'ы локальные, чтобы не публиковать незавершённый surface.
 
 Two deployment modes из одного source. Static archive — linked в kernel binary, доступен без dlopen, но требует kernel rebuild на каждое plugin change. Dynamic .so — loaded через manifest verification + dlopen pipeline, hot-reload-eligible если `descriptor.hot_reload_safe == 1`. Один `default.nix` экспортирует обе варианты.
 

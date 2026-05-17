@@ -252,7 +252,7 @@ link primary vtable играет вспомогательную роль.
 API и зовёт его `listen` — silently получает NOT_IMPLEMENTED, и
 никакого binding'а к порту не происходит. Лекарство — звать
 `kernel.links().find_by_scheme(scheme)->vtable->listen()`, не
-extension's listen. См. реальный fix в `goodnet-io/gssh` repo
+extension's listen. См. реальный fix в `GoodNet-io/gssh` repo
 (`mode_listen.cpp`).
 
 ## Teardown protocol

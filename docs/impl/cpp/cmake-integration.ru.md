@@ -175,7 +175,7 @@ slim-subflake, который экспортирует только `kernel-head
 plugin → monorepo → plugin не возникает.
 
 В release-сборке URL переключается на
-`github:goodnet-io/<plugin-repo>` после публикации в org.
+`github:GoodNet-io/<plugin-repo>` после публикации в org.
 
 ## Перекрёстные ссылки
 

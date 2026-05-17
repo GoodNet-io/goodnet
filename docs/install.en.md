@@ -192,7 +192,7 @@ to drain in-flight async work before `SIGKILL`.
   wrappers over `sdk/core.h` for apps consuming the kernel as a
   library. App authors read
   [`architecture/bridges-model.ru.md`](./architecture/bridges-model.ru.md);
-  the binding repo lives at `goodnet-io/bridges-cpp`.
+  the binding repo lives at `GoodNet-io/bridges-cpp`.
 - **Metrics scrape and alerting** — kernel and plugin counter
   catalogue plus SLI mapping in
   [`operator/metrics-catalog.en.md`](./operator/metrics-catalog.en.md).

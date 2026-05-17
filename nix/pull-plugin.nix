@@ -4,7 +4,7 @@
 # `plugins/<kind>/<name>/` directory so the kernel build sees it
 # again. Each loadable plugin lives in its own repo (e.g.
 # `~/Desktop/projects/GoodNet-io/security-noise/` pre-rc1, or
-# `https://github.com/goodnet-io/security-noise` once the org repos
+# `https://github.com/GoodNet-io/security-noise` once the org repos
 # land); the kernel's `plugins/handlers/`, `plugins/links/`,
 # `plugins/security/` directories stay empty until the operator
 # pulls in what they want for local development.
@@ -24,7 +24,7 @@
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo-name>.git`   (env override)
 #   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
 #      <repo-name>.git`  (default — matches `init-mirrors` output)
-#   3. `https://github.com/goodnet-io/<repo-name>`  (org repo
+#   3. `https://github.com/GoodNet-io/<repo-name>`  (org repo
 #      post-rc1)
 #
 # Refuses to clobber an existing `plugins/<kind>/<name>/`
@@ -80,7 +80,7 @@ pkgs.writeShellApplication {
 
     mirror_dir="''${GOODNET_PLUGIN_MIRROR_DIR:-''${XDG_DATA_HOME:-$HOME/.local/share}/goodnet-mirrors}"
     mirror="$mirror_dir/$repo_name.git"
-    remote_url="https://github.com/goodnet-io/$repo_name"
+    remote_url="https://github.com/GoodNet-io/$repo_name"
 
     mkdir -p "$(dirname "$plugin_dir")"
 

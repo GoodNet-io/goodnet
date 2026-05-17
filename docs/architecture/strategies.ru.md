@@ -54,7 +54,7 @@ policy сознательно.
 Каждая strategy:
 
 - Имеет **отдельный namespace** в форме `gn.<category>.<name>`
-- Реализуется отдельным plugin git'ом (`goodnet-io/handler-<strategy>`)
+- Реализуется отдельным plugin git'ом (`GoodNet-io/handler-<strategy>`)
 - Документирует what it optimises, what signals it consumes,
   switch heuristic, failure modes — в plugin's own README
 - Регистрируется через `host_api->register_extension` со своим

@@ -322,4 +322,4 @@ no diagnostic trail.
   `core/plugin/plugin_manager.cpp::open_one`.
 - Per-package emission: `nix/buildPlugin.nix` (build infrastructure).
 - Aggregate manifest CLI: shipped by the `goodnetd` daemon in
-  `goodnet-io/goodnetd` (`goodnetd manifest gen ...`).
+  `GoodNet-io/goodnetd` (`goodnetd manifest gen ...`).

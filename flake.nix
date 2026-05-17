@@ -198,7 +198,7 @@
           inherit goodnet-core;
 
           # Header-only redistribution channel for language bindings
-          # (`goodnet-io/bridges-rust`, `goodnet-io/bridges-python`,
+          # (`GoodNet-io/bridges-rust`, `GoodNet-io/bridges-python`,
           # etc.) and other not-kernel consumers that need the SDK
           # surface without dragging the full kernel build closure.
           # Ships only `sdk/*.h` + `sdk/extensions/` + `sdk/remote/` +
@@ -432,7 +432,7 @@
           # plugin's git into `plugins/<kind>/<name>/` so the kernel
           # build picks it up. Defaults to a local mirror under
           # `~/Desktop/projects/GoodNet-io/` pre-rc1 and falls back
-          # to `github:goodnet-io/<repo-name>` once the org repos
+          # to `github:GoodNet-io/<repo-name>` once the org repos
           # are public.
           gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
 

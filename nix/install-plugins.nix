@@ -18,7 +18,7 @@
 #   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
 #      <repo>.git`  (default — matches `init-mirrors`'s output
 #      directory)
-#   3. `https://github.com/goodnet-io/<repo>`  (post-rc1 org repo)
+#   3. `https://github.com/GoodNet-io/<repo>`  (post-rc1 org repo)
 #
 # Modes:
 #   default — skip plugin slots that already exist on disk.
@@ -102,7 +102,7 @@ pkgs.writeShellApplication {
       mkdir -p "$(dirname "$slot")"
 
       mirror="$mirror_dir/$repo.git"
-      remote_url="https://github.com/goodnet-io/$repo"
+      remote_url="https://github.com/GoodNet-io/$repo"
 
       if [ -d "$mirror" ]; then
         echo "install-plugins: cloning $repo from $mirror"

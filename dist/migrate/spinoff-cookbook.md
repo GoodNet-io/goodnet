@@ -98,7 +98,7 @@ block — the exact same source compiles in either tree.
   plugin-private ones in `plugins/<x>/docs/`) — they describe the
   SDK boundary the plugin links against. Stay in `GoodNet-io/goodnet`.
 - The `goodnetd` operator CLI — daemon binary shipped from
-  `goodnet-io/goodnetd`.
+  `GoodNet-io/goodnetd`.
 - Integration tests that compose multiple plugins
   (`tests/integration/`) — kernel-side composition suite.
 - Manifest signing keys, deployment recipes — operator concern,

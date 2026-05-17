@@ -197,7 +197,7 @@ OpenSSL.
 - Готовых release-бинарей. Сборка из исходников через Nix или
   стандартный CMake путь выше.
 - Per-plugin GitHub-репозиториев. Bundled-плагины живут в
-  дереве под `plugins/`; org-repos `goodnet-io/<kind>-<name>`
+  дереве под `plugins/`; org-repos `GoodNet-io/<kind>-<name>`
   встанут когда плагин уезжает наружу.
 - Зарегистрированного домена. Документация ссылается на
   GitHub-организацию напрямую.

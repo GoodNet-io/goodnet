@@ -138,7 +138,7 @@ journalctl -u goodnet --since=boot | grep "register_vtable.*kind=LINK"
 
 ### Trust upgrade timed out
 
-`gssh bridge: trust upgrade timed out (15s)` (`goodnet-io/gssh`,
+`gssh bridge: trust upgrade timed out (15s)` (`GoodNet-io/gssh`,
 см. [gssh](./gssh.ru.md)) — peer не доступен или identity не известна
 обеим сторонам. Алгоритм:
 

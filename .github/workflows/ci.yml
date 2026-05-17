@@ -64,7 +64,7 @@ jobs:
 
   plugin-verify:
     # Each loadable plugin lives in its own git under
-    # `github.com/goodnet-io/<repo>`. This matrix confirms every
+    # `github.com/GoodNet-io/<repo>`. This matrix confirms every
     # plugin's `flake.nix` evaluates and `nix build .#default`
     # produces an artefact standalone — i.e. without the kernel
     # monorepo's CMake tree present. Catches `find_package(GoodNet)`
@@ -89,7 +89,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: goodnet-io/${{ matrix.plugin.repo }}
+          repository: GoodNet-io/${{ matrix.plugin.repo }}
           path: ${{ matrix.plugin.path }}
       - uses: DeterminateSystems/nix-installer-action@main
       - uses: DeterminateSystems/magic-nix-cache-action@main

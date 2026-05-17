@@ -37,12 +37,12 @@ _Plugin dlopen pipeline: discover → load → init → register._
 
 | Единица | Где живёт | Лицензия | Чему служит |
 |---|---|---|---|
-| **Kernel** | `goodnet-io/kernel` (репо платформы) | GPL-2 + linking exception | C ABI таблица + 4 vtable-реестра + executor + signal bus |
+| **Kernel** | `GoodNet-io/kernel` (репо платформы) | GPL-2 + linking exception | C ABI таблица + 4 vtable-реестра + executor + signal bus |
 | **Static plugin** | внутри kernel git'а под `plugins/protocols/<name>/` | GPL-2 (часть kernel binary) | Обязательные wire-слои: gnet (mesh-framing), raw (passthrough) |
-| **Loadable plugin** | `goodnet-io/<kind>-<name>/` per плагин | GPL-2 + LE (стратегические) или MIT (периферия) или Apache-2 (TLS-OpenSSL) | handler / link / security / extension через `register_*`, dlopen'ятся ядром при старте |
-| **App** | `goodnet-io/<app-name>/` per app | MIT по умолчанию | Operator-side бинари: используют kernel как library через `sdk/core.h` + `bridges/<lang>/`. Например `gssh`, `goodnet-panel`, `goodnet-store`. |
-| **Binding** | `goodnet-io/bridges-<lang>/` per язык | MIT | Per-language consumer wrapper над capi (RAII в C++, ownership-transfer в Rust, etc). Сейчас shipped: `bridges/cpp/` |
-| **Integration-tests** | `goodnet-io/integration-tests` | MIT | Cross-plugin + cross-app тесты что требуют нескольких компонентов поднять одновременно |
+| **Loadable plugin** | `GoodNet-io/<kind>-<name>/` per плагин | GPL-2 + LE (стратегические) или MIT (периферия) или Apache-2 (TLS-OpenSSL) | handler / link / security / extension через `register_*`, dlopen'ятся ядром при старте |
+| **App** | `GoodNet-io/<app-name>/` per app | MIT по умолчанию | Operator-side бинари: используют kernel как library через `sdk/core.h` + `bridges/<lang>/`. Например `gssh`, `goodnet-panel`, `goodnet-store`. |
+| **Binding** | `GoodNet-io/bridges-<lang>/` per язык | MIT | Per-language consumer wrapper над capi (RAII в C++, ownership-transfer в Rust, etc). Сейчас shipped: `bridges/cpp/` |
+| **Integration-tests** | `GoodNet-io/integration-tests` | MIT | Cross-plugin + cross-app тесты что требуют нескольких компонентов поднять одновременно |
 
 Все шесть слотов чекаут'ятся внутри kernel checkout'а — в
 `plugins/<kind>/<name>/`, `bridges/<lang>/`, `tests/integration/`.
@@ -55,13 +55,13 @@ _Plugin dlopen pipeline: discover → load → init → register._
 | Что добавляется | Куда |
 |---|---|
 | Новый wire-протокол (gnet / raw альтернатива) | static plugin в kernel git, `plugins/protocols/<name>/` |
-| Новый transport (TCP / UDP / WS / IPC / TLS / ICE альтернатива) | loadable plugin, kind=link, репо `goodnet-io/link-<name>/` |
-| Новый security provider (Noise альтернатива) | loadable plugin, kind=security, репо `goodnet-io/security-<name>/` |
-| Новый message handler (heartbeat / discovery / DHT-style) | loadable plugin, kind=handler, репо `goodnet-io/handler-<name>/` |
+| Новый transport (TCP / UDP / WS / IPC / TLS / ICE альтернатива) | loadable plugin, kind=link, репо `GoodNet-io/link-<name>/` |
+| Новый security provider (Noise альтернатива) | loadable plugin, kind=security, репо `GoodNet-io/security-<name>/` |
+| Новый message handler (heartbeat / discovery / DHT-style) | loadable plugin, kind=handler, репо `GoodNet-io/handler-<name>/` |
 | Plugin-to-plugin coordination API (peer-info, autonat, relay-control) | extension в существующем плагине либо standalone handler-плагин с extension surface |
-| Operator-facing binary (CLI tool, daemon, demo) | app, репо `goodnet-io/<app-name>/`, использует `sdk/core.h` + `bridges/<lang>/` |
-| Per-language wrapper над capi (Rust / Python / Zig / Go) | binding, репо `goodnet-io/bridges-<lang>/` |
-| Тест что требует нескольких плагинов одновременно | integration-tests, репо `goodnet-io/integration-tests`, под `tests/<topic>/` |
+| Operator-facing binary (CLI tool, daemon, demo) | app, репо `GoodNet-io/<app-name>/`, использует `sdk/core.h` + `bridges/<lang>/` |
+| Per-language wrapper над capi (Rust / Python / Zig / Go) | binding, репо `GoodNet-io/bridges-<lang>/` |
+| Тест что требует нескольких плагинов одновременно | integration-tests, репо `GoodNet-io/integration-tests`, под `tests/<topic>/` |
 
 Если ни одна строка не подошла — обычно это значит, что
 предлагаемая вещь должна быть несколькими отдельными единицами.
@@ -115,7 +115,7 @@ pilot'а mass-applied на все восемь loadable плагинов плю�
    восемь loadable плагинов + integration-tests. Если plugin
    сломал contract — kernel suite ловит регрессию.
 6. При rc1: мерж `dev → main` в plugin git'е плюс tag, push на
-   `github:goodnet-io/<repo>`.
+   `github:GoodNet-io/<repo>`.
 
 ### Конкретные команды
 
@@ -185,7 +185,7 @@ App checkout настроен симметрично plugin checkout'у:
 - Итерация через `nix run .#build` / `nix run .#test`
 
 При rc1: мерж `dev → main` в app git'е плюс tag, push на
-`github:goodnet-io/<app-name>`.
+`github:GoodNet-io/<app-name>`.
 
 App не register'ит handlers через kernel registry runtime. App
 получает уже работающий kernel и:
@@ -248,7 +248,7 @@ binding checkout'а apps skip'аются — их CMakeLists guard'ятся
 Сейчас shipped: `cpp`. Roadmap: `rust`, `python`, `zig`, `go`.
 
 Конвенция repo naming: `bridges-<lang>` (без `goodnet-` префикса —
-org name уже `goodnet-io`, дублирование избыточно).
+org name уже `GoodNet-io`, дублирование избыточно).
 
 ## Композиция узла оператором
 
@@ -260,11 +260,11 @@ org name уже `goodnet-io`, дублирование избыточно).
   description = "my-corporate-mesh node";
 
   inputs = {
-    goodnet.url = "github:goodnet-io/kernel";
-    link-tcp.url = "github:goodnet-io/link-tcp";
-    link-ice.url = "github:goodnet-io/link-ice";
-    security-noise.url = "github:goodnet-io/security-noise";
-    handler-heartbeat.url = "github:goodnet-io/handler-heartbeat";
+    goodnet.url = "github:GoodNet-io/kernel";
+    link-tcp.url = "github:GoodNet-io/link-tcp";
+    link-ice.url = "github:GoodNet-io/link-ice";
+    security-noise.url = "github:GoodNet-io/security-noise";
+    handler-heartbeat.url = "github:GoodNet-io/handler-heartbeat";
     # Custom in-house transport plugin
     link-corporate-fabric.url = "github:my-org/link-fabric";
   };
@@ -350,15 +350,15 @@ Kernel и каждая loadable единица версионятся незав
 2. Закрывает open backlog (memory's known issues)
 3. Tag в local mirror: `git tag rc1`
 4. Push на github org: `git push github rc1`
-5. github org repo создаётся (`goodnet-io/<kind>-<name>`) если
+5. github org repo создаётся (`GoodNet-io/<kind>-<name>`) если
    ещё нет
 
 Composition (operator flake'и) после rc1 ссылаются на
-`github:goodnet-io/kernel/v1.0.0-rc1` и т.д. до этого — на local
+`github:GoodNet-io/kernel/v1.0.0-rc1` и т.д. до этого — на local
 mirror'ах через `git+file:` (deprecated Nix форма, но pre-rc1
 acceptable).
 
-Domain `goodnet-io` зарегистрируется как `goodnet.io` parallel.
+Domain `GoodNet-io` зарегистрируется как `goodnet.io` parallel.
 Org doc + landing page при rc1.
 
 ## Что пока не закрыто

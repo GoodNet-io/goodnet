@@ -476,7 +476,7 @@ recipe.
 ## How to reproduce
 
 ```bash
-git clone https://github.com/goodnet-io/goodnet.git
+git clone https://github.com/GoodNet-io/goodnet.git
 cd goodnet
 
 # Build with bench (Release — see Build configuration above)

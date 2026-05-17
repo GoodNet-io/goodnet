@@ -1,7 +1,7 @@
 # nix/init-mirrors.nix — `nix run .#init-mirrors` app.
 #
 # Establishes the per-plugin "page" (a bare git mirror) that the
-# eventual `goodnet-io/<repo>` github URL stands in for pre-rc1.
+# eventual `GoodNet-io/<repo>` github URL stands in for pre-rc1.
 # For each plugin slot under `plugins/<kind>/<name>/` that has its
 # own nested `.git/`:
 #
@@ -41,7 +41,7 @@ pkgs.writeShellApplication {
     echo "init-mirrors: mirror directory $mirror_dir"
 
     # plugin slot path → repo name (matches the github org layout
-    # post-rc1: `goodnet-io/<kind-singular>-<name>`).
+    # post-rc1: `GoodNet-io/<kind-singular>-<name>`).
     declare -A slot_to_repo=(
       [plugins/handlers/heartbeat]=handler-heartbeat
       [plugins/links/tcp]=link-tcp
