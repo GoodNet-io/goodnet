@@ -1,19 +1,109 @@
 keys:
-- name: handlers.heartbeat.cap
+- name: ice.aggressive_nomination
   type: int64
-  family: handlers
+  family: ice
   sources:
-  - file: plugins/handlers/heartbeat/heartbeat.cpp
-    line: 5
-- name: links.tcp.cap
+  - file: plugins/links/ice/link_ice.cpp
+    line: 316
+- name: ice.check_interval_ms
   type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 295
+- name: ice.consent_max_failures
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 282
+- name: ice.consent_max_recovery
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 291
+- name: ice.keepalive_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 278
+- name: ice.path_mtu
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 307
+- name: ice.session_timeout_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 274
+- name: ice.turn_password
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 262
+- name: ice.turn_servers
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 216
+- name: ice.turn_tcp
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 352
+- name: ice.turn_tls
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 361
+- name: ice.turn_username
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 248
+- name: links.tls.cert_path
+  type: string
   family: links
   sources:
-  - file: plugins/links/tcp/tcp.cpp
-    line: 5
-- name: security.null.cap
-  type: int64
-  family: security
+  - file: plugins/links/tls/tls.cpp
+    line: 554
+- name: links.tls.key_path
+  type: string
+  family: links
   sources:
-  - file: plugins/security/null/null.cpp
-    line: 5
+  - file: plugins/links/tls/tls.cpp
+    line: 563
+- name: links.tls.verify_peer
+  type: bool
+  family: links
+  sources:
+  - file: plugins/links/tls/tls.cpp
+    line: 447
+- name: udp.new_conn_burst
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 75
+- name: udp.new_conn_lru_cap
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 79
+- name: udp.new_conn_rate
+  type: int64
+  family: udp
+  sources:
+  - file: plugins/links/udp/udp.cpp
+    line: 71

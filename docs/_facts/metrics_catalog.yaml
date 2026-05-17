@@ -1,22 +1,18 @@
 counters:
-- name: handlers.heartbeat.hit
-  family: handlers
+- name: drop.queue_hard_cap
+  family: drop
   kinds:
   - emit_counter
   sources:
-  - file: plugins/handlers/heartbeat/heartbeat.cpp
-    line: 3
-- name: links.tcp.hit
-  family: links
-  kinds:
-  - emit_counter
-  sources:
+  - file: plugins/links/ipc/ipc.cpp
+    line: 660
+  - file: plugins/links/ipc/ipc.cpp
+    line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 3
-- name: security.null.hit
-  family: security
-  kinds:
-  - emit_counter
-  sources:
-  - file: plugins/security/null/null.cpp
-    line: 3
+    line: 728
+  - file: plugins/links/tcp/tcp.cpp
+    line: 768
+  - file: plugins/links/tls/tls.cpp
+    line: 864
+  - file: plugins/links/tls/tls.cpp
+    line: 902
