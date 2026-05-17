@@ -34,15 +34,23 @@ bench/comparison/
 ├── README.md                — this file
 ├── setup/                   — one-shot fetcher / builder scripts
 │   ├── 01_openssl.sh        — OpenSSL s_server / s_client baseline
-│   ├── 02_nginx_quic.sh     — nginx-quic Docker image + cert
-│   ├── 03_libuv_echo.sh     — plain libuv echo server (raw TCP)
-│   ├── 04_libwebrtc.sh      — libwebrtc data channel echo
-│   └── 05_libssh_echo.sh    — libssh-based SSH echo
+│   ├── 02_iperf3.sh         — iperf3 TCP / UDP throughput baseline
+│   ├── 03_libuv.sh          — fetch libuv into the bench cache (DX LOC)
+│   ├── 04_libssh.sh         — fetch libssh upstream mirror (DX LOC)
+│   ├── 05_openssl_demos.sh  — OpenSSL demos/sslecho for DX LOC
+│   ├── 06_libp2p_rs.sh      — build in-tree libp2p-echo binary
+│   └── 07_iroh.sh           — build in-tree iroh-echo binary
 ├── runners/                 — payload-matrix drivers
-│   ├── tcp_throughput.sh    — runs every TCP-class baseline
-│   ├── tls_handshake.sh     — measures handshake time per stack
-│   ├── quic_throughput.sh
-│   └── dx_loc_count.sh      — counts LOC for "hello world" per stack
+│   ├── binary_sizes.sh      — JSON of every shippable artifact size
+│   ├── comparison_weights.sh — JSON of "deployment weight" per stack
+│   ├── dx_loc_count.sh      — counts LOC for "hello echo" per stack
+│   ├── iperf3_tcp.sh        — raw TCP throughput via iperf3
+│   ├── iperf3_udp.sh        — raw UDP throughput via iperf3
+│   ├── iroh.sh              — run staged iroh-echo across payload sweep
+│   ├── libp2p_rs.sh         — run staged libp2p-echo across payload sweep
+│   ├── run_all.sh           — orchestrator over every runner + aggregator
+│   ├── socat_unix.sh        — socat AF_UNIX echo (baseline for bench_ipc)
+│   └── tls_handshake.sh     — TLS handshake time per stack
 └── reports/
     └── (generated *.md)
 ```
@@ -59,18 +67,25 @@ unless `GN_BENCH_REFS_DIR` overrides.
 ## Running
 
 ```bash
-# Stage external baselines (one-shot, ~10-30 min depending on
-# network + Docker image pulls)
+# Stage external baselines (one-shot)
 ./bench/comparison/setup/01_openssl.sh
-./bench/comparison/setup/02_nginx_quic.sh
+./bench/comparison/setup/02_iperf3.sh
+./bench/comparison/setup/06_libp2p_rs.sh
+./bench/comparison/setup/07_iroh.sh
 # ...
 
 # Drive matrix
-./bench/comparison/runners/tcp_throughput.sh > /tmp/tcp.json
-./bench/comparison/runners/tls_handshake.sh > /tmp/tls.json
+./bench/comparison/runners/iperf3_tcp.sh     > /tmp/tcp.json
+./bench/comparison/runners/iperf3_udp.sh     > /tmp/udp.json
+./bench/comparison/runners/tls_handshake.sh  > /tmp/tls.json
 ./bench/comparison/runners/dx_loc_count.sh   > /tmp/dx.json
+./bench/comparison/runners/libp2p_rs.sh      > /tmp/libp2p.json
+./bench/comparison/runners/iroh.sh           > /tmp/iroh.json
 
-# Aggregate (parses both GoodNet google-benchmark JSON and the
+# Or run every runner + aggregator in one shot
+./bench/comparison/runners/run_all.sh
+
+# Aggregate manually (parses GoodNet google-benchmark JSON and the
 # baseline JSON output above)
 python3 bench/comparison/reports/aggregate.py /tmp/*.json \
     > bench/reports/<commit-sha>-comparison.md
@@ -78,17 +93,16 @@ python3 bench/comparison/reports/aggregate.py /tmp/*.json \
 
 ## What gets measured
 
-| Axis | GoodNet | Reference | Surface |
+| Axis | GoodNet | Reference | Runner |
 |---|---|---|---|
-| TCP throughput | `bench_tcp` | libuv echo | 64B / 1KB / 8KB / 64KB |
-| TLS handshake time | `bench_tls` | `openssl s_client` + s_server | median + P99 |
-| TLS throughput | `bench_tls` | `openssl s_client -tlsextdebug` | 1KB / 64KB |
-| QUIC throughput | `bench_quic` | nginx-quic + h3 client | 1KB / 64KB |
-| Data channel | `bench_quic+ice` | libwebrtc data channel echo | RTT + 1KB throughput |
-| SSH echo | `bench_ssh` (future) | libssh `ssh_channel_write` echo | 64B latency |
-| LOC for hello-world echo | counted from `examples/hello-echo` | counted from each ref's hello-echo | min / max / median |
-| RSS baseline | `getrusage` after handshake | `ps -o rss` post-handshake | KB |
-| First-byte time | timestamp from connect to first decrypted byte | per-stack instrumentation | μs |
+| TCP throughput | `bench_real_e2e RealFixtureTcpEcho` | iperf3 | `iperf3_tcp.sh` |
+| UDP throughput | `bench_real_e2e RealFixtureUdpEcho` | iperf3 | `iperf3_udp.sh` |
+| AF_UNIX echo | `bench_real_e2e RealFixtureIpcEcho` | socat | `socat_unix.sh` |
+| TLS handshake time | `bench_tls` | `openssl s_client` + s_server | `tls_handshake.sh` |
+| Production-stack echo round-trip | `bench_real_e2e *EchoRoundtrip` | libp2p-echo + iroh-echo | `libp2p_rs.sh` + `iroh.sh` |
+| DX LOC for "hello echo" | `examples/hello-echo/` | upstream `hello echo` samples staged by `setup/03..07` | `dx_loc_count.sh` |
+| Binary size | kernel + plugin .so files | per-stack reference binaries | `binary_sizes.sh` |
+| Deployment weight | comparison-weights JSON | each comparison stack | `comparison_weights.sh` |
 
 ## DX axis
 
