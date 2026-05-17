@@ -72,15 +72,16 @@ latency-step number; it is NOT a path operators should use.
 
 ## Bench-only synthesis
 
-The bench drives a few kernel-side events directly rather than
-waiting for the production path to emit them. The bench code
-documents each synthesis at the call site.
+The bench drives a few events directly rather than staging a
+full kernel connect/disconnect dance for each iteration. The
+kernel-side auto-emit paths exist (`notify_connect` fires
+`CONN_UP`, `notify_disconnect` fires `CONN_DOWN`); the bench
+synthesis is for deterministic timing, not coverage of a gap.
 
-* `CONN_UP` / `CONN_DOWN` from `notify_connect` /
-  `notify_disconnect`. The bench fires these directly on the
-  strategy right after `link->disconnect` (B.5) or on synthetic
-  carrier arrival (B.6) so the picker sees the event without a
-  full kernel observer.
+* `CONN_UP` / `CONN_DOWN` injection — B.5 fires `CONN_DOWN`
+  right after `link->disconnect` so the picker reacts on the
+  same iteration; B.6 fires `CONN_UP` on a synthetic second
+  carrier rather than wiring up a real LAN host candidate.
 * Network-mobility event from an `AF_NETLINK` socket
   (`RTM_NEWLINK` / `RTM_DELLINK` → `GN_CONN_EVENT_NETWORK_CHANGE`).
   B.6 synthesises a second carrier directly; the kernel-side
