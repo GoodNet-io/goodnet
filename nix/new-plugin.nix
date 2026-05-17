@@ -1,4 +1,5 @@
-# nix/new-plugin.nix — `nix run .#new-plugin -- <kind> <name>` app.
+# nix/new-plugin.nix — plugin scaffolder used by
+# `nix run .#plugin -- new <kind> <name>`.
 #
 # Generates the minimum-viable directory layout for a fresh plugin
 # under `plugins/<kind>/<name>/`. Output mirrors what an in-tree

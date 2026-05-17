@@ -1,4 +1,5 @@
-# nix/install-plugins.nix — `nix run .#install-plugins [-- --update]` app.
+# nix/install-plugins.nix — plugin-set installer used by
+# `nix run .#plugin -- install` and `gn-setup`.
 #
 # Pulls the canonical loadable plugin set into the kernel's
 # `plugins/<kind>/<name>/` slots so a fresh clone of the kernel

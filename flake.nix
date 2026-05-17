@@ -446,8 +446,10 @@
 
           # `nix run .#plugin -- <new|pull|install|update> [args]`
           # — single dispatch over the plugin lifecycle. Replaces
-          # the flat new-plugin / pull-plugin / install-plugins
-          # triplet (those stay exposed for compat until cleanup).
+          # the flat `new-plugin` / `pull-plugin` / `install-plugins`
+          # triplet — the underlying derivations stay built (used by
+          # `gn-setup`) but are not exposed as top-level apps; reach
+          # them through this umbrella.
           gn-plugin = import ./nix/plugin.nix {
             inherit pkgs;
             new-plugin      = gn-new-plugin;

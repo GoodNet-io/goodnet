@@ -1,4 +1,5 @@
-# nix/pull-plugin.nix — `nix run .#pull-plugin -- <repo-name>` app.
+# nix/pull-plugin.nix — plugin puller used by
+# `nix run .#plugin -- pull <repo-name>`.
 #
 # Clones a loadable plugin's git into the kernel's
 # `plugins/<kind>/<name>/` directory so the kernel build sees it

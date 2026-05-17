@@ -1,4 +1,4 @@
-# nix/init-mirrors.nix — `nix run .#init-mirrors` app.
+# nix/init-mirrors.nix — bare-mirror builder used by `gn-setup`.
 #
 # Establishes the per-plugin "page" (a bare git mirror) that
 # stands in for the `GoodNet-io/<repo>` github URL when the
