@@ -674,6 +674,65 @@ TEST(HostApiSendTo, OkButInvalidIdFallsThroughLikeNotFound) {
     (void)api.unregister_extension(&ctx, "gn.strategy.winner");
 }
 
+/// A strategy that returns a non-`GN_ERR_NOT_FOUND` error code
+/// aborts the chain — the kernel does NOT walk to the next
+/// strategy and propagates the error to the `send_to` caller.
+/// Pins the documented "chain advances only on NOT_FOUND" rule
+/// in `sdk/extensions/strategy.h`.
+struct FailingStrategy {
+    std::atomic<int> pick_calls{0};
+
+    static gn_result_t pick_conn(void* ctx,
+                                  const std::uint8_t*,
+                                  const gn_path_sample_t*,
+                                  std::size_t, gn_conn_id_t*) {
+        auto* s = static_cast<FailingStrategy*>(ctx);
+        s->pick_calls.fetch_add(1);
+        return GN_ERR_INTERNAL;
+    }
+
+    static gn_strategy_api_t make_vtable(FailingStrategy& s) {
+        gn_strategy_api_t vt{};
+        vt.api_size  = sizeof(vt);
+        vt.pick_conn = &pick_conn;
+        vt.ctx       = &s;
+        return vt;
+    }
+};
+
+TEST(HostApiSendTo, NonNotFoundStrategyErrorAbortsChain) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    FailingStrategy fail;
+    PickLastStrategy never_runs;
+    auto vt_fail = FailingStrategy::make_vtable(fail);
+    auto vt_skip = PickLastStrategy::make_vtable(never_runs);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.fail",
+                                       GN_EXT_STRATEGY_VERSION, &vt_fail),
+              GN_OK);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.skip",
+                                       GN_EXT_STRATEGY_VERSION, &vt_skip),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0x33};
+    const auto conns = spawn_conns(ctx, api, pk, 2);
+    ASSERT_EQ(conns.size(), 2u);
+
+    const std::uint8_t payload[1] = {0x44};
+    const gn_result_t rc = api.send_to(&ctx, pk, 0x10, payload, 1);
+    EXPECT_EQ(rc, GN_ERR_INTERNAL)
+        << "fail strategy's non-NOT_FOUND error must propagate "
+           "to send_to's caller";
+    EXPECT_GE(fail.pick_calls.load(), 1) << "fail strategy ran";
+    EXPECT_EQ(never_runs.pick_calls.load(), 0)
+        << "kernel must NOT have walked past the aborting strategy";
+
+    (void)api.unregister_extension(&ctx, "gn.strategy.fail");
+    (void)api.unregister_extension(&ctx, "gn.strategy.skip");
+}
+
 TEST(SdkSendToWrapper, ForwardsPayloadAndPeerPk) {
     Kernel k;
     auto ctx = make_ctx(k);
