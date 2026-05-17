@@ -331,11 +331,14 @@ typedef struct host_api_s {
     /**
      * @brief Register a security provider with the kernel.
      *
-     * Stack policy from `security-trust.en.md` §4: a node uses one
-     * default provider per trust class; v1 simplification holds a
-     * single active provider total. Plugins register their vtable
-     * and self pointer; the kernel calls encrypt / decrypt /
-     * handshake entries through it.
+     * Stack policy from `security-trust.en.md` §4 + §6: the kernel
+     * admits N security providers concurrently through the
+     * StackRegistry — one entry per **distinct** `provider_id`. A
+     * call with an already-registered id returns
+     * GN_ERR_LIMIT_REACHED; a call with a fresh id is admitted and
+     * joins the per-trust-class admission set. `find_for_trust`
+     * picks the first registered provider whose `allowed_trust_mask`
+     * admits the queried class.
      *
      * @param vtable @borrowed; valid until `unregister_security`.
      */
