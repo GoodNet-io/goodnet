@@ -154,8 +154,8 @@ synchronously: the security-mask gate at
 `SessionRegistry::create` (`core/security/session.cpp:498-512`)
 sees the trust-class miss against `null_allowed_trust_mask =
 Loopback | IntraNode`, returns `GN_ERR_INVALID_ENVELOPE`, and
-`thunk_notify_connect` erases the conn record before the bridge
-returns from the call. The kernel bumps
+the `notify_connect` thunk erases the conn record before the
+bridge returns from the call. The kernel bumps
 `metrics.drop.trust_class_mismatch` so an operator watching the
 counter sees the misconfiguration immediately. There is no
 handshake phase, no `pending_handshake_bytes` accumulation.

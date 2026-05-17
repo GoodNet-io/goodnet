@@ -9,9 +9,9 @@ counters:
   - file: plugins/links/ipc/ipc.cpp
     line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 726
+    line: 728
   - file: plugins/links/tcp/tcp.cpp
-    line: 766
+    line: 768
   - file: plugins/links/tls/tls.cpp
     line: 864
   - file: plugins/links/tls/tls.cpp
