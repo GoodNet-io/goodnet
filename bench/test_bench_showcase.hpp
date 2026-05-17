@@ -13,10 +13,11 @@
 ///         PoC by zeroing the kernel-side InlineCrypto state on an
 ///         established session (env-gated through
 ///         `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`).
-///   §B.5  carrier failover via manual `CONN_DOWN` injection. The
-///         kernel observer that would auto-fire the event from
-///         `notify_disconnect` is not wired here; the bench
-///         drives the picker directly.
+///   §B.5  carrier failover via manual `CONN_DOWN` injection.
+///         The kernel auto-fires `CONN_DOWN` from
+///         `notify_disconnect` in production; the bench drives
+///         the picker directly so the failover lands on a
+///         deterministic iteration.
 ///   §B.6  mobility / LAN shortcut — synthetic second carrier add
 ///         + `CONN_UP` injection so the strategy flips winner to
 ///         the new path, mimicking ICE-restart on a fresh
@@ -246,11 +247,11 @@ inline void inject_conn_up(
         GN_PATH_EVENT_CONN_UP, &s);
 }
 
-/// Inject a CONN_DOWN — emits when the kernel disconnects a conn.
-/// In production this would be auto-fired from
-/// `notify_disconnect`; the kernel-side hook is not wired here,
-/// so the bench fires manually right after
-/// `link->disconnect(conn)`.
+/// Inject a CONN_DOWN — kernel auto-fires this from
+/// `notify_disconnect` in production. The bench fires manually
+/// right after `link->disconnect(conn)` so the picker reacts on
+/// a deterministic iteration rather than whenever the kernel's
+/// notify cascade flushes.
 inline void inject_conn_down(
     ::gn::strategy::float_send_rtt::FloatSendRtt& picker,
     const ::gn::PublicKey& peer_pk,

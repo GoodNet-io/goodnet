@@ -557,9 +557,10 @@ BENCHMARK_REGISTER_F(FanoutFixture, Producers)
 //
 // Picker drives between three candidate paths; mid-iteration the
 // bench injects `CONN_DOWN` on the IPC path directly and the next
-// `pick_conn` re-routes to TCP. The kernel observer that would
-// auto-emit the event from `notify_disconnect` is not wired here;
-// the bench fires the picker directly. Latency time-series +
+// `pick_conn` re-routes to TCP. The kernel auto-fires `CONN_DOWN`
+// from `notify_disconnect` in production; the bench injection
+// gives the failover a deterministic iteration to land on so the
+// time-series CSV is easy to read. Latency time-series +
 // chosen_conn time-series CSV.
 
 struct FailoverFixture : public ::benchmark::Fixture {
