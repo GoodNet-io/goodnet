@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 488,
-               "host_api_t size pinned at 488 (added send_to slot 2026-05-12 Slice 9-KERNEL)");
+_Static_assert(sizeof(host_api_t) == 496,
+               "host_api_t size pinned at 496");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,

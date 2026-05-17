@@ -346,7 +346,7 @@ typedef struct host_api_s {
                                       uint64_t rtt_us);
 
     /* ── Reserved for future use ─────────────────────────────────────── */
-    void* _reserved[7];
+    void* _reserved[8];
 } host_api_t;
 ```
 

@@ -30,9 +30,10 @@ that addition is non-breaking once it lands.
 
 ### host_api->notify_rtt_sample slot for RTT observability
 
-A new size-prefixed slot promoted out of `host_api_t._reserved`
-(total struct stays pinned at 488 B). Link plugins and the
-heartbeat handler push observed RTT samples through the slot;
+A new size-prefixed slot appended before `host_api_t._reserved`.
+The struct grows from 488 to 496 B; the `_reserved` array stays
+at its design size of 8 entries. Link plugins and the heartbeat
+handler push observed RTT samples through the slot;
 the kernel folds each sample into a per-conn EWMA(α = 1/8) per
 RFC 6298 and republishes the smoothed value to every registered
 strategy through `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`. The

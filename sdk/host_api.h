@@ -733,10 +733,6 @@ typedef struct host_api_s {
      * so the chain ranks conns by latency without each strategy
      * maintaining its own probe.
      *
-     * The slot is grown out of `_reserved` per
-     * `abi-evolution.en.md` §3 so existing consumers continue to
-     * link.
-     *
      * Restricted to LINK or HANDLER kind callers (UNKNOWN — host
      * embedding — also admitted). Other plugin kinds get
      * @ref GN_ERR_NOT_IMPLEMENTED. A sample on an unknown conn id
@@ -762,14 +758,10 @@ typedef struct host_api_s {
      * Per `abi-evolution.en.md` §4: the producer zero-initialises every
      * `_reserved` array on every value-type struct in this SDK; the
      * consumer treats unknown reserved contents as undefined and never
-     * reads them. New fields are added by promoting a slot to a named
-     * field, never by reusing existing reserved bytes.
-     *
-     * `notify_rtt_sample` was promoted out of `_reserved` so the
-     * array shrunk from 8 to 7 slots — total `host_api_t` size
-     * stays pinned at 488 bytes.
+     * reads them. New fields are appended before this array; the
+     * reserved-array stays at its design size of 8 entries.
      */
-    void* _reserved[7];
+    void* _reserved[8];
 } host_api_t;
 
 GN_VTABLE_API_SIZE_FIRST(host_api_t);
