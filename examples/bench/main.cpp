@@ -370,7 +370,7 @@ int main(int argc, char** argv) {
                 /// surfaces the failure as `notify_disconnect`, which
                 /// surfaces here as NOT_FOUND on the next send.
                 /// Remove once TCP plugin has its own kernel-side
-                /// SendQueueManager (Phase 2 of the perf parity plan).
+                /// SendQueueManager.
                 if ((workers[i].sent.load() & 0xFF) == 0) {
                     std::this_thread::yield();
                 }

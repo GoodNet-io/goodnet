@@ -468,7 +468,7 @@ NODES: dict[str, tuple[str, str]] = {
         "- async accept / connect / read / write\n"
         "- per-connection strand + send queue\n"
         "- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\n"
-        "Bench (post inline-crypto Phase 1): 6.42 Gbps single-conn 16KB×1000."
+        "Bench: 6.42 Gbps single-conn 16KB×1000."
     ),
     "n_udp_plugin": (
         "link-udp",
