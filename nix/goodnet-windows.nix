@@ -144,7 +144,7 @@ cross.stdenv.mkDerivation {
 
   doCheck = false;
 
-  # The static-plugin binary is just `bin/goodnet.exe`. With
+  # The static-plugin binary is just `bin/goodnetd.exe`. With
   # `-static -static-libgcc -static-libstdc++` (set in the downstream
   # daemon's CMakeLists under WIN32 at goodnet-io/goodnetd) plus
   # `--disable-shared` rebuilds of spdlog / fmt / libsodium in

@@ -292,7 +292,7 @@ org name уже `goodnet-io`, дублирование избыточно).
 
 `goodnet.lib.compose` собирает derivation который:
 
-- Кладёт kernel binary в `bin/goodnet`
+- Кладёт kernel binary в `bin/goodnetd`
 - Кладёт plugin .so файлы в `lib/goodnet/plugins/`
 - Bundlers config + identity рядом
 - Wrapper скрипт `bin/goodnet-node` invoke'ит binary с

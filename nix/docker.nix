@@ -25,7 +25,7 @@ pkgs.dockerTools.buildLayeredImage {
     pkgs.coreutils-full           # debug-time `ls`/`cat`/`stat`
   ];
   config = {
-    Entrypoint = [ "${goodnet-core}/bin/goodnet" ];
+    Entrypoint = [ "${goodnet-core}/bin/goodnetd" ];
     Cmd        = [ "version" ];
     Labels = {
       "org.opencontainers.image.title"       = "GoodNet";

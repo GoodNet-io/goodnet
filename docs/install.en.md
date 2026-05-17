@@ -14,7 +14,7 @@ A production install lays down four things on the host:
 
 | Path | Owner | What |
 |---|---|---|
-| `/usr/bin/goodnet` | root | Multicall CLI binary — `goodnetd run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
+| `/usr/bin/goodnetd` | root | Multicall CLI binary — `goodnetd run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
 | `/usr/lib/goodnet/lib*.so` | root | Plugin shared objects (transports, security providers, protocol layers, handlers) |
 | `/etc/goodnet/node.json` | root | Kernel config — limits, log shape, profile selector |
 | `/etc/goodnet/plugins.json` | root | Plugin manifest — path + SHA-256 per loadable .so |
@@ -39,7 +39,7 @@ GoodNet uses CMake + a Nix dev shell. From a clone of the repo:
 
 ```sh
 nix run .#build -- release   # release build, populates build-release/
-sudo install -m 0755 build-release/bin/goodnet /usr/bin/goodnet
+sudo install -m 0755 build-release/bin/goodnetd /usr/bin/goodnetd
 sudo install -d /usr/lib/goodnet
 sudo install -m 0644 build-release/plugins/lib*.so /usr/lib/goodnet/
 ```
