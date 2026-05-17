@@ -5,7 +5,7 @@
 
 ![kernel fsm](../img/kernel_fsm.svg)
 
-_Kernel lifecycle: created → started → stopped → destroyed._
+_Kernel lifecycle: Load → Wire → Resolve → Ready → Running → PreShutdown → Shutdown → Unload._
 <!-- /livedoc:embed_kernel_fsm -->
 
 
