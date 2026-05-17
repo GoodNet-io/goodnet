@@ -444,13 +444,12 @@ not asserted, not assumed.
   `bench_real_e2e` needs a LinkCarrier + composer chain
   bring-up in `test_bench_helper.hpp`. Until landed, the iroh
   column in section А has no GoodNet pair.
-- **Production Noise→Null handoff** — B.3 currently runs through
-  an env-gated `_test_clear_inline_crypto` PoC seam in
-  `SecuritySession`. v1.x followup exposes a kernel-driven
-  `SessionRegistry::downgrade_*` API + trust-class hook on
-  connection bring-up + peer-side wire signal so both halves of
-  a session migrate symmetrically without bench harness
-  reaching into private state.
+- **Production Noise→Null handoff** — B.3 runs through an
+  env-gated `_test_clear_inline_crypto` PoC seam in
+  `SecuritySession`. A kernel-driven `SessionRegistry::downgrade_*`
+  API + trust-class hook on connection bring-up + peer-side wire
+  signal is planned, so both halves of a session migrate
+  symmetrically without bench harness reaching into private state.
 - **Kernel-side strategy event emission** — `notify_connect`
   fires `CONN_UP` (`core/kernel/host_api/notifications.cpp:133`)
   and `notify_disconnect` fires `CONN_DOWN`

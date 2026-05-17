@@ -204,7 +204,7 @@ to drain in-flight async work before `SIGKILL`.
 - **Reverse-proxy front-end** — operators running on the public
   internet put nginx / HAProxy in front of the TCP listener for
   per-IP rate limiting until a hardening plugin ships per-source
-  bucketing. The reverse proxy is the recommended layer for now.
+  bucketing. The reverse proxy is the recommended layer.
 - **Backup and key rotation** — NodeIdentity rotation policy is
   not yet specified. Operators copy `/etc/goodnet/identity.bin`
   before generating a replacement and update each peer's

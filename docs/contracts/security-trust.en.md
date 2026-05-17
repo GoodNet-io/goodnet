@@ -283,11 +283,12 @@ excludes a local-process attacker who could equally read `/proc`.
 A richer StackRegistry surface — operator-side descriptors
 that enumerate the cartesian product at admission with
 `requires_explicit_optin` flags and `name`/`allowed_for[]`
-fields — is a v1.x followup on top of the shipped multi-
-provider registry. The shipped per-component gates are
-simpler, deterministic, and already cover every combination
-the v1 plugin tree can produce; the v1.x layer adds operator-
-visible policy on top, not new admission paths.
+fields — is sketched as a future extension on top of the
+shipped multi-provider registry. The shipped per-component
+gates are simpler, deterministic, and already cover every
+combination the current plugin tree can produce; the planned
+operator-visible layer adds policy on top, not new admission
+paths.
 
 ---
 

@@ -117,7 +117,7 @@ the right syscall. Windows builds skip the IPC plugin entirely
 named-pipe carrier lands; the rest of the kernel and other
 plugins build with Asio's portable reactor abstraction.
 
-`flake.nix` continues to advertise Linux-only Nix systems for now
-— macOS support requires platform-marker work on each plugin's
-flake (`meta.platforms = lib.platforms.linux ++ lib.platforms.darwin`),
+`flake.nix` advertises Linux-only Nix systems — macOS support
+requires platform-marker work on each plugin's flake
+(`meta.platforms = lib.platforms.linux ++ lib.platforms.darwin`),
 which lands per-plugin as each transport gets its own port.

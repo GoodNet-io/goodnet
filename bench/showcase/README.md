@@ -67,8 +67,8 @@ which pins the contract.
 
 The production-shape handoff (`SessionRegistry::downgrade_*` +
 trust-class hook on connection bring-up + peer-side wire signal)
-is a v1.x followup. The bench's PoC suffices to surface the
-latency-step number; it is NOT a path operators should use.
+is planned. The bench's PoC suffices to surface the latency-step
+number; it is NOT a path operators should use.
 
 ## Bench-only synthesis
 
