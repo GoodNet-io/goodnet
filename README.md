@@ -413,9 +413,5 @@ methodology + the six measurement axes are documented in
 
 - Pre-built release binaries. Build from source through Nix or
   the standard CMake path above.
-- Per-plugin GitHub repositories. The bundled plugins live
-  in-tree under `plugins/`; the org repos at
-  `GoodNet-io/<kind>-<name>` come online when each plugin
-  extracts.
 - A registered domain. Documentation references the GitHub
   organisation directly.
