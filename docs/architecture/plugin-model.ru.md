@@ -227,7 +227,7 @@ Vtable layout: `provider_id` отдаёт стабильный identifier (`"noi
 
 `allowed_trust_mask()` возвращает bitmap из `1u << GN_TRUST_<X>`. Noise provider declares `Untrusted | Peer | Loopback | IntraNode`. Null provider declares `Loopback | IntraNode`. Connection чей trust class не в mask'е rejected at `SessionRegistry::create` до того, как handshake byte рideт.
 
-Stack policy: один default provider per trust class. v1 simplification держит ровно одного active provider total — second `register_security` call отдаёт `GN_ERR_LIMIT_REACHED`, incumbent остаётся active. Multi-provider per-trust-class selection приходит со StackRegistry в v1.x.
+Stack policy: kernel admits N security providers concurrently через StackRegistry — одну entry per distinct `provider_id`. Дубликат id (повторный `register_security` под тем же именем) отдаёт `GN_ERR_LIMIT_REACHED`; свежий id принимается и присоединяется к per-trust-class admission set. `find_for_trust(trust)` подбирает первый registered provider, чей `allowed_trust_mask` admits заявленный класс — кэрнел запускает null для `Loopback` / `IntraNode` и noise для `Untrusted` / `Peer` в одном процессе без operator config switch.
 
 Provider plugin живёт собственным git'ом. `plugins/security/noise/` — отдельный standalone Nix flake, GPL-2 licensed (relicensed для anti-enclosure ground), pull'ится из bare mirror в kernel monorepo при `nix run .#setup`. Тот же source распространяется как static archive (linked в kernel binary) или dynamic .so (loaded через manifest verification + dlopen). Two deployment modes без source duplication.
 
