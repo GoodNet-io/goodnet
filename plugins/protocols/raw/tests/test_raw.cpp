@@ -6,8 +6,6 @@
 
 #include <plugins/protocols/raw/raw.hpp>
 
-#include <core/kernel/connection_context.hpp>
-
 #include <sdk/connection.h>
 #include <sdk/protocol.h>
 #include <sdk/trust.h>
@@ -15,23 +13,33 @@
 
 #include <cstdint>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
 
-/// Build a real `gn_connection_context_s` (kernel-side struct) so
-/// the protocol-layer accessors (`gn_ctx_local_pk` etc.) resolve
-/// against the kernel's own implementation. Tests link against
-/// `goodnet_kernel` which provides the `extern "C"` thunks.
-gn_connection_context_t make_ctx(gn_trust_class_t trust,
-                                  std::uint8_t local_marker,
-                                  std::uint8_t remote_marker) {
-    gn_connection_context_t ctx{};
-    ctx.local_pk[0]  = local_marker;
-    ctx.remote_pk[0] = remote_marker;
-    ctx.conn_id      = 7;
-    ctx.trust        = trust;
-    return ctx;
+/// RAII wrapper that allocates a context through the SDK's
+/// `gn_ctx_make_for_test` builder. The plugin-side test cannot
+/// include the kernel-internal struct definition (`core/kernel/
+/// connection_context.hpp`) because the ABI hermeticity gate
+/// forbids plugin TUs from including `core/`. The builder hands
+/// us an opaque pointer the SDK accessors can read; the deleter
+/// calls `gn_ctx_destroy` to release the allocation.
+using CtxPtr = std::unique_ptr<gn_connection_context_t,
+                                decltype(&gn_ctx_destroy)>;
+
+CtxPtr make_ctx(gn_trust_class_t trust,
+                std::uint8_t local_marker,
+                std::uint8_t remote_marker) {
+    std::uint8_t local_pk[GN_PUBLIC_KEY_BYTES] = {};
+    std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+    local_pk[0]  = local_marker;
+    remote_pk[0] = remote_marker;
+    return CtxPtr{
+        gn_ctx_make_for_test(local_pk, remote_pk,
+                              /*conn_id*/ 7, trust,
+                              /*allows_relay*/ 0),
+        &gn_ctx_destroy};
 }
 
 }  // namespace
@@ -55,7 +63,7 @@ TEST(RawProtocol, FrameWritesPayloadVerbatim) {
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
     void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
-    ASSERT_EQ(vt.frame(nullptr, &ctx, &msg,
+    ASSERT_EQ(vt.frame(nullptr, ctx.get(), &msg,
                         &out_bytes, &out_size, &out_user_data, &out_free),
               GN_OK);
     ASSERT_NE(out_bytes, nullptr);
@@ -71,7 +79,7 @@ TEST(RawProtocol, DeframeReproducesPayload) {
     const std::uint8_t wire[] = {0xDE, 0xAD, 0xBE, 0xEF};
 
     gn_deframe_result_t res{};
-    ASSERT_EQ(vt.deframe(nullptr, &ctx, wire, sizeof(wire), &res), GN_OK);
+    ASSERT_EQ(vt.deframe(nullptr, ctx.get(), wire, sizeof(wire), &res), GN_OK);
     ASSERT_EQ(res.count, 1u);
     ASSERT_NE(res.messages, nullptr);
     EXPECT_EQ(res.messages[0].payload_size, sizeof(wire));
@@ -90,7 +98,7 @@ TEST(RawProtocol, DeframeWorksOnIntraNode) {
     gn_deframe_result_t res{};
     /// `IntraNode` is the second trust class permitted for `raw`
     /// per security-trust.md §4.
-    EXPECT_EQ(vt.deframe(nullptr, &ctx, wire, sizeof(wire), &res), GN_OK);
+    EXPECT_EQ(vt.deframe(nullptr, ctx.get(), wire, sizeof(wire), &res), GN_OK);
 }
 
 TEST(RawProtocol, DeframeRefusesUntrusted) {
@@ -101,7 +109,7 @@ TEST(RawProtocol, DeframeRefusesUntrusted) {
     /// Per security-trust.md §4 raw is permitted only on
     /// LOOPBACK / INTRA_NODE; deframe on UNTRUSTED returns the
     /// invariant-violation code so the kernel drops the frame.
-    EXPECT_EQ(vt.deframe(nullptr, &ctx, bytes, sizeof(bytes), &res),
+    EXPECT_EQ(vt.deframe(nullptr, ctx.get(), bytes, sizeof(bytes), &res),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -112,7 +120,7 @@ TEST(RawProtocol, DeframeRefusesPeer) {
     gn_deframe_result_t res{};
     /// Even authenticated peers go through the proper protocol
     /// layer (gnet-v1) — `raw` is opaque-passthrough only.
-    EXPECT_EQ(vt.deframe(nullptr, &ctx, bytes, sizeof(bytes), &res),
+    EXPECT_EQ(vt.deframe(nullptr, ctx.get(), bytes, sizeof(bytes), &res),
               GN_ERR_INVALID_ENVELOPE);
 }
 
@@ -120,7 +128,7 @@ TEST(RawProtocol, DeframeRefusesEmpty) {
     auto vt  = gn::protocol::raw::make_vtable();
     auto ctx = make_ctx(GN_TRUST_LOOPBACK, 0x00, 0x00);
     gn_deframe_result_t res{};
-    EXPECT_EQ(vt.deframe(nullptr, &ctx, nullptr, 0, &res),
+    EXPECT_EQ(vt.deframe(nullptr, ctx.get(), nullptr, 0, &res),
               GN_ERR_DEFRAME_INCOMPLETE);
 }
 
@@ -135,7 +143,7 @@ TEST(RawProtocol, FrameRejectsOversized) {
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
     void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
-    EXPECT_EQ(vt.frame(nullptr, &ctx, &msg,
+    EXPECT_EQ(vt.frame(nullptr, ctx.get(), &msg,
                         &out_bytes, &out_size, &out_user_data, &out_free),
               GN_ERR_PAYLOAD_TOO_LARGE);
     EXPECT_EQ(out_bytes, nullptr);
@@ -158,12 +166,12 @@ TEST(RawProtocol, RoundTripFrameDeframe) {
     std::uint8_t* out_bytes = nullptr;
     std::size_t   out_size  = 0;
     void* out_user_data = nullptr; void (*out_free)(void*, std::uint8_t*) = nullptr;
-    ASSERT_EQ(vt.frame(nullptr, &ctx, &msg,
+    ASSERT_EQ(vt.frame(nullptr, ctx.get(), &msg,
                         &out_bytes, &out_size, &out_user_data, &out_free),
               GN_OK);
 
     gn_deframe_result_t res{};
-    ASSERT_EQ(vt.deframe(nullptr, &ctx, out_bytes, out_size, &res), GN_OK);
+    ASSERT_EQ(vt.deframe(nullptr, ctx.get(), out_bytes, out_size, &res), GN_OK);
     ASSERT_EQ(res.count, 1u);
     EXPECT_EQ(res.messages[0].payload_size, sizeof(payload));
     EXPECT_EQ(std::memcmp(res.messages[0].payload, payload, sizeof(payload)), 0);
