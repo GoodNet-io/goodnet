@@ -5,7 +5,7 @@
 			"type": "group",
 			"x": 2099,
 			"y": -270,
-			"width": 1738,
+			"width": 1759,
 			"height": 520,
 			"color": "5",
 			"label": "PUBLIC C ABI (sdk/core.h)"
@@ -33,9 +33,9 @@
 		{
 			"id": "g_registry",
 			"type": "group",
-			"x": 1721,
+			"x": 1717,
 			"y": 1752,
-			"width": 3644,
+			"width": 3648,
 			"height": 400,
 			"color": "4",
 			"label": "REGISTRIES (core/registry/)"
@@ -53,9 +53,9 @@
 		{
 			"id": "g_signal",
 			"type": "group",
-			"x": 6201,
+			"x": 6190,
 			"y": 1762,
-			"width": 1725,
+			"width": 1745,
 			"height": 380,
 			"color": "6",
 			"label": "SIGNAL INFRASTRUCTURE (core/kernel/)"
@@ -142,9 +142,9 @@
 			"id": "n_error",
 			"type": "text",
 			"text": "# gn_result_t\n`sdk/types.h`\n\n```c\ntypedef enum {\n  GN_OK = 0,\n  GN_ERR_NULL_ARG, GN_ERR_NOT_FOUND,\n  GN_ERR_INVALID_ENVELOPE,\n  GN_ERR_VERSION_MISMATCH,\n  GN_ERR_LIMIT_REACHED,\n  GN_ERR_OUT_OF_RANGE, GN_ERR_INVALID_STATE,\n  ...\n} gn_result_t;\n```\n\nОдин enum для каждого failure mode.\nКонтракт `host-api.en.md` фиксирует возврат на каждом slot'е.",
-			"x": 3313,
+			"x": 3312,
 			"y": -200,
-			"width": 475,
+			"width": 497,
 			"height": 400
 		},
 		{
@@ -241,7 +241,7 @@
 			"id": "n_conn_reg",
 			"type": "text",
 			"text": "# ConnectionRegistry\n`core/registry/connection.{hpp,cpp}`\n\n16 шардованных bucket'ов под shared_mutex.\nХранит `ConnectionContext`: conn_id, link_scheme, remote_pk, trust,\nstate, security session, pending counters.\n\nВторичные индексы: pubkey → conn_id (для `find_conn_by_pk`).",
-			"x": 1771,
+			"x": 1767,
 			"y": 1852,
 			"width": 540,
 			"height": 220
@@ -277,16 +277,16 @@
 			"id": "n_ext_reg",
 			"type": "text",
 			"text": "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\nГлобальный namespace для plugin↔plugin контрактов\n(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n`register_extension(name, version, vtable)` —\n`query_extension_checked(name, version, &vtable)` —\nверсия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\nЯдро — pure registry; никаких встроенных extension'ов.",
-			"x": 2976,
+			"x": 2972,
 			"y": 1822,
-			"width": 535,
+			"width": 540,
 			"height": 280
 		},
 		{
 			"id": "n_session_reg",
 			"type": "text",
 			"text": "# SessionRegistry\n`core/security/session.{hpp,cpp}`\n\nPer-conn security state: handshake state-machine + AEAD ключи\npost-handshake. Хранит `gn_secure_buffer_t`-ownership ссылки на\nвыходные сообщения handshake'а до коммита.",
-			"x": 2388,
+			"x": 2384,
 			"y": 1872,
 			"width": 512,
 			"height": 180
@@ -322,7 +322,7 @@
 			"id": "n_conn_events",
 			"type": "text",
 			"text": "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\nОдин pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\nНесёт state-машину conn'а: `Connecting → Handshake → Established →\nClosing → Closed` плюс backpressure soft/clear.\n\nПодписки парятся с lifetime_anchor подписчика —\n`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\nесли плагин уже выгрузился.",
-			"x": 7341,
+			"x": 7351,
 			"y": 1832,
 			"width": 535,
 			"height": 260
@@ -331,7 +331,7 @@
 			"id": "n_metrics",
 			"type": "text",
 			"text": "# MetricsRegistry\n`core/kernel/metrics_registry.{hpp,cpp}`\n\nПлоский UTF-8 keyed counter store. Плагины зовут\n`emit_counter(name)` для cross-cutting телеметрии,\nexporter (отдельный плагин) ходит через `iterate_counters`.\n\nCardinality cap = `limits.max_counter_names` (8192 default);\nчерез cliff — `metrics.cardinality_rejected` поднимается.",
-			"x": 6251,
+			"x": 6240,
 			"y": 1842,
 			"width": 490,
 			"height": 240
@@ -340,9 +340,9 @@
 			"id": "n_timer",
 			"type": "text",
 			"text": "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\nОдин shared service executor (`timer.en.md`). Все таймеры\nплагинов парятся с их lifetime_anchor.\nПосле shutdown_requested — pending fire'ы дропаются\nдо того как зайдут в плагин.",
-			"x": 6818,
+			"x": 6807,
 			"y": 1862,
-			"width": 445,
+			"width": 467,
 			"height": 200
 		},
 		{

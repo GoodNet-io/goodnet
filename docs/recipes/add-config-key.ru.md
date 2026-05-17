@@ -213,8 +213,8 @@ Operator кладёт в JSON:
 
 ## Cross-refs
 
-- [config.md](../contracts/config.en.md) — schema, validation, reload semantics.
-- [host-api.md §2.1](../contracts/host-api.en.md) — `config_get` typed read, out_free contract.
-- [limits.md](../contracts/limits.en.md) — kernel-side `gn_limits_t` поля, cross-field инварианты.
-- [conn-events.md §3](../contracts/conn-events.en.md) — semantics для `subscribe_config_reload` (та же subscription model).
-- [timer.md §3](../contracts/timer.en.md) — куда постить долгую reload-side работу.
+- [config.en.md](../contracts/config.en.md) — schema, validation, reload semantics.
+- [host-api.en.md §2.1](../contracts/host-api.en.md) — `config_get` typed read, out_free contract.
+- [limits.en.md](../contracts/limits.en.md) — kernel-side `gn_limits_t` поля, cross-field инварианты.
+- [conn-events.en.md §3](../contracts/conn-events.en.md) — semantics для `subscribe_config_reload` (та же subscription model).
+- [timer.en.md §3](../contracts/timer.en.md) — куда постить долгую reload-side работу.

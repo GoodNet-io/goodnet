@@ -117,11 +117,11 @@
 <!-- note -->
 <g id="node8" class="node">
 <title>note</title>
-<polygon fill="#181825" stroke="#585b70" stroke-width="1.2" points="536.67,-123.52 211.32,-123.52 211.32,0 542.67,0 542.67,-117.52 536.67,-123.52"/>
-<polyline fill="none" stroke="#585b70" stroke-width="1.2" points="536.67,-123.52 536.67,-117.52"/>
-<polyline fill="none" stroke="#585b70" stroke-width="1.2" points="542.67,-117.52 536.67,-117.52"/>
+<polygon fill="#181825" stroke="#585b70" stroke-width="1.2" points="539.3,-123.52 208.7,-123.52 208.7,0 545.3,0 545.3,-117.52 539.3,-123.52"/>
+<polyline fill="none" stroke="#585b70" stroke-width="1.2" points="539.3,-123.52 539.3,-117.52"/>
+<polyline fill="none" stroke="#585b70" stroke-width="1.2" points="545.3,-117.52 539.3,-117.52"/>
 <text text-anchor="middle" x="377" y="-109.21" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">Each subscription pairs with a weak observer of the</text>
-<text text-anchor="middle" x="377" y="-96.46" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">calling plugin&#39;s lifetime anchor (plugin&#45;lifetime.md §4):</text>
+<text text-anchor="middle" x="377" y="-96.46" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">calling plugin&#39;s lifetime anchor (plugin&#45;lifetime.en.md §4):</text>
 <text text-anchor="middle" x="377" y="-83.71" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">callback whose plugin already unloaded is dropped silently.</text>
 <text text-anchor="middle" x="377" y="-60.96" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">Subscribers run on the publishing thread —</text>
 <text text-anchor="middle" x="377" y="-48.21" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70">transport&#39;s strand for CONNECTED / DISCONNECTED /</text>

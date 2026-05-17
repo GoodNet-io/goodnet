@@ -58,7 +58,7 @@ claiming existing peer_pk) живёт на
 назад тот же peer был достижим через relay, он держит свою таблицу
 `peer_pk → история URI` в собственном хранилище. Ядро такие следы не
 сохраняет — после `notify_disconnect` (см.
-[conn-events.md](../contracts/conn-events.en.md) §2a) запись и связанные
+[conn-events.en.md](../contracts/conn-events.en.md) §2a) запись и связанные
 с ней счётчики уничтожаются.
 
 ---
@@ -74,19 +74,19 @@ claiming existing peer_pk) живёт на
    запускает свой `connect(uri)`, и его собственный обработчик
    `notify_connect` отдаст ядру свежий `gn_conn_id_t`. Outbound
    dial — ответственность link-плагина (см.
-   [link.md](../contracts/link.en.md) §2); host_api напрямую
+   [link.en.md](../contracts/link.en.md) §2); host_api напрямую
    соединения не открывает.
 2. Плагин подписан на канал `GN_SUBSCRIBE_CONN_STATE` через
    `host_api->subscribe_conn_state` (см.
-   [host-api.md](../contracts/host-api.en.md) §2). Подписка существовала
+   [host-api.en.md](../contracts/host-api.en.md) §2). Подписка существовала
    до dial'а — иначе событие `CONNECTED` нового пути может уйти раньше,
    чем callback подключится (канал не пере-доставляет события задним
-   числом, см. [conn-events.md](../contracts/conn-events.en.md) §5).
+   числом, см. [conn-events.en.md](../contracts/conn-events.en.md) §5).
 3. На событие `GN_CONN_EVENT_CONNECTED` для `new_conn` плагин ждёт
    следующего шага — `GN_CONN_EVENT_TRUST_UPGRADED` с `trust_class ==
    GN_TRUST_PEER`. До этого момента новый путь не authenticated, и
    переключаться на него нельзя; см.
-   [security-trust.md](../contracts/security-trust.en.md) §3.
+   [security-trust.en.md](../contracts/security-trust.en.md) §3.
 4. Когда оба события пришли, плагин вызывает
    `host_api->disconnect(host_ctx, old_conn,
    GN_DISCONNECT_REASON_MIGRATED)`. Ядро публикует `DISCONNECTED` для
@@ -141,11 +141,11 @@ broadcast discovery, либо плагин достаёт из persistent peer-c
 vtable вида `get_peer_uris(peer_pk, out_list)`.
 
 Ядро принимает на вход любой URI, прошедший grammar-проверку (см.
-[uri.md](../contracts/uri.en.md) §2), и находит link-плагин по `scheme`
+[uri.en.md](../contracts/uri.en.md) §2), и находит link-плагин по `scheme`
 из `LinkRegistry`. Идентичность peer'а — это `remote_pk`, не URI;
 свопая URI, плагин не теряет identity peer'а и не вынужден
 пере-attest'ить связь с ним повторно (`device_pk` уже закреплён в
-peer-pin map'е, см. [registry.md](../contracts/registry.en.md) §8a).
+peer-pin map'е, см. [registry.en.md](../contracts/registry.en.md) §8a).
 
 ---
 
@@ -181,7 +181,7 @@ publisher'а) и обязан быть быстрым; долгая работа
 
 Параметр `reason` в `notify_disconnect` сейчас в v1 reserved — ядро
 его игнорирует и не транслирует подписчикам (см.
-[conn-events.md](../contracts/conn-events.en.md) §2a). Тем не менее
+[conn-events.en.md](../contracts/conn-events.en.md) §2a). Тем не менее
 плагины передают `GN_DISCONNECT_REASON_MIGRATED` по двум причинам:
 во-первых, запись попадает в `metrics.host_api.disconnect.errors` с
 этим лейблом и оператор отличает миграцию от обрыва; во-вторых, в
@@ -204,7 +204,7 @@ public-key идентифицирует peer'а вне зависимости о
 эфемерен: он живёт ровно от `notify_connect` до `notify_disconnect`,
 после чего ядро помечает его как заново использовать нельзя
 (структурно невозможно при текущих rates, см.
-[registry.md](../contracts/registry.en.md) §6).
+[registry.en.md](../contracts/registry.en.md) §6).
 
 Из этого следует разделение ответственности в плагинах:
 
@@ -242,11 +242,11 @@ extension namespace вроде `gn.float-send.rtt-optimal`.
 
 ## Cross-refs
 
-- Контракт событий: [conn-events.md](../contracts/conn-events.en.md)
-- Контракт регистра: [registry.md](../contracts/registry.en.md)
-- Контракт URI: [uri.md](../contracts/uri.en.md)
-- Trust-class и upgrade: [security-trust.md](../contracts/security-trust.en.md)
-- host_api: [host-api.md](../contracts/host-api.en.md)
+- Контракт событий: [conn-events.en.md](../contracts/conn-events.en.md)
+- Контракт регистра: [registry.en.md](../contracts/registry.en.md)
+- Контракт URI: [uri.en.md](../contracts/uri.en.md)
+- Trust-class и upgrade: [security-trust.en.md](../contracts/security-trust.en.md)
+- host_api: [host-api.en.md](../contracts/host-api.en.md)
 - Strategy plugins: [strategies.ru.md](./strategies.ru.md)
 - Конкретный пример того же шаблона: [relay-direct](relay-direct.ru.md)
 - Как extension выставляет себя в shared namespace: [extension-model](extension-model.ru.md)

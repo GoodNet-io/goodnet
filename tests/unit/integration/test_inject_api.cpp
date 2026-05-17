@@ -1,5 +1,5 @@
 /// @file   tests/integration/test_inject_api.cpp
-/// @brief  Bridge-tier injection paths per host-api.md §8 — driven
+/// @brief  Bridge-tier injection paths per host-api.en.md §8 — driven
 ///         through the host_api thunks exactly as a plugin would.
 
 #include <atomic>
@@ -127,7 +127,7 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
 }
 
 TEST(InjectExternal, ReservedSystemMsgIdRejected) {
-    /// `attestation.md §3` reserves msg_id 0x11 for the kernel-internal
+    /// `attestation.en.md §3` reserves msg_id 0x11 for the kernel-internal
     /// dispatcher. `notify_inbound_bytes` intercepts and routes to
     /// the dispatcher with the conn's own session; injected envelopes
     /// can't legitimately drive that path (the bridge IPC's session

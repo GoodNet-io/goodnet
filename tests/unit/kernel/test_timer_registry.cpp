@@ -69,7 +69,7 @@ TEST(TimerRegistry_Schedule, CancelTwiceIsOk) {
     gn_timer_id_t id = GN_INVALID_TIMER_ID;
     ASSERT_EQ(r.set_timer(500, [](void*) {}, nullptr, {}, &id), GN_OK);
     EXPECT_EQ(r.cancel_timer(id), GN_OK);
-    EXPECT_EQ(r.cancel_timer(id), GN_OK)  // idempotent per timer.md §7
+    EXPECT_EQ(r.cancel_timer(id), GN_OK)  // idempotent per timer.en.md §7
         << "second cancel of same id must report success";
     EXPECT_EQ(r.cancel_timer(GN_INVALID_TIMER_ID), GN_ERR_NULL_ARG);
 }
@@ -327,7 +327,7 @@ TEST(TimerRegistry_Quota, PostCapHoldsUnderConcurrentAdmits) {
     EXPECT_EQ(accepted.load() + rejected.load(), kThreads * kPosts);
 }
 
-// ── per-plugin sub-quota (limits.md §4a) ─────────────────────────────────
+// ── per-plugin sub-quota (limits.en.md §4a) ─────────────────────────────────
 
 TEST(TimerRegistry_Quota, PerPluginQuotaIsolatesSiblings) {
     /// Plugin A's anchor exhausts its per-plugin budget; plugin B

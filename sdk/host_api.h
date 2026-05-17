@@ -259,7 +259,7 @@ typedef struct host_api_s {
      */
     const gn_limits_t* (*limits)(void* host_ctx);
 
-    /* ── Logging (sdk/log.h, host-api.md §11) ──────────────────────────── */
+    /* ── Logging (sdk/log.h, host-api.en.md §11) ──────────────────────────── */
 
     /**
      * @brief Plugin-facing logging vtable. `should_log` short-
@@ -396,7 +396,7 @@ typedef struct host_api_s {
      */
     gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
 
-    /* ── Service executor (timer.md is the authoritative spec) ─────────── */
+    /* ── Service executor (timer.en.md is the authoritative spec) ─────────── */
 
     /**
      * @brief Schedule a one-shot callback after @p delay_ms ms.
@@ -422,7 +422,7 @@ typedef struct host_api_s {
      */
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
-    /* ── Channel subscription (conn-events.md / config.md authoritative) ── */
+    /* ── Channel subscription (conn-events.en.md / config.en.md authoritative) ── */
 
     /**
      * @brief Subscribe to the connection-event channel.
@@ -501,7 +501,7 @@ typedef struct host_api_s {
                                         gn_conn_event_kind_t kind,
                                         uint64_t pending_bytes);
 
-    /* ── Metrics (metrics.md) ──────────────────────────────────────────── */
+    /* ── Metrics (metrics.en.md) ──────────────────────────────────────────── */
 
     /**
      * @brief Bump the kernel-side counter at @p name by one.
@@ -533,7 +533,7 @@ typedef struct host_api_s {
                                   gn_counter_visitor_t visitor,
                                   void* user_data);
 
-    /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
+    /* ── Cooperative cancellation (plugin-lifetime.en.md §8) ──────────────── */
 
     /**
      * @brief Non-zero once the kernel begins teardown for this plugin.

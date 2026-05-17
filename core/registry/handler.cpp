@@ -69,7 +69,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
     /// `chains_[key]` default-creates an empty chain on miss;
     /// the find lookup keeps a rejected registration from
     /// leaving an orphan entry behind. A cap of zero disables
-    /// enforcement per `limits.md §4a`.
+    /// enforcement per `limits.en.md §4a`.
     if (cap != 0) {
         if (auto it = chains_.find(key); it != chains_.end() &&
                                          it->second.size() >= cap) {

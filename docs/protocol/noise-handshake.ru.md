@@ -252,7 +252,7 @@ TCP, TLS-over-TCP, IPC и WS satisfy'ют все три; UDP-class трансп�
 нет, и v1 noise на UDP не работает. Future provider variant для
 UDP-class транспортов добавит explicit replay window per session.
 
-Cross-link: [security-trust.md](../contracts/security-trust.en.md) §6
+Cross-link: [security-trust.en.md](../contracts/security-trust.en.md) §6
 описывает cross-cutting trust-class policy.
 
 ---
@@ -337,7 +337,7 @@ destroy, allowed_trust_mask, _reserved[4]).
 
 - [attestation-bytes](attestation-bytes.ru.md) — payload, обменивающийся
   поверх transport phase после handshake complete
-- [security-trust.md](../contracts/security-trust.en.md) — TrustClass
+- [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass
   policy, attestation gate
 - [security-flow](../architecture/security-flow.ru.md) — где SecuritySession
   живёт в kernel'е, как chain'ятся events

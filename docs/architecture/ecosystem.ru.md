@@ -416,7 +416,7 @@ Org doc + landing page при rc1.
   link plugin walkthrough
 - [`impl/cpp/cmake-integration.md`](../impl/cpp/cmake-integration.ru.md) —
   как app или binding линкуются с kernel/SDK
-- [`contracts/plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) —
+- [`contracts/plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) —
   lifecycle invariants
-- [`contracts/abi-evolution.md`](../contracts/abi-evolution.en.md) — ABI
+- [`contracts/abi-evolution.en.md`](../contracts/abi-evolution.en.md) — ABI
   правила pre-rc1 vs post-rc1

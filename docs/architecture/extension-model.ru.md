@@ -202,9 +202,9 @@ Heartbeat-плагин не знает о существовании orchestrato
 
 ## Cross-refs
 
-- Контракт: [host-api.md](../contracts/host-api.en.md) — slot'ы `register_extension` / `query_extension_checked`, error semantics, lifetime.
-- Контракт: [conn-events.md](../contracts/conn-events.en.md) — pub/sub для асинхронной координации между плагинами.
-- Контракт: [security-trust.md](../contracts/security-trust.en.md) — TrustClass и upgrade, на который плагины часто реагируют через query.
+- Контракт: [host-api.en.md](../contracts/host-api.en.md) — slot'ы `register_extension` / `query_extension_checked`, error semantics, lifetime.
+- Контракт: [conn-events.en.md](../contracts/conn-events.en.md) — pub/sub для асинхронной координации между плагинами.
+- Контракт: [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass и upgrade, на который плагины часто реагируют через query.
 - Архитектура: [overview](overview.ru.md) — место расширений в общей картине.
 - Архитектура: [plugin-model](plugin-model.ru.md) — четыре роли плагина и их vtable shapes.
 - Архитектура: [host-api-model](host-api-model.ru.md) — KIND-tagged primitives, ABI evolution.

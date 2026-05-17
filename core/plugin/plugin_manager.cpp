@@ -262,7 +262,7 @@ gn_result_t PluginManager::open_one(const std::string& path,
         /// symbols never enter the address space. The fd lives
         /// alongside `so_handle` and closes at plugin shutdown
         /// or `rollback`. This preserves the TOCTOU pin per
-        /// plugin-manifest.md without breaking multi-plugin loads.
+        /// plugin-manifest.en.md without breaking multi-plugin loads.
         out.integrity_fd = fd;
         if (!out.so_handle) {
             ::close(fd);

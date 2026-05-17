@@ -44,7 +44,7 @@ typedef struct gn_limits_s {
     uint32_t max_plugins;                /**< dlopen ceiling */
     uint32_t max_extensions;             /**< extension registry size */
 
-    /* Service executor (timer.md §6) */
+    /* Service executor (timer.en.md §6) */
     uint32_t max_timers;                 /**< active one-shot timers */
     uint32_t max_pending_tasks;          /**< queued service-executor tasks (set_timer fire-and-forget) */
     uint32_t max_timers_per_plugin;      /**< per-anchor timer cap; 0 = no
@@ -55,7 +55,7 @@ typedef struct gn_limits_s {
                                               exhausts the kernel's global
                                               budget and starves siblings. */
 
-    /* Foreign-payload injection rate limiter (host-api.md §8) */
+    /* Foreign-payload injection rate limiter (host-api.en.md §8) */
     uint32_t inject_rate_per_source;     /**< token-bucket refill rate per
                                               source — tokens per second
                                               accrued for the bridge plugin's
@@ -74,7 +74,7 @@ typedef struct gn_limits_s {
                                               cap, so unbounded source-id
                                               growth cannot exhaust memory */
 
-    /* Handshake-phase send buffer (backpressure.md §8) */
+    /* Handshake-phase send buffer (backpressure.en.md §8) */
     uint32_t pending_handshake_bytes;    /**< per-conn cap on app data
                                               buffered while the security
                                               session is in Handshake phase */

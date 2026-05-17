@@ -346,7 +346,7 @@ typedef struct gn_stats_s {
     uint64_t frames_in;                /**< sum of per-conn `frames_in`          */
     uint64_t frames_out;               /**< sum of per-conn `frames_out`         */
     uint64_t plugin_dlclose_leaks;     /**< from `plugin.leak.dlclose_skipped`   */
-    void*    _reserved[4];             /**< MUST be zero per abi-evolution.md §4 */
+    void*    _reserved[4];             /**< MUST be zero per abi-evolution.en.md §4 */
 } gn_stats_t;
 
 GN_VTABLE_API_SIZE_FIRST(gn_stats_t);

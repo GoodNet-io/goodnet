@@ -188,7 +188,7 @@ def gen_architecture():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. Kernel FSM — 8 phases per docs/contracts/fsm-events.md §2
+# 2. Kernel FSM — 8 phases per docs/contracts/fsm-events.en.md §2
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_kernel_fsm():
@@ -230,7 +230,7 @@ def gen_kernel_fsm():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 3. Connection FSM — per docs/contracts/conn-events.md, registry.md
+# 3. Connection FSM — per docs/contracts/conn-events.en.md, registry.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_connection_fsm():
@@ -284,7 +284,7 @@ def gen_connection_fsm():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 4. Inbound message path — per protocol-layer.md, handler-registration.md
+# 4. Inbound message path — per protocol-layer.en.md, handler-registration.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_message_path_inbound():
@@ -390,7 +390,7 @@ def gen_message_path_outbound():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 6. Noise XX handshake — per security-trust.md, attestation.md
+# 6. Noise XX handshake — per security-trust.en.md, attestation.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_noise_handshake():
@@ -490,7 +490,7 @@ def gen_noise_handshake():
     g.node("attest",
            "Attestation exchange\n"
            "232-byte payload over secured channel\n"
-           "(per attestation.md)",
+           "(per attestation.en.md)",
            shape="box", color=MAUVE, fontcolor=MAUVE,
            style="filled,rounded", fillcolor=SURFACE1, fontsize="9")
     g.edge("split", "attest", color=YELLOW)
@@ -515,7 +515,7 @@ def gen_noise_handshake():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 7. Dispatch chain — per handler-registration.md §3
+# 7. Dispatch chain — per handler-registration.en.md §3
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_dispatch_chain():
@@ -584,7 +584,7 @@ def gen_dispatch_chain():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 8. Sharded ConnectionRegistry — per registry.md
+# 8. Sharded ConnectionRegistry — per registry.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_sharded_registry():
@@ -658,7 +658,7 @@ def gen_sharded_registry():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 9. Backpressure — per backpressure.md, conn-events.md
+# 9. Backpressure — per backpressure.en.md, conn-events.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_cas_backpressure():
@@ -742,7 +742,7 @@ def gen_cas_backpressure():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 10. dlopen pipeline — per plugin-lifetime.md, plugin-manifest.md
+# 10. dlopen pipeline — per plugin-lifetime.en.md, plugin-manifest.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_dlopen_pipeline():
@@ -1016,7 +1016,7 @@ def gen_nonce_window():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 13. Signal bus — per signal-channel.md, conn-events.md
+# 13. Signal bus — per signal-channel.en.md, conn-events.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_signal_bus():
@@ -1098,7 +1098,7 @@ def gen_signal_bus():
     # Lifetime + threading note
     g.node("note",
            "Each subscription pairs with a weak observer of the\n"
-           "calling plugin's lifetime anchor (plugin-lifetime.md §4):\n"
+           "calling plugin's lifetime anchor (plugin-lifetime.en.md §4):\n"
            "callback whose plugin already unloaded is dropped silently.\n"
            "\n"
            "Subscribers run on the publishing thread —\n"

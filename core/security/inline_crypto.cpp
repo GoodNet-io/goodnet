@@ -117,7 +117,7 @@ std::uint64_t InlineCrypto::reserve_send_nonces(std::size_t k) noexcept {
     /// connection; concurrent reservations across distinct
     /// connections do not race because each `InlineCrypto` is
     /// per-connection. The single-writer invariant from
-    /// `link.md §4` is preserved.
+    /// `link.en.md §4` is preserved.
     return send_nonce_.fetch_add(k, std::memory_order_relaxed);
 }
 

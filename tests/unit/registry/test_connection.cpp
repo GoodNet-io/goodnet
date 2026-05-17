@@ -502,7 +502,7 @@ TEST(ConnectionRegistry_MaxConnections, ErasureFreesSlot) {
 // ── concurrency ──────────────────────────────────────────────────────────
 
 /// Hammer the registry from multiple threads doing interleaved
-/// insert+find+erase. Verifies registry.md §3 deadlock-free claim and
+/// insert+find+erase. Verifies registry.en.md §3 deadlock-free claim and
 /// the all-or-nothing visibility under contention.
 TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
     constexpr int kThreads        = 4;
@@ -517,7 +517,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
             const gn_conn_id_t id  = reg.alloc_id();
             /// `+ 1` keeps tid=0,i=0 from producing a zero pk —
             /// `insert_with_index` skips zero pk on purpose
-            /// (registry.md §7a) and `find_by_pk(zero)` would miss.
+            /// (registry.en.md §7a) and `find_by_pk(zero)` would miss.
             const std::uint64_t seed = ((static_cast<std::uint64_t>(tid) << 32) |
                                         static_cast<std::uint64_t>(i)) + 1;
             const PublicKey pk = make_pk(seed);
@@ -689,7 +689,7 @@ TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     /// remote_pk (zeros) before the handshake completes; once the
     /// security session exposes peer_static_pk, the kernel calls
     /// `update_remote_pk` so the pk index keys on the real peer key
-    /// (registry.md §7a + §8a cross-session pin gate).
+    /// (registry.en.md §7a + §8a cross-session pin gate).
     ConnectionRegistry reg;
     const gn_conn_id_t id = reg.alloc_id();
     const PublicKey placeholder{};

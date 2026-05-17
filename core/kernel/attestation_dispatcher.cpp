@@ -30,7 +30,7 @@ constexpr std::size_t kSignatureSize   = identity::kEd25519SignatureBytes;  //  
 
 static_assert(
     kSignatureOffset + kSignatureSize == AttestationDispatcher::kPayloadBytes,
-    "attestation payload layout drift — see attestation.md §2");
+    "attestation payload layout drift — see attestation.en.md §2");
 
 [[nodiscard]] std::int64_t default_now_unix_seconds() noexcept {
     return static_cast<std::int64_t>(std::time(nullptr));

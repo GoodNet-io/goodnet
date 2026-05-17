@@ -219,7 +219,7 @@ Soft-watermark и потерянное-соединение-на-горизон�
 событийный surface, не возврат `send`'а. Канал
 `GN_SUBSCRIBE_CONN_STATE` доставляет `BACKPRESSURE_SOFT` /
 `BACKPRESSURE_CLEAR` (см.
-[conn-events.md §2](../contracts/conn-events.en.md)). Подписчик читает
+[conn-events.en.md §2](../contracts/conn-events.en.md)). Подписчик читает
 `pending_bytes` из payload'а и принимает решение. Тип
 `gn_backpressure_t` в [`sdk/types.h`](../../sdk/types.h) — wire shape
 для этого канала, зарезервированный под per-conn pressure

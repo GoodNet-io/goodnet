@@ -179,7 +179,7 @@ typedef uint64_t gn_subscription_id_t;
 /* Allocated ids are monotonically increasing starting at 1; 0 is
    reserved as the unset sentinel.  Reuse is structurally
    impossible across realistic kernel runtimes per
-   signal-channel.md §3. */
+   signal-channel.en.md §3. */
 
 typedef void (*gn_conn_state_cb_t)(void* user_data,
                                     const gn_conn_event_t* event);

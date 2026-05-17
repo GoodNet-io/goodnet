@@ -220,9 +220,9 @@ static void on_conn_event(void* user_data, const gn_conn_event_t* ev) {
 
 ## Cross-refs
 
-- [conn-events.md](../contracts/conn-events.en.md) — event kinds, DISCONNECTED spec, ordering, dropped events.
-- [signal-channel.md](../contracts/signal-channel.en.md) — pub/sub primitive под капотом, snapshot rule, exception-catch contract.
-- [host-api.md §2](../contracts/host-api.en.md) — `subscribe_conn_state` / `unsubscribe` / `for_each_connection` slot signatures.
+- [conn-events.en.md](../contracts/conn-events.en.md) — event kinds, DISCONNECTED spec, ordering, dropped events.
+- [signal-channel.en.md](../contracts/signal-channel.en.md) — pub/sub primitive под капотом, snapshot rule, exception-catch contract.
+- [host-api.en.md §2](../contracts/host-api.en.md) — `subscribe_conn_state` / `unsubscribe` / `for_each_connection` slot signatures.
 - [relay-direct](../architecture/relay-direct.ru.md) — пример consumer'а для TRUST_UPGRADED.
-- [timer.md §2-3](../contracts/timer.en.md) — куда постить долгую работу из callback'а.
-- [plugin-lifetime.md §4](../contracts/plugin-lifetime.en.md) — auto-reap subscriptions через lifetime anchor.
+- [timer.en.md §2-3](../contracts/timer.en.md) — куда постить долгую работу из callback'а.
+- [plugin-lifetime.en.md §4](../contracts/plugin-lifetime.en.md) — auto-reap subscriptions через lifetime anchor.

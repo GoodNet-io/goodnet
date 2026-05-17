@@ -327,7 +327,7 @@ ciphertext в 2-байт BE length prefix per Noise §7. Plugin не возит�
 ## 9. Шаг 7. Replay protection и rekey
 
 Provider реализует sliding nonce-window per
-[security-trust.md](../contracts/security-trust.en.md) §6 (cross-refs ниже
+[security-trust.en.md](../contracts/security-trust.en.md) §6 (cross-refs ниже
 указывают на noise/docs/handshake.md как канонический wire-spec):
 
 - send-side: монотонный счётчик nonce, инкремент per encrypt;
@@ -355,7 +355,7 @@ static gn_result_t myprov_rekey(void* self_v, void* state_v) {
 ## 10. Шаг 8. Attestation hook
 
 Promotion `Untrusted → Peer` гейтится attestation'ом
-([attestation.md](../contracts/attestation.en.md)), а не успехом Noise.
+([attestation.en.md](../contracts/attestation.en.md)), а не успехом Noise.
 После того как handshake достиг Transport, ядро публикует
 ATTESTATION-события через kernel-internal dispatcher:
 
@@ -442,7 +442,7 @@ Quiescence-wait (`plugin-lifetime.en.md` §4) обеспечивает, что �
   обрабатывает kernel-side `SecuritySession`; provider шифрует
   логический payload.
 - **Не делает attestation сам.** Attestation flow — kernel-internal
-  dispatcher на reserved msg_id `0x11` (см. handler-registration.md
+  dispatcher на reserved msg_id `0x11` (см. handler-registration.en.md
   §2a). Provider только экспортирует `handshake_hash`.
 - **Не вызывает `notify_connect` / `notify_inbound_bytes` /
   `notify_disconnect` / `kick_handshake`.** Это loader-side host_api,
@@ -474,14 +474,14 @@ Quiescence-wait (`plugin-lifetime.en.md` §4) обеспечивает, что �
 
 ## 14. Cross-refs
 
-- [security-trust.md](../contracts/security-trust.en.md) — TrustClass,
+- [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass,
   per-component admission gates §4, single-active provider §6,
   conn-id ownership gate §6a, replay protection §6.
-- [attestation.md](../contracts/attestation.en.md) — 232-байтный
+- [attestation.en.md](../contracts/attestation.en.md) — 232-байтный
   payload, kernel-internal dispatcher, gating `Untrusted → Peer`.
-- [plugin-lifetime.md](../contracts/plugin-lifetime.en.md) — фазы,
+- [plugin-lifetime.en.md](../contracts/plugin-lifetime.en.md) — фазы,
   registration window, quiescence wait, shutdown sequence.
-- [host-api.md](../contracts/host-api.en.md) — `register_security`,
+- [host-api.en.md](../contracts/host-api.en.md) — `register_security`,
   `unregister_security`.
 - [security-flow](../architecture/security-flow.ru.md) — общая
   диаграмма handshake → attestation → transport phase.

@@ -225,7 +225,7 @@ TEST(SendLoopback, DisconnectThroughTransport) {
 }
 
 TEST(SendLoopback, CrossPluginConnIdRejected) {
-    /// security-trust.md §6a: only the link plugin that registered
+    /// security-trust.en.md §6a: only the link plugin that registered
     /// the scheme backing a connection may drive its host_api conn_id
     /// thunks. A second plugin attempting `notify_inbound_bytes` /
     /// `notify_disconnect` / `notify_link_event` / `kick_handshake`

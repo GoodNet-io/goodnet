@@ -146,6 +146,6 @@ link_tcp.dial_fail.refused  ->  link_tcp_dial_fail{reason="refused"}
 
 ## Cross-refs
 
-- [metrics.md](../contracts/metrics.en.md) — kernel-side counter store, cardinality cap, drop counter discipline.
-- [host-api.md §2 + §11](../contracts/host-api.en.md) — `emit_counter` / `iterate_counters` slot signatures + log surface.
-- [limits.md](../contracts/limits.en.md) — `max_counter_names` and other caps плагин consume'ит.
+- [metrics.en.md](../contracts/metrics.en.md) — kernel-side counter store, cardinality cap, drop counter discipline.
+- [host-api.en.md §2 + §11](../contracts/host-api.en.md) — `emit_counter` / `iterate_counters` slot signatures + log surface.
+- [limits.en.md](../contracts/limits.en.md) — `max_counter_names` and other caps плагин consume'ит.

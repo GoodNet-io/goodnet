@@ -1,7 +1,7 @@
-total: 1228
+total: 1235
 groups:
 - tree: kernel
-  count: 804
+  count: 811
   files: 72
 - tree: plugins/handlers/dns
   count: 51

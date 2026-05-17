@@ -130,7 +130,7 @@ TEST(ExtensionRegistry_Unregister, AllowsReuseAfterRemoval) {
               GN_OK);
 }
 
-// ── semver gate (abi-evolution.md §2) ────────────────────────────────────
+// ── semver gate (abi-evolution.en.md §2) ────────────────────────────────────
 
 TEST(ExtensionRegistry_Semver, MajorMustMatchExactly) {
     ExtensionRegistry r;
@@ -300,7 +300,7 @@ TEST(ExtensionRegistry_Concurrency, FourThreadsRegisterQuery) {
               static_cast<std::size_t>(reg_ok.load() - unreg_ok.load()));
 }
 
-// ── max_extensions cap (limits.md §4a) ───────────────────────────────────
+// ── max_extensions cap (limits.en.md §4a) ───────────────────────────────────
 
 TEST(ExtensionRegistry_MaxExtensions, ZeroMeansUnlimited) {
     ExtensionRegistry r;

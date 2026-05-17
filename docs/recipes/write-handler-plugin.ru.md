@@ -91,7 +91,7 @@ mirror в `~/.local/share/goodnet-mirrors/handler-echo.git` до тех пор,
 ## 4. Шаг 2. Манифест распространения
 
 Каждый собранный `.so` сопровождается per-package JSON-манифестом
-`<libfile>.json` (см. [plugin-manifest.md](../contracts/plugin-manifest.en.md) §8).
+`<libfile>.json` (см. [plugin-manifest.en.md](../contracts/plugin-manifest.en.md) §8).
 Для echo он выглядит так:
 
 ```json
@@ -236,7 +236,7 @@ static void echo_supported_msg_ids(void* self_v,
 `msg_id == 0` зарезервирован под unset sentinel; `0x11` — под
 attestation dispatcher. Регистрация против них вернёт
 `GN_ERR_INVALID_ENVELOPE`. Полная таблица —
-[handler-registration.md](../contracts/handler-registration.en.md) §2a.
+[handler-registration.en.md](../contracts/handler-registration.en.md) §2a.
 
 ---
 
@@ -336,14 +336,14 @@ nix run .#build            # просто сборка, артефакты в ./
 
 ## 12. Cross-refs
 
-- [handler-registration.md](../contracts/handler-registration.en.md) —
+- [handler-registration.en.md](../contracts/handler-registration.en.md) —
   семантика регистрации, priority, цепочка диспетчеризации,
   reserved msg_id'ы, `conn_id` контракт §3a.
-- [plugin-lifetime.md](../contracts/plugin-lifetime.en.md) — фазы 3..10,
+- [plugin-lifetime.en.md](../contracts/plugin-lifetime.en.md) — фазы 3..10,
   два-фазная активация, weak-observer pattern.
-- [plugin-manifest.md](../contracts/plugin-manifest.en.md) — operator
+- [plugin-manifest.en.md](../contracts/plugin-manifest.en.md) — operator
   manifest, per-package JSON, integrity-check ordering.
-- [host-api.md](../contracts/host-api.en.md) — `register_vtable`,
+- [host-api.en.md](../contracts/host-api.en.md) — `register_vtable`,
   `send`, `is_shutdown_requested`.
 - [plugin-model](../architecture/plugin-model.ru.md) — общая
   архитектурная картина: где живут handler/link/security в граф-схеме

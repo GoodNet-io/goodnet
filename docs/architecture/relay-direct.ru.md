@@ -155,7 +155,7 @@ ICE — interactive connectivity establishment, classical NAT-traversal protocol
 
 Минимум, который покрывает большую часть NAT-сценариев в локальных и semi-local setup'ах — relay плюс STUN-on-the-wire через `gn.heartbeat` (PONG-payload содержит external IP, как peer его наблюдает). Этой пары достаточно для домашних сетей, для mesh'а внутри одной AS, для большинства cellular-NAT'ов. UPnP / NAT-PMP теоретически могут лечь поверх через отдельный плагин, но не входят в канонический набор.
 
-Для реальной cross-NAT traversal нужен ICE: hole-punching по UDP с симметричной логикой обоих peer'ов, координация через third-party signaling. Если этот сценарий когда-либо приедет — он приедет как отдельный link-плагин на схеме `ice://`. URI вида `ice://peer-pk?ice-config=...` будет приниматься grammar'ом ([uri.md](../contracts/uri.en.md) §2), `LinkRegistry` найдёт ice-плагин по scheme'у, ICE-FSM с собственным state machine'ом будет жить внутри него и закроется наружу через `notify_connect` ровно так же, как любая другая транспортная связь. Ядро об ICE FSM по-прежнему ничего не узнает; для него — `notify_connect` от link'а, дальше как у tcp.
+Для реальной cross-NAT traversal нужен ICE: hole-punching по UDP с симметричной логикой обоих peer'ов, координация через third-party signaling. Если этот сценарий когда-либо приедет — он приедет как отдельный link-плагин на схеме `ice://`. URI вида `ice://peer-pk?ice-config=...` будет приниматься grammar'ом ([uri.en.md](../contracts/uri.en.md) §2), `LinkRegistry` найдёт ice-плагин по scheme'у, ICE-FSM с собственным state machine'ом будет жить внутри него и закроется наружу через `notify_connect` ровно так же, как любая другая транспортная связь. Ядро об ICE FSM по-прежнему ничего не узнает; для него — `notify_connect` от link'а, дальше как у tcp.
 
 До такого плагина — relay плюс direct upgrade покрывают сценарии, в которых GoodNet pretends играть. Это сознательный narrow scope: не пытаться быть universal P2P framework'ом, а решать задачу «два узла в LAN'е плюс гость через relay» хорошо.
 
@@ -166,8 +166,8 @@ ICE — interactive connectivity establishment, classical NAT-traversal protocol
 - Архитектура: [multi-path](multi-path.ru.md) — общий шаблон последовательного переключения путей.
 - Архитектура: [extension-model](extension-model.ru.md) — публикация и query расширений `gn.peer-info` / `gn.heartbeat`.
 - Архитектура: [security-flow](security-flow.ru.md) — handshake, attestation, переход trust class в `Peer`.
-- Контракт: [conn-events.md](../contracts/conn-events.en.md) — `TRUST_UPGRADED` / `DISCONNECTED` event payload, ordering, threading.
-- Контракт: [host-api.md](../contracts/host-api.en.md) — slot'ы `subscribe_conn_state`, `query_extension_checked`, `disconnect`.
-- Контракт: [security-trust.md](../contracts/security-trust.en.md) — one-way upgrade `Untrusted → Peer`, attestation-gate.
-- Контракт: [link.md](../contracts/link.en.md) — `connect(self, uri)` slot, `notify_connect` от link'а.
-- Контракт: [uri.md](../contracts/uri.en.md) — grammar для URI-схем, включая `relay://` и гипотетический `ice://`.
+- Контракт: [conn-events.en.md](../contracts/conn-events.en.md) — `TRUST_UPGRADED` / `DISCONNECTED` event payload, ordering, threading.
+- Контракт: [host-api.en.md](../contracts/host-api.en.md) — slot'ы `subscribe_conn_state`, `query_extension_checked`, `disconnect`.
+- Контракт: [security-trust.en.md](../contracts/security-trust.en.md) — one-way upgrade `Untrusted → Peer`, attestation-gate.
+- Контракт: [link.en.md](../contracts/link.en.md) — `connect(self, uri)` slot, `notify_connect` от link'а.
+- Контракт: [uri.en.md](../contracts/uri.en.md) — grammar для URI-схем, включая `relay://` и гипотетический `ice://`.

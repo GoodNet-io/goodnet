@@ -170,7 +170,7 @@ TEST(Config_LoadJson, ValidationFailurePreservesPriorState) {
     EXPECT_EQ(s, "ok");
 }
 
-// ── validate: cross-field invariants from limits.md §3 ───────────────────
+// ── validate: cross-field invariants from limits.en.md §3 ───────────────────
 
 TEST(Config_Validate, DefaultsPass) {
     Config c;

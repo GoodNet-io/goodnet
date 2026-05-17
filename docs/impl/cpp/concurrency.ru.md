@@ -20,7 +20,7 @@ Plugin SDK позволяет плагину держать свои поток�
 
 ## Контракт от ядра
 
-Контракт [`link.md §9`](../../contracts/link.en.md) говорит:
+Контракт [`link.en.md §9`](../../contracts/link.en.md) говорит:
 
 > A link's own shutdown path **must** fire `host_api->notify_disconnect`
 > synchronously for every session that was published through
@@ -62,7 +62,7 @@ thread. Затем main thread вызывает `shutdown()` — снимает 
 shutdown() при snapshot'е видит пустой map.
 
 Оба случая нарушают
-[`link.md §9`](../../contracts/link.en.md): для опубликованной через
+[`link.en.md §9`](../../contracts/link.en.md): для опубликованной через
 `notify_connect` сессии нет caller-thread emit'а.
 
 ## Протокол teardown'а

@@ -6,7 +6,7 @@ families:
   Capability TLV transport (capability-tlv.en.md):
   - present_capability_blob
   - subscribe_capability_blob
-  Channel subscription (conn-events.md / config.md authoritative):
+  Channel subscription (conn-events.en.md / config.en.md authoritative):
   - subscribe_conn_state
   - subscribe_config_reload
   - unsubscribe
@@ -15,7 +15,7 @@ families:
   Connection iteration:
   - for_each_connection
   - notify_backpressure
-  Cooperative cancellation (plugin-lifetime.md §8):
+  Cooperative cancellation (plugin-lifetime.en.md §8):
   - is_shutdown_requested
   Extension API:
   - query_extension_checked
@@ -42,7 +42,7 @@ families:
   Messaging:
   - send
   - disconnect
-  Metrics (metrics.md):
+  Metrics (metrics.en.md):
   - emit_counter
   - iterate_counters
   Peer identity readers (identity.en.md §5):
@@ -55,7 +55,7 @@ families:
   Security registration:
   - register_security
   - unregister_security
-  Service executor (timer.md is the authoritative spec):
+  Service executor (timer.en.md is the authoritative spec):
   - set_timer
   - cancel_timer
   Universal handler / link registration:
@@ -180,33 +180,33 @@ slots:
     *)
   file: sdk/host_api.h
   line: 413
-  family: Service executor (timer.md is the authoritative spec)
+  family: Service executor (timer.en.md is the authoritative spec)
   doc: a one-shot callback after  ms.
 - name: cancel_timer
   signature: gn_result_t (*)(void *, gn_timer_id_t)
   file: sdk/host_api.h
   line: 423
-  family: Service executor (timer.md is the authoritative spec)
+  family: Service executor (timer.en.md is the authoritative spec)
   doc: a pending timer.
 - name: subscribe_conn_state
   signature: gn_result_t (*)(void *, gn_conn_state_cb_t, void *, void (*)(void *),
     gn_subscription_id_t *)
   file: sdk/host_api.h
   line: 444
-  family: Channel subscription (conn-events.md / config.md authoritative)
+  family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: to the connection-event channel.
 - name: subscribe_config_reload
   signature: gn_result_t (*)(void *, gn_config_reload_cb_t, void *, void (*)(void
     *), gn_subscription_id_t *)
   file: sdk/host_api.h
   line: 459
-  family: Channel subscription (conn-events.md / config.md authoritative)
+  family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: to the config-reload channel.
 - name: unsubscribe
   signature: gn_result_t (*)(void *, gn_subscription_id_t)
   file: sdk/host_api.h
   line: 471
-  family: Channel subscription (conn-events.md / config.md authoritative)
+  family: Channel subscription (conn-events.en.md / config.en.md authoritative)
   doc: a subscription.
 - name: for_each_connection
   signature: gn_result_t (*)(void *, gn_conn_visitor_t, void *)
@@ -224,19 +224,19 @@ slots:
   signature: void (*)(void *, const char *)
   file: sdk/host_api.h
   line: 521
-  family: Metrics (metrics.md)
+  family: Metrics (metrics.en.md)
   doc: the kernel-side counter at  by one.
 - name: iterate_counters
   signature: uint64_t (*)(void *, gn_counter_visitor_t, void *)
   file: sdk/host_api.h
   line: 532
-  family: Metrics (metrics.md)
+  family: Metrics (metrics.en.md)
   doc: every registered counter;  is invoked
 - name: is_shutdown_requested
   signature: int32_t (*)(void *)
   file: sdk/host_api.h
   line: 556
-  family: Cooperative cancellation (plugin-lifetime.md §8)
+  family: Cooperative cancellation (plugin-lifetime.en.md §8)
   doc: once the kernel begins teardown for this plugin.
 - name: register_local_key
   signature: gn_result_t (*)(void *, gn_key_purpose_t, const char *, gn_key_id_t *)
@@ -309,6 +309,6 @@ slots:
   signature: gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *,
     size_t)
   file: sdk/host_api.h
-  line: 708
+  line: 714
   family: Identity rotation (identity.en.md §7)
   doc: outbound send.

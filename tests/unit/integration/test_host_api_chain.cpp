@@ -105,7 +105,7 @@ TEST(HostApiChain, NotifyConnectThenDisconnect) {
 }
 
 TEST(HostApiChain, NotifyConnectControlByteUriRejected) {
-    /// uri.md §5 #10 — a URI carrying CR / LF / space cannot reach
+    /// uri.en.md §5 #10 — a URI carrying CR / LF / space cannot reach
     /// the kernel registry index even on the `notify_connect` path
     /// that bypasses `parse_uri`. A downstream caller writing
     /// `rec.uri` into a wire frame (Host header, log line, request

@@ -257,7 +257,7 @@ TYPED_TEST_P(LinkTeardownConformance, ShutdownReleasesEverySession) {
         << "scheme=" << Traits::scheme
         << ": shutdown() must fire notify_disconnect "
            "synchronously on the caller thread for every session "
-           "published through notify_connect (link.md §9 step 3).";
+           "published through notify_connect (link.en.md §9 step 3).";
 }
 
 REGISTER_TYPED_TEST_SUITE_P(LinkTeardownConformance,

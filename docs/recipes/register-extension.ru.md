@@ -208,8 +208,8 @@ if (g_peer_info && g_peer_info->lookup_uri(g_peer_info->ctx,
 
 ## Cross-refs
 
-- [host-api.md §2 (Extension API)](../contracts/host-api.en.md) — slot definitions для `register_extension` / `query_extension_checked` / `unregister_extension`.
+- [host-api.en.md §2 (Extension API)](../contracts/host-api.en.md) — slot definitions для `register_extension` / `query_extension_checked` / `unregister_extension`.
 - [extension-model](../architecture/extension-model.ru.md) — почему extensions, namespace conventions, anti-patterns.
 - [relay-direct](../architecture/relay-direct.ru.md) — пример consumer-side use case.
-- [plugin-lifetime.md §4](../contracts/plugin-lifetime.en.md) — auto-reap registrations через lifetime-anchor.
-- [abi-evolution.md §3](../contracts/abi-evolution.en.md) — size-prefix evolution для vtable shape.
+- [plugin-lifetime.en.md §4](../contracts/plugin-lifetime.en.md) — auto-reap registrations через lifetime-anchor.
+- [abi-evolution.en.md §3](../contracts/abi-evolution.en.md) — size-prefix evolution для vtable shape.

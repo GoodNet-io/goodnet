@@ -56,7 +56,7 @@ typedef uint64_t gn_timer_id_t;
 #define GN_INVALID_TIMER_ID   ((gn_timer_id_t)0)
 
 /** Service-executor task callback. Runs on the kernel's
- *  single-thread service executor (timer.md §3); `user_data` is
+ *  single-thread service executor (timer.en.md §3); `user_data` is
  *  passed back unchanged. */
 typedef void (*gn_task_fn_t)(void* user_data);
 
@@ -455,13 +455,13 @@ _Static_assert(sizeof(((gn_message_t*)0)->_reserved) == 4 * sizeof(void*),
                "envelope reserved slots must be sized for ABI evolution");
 _Static_assert(offsetof(gn_message_t, api_size) == 0,
                "gn_message_t must begin with `uint32_t api_size` per "
-               "abi-evolution.md §3");
+               "abi-evolution.en.md §3");
 #endif
 
 #ifdef __cplusplus
 static_assert(offsetof(gn_message_t, api_size) == 0,
               "gn_message_t must begin with `uint32_t api_size` per "
-              "abi-evolution.md §3");
+              "abi-evolution.en.md §3");
 #endif
 
 #ifdef __cplusplus

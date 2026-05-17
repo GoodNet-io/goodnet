@@ -152,7 +152,7 @@
 <path fill="#45475a" stroke="#cba6f7" stroke-width="1.2" d="M356.92,-241.47C356.92,-241.47 165.08,-241.47 165.08,-241.47 159.08,-241.47 153.08,-235.47 153.08,-229.47 153.08,-229.47 153.08,-203.7 153.08,-203.7 153.08,-197.7 159.08,-191.7 165.08,-191.7 165.08,-191.7 356.92,-191.7 356.92,-191.7 362.92,-191.7 368.92,-197.7 368.92,-203.7 368.92,-203.7 368.92,-229.47 368.92,-229.47 368.92,-235.47 362.92,-241.47 356.92,-241.47"/>
 <text text-anchor="middle" x="261" y="-227.16" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">Attestation exchange</text>
 <text text-anchor="middle" x="261" y="-214.41" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">232&#45;byte payload over secured channel</text>
-<text text-anchor="middle" x="261" y="-201.66" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">(per attestation.md)</text>
+<text text-anchor="middle" x="261" y="-201.66" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">(per attestation.en.md)</text>
 </g>
 <!-- split&#45;&gt;attest -->
 <g id="edge11" class="edge">

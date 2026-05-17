@@ -27,7 +27,7 @@ Mesh-framing — единственный обязательный плагин-
 по которой работает дисклавиатура handler'ов. Рантайм-выбор второй
 реализации не поддерживается — одна нода = один формат рамки на проводе.
 
-Cross-link: [protocol-layer.md](../contracts/protocol-layer.en.md) §4
+Cross-link: [protocol-layer.en.md](../contracts/protocol-layer.en.md) §4
 формализует правило mandatory single-implementation;
 [wire-protocol](../architecture/wire-protocol.ru.md) описывает архитектурные
 последствия.
@@ -47,7 +47,7 @@ passthrough на in-process IPC. На production-листенере raw непр
 он не несёт sender/receiver на проводе, и kernel не сможет запруфить
 identity inbound envelope'а.
 
-Cross-link: [protocol-layer.md](../contracts/protocol-layer.en.md) §4
+Cross-link: [protocol-layer.en.md](../contracts/protocol-layer.en.md) §4
 описывает trust-class маски обоих плагинов.
 
 ---
@@ -78,7 +78,7 @@ Cross-link: [protocol-layer.md](../contracts/protocol-layer.en.md) §4
 
 Транспорт никогда не парсит security-префикс; security-сессия никогда не
 парсит GNET-magic; handler никогда не видит wire-байты mesh-framing'а
-([protocol-layer.md](../contracts/protocol-layer.en.md) §6).
+([protocol-layer.en.md](../contracts/protocol-layer.en.md) §6).
 
 ---
 
@@ -110,8 +110,8 @@ deframe возвращает handler'у. По умолчанию `max_frame_byte
 (вычитая GNET header + relay-mode оба PK), что даёт ~64 KiB полезной
 нагрузки в самом тяжёлом режиме encoding'а.
 
-Cross-link: [limits.md](../contracts/limits.en.md) §2 формализует таблицу
-лимитов; [backpressure.md](../contracts/backpressure.en.md) §9 — буферный
+Cross-link: [limits.en.md](../contracts/limits.en.md) §2 формализует таблицу
+лимитов; [backpressure.en.md](../contracts/backpressure.en.md) §9 — буферный
 бюджет partial-frame аккумуляции внутри SecuritySession.
 
 Attestation payload фиксированный — 232 байта; не масштабируется с
@@ -133,11 +133,11 @@ Attestation payload фиксированный — 232 байта; не масш
 
 Контракты на C ABI:
 
-- [protocol-layer.md](../contracts/protocol-layer.en.md) — kernel↔plugin
+- [protocol-layer.en.md](../contracts/protocol-layer.en.md) — kernel↔plugin
   envelope shape, vtable для `IProtocolLayer`.
-- [security-trust.md](../contracts/security-trust.en.md) — TrustClass
+- [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass
   policy, mask gate, attestation upgrade.
-- [attestation.md](../contracts/attestation.en.md) — dispatcher на стороне
+- [attestation.en.md](../contracts/attestation.en.md) — dispatcher на стороне
   kernel, mutual-exchange flow.
 
 Архитектурные обоснования:

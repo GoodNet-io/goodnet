@@ -24,10 +24,10 @@ and remains live for the plugin's lifetime.
 Slots are grouped by purpose:
 
 - **Capability TLV transport (capability-tlv.en.md)** — `present_capability_blob`, `subscribe_capability_blob`
-- **Channel subscription (conn-events.md / config.md authoritative)** — `subscribe_conn_state`, `subscribe_config_reload`, `unsubscribe`
+- **Channel subscription (conn-events.en.md / config.en.md authoritative)** — `subscribe_conn_state`, `subscribe_config_reload`, `unsubscribe`
 - **Configuration** — `config_get`
 - **Connection iteration** — `for_each_connection`, `notify_backpressure`
-- **Cooperative cancellation (plugin-lifetime.md §8)** — `is_shutdown_requested`
+- **Cooperative cancellation (plugin-lifetime.en.md §8)** — `is_shutdown_requested`
 - **Extension API** — `query_extension_checked`, `register_extension`, `unregister_extension`
 - **Foreign-payload injection** — `inject`, `kick_handshake`
 - **Identity primitives (identity.en.md §5)** — `register_local_key`, `delete_local_key`, `list_local_keys`, `sign_local`, `sign_local_by_id`
@@ -35,11 +35,11 @@ Slots are grouped by purpose:
 - **Limits read access** — `limits`
 - **Link-side notifications** — `notify_connect`, `notify_inbound_bytes`, `notify_disconnect`
 - **Messaging** — `send`, `disconnect`
-- **Metrics (metrics.md)** — `emit_counter`, `iterate_counters`
+- **Metrics (metrics.en.md)** — `emit_counter`, `iterate_counters`
 - **Peer identity readers (identity.en.md §5)** — `get_peer_user_pk`, `get_peer_device_pk`, `get_handshake_hash`
 - **Registry queries** — `find_conn_by_pk`, `get_endpoint`
 - **Security registration** — `register_security`, `unregister_security`
-- **Service executor (timer.md is the authoritative spec)** — `set_timer`, `cancel_timer`
+- **Service executor (timer.en.md is the authoritative spec)** — `set_timer`, `cancel_timer`
 - **Universal handler / link registration** — `register_vtable`, `unregister_vtable`
 <!-- /livedoc:host_api_summary -->
 
@@ -127,7 +127,7 @@ typedef struct host_api_s {
     /* Read-only borrow valid for the plugin's lifetime; see limits.md. */
     const gn_limits_t* (*limits)(void* host_ctx);
 
-    /* ── Logging (sdk/log.h, host-api.md §11) ────────────────────── */
+    /* ── Logging (sdk/log.h, host-api.en.md §11) ────────────────────── */
     /* Substruct rather than a single function pointer so the kernel  */
     /* can grow the logging surface (level fast-path, source-loc      */
     /* prefix, key-value records) without rewriting the host_api      */
@@ -188,7 +188,7 @@ typedef struct host_api_s {
     /* transport calls kick_handshake once that registration is done.    */
     gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
 
-    /* ── Service executor (timer.md is the authoritative spec) ──────── */
+    /* ── Service executor (timer.en.md is the authoritative spec) ──────── */
     gn_result_t (*set_timer)(void* host_ctx,
                              uint32_t delay_ms,
                              gn_task_fn_t fn,
@@ -196,7 +196,7 @@ typedef struct host_api_s {
                              gn_timer_id_t* out_id);
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
-    /* ── Channel subscription (conn-events.md / config.md) ──────────── */
+    /* ── Channel subscription (conn-events.en.md / config.en.md) ──────────── */
     /* Two typed slots — one per channel — instead of a single        */
     /* `subscribe(channel, ...)` dispatcher: the kernel knows the     */
     /* payload shape per channel and the binding never has to type-  */
@@ -225,7 +225,7 @@ typedef struct host_api_s {
                                        gn_conn_visitor_t visitor,
                                        void* user_data);
 
-    /* ── Backpressure publisher (backpressure.md §3) ────────────────── */
+    /* ── Backpressure publisher (backpressure.en.md §3) ────────────────── */
     /* Transport-only slot: the kernel routes the call into the         */
     /* connection-event channel as `BACKPRESSURE_SOFT` /                 */
     /* `BACKPRESSURE_CLEAR`. `kind` is the raw event constant from      */
@@ -235,7 +235,7 @@ typedef struct host_api_s {
                                        gn_conn_event_kind_t kind,
                                        uint64_t bytes);
 
-    /* ── Metrics (metrics.md) ───────────────────────────────────────── */
+    /* ── Metrics (metrics.en.md) ───────────────────────────────────────── */
     /* The kernel store is a flat map of monotonic UTF-8-named 64-bit  */
     /* counters. Plugins emit cross-cutting telemetry (relay forwards, */
     /* cache hits, retries) through `emit_counter` rather than spinning */
@@ -249,13 +249,13 @@ typedef struct host_api_s {
                                   gn_counter_visitor_t visitor,
                                   void* user_data);
 
-    /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────── */
+    /* ── Cooperative cancellation (plugin-lifetime.en.md §8) ──────────── */
     /* Non-zero once teardown for this plugin has begun. Plugins poll  */
     /* the slot from inside long-running async work and exit early so  */
     /* they drain ahead of the kernel's bounded wait.                  */
     int32_t (*is_shutdown_requested)(void* host_ctx);
 
-    /* ── Identity primitives (identity.md §8) ──────────────────────── */
+    /* ── Identity primitives (identity.en.md §8) ──────────────────────── */
     /* The kernel holds private bytes for every key the local node    */
     /* uses; plugins drive registration, listing, deletion, and       */
     /* signing through opaque handles. A plugin never sees a          */
@@ -279,7 +279,7 @@ typedef struct host_api_s {
                                      const uint8_t* payload, size_t size,
                                      uint8_t out_sig[64]);
 
-    /* ── Peer identity readers (identity.md §3, §6a) ────────────────── */
+    /* ── Peer identity readers (identity.en.md §3, §6a) ────────────────── */
     /* After attestation pins a peer's user_pk + device_pk + handshake */
     /* hash against its mesh address, plugins read the components      */
     /* separately for user-level operations. Each slot returns         */
@@ -295,7 +295,7 @@ typedef struct host_api_s {
                                        gn_conn_id_t conn,
                                        uint8_t out_hash[GN_HASH_BYTES]);
 
-    /* ── Capability TLV transport (capability-tlv.md) ────────────────── */
+    /* ── Capability TLV transport (capability-tlv.en.md) ────────────────── */
     /* Plugins ship identity-bearing blobs over the secured channel    */
     /* without minting a per-app msg_id. The kernel reserves `0x13`,   */
     /* prepends an 8-byte BE expires_unix_ts prefix, fans the bytes    */
@@ -313,7 +313,7 @@ typedef struct host_api_s {
                                               void (*ud_destroy)(void*),
                                               gn_subscription_id_t* out_id);
 
-    /* ── Identity rotation announce (identity.md §10) ────────────────── */
+    /* ── Identity rotation announce (identity.en.md §10) ────────────────── */
     /* Mints a fresh user keypair, bumps the rotation counter, signs  */
     /* a 150-byte RotationProof with the OLD user_pk, persists, then  */
     /* sends the proof on every live conn at trust >= Peer under     */
@@ -382,7 +382,7 @@ libclang, refreshed by `make livedoc`:
 | [present_capability_blob](../../sdk/host_api.h#L651) | `gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)` | Capability TLV transport |
 | [subscribe_capability_blob](../../sdk/host_api.h#L657) | `gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Capability TLV transport |
 | [announce_rotation](../../sdk/host_api.h#L683) | `gn_result_t (*)(void *, int64_t)` | Identity rotation |
-| [send_to](../../sdk/host_api.h#L708) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Identity rotation |
+| [send_to](../../sdk/host_api.h#L714) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Identity rotation |
 <!-- /livedoc:host_api_slots -->
 
 ### 2.1 `config_get` — typed read with `(out_user_data, out_free)` pair

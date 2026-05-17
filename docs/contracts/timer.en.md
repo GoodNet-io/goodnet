@@ -194,4 +194,4 @@ race against the self-cleanup path on natural firing.
   `host-api.en.md` §10.
 - Resource limits: `limits.en.md` §2.
 - Host-API surface: `host-api.en.md` §9 (this section is the
-  authoritative semantics; host-api.md cites here).
+  authoritative semantics; host-api.en.md cites here).

@@ -254,7 +254,7 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
     EXPECT_NE(session.decrypt_transport({}, out), GN_OK);
 }
 
-// ── Pending handshake queue (backpressure.md §8) ─────────────────────────
+// ── Pending handshake queue (backpressure.en.md §8) ─────────────────────────
 
 namespace {
 
@@ -497,7 +497,7 @@ TEST(SessionRegistry, CreateAcceptsTrustClassInProviderMask) {
     EXPECT_EQ(prov.handshake_open_calls, 1);
 }
 
-// ── Stream framing (backpressure.md §9 + handshake.md §7) ────────────────
+// ── Stream framing (backpressure.en.md §9 + handshake.md §7) ────────────────
 
 namespace {
 

@@ -1,5 +1,5 @@
 /// @file   tests/unit/util/test_dns.cpp
-/// @brief  `gn::sdk::resolve_uri_host` per `dns.md` §2.
+/// @brief  `gn::sdk::resolve_uri_host` per `dns.en.md` §2.
 ///
 /// Hostname resolution itself is delegated to asio + libc; the cases
 /// here pin the rewrite rules: IP literals pass through, path-style

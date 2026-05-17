@@ -181,7 +181,7 @@ TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
               GN_ERR_LIMIT_REACHED);
 }
 
-// ── per-pk keyed bucket (host-api.md §8): a bridge that disconnects ──
+// ── per-pk keyed bucket (host-api.en.md §8): a bridge that disconnects ──
 // ── and re-opens the connection cannot skip the rate limit by ────────────
 // ── acquiring a fresh `gn_conn_id_t` ─────────────────────────────────────
 

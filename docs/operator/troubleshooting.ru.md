@@ -204,7 +204,7 @@ reload goodnet` не подхватилось:
 - счётчик `config_reload.fail` растёт после неудачного парса;
 - проверить JSON-синтаксис: `goodnet config validate
   /etc/goodnet/node.json` — отдаёт `GN_ERR_INVALID_CONFIG` с
-  именем поля при cross-field validation failure (limits.md §3);
+  именем поля при cross-field validation failure (limits.en.md §3);
 - большинство `limits.*` менять hot нельзя — они определяют
   at-startup allocations; нужен `systemctl restart goodnet`.
 

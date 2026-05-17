@@ -32,7 +32,7 @@ GoodNet принимает байты из сокета и доводит их �
 
 Транспорт-плагин читает столько байт, сколько отдала ОС, и вызывает
 `host_api->notify_inbound_bytes(conn, bytes, size)` — слот описан в
-[host-api.md §2](../contracts/host-api.en.md). Транспорт никогда не парсит
+[host-api.en.md §2](../contracts/host-api.en.md). Транспорт никогда не парсит
 содержимое и не знает о границах фреймов: один вызов может принести
 половину фрейма, целый фрейм или несколько фреймов разом. Сегментация
 сокета и логика фреймов разделены намеренно.
@@ -42,14 +42,14 @@ GoodNet принимает байты из сокета и доводит их �
 ставила на исходящем пути, и выдаёт ноль или больше plaintext-фреймов.
 Если AEAD-тег не сходится — сессия возвращает ошибку, и ядро закрывает
 соединение через `notify_disconnect`. Буфер ограничен per
-[backpressure.md §9](../contracts/backpressure.en.md), так что злонамеренный
+[backpressure.en.md §9](../contracts/backpressure.en.md), так что злонамеренный
 peer не может через медленную доставку байт удерживать память.
 
 Plaintext попадает в активный protocol layer — единственный обязательный
 слой ядра. Его метод `deframe(ctx, bytes, bytes_size, &out)` парсит ноль
 или больше envelope-структур из потока и сообщает в `bytes_consumed`,
 сколько байт ядро может выкинуть из буфера. Контракт описан в
-[protocol-layer.md §3](../contracts/protocol-layer.en.md). Каждый
+[protocol-layer.en.md §3](../contracts/protocol-layer.en.md). Каждый
 envelope — это `gn_message_t`: 32-байтовый sender_pk, 32-байтовый
 receiver_pk, 4-байтовый msg_id, заимствованный указатель на payload и
 размер. Указатель валиден только в пределах синхронного вызова хендлера.
@@ -60,7 +60,7 @@ receiver_pk, 4-байтовый msg_id, заимствованный указа�
 broadcast, и цепочка отрабатывает на всех зарегистрированных хендлерах
 этого msg_id. Если адрес чужой и relay-плагин не загружен — frame
 отбрасывается со счётчиком `route.outcome.dropped_unknown_receiver` per
-[protocol-layer.md §6](../contracts/protocol-layer.en.md).
+[protocol-layer.en.md §6](../contracts/protocol-layer.en.md).
 
 ---
 
@@ -73,11 +73,11 @@ URI вида `tcp://1.2.3.4:9000` или `ipc:///run/goodnet.sock` описыв�
 **где находится сокет**, а не **кто там живёт**. Один peer может быть
 доступен по нескольким URI одновременно (LAN-IP и публичный TLS-эндпоинт
 к одному узлу), и оба URI должны разрешаться в один peer_pk. Контракт
-URI-парсера живёт в [uri.md](../contracts/uri.en.md); парсер чистый, без
+URI-парсера живёт в [uri.en.md](../contracts/uri.en.md); парсер чистый, без
 DNS, без процентного декодирования.
 
 Адрес выводится из двух компонент по протоколу
-[identity.md §3](../contracts/identity.en.md): user-keypair (долгоживущий,
+[identity.en.md §3](../contracts/identity.en.md): user-keypair (долгоживущий,
 портативный) и device-keypair (на устройство). HKDF-SHA256 по
 конкатенации `user_pk || device_pk` со scoped salt
 `goodnet/v1/address` даёт 32 байта мешевого адреса. Ротация
@@ -100,7 +100,7 @@ device-seed. Поверхность идентичности для плагин
 
 Регистрация — через универсальный слот `register_vtable` со
 `kind = GN_REGISTER_HANDLER`. Параметры handler-формы описаны в
-[handler-registration.md §2](../contracts/handler-registration.en.md):
+[handler-registration.en.md §2](../contracts/handler-registration.en.md):
 `protocol_id` (например, `"gnet-v1"`), `msg_id` (per-protocol
 namespace), `priority` (0..255). Один и тот же `msg_id = 0x42` под
 разными протоколами — независимы; namespace per protocol.
@@ -130,14 +130,14 @@ read-only снапшот, читатели видят то, что было ак
 от того, что хендлер вернул. Это надёжный хвост для счётчиков relay,
 обновления DHT-bucket и любой пост-обработки. Слот может быть NULL,
 если хендлеру нечего там делать. См.
-[handler-registration.md §5](../contracts/handler-registration.en.md).
+[handler-registration.en.md §5](../contracts/handler-registration.en.md).
 
 Хендлеры, чувствительные к input-edge соединению, читают
 `envelope->conn_id` напрямую вместо того, чтобы резолвить
 `sender_pk` через `find_conn_by_pk`. На relay-путях `sender_pk` — это
 оригинатор, а conn — это узел-транзит; pk-индекс не даст связи между
 ними. Контракт обязателен: handler MUST tolerate `GN_INVALID_ID` как
-`CONTINUE` per [handler-registration.md §3a](../contracts/handler-registration.en.md).
+`CONTINUE` per [handler-registration.en.md §3a](../contracts/handler-registration.en.md).
 
 ---
 
@@ -157,7 +157,7 @@ shard-mutex под устойчивой multi-Gbps нагрузкой. Числ�
 имплементационная деталь; плагины от него не зависят.
 
 Атомарная вставка `insert_with_index` per
-[registry.md §3](../contracts/registry.en.md) выполняется так:
+[registry.en.md §3](../contracts/registry.en.md) выполняется так:
 
 1. Захватить shard-mutex для `id`, URI-index-mutex и pk-index-mutex
    в фиксированном глобальном порядке. Это единственный механизм
@@ -185,7 +185,7 @@ shard-mutex под устойчивой multi-Gbps нагрузкой. Числ�
 link-scheme, счётчики байт и фреймов, RTT. Эти чтения не блокируют
 ядро. Stale reads допустимы: соединение могло закрыться между
 чтением и использованием. См. полный layout в
-[registry.md §8](../contracts/registry.en.md).
+[registry.en.md §8](../contracts/registry.en.md).
 
 Connection ids аллоцирует **только ядро**. Транспорты не выдумывают
 свои — там, где транспорту нужен local correlator (ICE-session id),
@@ -214,7 +214,7 @@ ring'а drainer'а выходит batch'ом через `link->send_batch` по�
 `drain_scheduled` CAS — link plugin владеет writev'ом. Если pending
 bytes переходят hard-cap — `host_api->send` возвращает
 `GN_ERR_LIMIT_REACHED`, и producer обязан back-off'нуть, не повторять
-в tight-loop. См. [backpressure.md §3](../contracts/backpressure.en.md).
+в tight-loop. См. [backpressure.en.md §3](../contracts/backpressure.en.md).
 
 Identity sources на исходящем пути:
 
@@ -225,7 +225,7 @@ Identity sources на исходящем пути:
 | Relay-transit | preserved end-to-end | preserved end-to-end |
 | Inject-external (bridge) | caller-specified | caller-specified |
 
-Per [protocol-layer.md §5](../contracts/protocol-layer.en.md). На relay-
+Per [protocol-layer.en.md §5](../contracts/protocol-layer.en.md). На relay-
 путях узел-транзит **не переписывает** ни sender, ни receiver —
 end-to-end identity сохраняется.
 
@@ -237,7 +237,7 @@ Bridge-хендлеры подключают к мешу внешние сист
 foreign mesh). Внешняя система не имеет своей Ed25519-идентичности;
 bridge — у которого она есть — переиздаёт входящие foreign-payload
 под своей идентичностью через слот `inject` per
-[host-api.md §8](../contracts/host-api.en.md).
+[host-api.en.md §8](../contracts/host-api.en.md).
 
 Два уровня инжекта:
 
@@ -275,7 +275,7 @@ URI — это transport address. Public key — это node identity.
 URI; один URI указывает строго на одно соединение в данный момент.
 
 URI-парсер чистый: scheme, host, port, path, query. Контракт
-[uri.md](../contracts/uri.en.md) перечисляет recognised forms,
+[uri.en.md](../contracts/uri.en.md) перечисляет recognised forms,
 канонизацию (стрипает query, ре-брекетит IPv6 без скобок), failure
 modes (port=0 на dial-стороне, control-bytes 0x00–0x20 и 0x7F
 отвергаются up front).
@@ -295,7 +295,7 @@ Noise-handshake.
 
 Producer, пихающий байты в транспорт быстрее, чем ОС-сокет их
 дренирует, должен быть проинформирован. Контракт
-[backpressure.md](../contracts/backpressure.en.md) определяет три
+[backpressure.en.md](../contracts/backpressure.en.md) определяет три
 наблюдаемых уровня в порядке от немедленного к advisory:
 
 | Уровень | Триггер | Сигнал |

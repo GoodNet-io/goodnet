@@ -111,7 +111,7 @@ optional post-dispatch hook (для logging, metrics, etc).
 2. **Snapshot dispatch** — kernel снимает priority-desc snapshot
    handler'ов раз в начале walk'а; если handler unregister'ится
    mid-walk, snapshot его всё равно содержит. Per
-   [`handler-registration.md §3`](../contracts/handler-registration.en.md).
+   [`handler-registration.en.md §3`](../contracts/handler-registration.en.md).
 3. **Synchronous dispatch** — `handle_message` бегает на kernel
    dispatch thread. Не блокировать. Не вызывать back в host_api
    методы что могут recurse'нуть в dispatch.

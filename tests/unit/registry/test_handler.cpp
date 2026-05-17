@@ -397,7 +397,7 @@ TEST(HandlerRegistry_Cap, ThirdRegistrationRejectedAtCap2) {
 }
 
 TEST(HandlerRegistry_Cap, ZeroDisablesEnforcement) {
-    /// Per `limits.md §4a`: a cap of zero disables the check.
+    /// Per `limits.en.md §4a`: a cap of zero disables the check.
     HandlerRegistry reg;
     reg.set_max_chain_length(0);
     EXPECT_EQ(reg.max_chain_length(), 0u);

@@ -19,7 +19,7 @@
 
 namespace gn {
 
-/// Parsed connection URI per uri.md §3.
+/// Parsed connection URI per uri.en.md §3.
 struct UriParts {
     std::string      scheme;   ///< "tcp" / "udp" / "ws" / "ipc" / …; empty if omitted
     std::string      host;     ///< IP literal / hostname (host:port); mirrors `path` (path-style)
@@ -51,7 +51,7 @@ struct UriParts {
     /// Canonical "scheme://host:port" / "scheme://path" form for use
     /// as a registry key. Strips the query so lookups stay stable
     /// regardless of per-call metadata, and re-brackets IPv6 literals
-    /// so the unbracketed-fallback (uri.md §5.1) round-trips to the
+    /// so the unbracketed-fallback (uri.en.md §5.1) round-trips to the
     /// strict form.
     [[nodiscard]] std::string canonical() const {
         std::string s;
@@ -78,7 +78,7 @@ struct UriParts {
 /// `notify_connect` thunk for raw URIs that bypass the grammar).
 /// RFC 3986 already forbids these bytes inside a URI without
 /// percent-encoding, so rejection is strictly correct, not just
-/// defensive (uri.md §5 #10).
+/// defensive (uri.en.md §5 #10).
 [[nodiscard]] inline bool uri_has_control_bytes(std::string_view uri) noexcept {
     for (const char ch : uri) {
         const auto byte = static_cast<unsigned char>(ch);
@@ -163,7 +163,7 @@ parse_uri(std::string_view uri) {
     } else {
         /// Unbracketed: split on the rightmost `:` so single-colon
         /// host:port works regardless of any `:` inside an unbracketed
-        /// v6 literal (uri.md §5.1 fallback canonicalises into bracket
+        /// v6 literal (uri.en.md §5.1 fallback canonicalises into bracket
         /// form).
         colon = uri.rfind(':');
         if (colon == std::string_view::npos) return std::nullopt;
@@ -179,7 +179,7 @@ parse_uri(std::string_view uri) {
     /// Strict: reject trailing garbage. Port 0 is syntactically
     /// valid — `listen` uses it for ephemeral-port allocation; the
     /// `connect` side rejects it at the application layer
-    /// (uri.md §5).
+    /// (uri.en.md §5).
     if (ec != std::errc{} ||
         ptr != port_sv.data() + port_sv.size())
     {

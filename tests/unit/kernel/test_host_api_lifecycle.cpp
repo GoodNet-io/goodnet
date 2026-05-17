@@ -372,7 +372,7 @@ TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
 
 /// `conn-events.en.md` §2a Returns row: a non-transport plugin
 /// receives `GN_ERR_NOT_IMPLEMENTED` from `notify_disconnect`
-/// (host-api.md kind gate).
+/// (host-api.en.md kind gate).
 TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
     Kernel k;
     auto handler_ctx = make_handler_ctx(k);

@@ -89,11 +89,11 @@ extern "C" {
 #ifdef __cplusplus
   #define GN_VTABLE_API_SIZE_FIRST(T) \
       static_assert(offsetof(T, api_size) == 0, \
-                    #T " must begin with `uint32_t api_size` per abi-evolution.md §3")
+                    #T " must begin with `uint32_t api_size` per abi-evolution.en.md §3")
 #else
   #define GN_VTABLE_API_SIZE_FIRST(T) \
       _Static_assert(offsetof(T, api_size) == 0, \
-                     #T " must begin with `uint32_t api_size` per abi-evolution.md §3")
+                     #T " must begin with `uint32_t api_size` per abi-evolution.en.md §3")
 #endif
 
 /* ── Version comparison helpers ──────────────────────────────────────────── */

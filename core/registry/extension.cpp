@@ -9,7 +9,7 @@ namespace gn::core {
 
 namespace {
 
-/// Compatibility rule from abi-evolution.md §2: major must match,
+/// Compatibility rule from abi-evolution.en.md §2: major must match,
 /// registered minor must be at least the requested minor. The
 /// version word packs (major:8 minor:8 patch:16) per `gn_version_pack`.
 [[nodiscard]] bool versions_compatible(std::uint32_t registered,

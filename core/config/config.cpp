@@ -282,7 +282,7 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
-    /// `limits.md §3` invariant: a payload plus the fixed 14-byte
+    /// `limits.en.md §3` invariant: a payload plus the fixed 14-byte
     /// GNET header must fit in one wire frame; otherwise a max-size
     /// payload accepted at the inject path produces a frame that
     /// the deframer rejects.
@@ -463,7 +463,7 @@ gn_result_t Config::merge_json(std::string_view overlay,
         SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
             "config.merge_json: profile changed '{}' -> '{}'; every "
             "limits.* field that the overlay does not set snaps to "
-            "the new baseline (config.md §3a)",
+            "the new baseline (config.en.md §3a)",
             prior_profile, merged_profile);
     }
 

@@ -84,7 +84,7 @@ RC_GTEST_PROP(UriProperty, V4UriQueryDoesNotChangeCanonical, ()) {
     const auto with_q = ::gn::parse_uri(uri + suffix);
     RC_ASSERT(plain.has_value());
     RC_ASSERT(with_q.has_value());
-    /// uri.md §4: canonical() drops the query.
+    /// uri.en.md §4: canonical() drops the query.
     RC_ASSERT(plain->canonical() == with_q->canonical());
 }
 

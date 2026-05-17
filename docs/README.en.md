@@ -19,11 +19,11 @@ root README. The short version is `nix develop` followed by
 Writing a plugin — start with the contracts in `contracts/`. The
 plugin author's reading order is:
 
-1. [`contracts/protocol-layer.md`](contracts/protocol-layer.en.md) —
+1. [`contracts/protocol-layer.en.md`](contracts/protocol-layer.en.md) —
    the envelope every plugin produces or consumes.
-2. [`contracts/host-api.md`](contracts/host-api.en.md) — what the
+2. [`contracts/host-api.en.md`](contracts/host-api.en.md) — what the
    kernel offers in return.
-3. [`contracts/plugin-lifetime.md`](contracts/plugin-lifetime.en.md) —
+3. [`contracts/plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) —
    when the kernel calls each entry point and what each phase may
    safely do.
 4. The contract for the role you are filling: `link.en.md`,
@@ -100,7 +100,7 @@ the rest of the layers cite back to them.
 
 The contracts in `contracts/` are the system's source of truth for
 v1.x. They change only in lockstep with the SDK ABI bump rules
-spelled out in [`contracts/abi-evolution.md`](contracts/abi-evolution.en.md).
+spelled out in [`contracts/abi-evolution.en.md`](contracts/abi-evolution.en.md).
 Other directories (architecture, recipes, impl) evolve more freely
 as the surrounding ecosystem grows.
 
@@ -141,7 +141,9 @@ manual edits.
 
 | Name | Path | Notes |
 |---|---|---|
+| dns | [`plugins/handlers/dns`](../../plugins/handlers/dns) | Real DNS service for a GoodNet cluster. Typed RR storage on top of |
 | heartbeat | [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat) | Two-way liveness check between connected peers. Emits PING on |
+| store | [`plugins/handlers/store`](../../plugins/handlers/store) | Distributed key-value store handler — brings the legacy |
 
 ### Links plugins
 
