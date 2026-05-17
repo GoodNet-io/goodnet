@@ -182,10 +182,10 @@ TEST(TrustClassMetric, SecurityGateBumpsCounterOnUntrustedConnect) {
                                  GN_ROLE_RESPONDER,
                                  &conn),
               GN_ERR_INVALID_ENVELOPE);
-    /// Pre-fix this read 0 — the security-side rejection at
-    /// `SessionRegistry::create` returned `INVALID_ENVELOPE` without
-    /// bumping the operator's drop counter. Post-fix the caller in
-    /// `thunk_notify_connect` increments the same counter the
-    /// protocol-side gate uses.
+    /// `thunk_notify_connect` increments
+    /// `drop.trust_class_mismatch` on the security-side rejection
+    /// at `SessionRegistry::create`. The protocol-side gate
+    /// shares the same counter so an operator's drop graph
+    /// aggregates both rejection sources.
     EXPECT_EQ(kernel.metrics().value("drop.trust_class_mismatch"), 1u);
 }

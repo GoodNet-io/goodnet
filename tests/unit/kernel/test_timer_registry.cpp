@@ -144,8 +144,9 @@ TEST(TimerRegistry_Anchor, CancelForAnchorRemovesMatchingTimers) {
 TEST(TimerRegistry_SetTimer, AcceptsNullOutIdForFireAndForget) {
     /// `host-api.en.md` §9 / `timer.en.md` §2 / `conn-events.en.md` §3.5
     /// promise that fire-and-forget callers pass `out_id = NULL`.
-    /// Pre-fix the kernel rejected with NULL_ARG and the second
-    /// call dereferenced *out_id, segfaulting under ASan.
+    /// A regression that rejects with NULL_ARG or dereferences
+    /// *out_id (the segfault case observable under ASan) would
+    /// fail this test on the very first iteration.
     TimerRegistry r;
     std::atomic<int> hits{0};
     EXPECT_EQ(r.set_timer(/*delay_ms*/ 0,
@@ -210,8 +211,8 @@ TEST(TimerRegistry_Quota, ZeroPendingCapMeansUnlimited) {
     /// `limits.en.md` §4 — a cap left at the `set_*` default of zero
     /// is treated as unlimited. Mirrors the `set_timer` per-plugin
     /// behaviour exercised by `ZeroPerPluginCapMeansUnlimited`.
-    /// The flip cap=1 → 0 makes the test fail on the pre-fix path
-    /// where `cur >= cap` rejected at zero unconditionally.
+    /// The cap=1 → 0 flip catches a regression to a
+    /// `cur >= cap` predicate that rejects at zero unconditionally.
     TimerRegistry r;
     r.set_max_pending_tasks(1);
     EXPECT_EQ(r.post([](void*) {}, nullptr, {}), GN_OK);
@@ -221,8 +222,8 @@ TEST(TimerRegistry_Quota, ZeroPendingCapMeansUnlimited) {
 
     /// Switch to "unlimited" — every subsequent admit must
     /// succeed even though the live counter is already at the
-    /// previous cap. A pre-fix run rejects every call with
-    /// `cur >= 0` true.
+    /// previous cap. A regression to a `cur >= cap` predicate
+    /// without a zero-bypass would reject every call here.
     r.set_max_pending_tasks(0);
     for (int i = 0; i < 32; ++i) {
         EXPECT_EQ(r.post([](void*) {}, nullptr, {}), GN_OK);
@@ -234,8 +235,9 @@ TEST(TimerRegistry_Quota, ZeroMaxTimersCapMeansUnlimited) {
     /// Same `limits.en.md` §4 rule for the global `max_timers` cap
     /// in `set_timer`. Flip from cap=2 → 0 demonstrates the
     /// transition: the third admit at cap=2 is rejected, then
-    /// cap=0 admits the same call. Pre-fix code rejected at
-    /// cap=0 with `timers_.size() >= 0` always true.
+    /// cap=0 admits the same call. A regression that omits the
+    /// zero-bypass rejects everything here because
+    /// `timers_.size() >= 0` is always true.
     TimerRegistry r;
     r.set_max_timers(2);
 

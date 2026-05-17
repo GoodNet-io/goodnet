@@ -114,13 +114,15 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     EXPECT_EQ(cap.last_receiver, local_pk);
     /// Per `host-api.en.md` §8: kernel stamps `env.conn_id = source` so
     /// conn-aware handlers (heartbeat RTT, future per-link gates) can
-    /// route back through the bridge edge directly. Pre-fix this read
-    /// zero (build_envelope zero-inits, no stamp site in thunk_inject).
+    /// route back through the bridge edge directly. The thunk must
+    /// override the zero `build_envelope` leaves in the field —
+    /// without that stamp the conn-aware handlers read zero.
     EXPECT_EQ(cap.last_conn_id, src);
     /// Kernel stamps `api_size = sizeof(gn_message_t)` at the same
     /// site so handlers compiled against later v1.x SDKs see the
-    /// kernel-stamped fields through `GN_API_HAS`. Pre-fix this read
-    /// zero (build_envelope zero-inits api_size).
+    /// kernel-stamped fields through `GN_API_HAS`. Without that
+    /// stamp, handlers would see `build_envelope`'s zero-init and
+    /// gate every conditional read off.
     EXPECT_EQ(cap.last_api_size, sizeof(gn_message_t));
     EXPECT_EQ(cap.last_payload,
               std::vector<std::uint8_t>(payload, payload + sizeof(payload)));
@@ -262,10 +264,11 @@ TEST(InjectFrame, ReservedSystemMsgIdSkippedInDispatchLoop) {
     /// inject thunk's per-envelope loop must skip these — bridge
     /// IPC's session is not the originator-to-relay session
     /// attestation needs, and routing them through the plugin chain
-    /// would smuggle reserved msg_ids past `is_reserved_system_msg_id`
-    /// (which gates registration). Pre-fix the loop called
-    /// `route_one_envelope` and bumped `route.outcome.dropped_no_handler`
-    /// (no plugin can register against 0x11). Post-fix nothing routes.
+    /// would smuggle reserved msg_ids past
+    /// `is_reserved_system_msg_id` (which gates registration).
+    /// Skipping reserved ids in the loop is the gate; the test
+    /// asserts nothing routes and `dropped_no_handler` stays at
+    /// zero (no plugin can legally register against 0x11).
     KernelHarness h;
     PublicKey local_pk; local_pk.fill(0xA0);
     PublicKey peer_pk;  peer_pk.fill(0xB0);
@@ -339,8 +342,8 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     EXPECT_EQ(cap.calls.load(), 1);
     /// Per `host-api.en.md` §8: LAYER_FRAME stamps `env.conn_id = source`
     /// on every dispatched envelope, mirroring `notify_inbound_bytes`
-    /// post-deframe. Pre-fix this read zero (no stamp site in the
-    /// thunk's deframe loop).
+    /// post-deframe. Without that stamp the receiving handler
+    /// would observe a zero conn_id.
     EXPECT_EQ(cap.last_conn_id, src);
     EXPECT_EQ(cap.last_api_size, sizeof(gn_message_t));
     EXPECT_EQ(cap.last_sender,   peer_pk);
