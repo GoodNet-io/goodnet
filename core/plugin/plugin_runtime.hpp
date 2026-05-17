@@ -27,12 +27,39 @@
 
 namespace gn::core {
 
+class Kernel;
 class PluginManifest;
 struct PluginInstance;
+
+/// Inputs the load step needs from the surrounding `PluginManager`.
+/// The struct is built fresh on every `load()` call so runtimes do
+/// not capture kernel state across instances.
+struct PluginLoadContext {
+    /// Kernel reference for PluginContext construction.
+    Kernel*               kernel{nullptr};
+    /// Operator integrity allowlist; empty in developer mode.
+    const PluginManifest* manifest{nullptr};
+    /// When true and `manifest` is empty, the load must fail with
+    /// `GN_ERR_INTEGRITY_FAILED`. Operators flip this through
+    /// `PluginManager::set_manifest_required`.
+    bool                  manifest_required{false};
+};
 
 class IPluginRuntime {
 public:
     virtual ~IPluginRuntime() = default;
+
+    /// Open the plugin and populate @p out. On failure, @p out is
+    /// left in an unusable state (no further methods are dispatched
+    /// on it) and @p diag carries the human-readable reason. Each
+    /// runtime owns its kind-specific load — `DynamicRuntime` runs
+    /// the integrity + dlopen path, `RemoteRuntime` spawns a
+    /// subprocess, `StaticRuntime` resolves `static://<name>` paths
+    /// against the in-binary registry.
+    virtual gn_result_t load(const std::string& path,
+                              const PluginLoadContext& ctx,
+                              PluginInstance& out,
+                              std::string& diag) = 0;
 
     /// Invoke `gn_plugin_init` (or the runtime's equivalent). The
     /// instance's `self` field is filled on success. The `api`

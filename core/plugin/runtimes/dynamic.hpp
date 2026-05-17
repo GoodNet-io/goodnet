@@ -15,6 +15,11 @@ namespace gn::core {
 
 class DynamicRuntime final : public IPluginRuntime {
 public:
+    gn_result_t load(const std::string& path,
+                      const PluginLoadContext& ctx,
+                      PluginInstance& out,
+                      std::string& diag) override;
+
     gn_result_t init(PluginInstance& inst) override;
     gn_result_t register_plugin(PluginInstance& inst) override;
     void unregister(PluginInstance& inst) override;

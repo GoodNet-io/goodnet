@@ -1,115 +1,28 @@
 /// @file   core/plugin/plugin_manager.cpp
-/// @brief  Implementation of the dlopen + two-phase activation path.
+/// @brief  Orchestrator for the plugin lifecycle. Kind-specific
+///         load/init/register/unregister/shutdown/close logic lives
+///         in `runtimes/<kind>.cpp`; this file is the dispatcher,
+///         the service-resolver wiring, and the anchor-quiescence
+///         wait that gates `dlclose`.
 
 #include "plugin_manager.hpp"
 
-#include "dl_compat.hpp"
-
-#ifdef __linux__
-#include <fcntl.h>
-#include <unistd.h>
-#include <sys/syscall.h>
-#include <cstdio>
-#include <cstdint>
-#include <cstring>
-#include <errno.h>
-#if defined(SYS_openat2) && __has_include(<linux/openat2.h>)
-#include <linux/openat2.h>
-#define GOODNET_HAVE_OPENAT2 1
-#endif
-#endif
-
 #include <chrono>
-#include <cstring>
 #include <thread>
 #include <utility>
 
-#include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
-#include <core/kernel/safe_invoke.hpp>
 #include <core/plugin/remote_host.hpp>
 #include <core/plugin/runtimes/dynamic.hpp>
 #include <core/plugin/runtimes/remote.hpp>
 #include <core/plugin/runtimes/static.hpp>
+#include <core/plugin/static_registry.hpp>
 #include <core/util/log.hpp>
 
-#include <sdk/plugin.h>
+#include <sdk/host_api.h>
+#include <sdk/link.h>
 
 namespace gn::core {
-
-namespace {
-
-using gn_plugin_sdk_version_fn   = void  (*)(uint32_t*, uint32_t*, uint32_t*);
-using gn_plugin_init_fn          = gn_result_t (*)(const host_api_t*, void**);
-using gn_plugin_register_fn      = gn_result_t (*)(void*);
-using gn_plugin_unregister_fn    = gn_result_t (*)(void*);
-using gn_plugin_shutdown_fn      = void  (*)(void*);
-using gn_plugin_descriptor_fn    = const gn_plugin_descriptor_t* (*)();
-
-struct PluginSymbols {
-    gn_plugin_sdk_version_fn  sdk_version;
-    gn_plugin_init_fn         init;
-    gn_plugin_register_fn     register_self;
-    gn_plugin_unregister_fn   unregister_self;
-    gn_plugin_shutdown_fn     shutdown;
-    gn_plugin_descriptor_fn   descriptor;     // optional; may be null
-};
-
-[[nodiscard]] gn_result_t resolve_symbols(void* so, PluginSymbols& out,
-                                          std::string& diagnostic) {
-    out.sdk_version     = reinterpret_cast<gn_plugin_sdk_version_fn>(
-                              dlsym(so, "gn_plugin_sdk_version"));
-    out.init            = reinterpret_cast<gn_plugin_init_fn>(
-                              dlsym(so, "gn_plugin_init"));
-    out.register_self   = reinterpret_cast<gn_plugin_register_fn>(
-                              dlsym(so, "gn_plugin_register"));
-    out.unregister_self = reinterpret_cast<gn_plugin_unregister_fn>(
-                              dlsym(so, "gn_plugin_unregister"));
-    out.shutdown        = reinterpret_cast<gn_plugin_shutdown_fn>(
-                              dlsym(so, "gn_plugin_shutdown"));
-    out.descriptor      = reinterpret_cast<gn_plugin_descriptor_fn>(
-                              dlsym(so, "gn_plugin_descriptor"));
-
-    if (!out.sdk_version || !out.init || !out.register_self
-        || !out.unregister_self || !out.shutdown) {
-        diagnostic = "missing required gn_plugin_* entry symbol";
-        return GN_ERR_VERSION_MISMATCH;
-    }
-    return GN_OK;
-}
-
-[[nodiscard]] bool sdk_version_compatible(const PluginSymbols& syms) noexcept {
-    std::uint32_t major = 0, minor = 0, patch = 0;
-    syms.sdk_version(&major, &minor, &patch);
-    if (major != GN_SDK_VERSION_MAJOR) return false;
-    return GN_SDK_VERSION_MINOR >= minor;
-}
-
-ServiceDescriptor descriptor_from_symbol(const PluginSymbols& syms,
-                                         const std::string& path_fallback) {
-    ServiceDescriptor sd;
-    if (syms.descriptor != nullptr) {
-        if (const auto* d = syms.descriptor()) {
-            sd.plugin_name = d->name ? d->name : path_fallback;
-            sd.kind        = d->kind;
-            if (d->ext_requires) {
-                for (const char* const* p = d->ext_requires; *p != nullptr; ++p) {
-                    sd.ext_requires.emplace_back(*p);
-                }
-            }
-            if (d->ext_provides) {
-                for (const char* const* p = d->ext_provides; *p != nullptr; ++p) {
-                    sd.ext_provides.emplace_back(*p);
-                }
-            }
-            return sd;
-        }
-    }
-    sd.plugin_name = path_fallback;
-    return sd;
-}
-
-} // namespace
 
 PluginManager::PluginManager(Kernel& kernel) noexcept : kernel_(kernel) {
     /// Populate the runtime registry with the three built-in
@@ -141,243 +54,35 @@ IPluginRuntime* PluginManager::runtime_for(
 gn_result_t PluginManager::open_one(const std::string& path,
                                     PluginInstance& out,
                                     std::string& diag) {
-    out.path = path;
-
-    /// Production-mode trip-wire: when the manifest-required flag is
-    /// set, an empty allowlist refuses every load. Operators flip
-    /// the flag through `set_manifest_required(true)` on the
-    /// bootstrap thread before `load`, paired with a populated
-    /// manifest; the dev-mode flow leaves the flag clear and the
-    /// empty allowlist passes through.
-    if (manifest_required_ && manifest_.empty()) {
-        diag = "plugin integrity check failed: manifest required but empty: ";
-        diag += path;
-        return GN_ERR_INTEGRITY_FAILED;
-    }
-
-    /// Linkage selector: a manifest entry with `kind: "remote"`
-    /// switches this path from dlopen to a subprocess worker over
-    /// `sdk/remote/wire.h`. The dynamic-default branch below stays
-    /// unchanged for every other entry.
-    const ManifestEntry* manifest_entry =
-        manifest_.empty() ? nullptr : manifest_.find(path);
-    const bool is_remote =
-        manifest_entry != nullptr &&
-        manifest_entry->kind == ManifestKind::Remote;
-
-    if (is_remote) {
-        /// Worker binary integrity: hash the file the same way the
-        /// dlopen path hashes the .so. The kernel never executes
-        /// an unverified worker, mirroring the dlopen rule that an
-        /// unverified .so never reaches `RTLD_NOW`.
-        std::string verify_diag;
-        if (!manifest_.verify(path, verify_diag)) {
-            diag = "remote worker integrity check failed: ";
-            diag += verify_diag;
-            return GN_ERR_INTEGRITY_FAILED;
-        }
-
-        out.ctx = std::make_unique<PluginContext>();
-        out.ctx->plugin_name = path;  // descriptor name overrides post-HELLO
-        out.ctx->kernel      = &kernel_;
-        out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
-        out.api = build_host_api(*out.ctx);
-
-        out.remote = std::make_unique<RemoteHost>();
-        std::string spawn_diag;
-        const auto rc = out.remote->spawn(path,
-            std::span<const std::string>(
-                manifest_entry->args.data(),
-                manifest_entry->args.size()),
-            *out.ctx, out.api, spawn_diag);
-        if (rc != GN_OK) {
-            diag = "remote spawn failed: ";
-            diag += spawn_diag;
-            out.remote.reset();
-            out.ctx.reset();
-            return rc;
-        }
-
-        if (const auto* d = out.remote->descriptor(); d != nullptr) {
-            if (d->name) {
-                out.descriptor.plugin_name = d->name;
-                out.ctx->plugin_name       = d->name;
-            }
-            out.ctx->kind = d->kind;
-        }
-        if (out.descriptor.plugin_name.empty()) {
-            out.descriptor.plugin_name = path;
-        }
-
-        out.runtime    = runtime_for("remote");
-        out.self       = nullptr;
-        out.registered = false;
-        return GN_OK;
-    }
-
-    /// Integrity check before dlopen. An empty manifest is the
-    /// developer-mode path; production callers install a manifest
-    /// at startup and the kernel refuses every plugin not in it.
-    /// Per `plugin-manifest.en.md` the integrity check is the kernel's
-    /// only defence between an attacker-controlled plugins
-    /// directory and the kernel's own address space — running it
-    /// before dlopen rather than after means a tampered binary
-    /// never reaches `RTLD_NOW`-side initialisers.
-#ifdef __linux__
-    if (!manifest_.empty()) {
-        /// Cheap path-only check first — an unlisted plugin is
-        /// rejected before paying the open + hash cost. Manifest
-        /// membership is not a secret, so the timing differential
-        /// here is OK.
-        if (!manifest_.contains(path)) {
-            diag = "plugin integrity check failed: no manifest entry for path: ";
-            diag += path;
-            return GN_ERR_INTEGRITY_FAILED;
-        }
-        /// `openat2(RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS)`
-        /// (Linux 5.6+) refuses every symlink along the path, not
-        /// only the leaf. A parent-directory swap that the older
-        /// `O_NOFOLLOW` open could not see — `/var/lib/goodnet/` →
-        /// attacker-symlink — fails here with `ELOOP`. Combined
-        /// with `dlopen("/proc/self/fd/N")` it pins the kernel to
-        /// a single inode across hash and load. The fallback for
-        /// older kernels keeps `O_NOFOLLOW` (leaf-only) as the
-        /// best-effort guard.
-        int fd = -1;
-#ifdef GOODNET_HAVE_OPENAT2
-        struct open_how how{};
-        how.flags = static_cast<__u64>(O_RDONLY | O_CLOEXEC);
-        how.resolve = RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS;
-        fd = static_cast<int>(::syscall(
-            SYS_openat2, AT_FDCWD, path.c_str(), &how, sizeof(how)));
-        if (fd < 0 && errno == ENOSYS) {
-            fd = ::open(path.c_str(),
-                        O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-        }
-#else
-        fd = ::open(path.c_str(),
-                    O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
-#endif
-        if (fd < 0) {
-            diag = "plugin integrity check failed: open: ";
-            diag += path;
-            return GN_ERR_INTEGRITY_FAILED;
-        }
-        const auto observed = PluginManifest::sha256_of_fd(fd);
-        if (!observed) {
-            ::close(fd);
-            diag = "plugin integrity check failed: read: ";
-            diag += path;
-            return GN_ERR_INTEGRITY_FAILED;
-        }
-        std::string verify_diag;
-        if (!manifest_.verify_digest(path, *observed, verify_diag)) {
-            ::close(fd);
-            diag = "plugin integrity check failed: ";
-            diag += verify_diag;
-            return GN_ERR_INTEGRITY_FAILED;
-        }
-        char proc_path[64];
-        (void)std::snprintf(proc_path, sizeof(proc_path),
-                            "/proc/self/fd/%d", fd);
-        out.so_handle = dlopen(proc_path, RTLD_NOW | RTLD_LOCAL);
-        /// Keep the fd open across the rest of `load`. glibc's
-        /// dlopen caches by path string; closing the fd here lets
-        /// the kernel reuse fd N for the next plugin's open, the
-        /// next `dlopen("/proc/self/fd/N")` then hits the cached
-        /// handle from the first plugin and the second plugin's
-        /// symbols never enter the address space. The fd lives
-        /// alongside `so_handle` and closes at plugin shutdown
-        /// or `rollback`. This preserves the TOCTOU pin per
-        /// plugin-manifest.en.md without breaking multi-plugin loads.
-        out.integrity_fd = fd;
-        if (!out.so_handle) {
-            ::close(fd);
-            out.integrity_fd = -1;
-            diag = "dlopen failed for ";
-            diag += path;
-            diag += ": ";
-            if (const char* err = dlerror()) diag += err;
-            return GN_ERR_NOT_FOUND;
-        }
-    } else {
-        out.so_handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-        if (!out.so_handle) {
-            diag = "dlopen failed for ";
-            diag += path;
-            diag += ": ";
-            if (const char* err = dlerror()) diag += err;
-            return GN_ERR_NOT_FOUND;
-        }
-    }
-#else
-    if (!manifest_.empty()) {
-        std::string verify_diag;
-        if (!manifest_.verify(path, verify_diag)) {
-            diag = "plugin integrity check failed: ";
-            diag += verify_diag;
-            return GN_ERR_INTEGRITY_FAILED;
+    /// Pick the runtime by `path` shape (paths starting with
+    /// `static://` go to the static-linkage runtime) or by the
+    /// manifest entry's `kind` field for everything else. A future
+    /// commit will admit a `kind` field on every manifest entry so
+    /// path-shape inspection becomes optional.
+    std::string_view kind = "dynamic";
+    if (path.compare(0, 9, "static://") == 0) {
+        kind = "static";
+    } else if (!manifest_.empty()) {
+        if (const auto* me = manifest_.find(path);
+            me != nullptr && me->kind == ManifestKind::Remote) {
+            kind = "remote";
         }
     }
 
-    out.so_handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
-    if (!out.so_handle) {
-        diag = "dlopen failed for ";
-        diag += path;
-        diag += ": ";
-        if (const char* err = dlerror()) diag += err;
-        return GN_ERR_NOT_FOUND;
-    }
-#endif
-
-    PluginSymbols syms{};
-    auto rc = resolve_symbols(out.so_handle, syms, diag);
-    if (rc != GN_OK) {
-        dlclose(out.so_handle);
-        out.so_handle = nullptr;
-#ifdef __linux__
-        if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
-#endif
-        return rc;
+    auto* runtime = runtime_for(kind);
+    if (runtime == nullptr) {
+        diag = "no plugin runtime registered for kind '";
+        diag += kind;
+        diag += "'";
+        return GN_ERR_NOT_IMPLEMENTED;
     }
 
-    if (!sdk_version_compatible(syms)) {
-        diag = "sdk-version mismatch in " + path;
-        dlclose(out.so_handle);
-        out.so_handle = nullptr;
-#ifdef __linux__
-        if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
-#endif
-        return GN_ERR_VERSION_MISMATCH;
-    }
-
-    out.descriptor = descriptor_from_symbol(syms, path);
-
-    /// PluginContext lives on the heap so its address survives the
-    /// reorder pass (instances_ is reordered after the resolver runs;
-    /// a stack/inline ctx would relocate, invalidating every
-    /// `host_api->host_ctx` pointer plugins captured in their own
-    /// state).
-    out.ctx = std::make_unique<PluginContext>();
-    out.ctx->plugin_name = out.descriptor.plugin_name;
-    out.ctx->kind        = out.descriptor.kind;
-    out.ctx->kernel      = &kernel_;
-
-    /// The lifetime anchor. The shared_ptr's reference count
-    /// tracks `(this ctx) + (every registry entry the plugin
-    /// installs) + (every dispatch snapshot in flight) + (every
-    /// async callback currently in plugin code via GateGuard)`.
-    /// `weak_ptr::expired()` is the drain-side observable; the
-    /// embedded `shutdown_requested` flag is the cooperative-
-    /// cancellation signal published to async callbacks and to the
-    /// plugin itself through `is_shutdown_requested`.
-    out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
-
-    out.api  = build_host_api(*out.ctx);
-    out.runtime    = runtime_for("dynamic");
-    out.self       = nullptr;
-    out.registered = false;
-    return GN_OK;
+    PluginLoadContext ctx{
+        .kernel = &kernel_,
+        .manifest = &manifest_,
+        .manifest_required = manifest_required_,
+    };
+    return runtime->load(path, ctx, out, diag);
 }
 
 gn_result_t PluginManager::load(std::span<const std::string> paths,
@@ -674,88 +379,18 @@ void PluginManager::set_manifest_required(bool required) noexcept {
 #include <core/plugin/static_registry.hpp>
 
 gn_result_t PluginManager::load_static(std::string* out_diagnostic) {
-    if (active_) {
-        if (out_diagnostic) *out_diagnostic = "PluginManager already active";
-        return GN_ERR_LIMIT_REACHED;
-    }
-    auto note = [&](std::string_view m) {
-        if (out_diagnostic) *out_diagnostic = std::string(m);
-    };
-
-    /// Phase 1-3: gather every registry entry. We skip dlopen + symbol
-    /// resolution + integrity verification entirely — every entry's
-    /// addresses are already valid (the linker resolved them at build
-    /// time) and the symbols' identity is implicit in the binary's
-    /// own integrity check (the operator must verify the kernel itself
-    /// rather than per-plugin .so files in this mode).
+    /// Walk the registry to synthesize `static://<name>` paths and
+    /// dispatch through the same `load()` entry the dynamic / remote
+    /// paths take. The `static` runtime maps each synthesized path
+    /// back to its registry entry; the rest of the lifecycle
+    /// (resolver pass, init + register loops, rollback) is identical
+    /// to a dlopen-driven load.
+    std::vector<std::string> paths;
     for (const auto* e = &gn_plugin_static_registry[0];
          e->name != nullptr; ++e) {
-
-        /// Static plugins ship inside the kernel binary; their SDK
-        /// version is forcibly identical to the host. Still call
-        /// `sdk_version` if present so a future build that ships
-        /// an out-of-tree static archive can catch a stale .a at
-        /// the same point as the dlopen path catches a stale .so.
-        if (e->sdk_version) {
-            uint32_t pmaj = 0, pmin = 0, ppatch = 0;
-            e->sdk_version(&pmaj, &pmin, &ppatch);
-            if (pmaj != GN_SDK_VERSION_MAJOR) {
-                note(std::string("sdk-version mismatch: ") + e->name);
-                rollback();
-                return GN_ERR_VERSION_MISMATCH;
-            }
-        }
-
-        PluginInstance inst{};
-        inst.path = std::string("static://") + e->name;
-        inst.static_entry = e;
-        inst.ctx = std::make_unique<PluginContext>();
-        inst.ctx->plugin_name = e->name;
-        inst.ctx->kernel      = &kernel_;
-        inst.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
-
-        if (e->descriptor) {
-            if (const auto* d = e->descriptor(); d != nullptr) {
-                if (d->name) inst.descriptor.plugin_name = d->name;
-                inst.ctx->kind = d->kind;
-            }
-        }
-        if (inst.descriptor.plugin_name.empty()) {
-            inst.descriptor.plugin_name = e->name;
-        }
-
-        inst.api     = build_host_api(*inst.ctx);
-        inst.runtime = runtime_for("static");
-
-        instances_.push_back(std::move(inst));
+        paths.emplace_back(std::string("static://") + e->name);
     }
-
-    /// Phase 4: init each plugin through the shared linkage-aware
-    /// dispatcher.
-    for (auto& inst : instances_) {
-        const auto rc = init_one(inst);
-        if (rc != GN_OK) {
-            note(std::string("gn_plugin_init failed: ") +
-                 inst.descriptor.plugin_name);
-            rollback();
-            return rc;
-        }
-    }
-
-    /// Phase 5: register each plugin through the shared dispatcher.
-    for (auto& inst : instances_) {
-        const auto rc = register_one(inst);
-        if (rc != GN_OK) {
-            note(std::string("gn_plugin_register failed: ") +
-                 inst.descriptor.plugin_name);
-            rollback();
-            return rc;
-        }
-        inst.registered = true;
-    }
-
-    active_ = true;
-    return GN_OK;
+    return load(paths, out_diagnostic);
 }
 
 } // namespace gn::core

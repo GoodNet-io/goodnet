@@ -466,11 +466,20 @@ namespace {
 
 class FakeRuntime final : public gn::core::IPluginRuntime {
 public:
+    int load_calls{0};
     int init_calls{0};
     int register_calls{0};
     int unregister_calls{0};
     int shutdown_calls{0};
     int close_calls{0};
+
+    gn_result_t load(const std::string& /*path*/,
+                      const gn::core::PluginLoadContext& /*ctx*/,
+                      gn::core::PluginInstance& /*out*/,
+                      std::string& /*diag*/) override {
+        ++load_calls;
+        return GN_OK;
+    }
 
     gn_result_t init(gn::core::PluginInstance& /*inst*/) override {
         ++init_calls;
