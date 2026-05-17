@@ -5,7 +5,7 @@
 
 ![architecture](../img/architecture.svg)
 
-_Kernel ABI surface, registries, and the eight plugin slots._
+_Kernel ABI surface (host_api_t) and the five registries plugins land in._
 <!-- /livedoc:embed_architecture -->
 
 

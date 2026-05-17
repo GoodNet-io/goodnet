@@ -114,7 +114,7 @@ def _build_regions(facts: dict) -> dict[str, str]:
     # land under the image without scrolling. Add new SVGs here so
     # any prose doc can embed them via <!-- livedoc:embed_<name> -->.
     embed_specs = {
-        "architecture":          "Kernel ABI surface, registries, and the eight plugin slots.",
+        "architecture":          "Kernel ABI surface (host_api_t) and the five registries plugins land in.",
         "kernel_fsm":            "Kernel lifecycle: created → started → stopped → destroyed.",
         "connection_fsm":        "Per-connection state machine through handshake to ready.",
         "connection_lifecycle":  "End-to-end conn lifetime: link → noise → attestation → ready.",
