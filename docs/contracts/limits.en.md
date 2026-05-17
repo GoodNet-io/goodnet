@@ -77,7 +77,7 @@ deployment.
 
 Every check-site reads from the live `gn_limits_t` reference exposed
 through `host_api->limits()`. A code path that hard-codes a ceiling
-parallel to a `gn_limits_t` field is a code-review failure pre-RC.
+parallel to a `gn_limits_t` field is a code-review failure.
 
 Compile-time constants are still appropriate for layout-fixed values
 (`GN_PUBLIC_KEY_BYTES = 32`); those are facts about wire format,
@@ -134,7 +134,7 @@ see the per-reason breakdown — limit drops do not blend into a
 generic `errors_total` bucket.
 
 Silent `break` or `continue` on limit violation is a code-review
-failure pre-RC.
+failure.
 
 ---
 

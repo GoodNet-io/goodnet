@@ -190,8 +190,8 @@ Rules from `host-api.en.md` §2 apply:
 - `vtable` is `@borrowed` for the lifetime, valid until
   `unregister_vtable(id)` returns.
 
-A plugin may register multiple schemes through multiple calls. Pre-RC
-convention is to fold IPv6 into a single `tcp` scheme — the URI carries
+A plugin may register multiple schemes through multiple calls.
+Convention is to fold IPv6 into a single `tcp` scheme — the URI carries
 the address (`tcp://[::1]:9000`).
 
 The pure-C convenience wrapper `gn_register_link` in

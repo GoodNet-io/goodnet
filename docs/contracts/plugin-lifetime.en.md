@@ -253,7 +253,7 @@ ownership tags from `abi-evolution.en.md` §6. The most common cases:
 | Vtable registered via `register_vtable(KIND_HANDLER, …)` | plugin → kernel | `@borrowed` until `unregister` |
 | Extension vtable from `query_extension_checked` | provider → consumer | `@borrowed` while the provider is loaded |
 
-Omitting an ownership tag is a code-review failure pre-RC.
+Omitting an ownership tag is a code-review failure.
 
 ---
 

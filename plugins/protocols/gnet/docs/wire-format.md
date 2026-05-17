@@ -205,9 +205,9 @@ authors and future format successors:
     transport channel was authenticated against a different peer.
   Operators flip the flag on connections that legitimately carry
   forwarded traffic; a future relay handler will own that
-  configuration. Pre-RC the default-deny path applies everywhere,
-  so handlers that authenticate by `sender_pk` can trust the
-  inbound envelope.
+  configuration. By default the default-deny path applies
+  everywhere, so handlers that authenticate by `sender_pk` can
+  trust the inbound envelope.
 
 ---
 

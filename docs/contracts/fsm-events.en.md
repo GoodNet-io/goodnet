@@ -81,7 +81,7 @@ or the value is removed from the type.**
 | `GN_PROP_CONSUMED` | stop dispatch chain — envelope handled |
 | `GN_PROP_REJECT` | drop envelope; close connection; metrics increment |
 
-Pre-RC review fails on any dispatch invocation whose return is not
+Code review fails on any dispatch invocation whose return is not
 used. Discarding `Propagation` is a contract violation.
 
 ### 4.2 `gn_backpressure_t` (queue-pressure signal — reserved)
