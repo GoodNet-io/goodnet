@@ -57,10 +57,9 @@ public:
 
     /// Install @p vtable as a registered security provider.
     /// Returns `GN_ERR_LIMIT_REACHED` only when @p provider_id is
-    /// already present (post-StackRegistry contract). Adding a
-    /// second provider with a distinct id (e.g. `gn.security.noise`
-    /// + `gn.security.null`) is the canonical path for
-    /// per-trust-class selection.
+    /// already present. Adding a second provider with a distinct
+    /// id (e.g. `gn.security.noise` + `gn.security.null`) is the
+    /// canonical path for per-trust-class selection.
     [[nodiscard]] gn_result_t register_provider(std::string_view provider_id,
                                                 const gn_security_provider_vtable_t* vtable,
                                                 void* self,
