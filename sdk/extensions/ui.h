@@ -190,8 +190,8 @@ typedef struct gn_ui_api_s {
      * time.
      *
      * Multiple plugins MAY register for the same slot path — the
-     * host composes them in registration order. Priority hooks
-     * land in v1.1 (currently FIFO).
+     * host composes them in registration order (FIFO). Priority
+     * hooks are a planned additive extension.
      */
     gn_result_t (*register_slot)(
         void* ctx,

@@ -365,7 +365,7 @@ The kernel does not parse plugin namespaces; it returns values
 verbatim through `config_get`. Each plugin documents its keys in
 its own README. A typo silently maps to `GN_ERR_NOT_FOUND` and the
 plugin falls through to its default; v1 does not warn on unknown
-keys (lands in v1.1 with a `reads_config` whitelist).
+keys. A `reads_config` whitelist that surfaces typos is planned.
 
 ### 6.4 Hot reload
 
