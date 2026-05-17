@@ -683,6 +683,13 @@ typedef struct host_api_s {
     gn_result_t (*announce_rotation)(void* host_ctx,
                                       int64_t valid_from_unix_ts);
 
+    /* ── Peer-addressed messaging (host-api.en.md) ──────────────────────
+     *
+     * `send_to(peer_pk, ...)` lets a handler dispatch to a peer
+     * identity without first resolving the conn id. The kernel
+     * walks the strategy chain to pick the live conn.
+     */
+
     /**
      * @brief Peer-pk-level outbound send. Walks every live conn to
      *        @p peer_pk, queries the registered `gn.strategy.<name>`

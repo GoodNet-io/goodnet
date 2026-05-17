@@ -31,13 +31,14 @@ Slots are grouped by purpose:
 - **Extension API** — `query_extension_checked`, `register_extension`, `unregister_extension`
 - **Foreign-payload injection** — `inject`, `kick_handshake`
 - **Identity primitives (identity.en.md §5)** — `register_local_key`, `delete_local_key`, `list_local_keys`, `sign_local`, `sign_local_by_id`
-- **Identity rotation (identity.en.md §7)** — `announce_rotation`, `send_to`
+- **Identity rotation (identity.en.md §7)** — `announce_rotation`
 - **Limits read access** — `limits`
 - **Link-side notifications** — `notify_connect`, `notify_inbound_bytes`, `notify_disconnect`
 - **Messaging** — `send`, `disconnect`
 - **Metrics (metrics.en.md)** — `emit_counter`, `iterate_counters`
 - **Path observability (host-api.en.md)** — `notify_rtt_sample`
 - **Peer identity readers (identity.en.md §5)** — `get_peer_user_pk`, `get_peer_device_pk`, `get_handshake_hash`
+- **Peer-addressed messaging (host-api.en.md)** — `send_to`
 - **Registry queries** — `find_conn_by_pk`, `get_endpoint`
 - **Security registration** — `register_security`, `unregister_security`
 - **Service executor (timer.en.md is the authoritative spec)** — `set_timer`, `cancel_timer`
@@ -407,8 +408,8 @@ libclang, refreshed by `make livedoc`:
 | [present_capability_blob](../../sdk/host_api.h#L651) | `gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)` | Capability TLV transport |
 | [subscribe_capability_blob](../../sdk/host_api.h#L657) | `gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Capability TLV transport |
 | [announce_rotation](../../sdk/host_api.h#L683) | `gn_result_t (*)(void *, int64_t)` | Identity rotation |
-| [send_to](../../sdk/host_api.h#L714) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Identity rotation |
-| [notify_rtt_sample](../../sdk/host_api.h#L753) | `gn_result_t (*)(void *, gn_conn_id_t, uint64_t)` | Path observability |
+| [send_to](../../sdk/host_api.h#L721) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Peer-addressed messaging |
+| [notify_rtt_sample](../../sdk/host_api.h#L760) | `gn_result_t (*)(void *, gn_conn_id_t, uint64_t)` | Path observability |
 <!-- /livedoc:host_api_slots -->
 
 ### 2.1 `config_get` — typed read with `(out_user_data, out_free)` pair

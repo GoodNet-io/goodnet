@@ -32,7 +32,6 @@ families:
   - sign_local_by_id
   Identity rotation (identity.en.md §7):
   - announce_rotation
-  - send_to
   Limits read access:
   - limits
   Link-side notifications:
@@ -51,6 +50,8 @@ families:
   - get_peer_user_pk
   - get_peer_device_pk
   - get_handshake_hash
+  Peer-addressed messaging (host-api.en.md):
+  - send_to
   Registry queries:
   - find_conn_by_pk
   - get_endpoint
@@ -311,12 +312,12 @@ slots:
   signature: gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *,
     size_t)
   file: sdk/host_api.h
-  line: 714
-  family: Identity rotation (identity.en.md §7)
+  line: 721
+  family: Peer-addressed messaging (host-api.en.md)
   doc: outbound send.
 - name: notify_rtt_sample
   signature: gn_result_t (*)(void *, gn_conn_id_t, uint64_t)
   file: sdk/host_api.h
-  line: 753
+  line: 760
   family: Path observability (host-api.en.md)
   doc: a per-connection RTT sample observed by the
