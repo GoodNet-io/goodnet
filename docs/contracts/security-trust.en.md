@@ -280,11 +280,14 @@ The fourth common combination — `null + raw` over `Loopback` — is
 admitted because both masks include `Loopback`; the threat model
 excludes a local-process attacker who could equally read `/proc`.
 
-A unified StackRegistry that enumerates the cartesian product at
-admission, with `requires_explicit_optin` flags and
-`name`/`allowed_for[]` descriptors, lands in v1.x. v1 ships the
-per-component gates: simpler, deterministic, and already covers
-every combination the v1 plugin tree can produce.
+A richer StackRegistry surface — operator-side descriptors
+that enumerate the cartesian product at admission with
+`requires_explicit_optin` flags and `name`/`allowed_for[]`
+fields — is a v1.x followup on top of the shipped multi-
+provider registry. The shipped per-component gates are
+simpler, deterministic, and already cover every combination
+the v1 plugin tree can produce; the v1.x layer adds operator-
+visible policy on top, not new admission paths.
 
 ---
 
