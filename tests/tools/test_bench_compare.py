@@ -114,3 +114,32 @@ def test_compare_skips_percent_for_zero_baseline(capsys) -> None:
     assert rc == 0
     out = capsys.readouterr().out
     assert "+12.34us" in out, "absolute-delta fallback must print the swing"
+
+
+def test_main_returns_2_on_missing_baseline(tmp_path, monkeypatch, capsys) -> None:
+    """`main()` exits 2 (not 1) when the baseline file is missing —
+    the CI driver distinguishes "comparator error" from "benchmark
+    regressed". A nonzero exit that wasn't a regression is the
+    only way the gate can fail safe."""
+    cur = tmp_path / "current.json"
+    cur.write_text('{"benchmarks": []}')
+    monkeypatch.setattr("sys.argv",
+                        ["bench_compare", str(tmp_path / "missing.json"),
+                         str(cur)])
+    rc = bench_compare.main()
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "not found" in err
+
+
+def test_main_returns_2_on_missing_current(tmp_path, monkeypatch, capsys) -> None:
+    """Same as above but the candidate side."""
+    base = tmp_path / "baseline.json"
+    base.write_text('{"benchmarks": []}')
+    monkeypatch.setattr("sys.argv",
+                        ["bench_compare", str(base),
+                         str(tmp_path / "missing.json")])
+    rc = bench_compare.main()
+    assert rc == 2
+    err = capsys.readouterr().err
+    assert "not found" in err
