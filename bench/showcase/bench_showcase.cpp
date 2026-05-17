@@ -604,11 +604,12 @@ BENCHMARK_DEFINE_F(FailoverFixture, IpcDrop)(::benchmark::State& state) {
     state.SetItemsProcessed(static_cast<std::int64_t>(total));
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         if (iter == drop_at) {
-            /// Bench-only synthesis of `CONN_DOWN` directly on
-            /// the strategy. In production the kernel's
-            /// `notify_disconnect` auto-fires the event; here we
-            /// stand in for it so the bench drives the picker
-            /// without a full kernel.
+            /// Bench-side direct injection of `CONN_DOWN` on the
+            /// strategy. In production the kernel's
+            /// `notify_disconnect` auto-fires the event; the
+            /// bench skips the full kernel connect/disconnect
+            /// dance so the failover lands on a deterministic
+            /// iteration.
             inject_conn_down(*picker, pk, kIpcConn);
             /// Drop IPC from the candidate array. The kernel would
             /// also drop it from `registry.for_each` at this
