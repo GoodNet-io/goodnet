@@ -143,3 +143,27 @@ def test_main_returns_2_on_missing_current(tmp_path, monkeypatch, capsys) -> Non
     assert rc == 2
     err = capsys.readouterr().err
     assert "not found" in err
+
+
+def test_main_threshold_pct_widens_band(tmp_path, monkeypatch, capsys) -> None:
+    """`--threshold-pct N` raises the regression bar. A 10% slowdown
+    fails at the default 5% threshold but passes at a 20% threshold;
+    pin both branches through the argparse path so a future
+    refactor of the CLI handling stays observably correct."""
+    base = tmp_path / "baseline.json"
+    base.write_text(json.dumps({"benchmarks": [
+        _benchmark_json("BM_x", 100_000.0),
+    ]}))
+    cur = tmp_path / "current.json"
+    cur.write_text(json.dumps({"benchmarks": [
+        _benchmark_json("BM_x", 110_000.0),
+    ]}))
+
+    monkeypatch.setattr("sys.argv",
+                        ["bench_compare", str(base), str(cur)])
+    assert bench_compare.main() == 1, "10% slowdown fails default 5% threshold"
+
+    monkeypatch.setattr("sys.argv",
+                        ["bench_compare", str(base), str(cur),
+                         "--threshold-pct", "20"])
+    assert bench_compare.main() == 0, "10% slowdown passes a 20% threshold"
