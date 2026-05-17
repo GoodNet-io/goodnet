@@ -58,7 +58,7 @@ using namespace std::chrono_literals;
 /// Host stub shared across every typed-fixture instantiation.
 /// `main_tid` is set by the test before any async work starts; the
 /// disconnect callback only increments `on_main_disconnects` when
-/// the call lands on that thread, which lets the post-fix `link.en.md`
+/// the call lands on that thread, which lets the `link.en.md`
 /// §9 invariant be checked without racing the worker thread.
 struct ConformanceHost {
     std::mutex                  mu;
@@ -246,13 +246,12 @@ TYPED_TEST_P(LinkTeardownConformance, ShutdownReleasesEverySession) {
     client->shutdown();
     server->shutdown();
 
-    /// Caller-thread pin: pre-fix the worker thread sometimes
-    /// won the race to an EOF-driven async notify before
-    /// `ioc_.stop()` returned and sometimes did not — a count-
-    /// only assert was flaky on a fast host. Post-fix the
-    /// shutdown call walks the live snapshot and fires
-    /// `notify_disconnect` itself, so the caller thread always
-    /// sees one disconnect per `notify_connect` it observed.
+    /// Caller-thread pin: `shutdown()` walks the live snapshot
+    /// and fires `notify_disconnect` itself, so the caller thread
+    /// always sees one disconnect per `notify_connect` it
+    /// observed — regardless of whether the worker-thread EOF
+    /// path raced ahead. A count-only assert would otherwise be
+    /// flaky on a fast host.
     EXPECT_EQ(host.on_main_disconnects.load(), connects)
         << "scheme=" << Traits::scheme
         << ": shutdown() must fire notify_disconnect "

@@ -101,14 +101,14 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
         {
             /// Hold `mu_` from the global-cap check through the
             /// `emplace`. `limits.en.md` §4 — a cap of zero disables
-            /// enforcement. The pre-fix path released the lock
-            /// between the size check and the emplace; two admits
-            /// racing through that window could both observe
-            /// `size() < cap` and both push, leaving the registry
-            /// at `cap + 1`. Holding the lock collapses the window
-            /// at the cost of constructing the asio timer and the
-            /// entry under the mutex — both are short and bounded
-            /// (one heap allocation, no syscalls).
+            /// enforcement. Releasing the lock between the size
+            /// check and the emplace would let two admits race
+            /// through the window and both observe `size() < cap`,
+            /// leaving the registry at `cap + 1`. Holding the lock
+            /// collapses the window at the cost of constructing
+            /// the asio timer and the entry under the mutex —
+            /// both are short and bounded (one heap allocation,
+            /// no syscalls).
             std::lock_guard lk(mu_);
             const std::uint32_t cap =
                 max_timers_.load(std::memory_order_relaxed);

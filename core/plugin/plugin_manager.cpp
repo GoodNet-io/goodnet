@@ -315,13 +315,12 @@ void PluginManager::rollback() {
         /// dereferenced, and `gn_plugin_shutdown` can free `self`
         /// without racing an active dispatch.
         ///
-        /// Pre-fix order placed `drain_anchor` AFTER `gn_plugin_shutdown`,
-        /// which meant `delete self` ran while a guard-holding callback
-        /// was mid-call. The gate kept `.text` mapped — the call
-        /// resolved — but the lambda's `user_data = &p->link->state`
-        /// pointed at freed memory by the time the body ran. UAF
-        /// observable under ASan on any timer-firing plugin in
-        /// rollback.
+        /// Inverting this order — `gn_plugin_shutdown` before drain —
+        /// would free `self` while a guard-holding callback was
+        /// mid-call. The gate keeps `.text` mapped so the call
+        /// resolves, but a lambda capturing `user_data = &p->link->state`
+        /// would then dereference freed memory. The drain MUST run
+        /// before `gn_plugin_shutdown` to keep the dereference safe.
         std::weak_ptr<PluginAnchor> watch;
         if (it->ctx) {
             watch = it->ctx->plugin_anchor;
