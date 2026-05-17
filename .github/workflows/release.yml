@@ -136,11 +136,11 @@ jobs:
             goodnet-*-windows-x86_64.zip
             goodnet-*-windows-x86_64.zip.sha256
 
-  # `build-docker` removed at v1.0.0-rc4 — the kernel is a
-  # library + plugin .so set + headers after the apps/ extraction.
-  # The daemon binary `goodnetd` (the only entrypoint a container
-  # has reason to ship) lives at github.com/GoodNet-io/goodnetd and
-  # carries its own release.yml with the docker push step. Operators
+  # The kernel is a library + plugin .so set + headers; it does
+  # not ship a docker image of its own. The daemon binary
+  # `goodnetd` (the only entrypoint a container has reason to
+  # ship) lives at github.com/GoodNet-io/goodnetd and carries
+  # its own release.yml with the docker push step. Operators
   # who want a runnable container pull that repo.
 
   changelog:
