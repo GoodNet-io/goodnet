@@ -1,8 +1,9 @@
 /// @file   tests/integration/test_trust_class_metric.cpp
 /// @brief  Pin `metrics.drop.trust_class_mismatch` symmetry across
 ///         the two trust-class gates per `security-trust.en.md` §4 +
-///         §9. The protocol-side gate at `host_api_builder.cpp:1067`
-///         already bumped the counter; this test pins the matching
+///         §9. The protocol-side gate at
+///         `core/kernel/host_api/notifications.cpp:81` already
+///         bumped the counter; this test pins the matching
 ///         security-side bump after `SessionRegistry::create`
 ///         rejects on the provider's `allowed_trust_mask` —
 ///         operators watching the counter would otherwise see only
@@ -153,10 +154,10 @@ TEST(TrustClassMetric, SecurityGateBumpsCounterOnUntrustedConnect) {
     gn::test::util::register_default_protocol(
         kernel, std::make_shared<GnetProtocol>());
     /// `notify_connect` skips the security path when no NodeIdentity
-    /// is installed (`host_api_builder.cpp:1103`), and the gate then
-    /// never fires. Generate a real identity; the provider's
-    /// `handshake_open` never runs because the trust-mask gate
-    /// rejects first.
+    /// is installed (`core/kernel/host_api/notifications.cpp:138`),
+    /// and the gate then never fires. Generate a real identity; the
+    /// provider's `handshake_open` never runs because the trust-mask
+    /// gate rejects first.
     auto ident = gn::core::identity::NodeIdentity::generate(0);
     ASSERT_TRUE(ident.has_value());
     kernel.identities().add(ident->device().public_key());

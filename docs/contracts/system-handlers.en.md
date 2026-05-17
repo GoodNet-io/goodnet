@@ -32,8 +32,8 @@ The on-disk identifier the helpers act under
 |---|---|---|---|---|
 | `0x10` | reserved | — | — | reserved for future system handler |
 | `0x11` | attestation | hard-reserved (kernel intercepts; plugins cannot register) | `core/kernel/attestation_dispatcher.cpp::on_inbound` | [`attestation.en.md`](attestation.en.md) |
-| `0x12` | identity rotation announce | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` rotation branch in `notify_inbound_bytes` + `core/identity/rotation.cpp` (verify) + `core/registry/connection.cpp::apply_rotation` | [`identity.en.md`](identity.en.md) §10 |
-| `0x13` | capability blob distribution | hard-reserved (kernel intercepts) | `core/kernel/host_api_builder.cpp` capability branch in `notify_inbound_bytes` + `core/kernel/capability_blob.cpp` (`CapabilityBlobBus`) | [`capability-tlv.en.md`](capability-tlv.en.md) |
+| `0x12` | identity rotation announce | hard-reserved (kernel intercepts) | `core/kernel/host_api/notifications.cpp` rotation branch in `notify_inbound_bytes` + `core/identity/rotation.cpp` (verify) + `core/registry/connection.cpp::apply_rotation` | [`identity.en.md`](identity.en.md) §10 |
+| `0x13` | capability blob distribution | hard-reserved (kernel intercepts) | `core/kernel/host_api/notifications.cpp` capability branch in `notify_inbound_bytes` + `core/kernel/capability_blob.cpp` (`CapabilityBlobBus`) | [`capability-tlv.en.md`](capability-tlv.en.md) |
 | `0x14` | user-level 2FA challenge | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.en.md`](identity.en.md) §6 |
 | `0x15` | user-level 2FA response | plugin-registerable; inject-boundary blocked | apps register handlers on this `msg_id` | [`identity.en.md`](identity.en.md) §6 |
 | `0x16..0x1F` | reserved | — | — | future expansion |
@@ -98,9 +98,9 @@ A new handler in the `0x16..0x1F` slot lands across:
    `constexpr` and update `is_reserved_system_msg_id()` if the
    handler is hard-reserved (kernel intercepts) versus
    plugin-registerable (only inject-blocked).
-2. `core/kernel/host_api_builder.cpp` — add an interception
-   branch in `notify_inbound_bytes` if hard-reserved; route
-   the verified payload to the subsystem.
+2. `core/kernel/host_api/notifications.cpp` — add an interception
+   branch in `notify_inbound_bytes` if hard-reserved; route the
+   verified payload to the subsystem.
 3. The owning subsystem under `core/kernel/` or `core/identity/`
    — implementation, with private types in their own header
    pair.

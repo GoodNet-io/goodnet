@@ -629,7 +629,8 @@ system-message envelope: the deframer rejects unknown flags and the
 framing magic, and the kernel applies the same `msg_id == 0` and
 payload-size limits as the regular inbound path.
 
-Implementations live in `core/kernel/host_api_builder.cpp`; the rate
+Implementations live in `core/kernel/host_api/` (the slim wire-up
+itself is in `core/kernel/host_api_builder.cpp`); the rate
 limiter primitive is `core/util/token_bucket.hpp`. The pure-C
 convenience wrappers `gn_inject_external_message` and
 `gn_inject_frame` in `sdk/convenience.h` expand to the corresponding

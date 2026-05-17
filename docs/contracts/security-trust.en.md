@@ -257,7 +257,7 @@ enumeration at registration:
 - The active **protocol layer** declares its admitted classes via
   `IProtocolLayer::allowed_trust_mask()`. The kernel checks the bit
   for the connection's `trust` at `notify_connect`
-  (`core/kernel/host_api_builder.cpp:1063-1070`); a miss returns
+  (`core/kernel/host_api/notifications.cpp:81`); a miss returns
   `GN_ERR_INVALID_ENVELOPE` and increments the
   `drop.trust_class_mismatch` metric.
 - The active **security provider** declares its admitted classes via
@@ -425,8 +425,9 @@ above.
 - Transport-side TrustClass declaration: `link.en.md` §3.
 - Stack registration: `host-api.en.md` §2 (`register_*`).
 - Kernel error on a trust-class mismatch: `GN_ERR_INVALID_ENVELOPE`
-  from `notify_connect` (`core/kernel/host_api_builder.cpp:1067-1068`,
-  protocol-layer gate) and from `SessionRegistry::create`
-  (`core/security/session.cpp:255`, security-provider gate). Both
-  sites bump `metrics.drop.trust_class_mismatch` so an operator
-  watching the counter sees the rate without an strace.
+  from `notify_connect` (`core/kernel/host_api/notifications.cpp:81`,
+  protocol-layer gate; line 184 catches the same envelope after
+  `SessionRegistry::create` reports the security-provider gate's
+  decision from `core/security/session.cpp`). Both sites bump
+  `metrics.drop.trust_class_mismatch` so an operator watching the
+  counter sees the rate without an strace.

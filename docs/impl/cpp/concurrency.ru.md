@@ -144,7 +144,7 @@ bool TcpLink::claim_disconnect(gn_conn_id_t id) {
 shutdown затем emit'ит на caller thread, ядро видит два вызова
 `notify_disconnect` с одинаковым `gn_conn_id_t`.
 
-[`thunk_notify_disconnect`](../../../core/kernel/host_api_builder.cpp)
+[`thunk_notify_disconnect`](../../../core/kernel/host_api/notifications.cpp)
 делает atomic snapshot+erase из connection registry. Первый
 вызов получает snapshot, разрушает security session, чистит
 attestation state, фаерит `DISCONNECTED` event. Второй получает

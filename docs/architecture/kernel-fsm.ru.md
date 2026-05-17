@@ -65,9 +65,9 @@ directory.
 
 ### Wire
 
-`host_api_t` полностью построен через `host_api_builder.cpp`,
-все 21 слот заполнены адресами kernel-thunks, `_reserved[8]`
-обнулён. Регистрируются статические kernel-internal-плагины:
+`host_api_t` полностью построен через `host_api_builder.cpp`
+(thunks живут в `core/kernel/host_api/*.cpp`); все слоты
+заполнены адресами kernel-thunks, `_reserved[8]` обнулён. Регистрируются статические kernel-internal-плагины:
 `plugins/protocols/gnet` (canonical mesh-framing) — обязательно;
 `plugins/protocols/raw` — опционально, если оператор включил.
 Статические плагины линкуются в бинарь ядра и не проходят через
