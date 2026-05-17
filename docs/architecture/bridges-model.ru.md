@@ -201,8 +201,8 @@ user callback, копию `protocol_id` string, копию `msg_ids` vector.
 В v1.0 kernel **не** имеет `gn_core_unregister_handler` slot'а —
 handlers живут до kernel shutdown. Destructor `HandlerHandle` поэтому
 **не reaches back** в kernel, только освобождает heap context (через
-`unique_ptr`). v1.x добавит unregister; место для wire'а уже
-запланировано в этом классе.
+`unique_ptr`). Добавление unregister запланировано как расширение;
+место для wire'а в этом классе зарезервировано.
 
 Эта асимметрия с `Subscription` (которая всегда unsubscribes)
 отражает kernel constraint, не binding decision.
