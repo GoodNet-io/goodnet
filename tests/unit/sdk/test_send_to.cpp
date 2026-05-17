@@ -199,11 +199,17 @@ TEST(HostApiSendTo, MultipleConnsDelegateToStrategy) {
     (void)api.unregister_extension(&ctx, "gn.strategy.test");
 }
 
-TEST(HostApiSendTo, MultipleStrategiesReturnLimitReached) {
+TEST(HostApiSendTo, MultipleStrategiesComposeFirstNonEmptyWins) {
     Kernel k;
     auto ctx = make_ctx(k);
     auto api = build_host_api(ctx);
 
+    /// Multi-strategy registration admits both — the kernel walks
+    /// the chain in registration order; first pick that returns a
+    /// real conn wins. The pre-rc4 single-strategy gate
+    /// (`LIMIT_REACHED` when count > 1) is gone; multipath /
+    /// fallback policy compositions now work without an operator
+    /// config flag.
     PickLastStrategy a, b;
     auto va = PickLastStrategy::make_vtable(a);
     auto vb = PickLastStrategy::make_vtable(b);
@@ -217,8 +223,15 @@ TEST(HostApiSendTo, MultipleStrategiesReturnLimitReached) {
     ASSERT_EQ(conns.size(), 2u);
 
     const std::uint8_t payload[1] = {0x55};
-    EXPECT_EQ(api.send_to(&ctx, pk, 0x10, payload, 1),
-              GN_ERR_LIMIT_REACHED);
+    /// Multi-strategy admitted — kernel walks the chain in
+    /// registry-iteration order. Both strategies return a valid
+    /// conn, so the first one consulted wins and the second
+    /// stays untouched. `query_prefix` is hash-ordered, so we
+    /// assert exactly one strategy was consulted rather than
+    /// pinning a specific name.
+    (void)api.send_to(&ctx, pk, 0x10, payload, 1);
+    EXPECT_EQ(a.pick_calls.load() + b.pick_calls.load(), 1)
+        << "exactly one strategy must have been consulted";
 
     (void)api.unregister_extension(&ctx, "gn.strategy.alpha");
     (void)api.unregister_extension(&ctx, "gn.strategy.beta");

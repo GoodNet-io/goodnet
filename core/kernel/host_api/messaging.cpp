@@ -160,27 +160,41 @@ gn_result_t send_to(void* host_ctx,
         return send(host_ctx, candidates[0].conn,
                      msg_id, payload, payload_size);
     }
-    if (strategies.size() > 1) {
-        return GN_ERR_LIMIT_REACHED;
+
+    /// Multi-strategy registration is admitted. The kernel walks
+    /// the registered strategies in order, asks each to pick a
+    /// conn from the candidate set, and returns the first
+    /// non-empty pick. The pre-rc4 single-strategy gate
+    /// (`size() > 1 → LIMIT_REACHED`) is gone — operator setups
+    /// that register two strategies (e.g. `gn.strategy.float-rtt`
+    /// + a fallback default) now compose instead of refusing.
+    /// Order is registration order, the same order
+    /// `query_prefix` returns.
+    for (const auto& entry : strategies) {
+        const auto* api =
+            static_cast<const gn_strategy_api_t*>(entry.vtable);
+        if (!api || !api->pick_conn ||
+            api->api_size < sizeof(gn_strategy_api_t)) {
+            continue;
+        }
+        gn_conn_id_t chosen = GN_INVALID_ID;
+        const gn_result_t rc = api->pick_conn(
+            api->ctx, peer_pk,
+            candidates.data(), candidates.size(),
+            &chosen);
+        /// `GN_ERR_NOT_FOUND` from a strategy means "I have no
+        /// opinion on this candidate set" — fall through to the
+        /// next strategy. Other errors abort the chain so the
+        /// caller sees the actual diagnostic.
+        if (rc == GN_ERR_NOT_FOUND) continue;
+        if (rc != GN_OK) return rc;
+        if (chosen == GN_INVALID_ID) continue;
+        return send(host_ctx, chosen, msg_id, payload, payload_size);
     }
-
-    const auto& entry = strategies.front();
-    const auto* api =
-        static_cast<const gn_strategy_api_t*>(entry.vtable);
-    if (!api || !api->pick_conn ||
-        api->api_size < sizeof(gn_strategy_api_t)) {
-        return GN_ERR_NOT_IMPLEMENTED;
-    }
-
-    gn_conn_id_t chosen = GN_INVALID_ID;
-    const gn_result_t rc = api->pick_conn(
-        api->ctx, peer_pk,
-        candidates.data(), candidates.size(),
-        &chosen);
-    if (rc != GN_OK) return rc;
-    if (chosen == GN_INVALID_ID) return GN_ERR_NOT_FOUND;
-
-    return send(host_ctx, chosen, msg_id, payload, payload_size);
+    /// Every strategy passed; pick the head of the candidate set
+    /// as the documented fallback per `strategy.md` §3.
+    return send(host_ctx, candidates[0].conn,
+                 msg_id, payload, payload_size);
 }
 
 gn_result_t disconnect(void* host_ctx, gn_conn_id_t conn) {
