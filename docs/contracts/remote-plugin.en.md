@@ -1,7 +1,10 @@
 # Remote plugin wire protocol
 
-Status: **active, single-threaded reference implementation landed on
-dev**. The proof-of-concept binary is `plugins/workers/remote_echo`;
+**Status:** active · v1
+**Implements:** `sdk/remote/{wire,slots}.h` + a single-threaded
+reference runtime.
+
+The proof-of-concept binary is `plugins/workers/remote_echo`;
 the kernel-side runtime lives in `core/plugin/remote_host.{hpp,cpp}`;
 the worker stub library lives in `sdk/cpp/remote_plugin.{hpp,cpp}` +
 `sdk/remote/{wire,slots}.h`. This document specifies the wire
