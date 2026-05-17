@@ -25,7 +25,7 @@ to refresh the table.
 | Directed relay → direct upgrade | ✗ missing | plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not registered in plugins/ |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
 | Address-based forwarding | ✗ missing | plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/ |
-| KV storage handler | ✗ missing | plugins/handlers/kv/ absent |
+| KV storage handler | ✓ done | plugins/handlers/store/ present |
 | Gossip sync handler | ✗ missing | plugins/handlers/gossip/ absent |
 | Offline outbound queue | ✗ missing | token 'outbound_queue' absent; token 'offline_queue' absent |
 | Fuzz harness | ✗ missing | tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent |

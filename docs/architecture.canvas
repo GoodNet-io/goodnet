@@ -510,7 +510,7 @@
 		{
 			"id": "n_rm_kv_storage_handler",
 			"type": "text",
-			"text": "# ✗ KV storage handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/kv/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ KV storage handler\n\nstatus: **done**\n\nevidence: plugins/handlers/store/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 8335,
 			"y": -100,
 			"width": 377,
