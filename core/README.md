@@ -10,12 +10,14 @@ exported through `find_package(GoodNet)` as `GoodNet::kernel` and
 | Directory | Role |
 |---|---|
 | `config/`   | JSON parser + per-key access for the `Config` holder |
+| `crypto/`   | `CryptoWorkerPool` — multi-threaded AEAD job dispatch for the inline-crypto fast path |
 | `identity/` | Ed25519 keypair, NodeIdentity, attestation envelope |
 | `kernel/`   | Kernel FSM, router, host-API builder, attestation dispatcher, service resolver, timer registry, metrics registry |
-| `plugin/`   | PluginManager (dlopen + manifest SHA-256 + lifetime anchor + drain) and plugin manifest parser |
-| `registry/` | Per-resource registries: connection, handler, link, security, extension |
-| `security/` | Per-connection `SecuritySession` |
-| `util/`     | Logger facade, log config loader, `safe_invoke` wrapper |
+| `plugin/`   | PluginManager (dlopen + manifest SHA-256 + lifetime anchor + drain), plugin manifest parser, three built-in `IPluginRuntime` runtimes (dynamic / static / remote) |
+| `registry/` | Per-resource registries: connection, handler, link, security, extension, protocol-layer |
+| `security/` | Per-connection `SecuritySession`, `SessionRegistry`, inline-crypto helper |
+| `signal/`   | `SignalChannel<T>` fanout primitive used by conn-state / config-reload / capability-blob channels |
+| `util/`     | Logger facade, log config loader, `safe_invoke` wrapper, URI helpers |
 
 ## Targets exported
 
