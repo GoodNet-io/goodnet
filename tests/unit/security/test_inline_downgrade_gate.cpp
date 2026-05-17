@@ -2,18 +2,18 @@
 /// @file   tests/unit/security/test_inline_downgrade_gate.cpp
 /// @brief  Env-var gate on `SecuritySession::_test_clear_inline_crypto`.
 ///
-/// The bench-showcase track Б §B.3 uses an inline-crypto bypass to
-/// emulate post-handshake Noise→Null handoff. The hook lives in
-/// production code (`session.cpp`), guarded by the env var
-/// `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`. This test pins the gate:
-/// the method MUST fail closed without the env var, succeed with it.
-/// If the gate ever weakens, the production binary becomes one
-/// `_test_clear_inline_crypto` call away from a silent security
-/// session corruption — the test is the trip wire.
+/// The free-kernel showcase bench's §B.3 uses an inline-crypto
+/// bypass to emulate post-handshake Noise→Null handoff. The hook
+/// lives in production code (`session.cpp`), guarded by the env
+/// var `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`. This test pins the
+/// gate: the method MUST fail closed without the env var, succeed
+/// with it. If the gate ever weakens, the production binary
+/// becomes one `_test_clear_inline_crypto` call away from a silent
+/// security session corruption — the test is the trip wire.
 ///
-/// The test does NOT exercise the actual cryptographic effect of the
-/// clear (that lives in `bench_showcase` once it lands). It checks
-/// only the env-gate contract.
+/// The test does NOT exercise the actual cryptographic effect of
+/// the clear (that lives in `bench_showcase`). It checks only the
+/// env-gate contract.
 
 #include <gtest/gtest.h>
 
