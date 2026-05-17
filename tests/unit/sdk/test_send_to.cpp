@@ -215,10 +215,8 @@ TEST(HostApiSendTo, MultipleStrategiesComposeFirstNonEmptyWins) {
 
     /// Multi-strategy registration admits both — the kernel walks
     /// the chain in registration order; first pick that returns a
-    /// real conn wins. The pre-rc4 single-strategy gate
-    /// (`LIMIT_REACHED` when count > 1) is gone; multipath /
-    /// fallback policy compositions now work without an operator
-    /// config flag.
+    /// real conn wins. Multipath / fallback policy compositions
+    /// work this way without any operator config flag.
     PickLastStrategy a, b;
     auto va = PickLastStrategy::make_vtable(a);
     auto vb = PickLastStrategy::make_vtable(b);

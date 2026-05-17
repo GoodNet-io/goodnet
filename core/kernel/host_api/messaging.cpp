@@ -164,12 +164,10 @@ gn_result_t send_to(void* host_ctx,
     /// Multi-strategy registration is admitted. The kernel walks
     /// the registered strategies in order, asks each to pick a
     /// conn from the candidate set, and returns the first
-    /// non-empty pick. The pre-rc4 single-strategy gate
-    /// (`size() > 1 → LIMIT_REACHED`) is gone — operator setups
-    /// that register two strategies (e.g. `gn.strategy.float-rtt`
-    /// + a fallback default) now compose instead of refusing.
-    /// Order is registration order, the same order
-    /// `query_prefix` returns.
+    /// non-empty pick. Operator setups that register two
+    /// strategies (e.g. `gn.strategy.float-rtt` + a fallback
+    /// default) compose this way. Walk order is the registration
+    /// order, the same order `query_prefix` returns.
     for (const auto& entry : strategies) {
         const auto* api =
             static_cast<const gn_strategy_api_t*>(entry.vtable);

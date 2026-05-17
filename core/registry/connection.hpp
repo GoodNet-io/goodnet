@@ -69,8 +69,8 @@ struct ConnectionRecord {
     /// broadcast paths) per `plugins/protocols/gnet/docs/wire-format.md` §5. Default `false`
     /// implies the connection is a regular peer; the deframe layer
     /// rejects EXPLICIT_SENDER as a sender_pk-spoofing attempt.
-    /// Operator-supplied through configuration / a future relay
-    /// handler API; pre-RC the default-deny path applies everywhere.
+    /// Operator-supplied through configuration / a relay handler
+    /// API; absent that supply the default-deny path applies.
     bool               allows_relay = false;
 
     /// Counters surfaced through `host_api->get_endpoint`.
