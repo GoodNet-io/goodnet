@@ -255,12 +255,10 @@ TEST(TimerRegistry_Quota, ZeroMaxTimersCapMeansUnlimited) {
 }
 
 TEST(TimerRegistry_Quota, SetTimerCapHoldsUnderConcurrentAdmits) {
-    /// `set_timer`'s global cap admit-then-emplace previously
-    /// released the mutex between the size check and the
-    /// `timers_.emplace` — concurrent admits could each observe
-    /// `size() < cap` and both push past it. Holding the lock
-    /// from check through emplace collapses the window. Stress
-    /// test asserts the count never exceeds the cap regardless of
+    /// `set_timer`'s global cap holds the mutex from the size check
+    /// through the `timers_.emplace` so concurrent admits cannot
+    /// both observe `size() < cap` and push past it. Stress test
+    /// asserts the count never exceeds the cap regardless of
     /// thread interleaving.
     TimerRegistry r;
     r.set_max_timers(8);

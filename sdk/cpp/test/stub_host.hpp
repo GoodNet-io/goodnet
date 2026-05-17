@@ -45,10 +45,9 @@ template <class Stub>
 
 // ─── LinkStub — link-plugin test surface ──────────────────────────
 
-/// Mirrors the ~80 LOC pattern previously copied into each link
-/// plugin's test file (TCP, UDP, TLS, WS, IPC, ICE, QUIC). Each
-/// callback writes through `mu_` + atomics so tests poll via
-/// `gn::sdk::test::wait_for`.
+/// Shared link-plugin test stub for TCP, UDP, TLS, WS, IPC, ICE,
+/// QUIC. Each callback writes through `mu_` + atomics so tests poll
+/// via `gn::sdk::test::wait_for`.
 struct LinkStub {
     std::atomic<int>                       connects{0};
     std::atomic<int>                       disconnects{0};
