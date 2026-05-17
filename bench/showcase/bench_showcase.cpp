@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/showcase/bench_showcase.cpp
-/// @brief  Free-kernel showcase bench (track Б of the plan in
-///         `~/.claude/plans/crispy-petting-kettle.md`).
+/// @brief  Free-kernel showcase bench — six sections, each
+///         demonstrating a GoodNet-distinctive move (multi-conn
+///         under one identity, strategy-driven picker flip, Noise
+///         → kernel fast-crypto handoff, fan-out producers, IPC
+///         failover, network-mobility carrier appearance).
 ///
 /// Six sections, each demonstrates one GoodNet-distinctive move that
 /// libp2p / WebRTC / gRPC cannot reproduce without an architectural
@@ -598,10 +601,11 @@ BENCHMARK_DEFINE_F(FailoverFixture, IpcDrop)(::benchmark::State& state) {
     state.SetItemsProcessed(static_cast<std::int64_t>(total));
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         if (iter == drop_at) {
-            /// XXX bench: stand-in for slice-9 kernel emit. When
-            /// `notify_disconnect` auto-fires `CONN_DOWN` on
-            /// strategy plugins, delete these two lines + the
-            /// candidate-array splice.
+            /// Bench-only synthesis of `CONN_DOWN` directly on
+            /// the strategy. In production the kernel's
+            /// `notify_disconnect` auto-fires the event; here we
+            /// stand in for it so the bench drives the picker
+            /// without a full kernel.
             inject_conn_down(*picker, pk, kIpcConn);
             /// Drop IPC from the candidate array. The kernel would
             /// also drop it from `registry.for_each` at this
@@ -665,9 +669,11 @@ BENCHMARK_DEFINE_F(MobilityFixture, LanShortcut)(::benchmark::State& state) {
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         if (iter == lan_up_at) {
             /// "Alice arrived home" — second carrier appears.
-            /// XXX bench: stand-in for C.4 RTM_NEWLINK
-            /// auto-trigger. When network-mobility lands, this
-            /// fires from a kernel observer instead.
+            /// Bench-only synthesis: a future kernel-side
+            /// network-mobility observer would fire `CONN_UP`
+            /// from `RTM_NEWLINK` netlink events; the bench
+            /// drives it directly so the picker reacts without
+            /// that machinery.
             inject_conn_up(*picker, pk, kLanConn, /*rtt_us*/2);
             cand[1].conn   = kLanConn;
             cand[1].rtt_us = 2;

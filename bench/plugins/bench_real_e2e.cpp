@@ -332,16 +332,16 @@ BENCHMARK_REGISTER_F(RealFixtureTcpEcho, TcpEchoRoundtrip)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
-// TODO(track-A-followup): Real-QUIC echo round-trip.
+// Real-QUIC echo round-trip is not wired here.
 // QuicLink::listen/connect return GN_ERR_NOT_IMPLEMENTED in
 // `plugins/links/quic/quic.cpp:148-156` — QUIC is composer-only
 // over a UDP carrier (see `plugins/links/quic/quic.hpp:58-62`).
-// A Real-mode QUIC fixture needs `BenchNode` extended with a
+// A Real-mode QUIC fixture would need `BenchNode` extended with a
 // LinkCarrier + `set_server_credentials` + `composer_listen` /
-// `composer_connect` bring-up path. Deferred to its own slice;
-// once landed, register `RealFixtureQuicEcho/QuicEchoRoundtrip`
-// here with the same Arg sweep so the aggregator's `## А.` section
-// shows the iroh-comparable row.
+// `composer_connect` bring-up path. Adding the fixture means
+// registering `RealFixtureQuicEcho/QuicEchoRoundtrip` here with
+// the same Arg sweep so the aggregator's `## А.` section shows
+// the iroh-comparable row.
 
 // ── UDP ─────────────────────────────────────────────────────────────
 //
