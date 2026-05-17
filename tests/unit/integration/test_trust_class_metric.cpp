@@ -183,7 +183,7 @@ TEST(TrustClassMetric, SecurityGateBumpsCounterOnUntrustedConnect) {
                                  GN_ROLE_RESPONDER,
                                  &conn),
               GN_ERR_INVALID_ENVELOPE);
-    /// `thunk_notify_connect` increments
+    /// The `notify_connect` thunk increments
     /// `drop.trust_class_mismatch` on the security-side rejection
     /// at `SessionRegistry::create`. The protocol-side gate
     /// shares the same counter so an operator's drop graph

@@ -76,8 +76,8 @@ PluginContext make_handler_ctx(Kernel& k) {
 
 /// Stub protocol layer that admits only Loopback and IntraNode trust
 /// classes. `deframe` / `frame` return `GN_ERR_NOT_IMPLEMENTED`; the
-/// trust gate in `thunk_notify_connect` rejects unsupported trust
-/// classes before any wire bytes flow.
+/// trust gate in the `notify_connect` thunk rejects unsupported
+/// trust classes before any wire bytes flow.
 class LoopbackOnlyProtocol final : public ::gn::IProtocolLayer {
 public:
     [[nodiscard]] std::string_view protocol_id() const noexcept override {

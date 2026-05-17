@@ -192,10 +192,11 @@ gn_result_t SecuritySession::encrypt_transport(
     /// Bound the per-frame ciphertext length at the wire-side u16
     /// ceiling. Producers oversized past `max_frame_bytes` are
     /// already rejected on send by `gn_limits_t::max_frame_bytes`
-    /// (`thunk_send` chain) and on inbound by
-    /// `thunk_notify_inbound_bytes`; the cap here guards against an
-    /// uncoordinated provider whose AEAD overhead pushes the wire
-    /// frame past 65535 bytes.
+    /// (the `send` chain in `core/kernel/host_api/messaging.cpp`)
+    /// and on inbound by `notify_inbound_bytes` in
+    /// `core/kernel/host_api/notifications.cpp`; the cap here
+    /// guards against an uncoordinated provider whose AEAD
+    /// overhead pushes the wire frame past 65535 bytes.
     if (cipher.size() > kFrameCipherMaxBytes) {
         return GN_ERR_PAYLOAD_TOO_LARGE;
     }

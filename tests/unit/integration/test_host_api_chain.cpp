@@ -402,8 +402,9 @@ TEST(HostApiChain, NotifyInboundUnknownConnRejected) {
 }
 
 TEST(HostApiChain, NotifyInboundOverFrameLimitRejected) {
-    /// `thunk_notify_inbound_bytes` caps `size` against
-    /// `limits.max_frame_bytes` before any state mutation. A
+    /// `notify_inbound_bytes` (in
+    /// `core/kernel/host_api/notifications.cpp`) caps `size`
+    /// against `limits.max_frame_bytes` before any state mutation. A
     /// misbehaving link plugin that posts an oversized buffer must
     /// surface `GN_ERR_PAYLOAD_TOO_LARGE` without driving the
     /// per-conn `bytes_in` counter or reaching the security
