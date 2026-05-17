@@ -12,7 +12,11 @@ OBJECT libraries.
 | `unit/`        | `goodnet_unit_tests`        | Kernel, SDK, util — every TU under `tests/unit/**/test_*.cpp` |
 | `integration/` | `goodnet_integration_tests` | Cross-cutting scenarios that compose the kernel with multiple plugins (Noise-over-TCP e2e, link-extension API conformance, plugin teardown drain, backpressure under load, link teardown across all transports) |
 | `abi/`         | `goodnet_abi_tests`         | C ABI binary-layout assertions; offsets and sizes pinned per `docs/contracts/abi-evolution.en.md` |
-| `support/`     | (header-only)               | Cross-suite helpers — currently `test_self_signed_cert.hpp` for OpenSSL fixtures |
+| `util/`        | (header-only)               | Cross-suite C++ helpers (e.g. `protocol_setup.hpp`, `log_capture.hpp`) |
+| `livedoc/`     | pytest                      | Tests for `tools/livedoc/` writers + renderers + injection |
+| `tools/`       | pytest                      | Tests for `tools/bench_compare` and other build / report tooling |
+| `aggregator/`  | pytest                      | Tests for `bench/comparison/reports/*_aggregate.py` aggregators |
+| `docker/`      | (scripts)                   | Multi-node integration scenarios staged under Docker Compose (e.g. `ice-3node` for TURN-relayed peer pairs) |
 
 ## Run
 
@@ -32,8 +36,9 @@ strict `--warnings-as-errors=*` clang-tidy gating every merge.
 - Kernel surface that does not depend on a transport — `unit/`
   (kernel/, registry/, identity/, security/, signal/, util/, plugin/, config/, abi/, sdk/).
 - Cross-plugin composition or PluginManager dlopen exercises — `integration/`.
-- Plugin internals (TCP/UDP/WS/IPC/TLS, Noise, null, GNET, raw,
-  heartbeat) — each plugin's own `tests/` next to its source.
+- Plugin internals (TCP / UDP / WS / IPC / TLS / ICE / QUIC, Noise,
+  null, GNET, raw, heartbeat, DNS, store, float-send-rtt) — each
+  plugin's own `tests/` next to its source.
 
 ## License
 
