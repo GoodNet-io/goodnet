@@ -79,6 +79,11 @@ Wire-side records use TXT as the implicit DNS record type
 because the locked layout does not carry an explicit type
 field; the extension surface keeps its typed
 `Resolver::put_record(name, type, rdata, ttl, flags)` shape.
+Extension-API writes to the TXT type also fan out DNS_NOTIFY
+to matching wire subscribers, so a local caller updating a
+record cannot sneak past wire-level observers; non-TXT writes
+stay extension-only since the wire surface has no type field
+to interpret them.
 
 The pre-release misnamed the msg_id constants
 (`kMsgResolve` / `kMsgPutRecord` had the value-pair inverted
