@@ -321,8 +321,32 @@ typedef struct host_api_s {
     gn_result_t (*announce_rotation)(void* host_ctx,
                                       int64_t valid_from_unix_ts);
 
+    /* ── Multi-path send to a peer (strategy.en.md §3) ──────────────────── */
+    /* Resolves `peer_pk` to live conns, walks the registered          */
+    /* `gn.strategy.*` chain in registration order, dispatches through */
+    /* the first strategy's pick. Single-candidate fast path bypasses  */
+    /* the chain. Multi-strategy admission is implicit — no            */
+    /* GN_ERR_LIMIT_REACHED gate.                                       */
+    gn_result_t (*send_to)(void* host_ctx,
+                            const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                            uint32_t msg_id,
+                            const uint8_t* payload,
+                            size_t payload_size);
+
+    /* ── Per-conn RTT sample publish (strategy.en.md §3 + RFC 6298) ─────── */
+    /* Link plugins + the heartbeat handler push observed RTT samples */
+    /* through this slot. The kernel folds each sample into a per-    */
+    /* conn EWMA(alpha = 1/8) and republishes to every registered     */
+    /* strategy through `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`.    */
+    /* LINK / HANDLER / UNKNOWN kinds can publish; other kinds get    */
+    /* GN_ERR_NOT_IMPLEMENTED. Zero rtt_us is the no-sample sentinel  */
+    /* and silently dropped; unknown conn id returns GN_ERR_NOT_FOUND. */
+    gn_result_t (*notify_rtt_sample)(void* host_ctx,
+                                      gn_conn_id_t conn,
+                                      uint64_t rtt_us);
+
     /* ── Reserved for future use ─────────────────────────────────────── */
-    void* _reserved[8];
+    void* _reserved[7];
 } host_api_t;
 ```
 
