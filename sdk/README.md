@@ -11,7 +11,7 @@ path and never produce object files from this tree.
 | `types.h`              | `gn_*` POD types, error codes, fixed-size arrays |
 | `host_api.h`           | Host-API the kernel hands a plugin (`should_log`/`emit`/`subscribe`/`config_get`/`notify_*`/`log`/`inject`/`query_extension_checked`) |
 | `plugin.h`             | `gn_plugin_init` / `gn_plugin_shutdown` entry-point signatures |
-| `link.h`               | `gn_link_api_t` vtable for transports |
+| `link.h`               | `gn_link_vtable_t` vtable for transports |
 | `protocol.h`           | `gn_protocol_layer_vtable_t` for protocol layers |
 | `security.h`           | `gn_security_provider_vtable_t` for crypto providers |
 | `handler.h`            | `gn_handler_vtable_t` for application-level handlers |
@@ -34,7 +34,7 @@ path and never produce object files from this tree.
 ## Stability
 
 ABI surface is open for reshape until `v1.0.0-rc1`. Post-tag, every
-slot is append-only per `docs/contracts/abi-evolution.md`.
+slot is append-only per `docs/contracts/abi-evolution.en.md`.
 
 ## License
 

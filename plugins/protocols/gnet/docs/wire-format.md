@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/protocols/gnet/`
-**Implements:** `IProtocolLayer` per `docs/contracts/protocol-layer.md`
+**Implements:** `IProtocolLayer` per `docs/contracts/protocol-layer.en.md`
 **Last verified:** 2026-04-27
 **Stability:** wire-incompatible changes require `ver` byte bump
 
@@ -239,5 +239,5 @@ authors and future format successors:
 
 ## 8. Cross-references
 
-- Kernel-side envelope semantics: `docs/contracts/protocol-layer.md`.
+- Kernel-side envelope semantics: `docs/contracts/protocol-layer.en.md`.
 - Security layer (Noise) wraps GNET frames: `plugins/security/noise/docs/handshake.md`.

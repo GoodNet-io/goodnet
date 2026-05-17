@@ -2,7 +2,7 @@
  * @file   tests/abi/test_core_c_layout.c
  * @brief  Compile-time pin of every caller-allocated struct in `sdk/core.h`.
  *
- * Per `docs/contracts/abi-evolution.md` §7 and `core-c.en.md` §3, the
+ * Per `docs/contracts/abi-evolution.en.md` §7 and `core-c.en.md` §3, the
  * library-as-binary surface ships a layout pin alongside the per-vtable
  * pin in `test_layout.c`. The library boundary is the only place where
  * a non-C++ host (Rust binding, Python ctypes layer, Go cgo wrapper,

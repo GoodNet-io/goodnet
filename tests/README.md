@@ -11,7 +11,7 @@ OBJECT libraries.
 |---|---|---|
 | `unit/`        | `goodnet_unit_tests`        | Kernel, SDK, util — every TU under `tests/unit/**/test_*.cpp` |
 | `integration/` | `goodnet_integration_tests` | Cross-cutting scenarios that compose the kernel with multiple plugins (Noise-over-TCP e2e, link-extension API conformance, plugin teardown drain, backpressure under load, link teardown across all transports) |
-| `abi/`         | `goodnet_abi_tests`         | C ABI binary-layout assertions; offsets and sizes pinned per `docs/contracts/abi-evolution.md` |
+| `abi/`         | `goodnet_abi_tests`         | C ABI binary-layout assertions; offsets and sizes pinned per `docs/contracts/abi-evolution.en.md` |
 | `support/`     | (header-only)               | Cross-suite helpers — currently `test_self_signed_cert.hpp` for OpenSSL fixtures |
 
 ## Run

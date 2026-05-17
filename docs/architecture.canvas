@@ -195,7 +195,7 @@
 		{
 			"id": "n_trust",
 			"type": "text",
-			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.en.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
+			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.en.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.en.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
 			"x": 11100,
 			"y": 1078,
 			"width": 540,
@@ -231,7 +231,7 @@
 		{
 			"id": "n_attest",
 			"type": "text",
-			"text": "# AttestationDispatcher\n`core/kernel/attestation_dispatcher.{hpp,cpp}`\n\nВнутренний обработчик 232-байтового attestation envelope.\nЗапускается **после** Noise (или эквивалента), удерживает trust class\nна `Untrusted` пока обе стороны не отправили и не проверили payload\n(`docs/contracts/attestation.md`).\n\nТолько успешная взаимная аттестация переводит conn в `Peer`.",
+			"text": "# AttestationDispatcher\n`core/kernel/attestation_dispatcher.{hpp,cpp}`\n\nВнутренний обработчик 232-байтового attestation envelope.\nЗапускается **после** Noise (или эквивалента), удерживает trust class\nна `Untrusted` пока обе стороны не отправили и не проверили payload\n(`docs/contracts/attestation.en.md`).\n\nТолько успешная взаимная аттестация переводит conn в `Peer`.",
 			"x": 2143,
 			"y": 1148,
 			"width": 540,

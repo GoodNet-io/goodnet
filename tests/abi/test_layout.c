@@ -2,7 +2,7 @@
  * @file   tests/abi/test_layout.c
  * @brief  Compile-time pin of every public C ABI struct's layout.
  *
- * Per `docs/contracts/abi-evolution.md` §7, every SDK MINOR ships a
+ * Per `docs/contracts/abi-evolution.en.md` §7, every SDK MINOR ships a
  * `tests/abi/layout` binary that records the size of every public C ABI
  * struct and the offset of every named field. The file is compiled but
  * never executed: the assertions fire at compile time. Any future patch

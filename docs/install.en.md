@@ -77,7 +77,7 @@ sudo install -m 0644 dist/example/plugins.json /etc/goodnet/plugins.json
 
 The example file picks the `server` profile and overrides nothing.
 Every `limits.*` field has a built-in default per the active profile
-— see `docs/contracts/config.md` §3 for the full schema. The two
+— see `docs/contracts/config.en.md` §3 for the full schema. The two
 common knobs:
 
 - `profile` — `embedded` (≤ 64 conns, no relay), `server` (default).

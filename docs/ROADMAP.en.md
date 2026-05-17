@@ -88,7 +88,7 @@ A frozen kernel ABI, a documented operator surface, an audited
 security boundary.
 
 - Ship the tag that closes the reshape window in
-  [`docs/contracts/abi-evolution.md`](contracts/abi-evolution.en.md) §3b
+  [`docs/contracts/abi-evolution.en.md`](contracts/abi-evolution.en.md) §3b
   and binds the append-only rule of §3 without exception.
 - Per-language SDK guides — proposed.
 - Operator how-tos — proposed.

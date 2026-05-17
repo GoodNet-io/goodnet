@@ -441,7 +441,7 @@ single teardown-race surface.
 - **URI parser** — header-only `sdk/cpp/uri.hpp` with `parse_uri`
   and `uri_query_value`, plus libsodium-backed
   `core/util/uri_query.hpp` for `?peer=<hex>` decode. Contract
-  `docs/contracts/uri.md`.
+  `docs/contracts/uri.en.md`.
 - **Kernel injection API** — `host_api->inject_external_message`
   and `inject_frame` for bridge plugins to push foreign-system
   payloads into the mesh under their own identity. Per-source
@@ -581,7 +581,7 @@ single teardown-race surface.
   short-circuit. The TCP / UDP / WS / TLS transports now route
   every outbound `connect()` through the helper so the
   registry's URI index keys and the on-connect callback URI
-  always carry an IP literal. Per `docs/contracts/dns.md` §1
+  always carry an IP literal. Per `docs/contracts/dns.en.md` §1
   (new). Seven new unit tests cover IP-literal passthrough,
   IPv6 brackets, path-style URIs, query preservation,
   unparseable inputs, the `localhost` lookup, and `*.invalid`
@@ -589,7 +589,7 @@ single teardown-race surface.
 - **Capability TLV codec** — `sdk/cpp/capability_tlv.hpp` ships
   a header-only encode / parse pair against the
   `[type:u16 BE][length:u16 BE][value]*` blob format described
-  in `docs/contracts/capability-tlv.md` (new). Used by the
+  in `docs/contracts/capability-tlv.en.md` (new). Used by the
   post-Noise capability handshake — peers exchange the supported
   transport and protocol names in a single GNET frame.
   Unknown record types are skipped on parse so the format stays
@@ -608,7 +608,7 @@ single teardown-race surface.
   caller's quiescence sentinel so a callback whose plugin
   unloaded is dropped silently. `for_each_connection` walks the
   registry under per-shard read locks. New
-  `docs/contracts/conn-events.md` and `sdk/conn_events.h`.
+  `docs/contracts/conn-events.en.md` and `sdk/conn_events.h`.
   SDK_VERSION_MINOR bumped to 1.5.
 - **Service executor** — `core/kernel/timer_registry`. The kernel
   owns a single-thread executor reserved for plugin service tasks.
@@ -619,7 +619,7 @@ single teardown-race surface.
   (`plugin-lifetime.en.md` §4); a callback whose plugin already
   unloaded is dropped silently. `gn_limits_t::max_timers` and
   `max_pending_tasks` (default `4096`) cap the queue. New
-  `docs/contracts/timer.md`. SDK_VERSION_MINOR bumped to 1.4.
+  `docs/contracts/timer.en.md`. SDK_VERSION_MINOR bumped to 1.4.
 - **TLS transport** — `goodnet_link_tls.so` registers `tls://`
   and the `gn.link.tls` extension. Asio-on-OpenSSL
   `ssl::stream<tcp::socket>` with TLS 1.2 minimum, sslv2/sslv3/
@@ -645,7 +645,7 @@ single teardown-race surface.
   registry (`LinkRegistry`, `LinkEntry`, `Kernel::links()`), the
   plugin tree (`plugins/links/{tcp,udp,ipc,ws,tls}/`), the
   `gn.transport.*` extension namespace (now `gn.link.*`), and the
-  contract `docs/contracts/link.md`. The Noise plugin's
+  contract `docs/contracts/link.en.md`. The Noise plugin's
   Noise-protocol "transport phase" naming is preserved — that is
   the cipherstate term from the spec, not the wire-channel layer.
 - **TLS and WS plugins reuse the canonical URI parser.** The

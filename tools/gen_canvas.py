@@ -227,7 +227,7 @@ NODES: dict[str, tuple[str, str]] = {
     ),
     "n_trust": (
         "TrustClass",
-        "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.md`\n\n"
+        "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.en.md`\n\n"
         "```c\n"
         "GN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\n"
         "GN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\n"
@@ -295,7 +295,7 @@ NODES: dict[str, tuple[str, str]] = {
         "Внутренний обработчик 232-байтового attestation envelope.\n"
         "Запускается **после** Noise (или эквивалента), удерживает trust class\n"
         "на `Untrusted` пока обе стороны не отправили и не проверили payload\n"
-        "(`docs/contracts/attestation.md`).\n\n"
+        "(`docs/contracts/attestation.en.md`).\n\n"
         "Только успешная взаимная аттестация переводит conn в `Peer`."
     ),
 
