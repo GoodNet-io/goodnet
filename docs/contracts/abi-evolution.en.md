@@ -176,12 +176,13 @@ Tracks every slot promoted during the open window so a future
 contributor reviewing ABI history can see what moved and why
 without `git log`-archaeology.
 
-| Date | Struct | Change | Slice |
+| Date | Struct | Change | Branch |
 |---|---|---|---|
 | 2026-05-08 | `gn_register_meta_t` | additive: new `const char* protocol_id` slot before existing `_reserved[4]` (LINK kind declares mesh-framing layer); reserved tail unchanged | `feat/protocol-layer-registry` |
 | 2026-05-09 | `gn_register_meta_t` | promoted `_reserved[3] → const char* namespace_id` before remaining `_reserved[3]` (HANDLER kind declares tenant scope) | `feat/lifecycle-namespaces` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: two new slots `subscribe_accept` / `unsubscribe_accept` inserted before `ctx` (composer accept-bus); `_reserved[4]` tail unchanged; sizeof grows 120 → 136 bytes — covered by api_size versioning | `feat/link-bus-and-dsl-core` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: new `composer_listen_port` slot inserted before `ctx` so a composer (WS / WSS / ICE) can read back the ephemeral L1 port after `tcp://host:0`-style listen; sizeof grows 136 → 144 bytes — covered by api_size versioning | `feat/ws-on-carrier` |
+| 2026-05-15 | `host_api_t` | additive: new `notify_rtt_sample` slot appended before `_reserved`; LINK / HANDLER / UNKNOWN kinds publish observed RTT samples, kernel folds into per-conn EWMA(α = 1/8) and republishes the smoothed value to every `gn.strategy.*` extension via `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`; sizeof grows 488 → 496 bytes — covered by api_size versioning; `_reserved[8]` tail unchanged | `dev` |
 
 ---
 
