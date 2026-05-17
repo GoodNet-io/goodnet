@@ -1,5 +1,8 @@
 # Plugin linkage modes
 
+**Status:** active · v1
+**Implements:** `sdk/plugin.h` + `core/plugin/plugin_manager.{hpp,cpp}`
+
 Three ways a plugin's code lands in front of the kernel today,
 plus one in design. The C ABI in `sdk/plugin.h` is the only stable
 contract between kernel and plugin — every mode preserves it
