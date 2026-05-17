@@ -366,7 +366,7 @@
 		{
 			"id": "n_noise_plugin",
 			"type": "text",
-			"text": "# security-noise\n`plugins/security/noise/`\n\nIndependent git unit (mirror `goodnet-io/security-noise`).\nGPL-2 + linking exception.\n\nРеализует `gn_security_provider_vtable_t`:\n- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n- libsodium для AEAD / KDF / random\n- export_transport_keys → передаёт ключи в kernel-side\n  `InlineCrypto` для post-handshake fast path\n\n`allowed_trust_mask = Untrusted | Peer` — ставится на провайдера\nи проверяется ядром на каждый `Sessions::create`.",
+			"text": "# security-noise\n`plugins/security/noise/`\n\nIndependent git unit (mirror `GoodNet-io/security-noise`).\nGPL-2 + linking exception.\n\nРеализует `gn_security_provider_vtable_t`:\n- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n- libsodium для AEAD / KDF / random\n- export_transport_keys → передаёт ключи в kernel-side\n  `InlineCrypto` для post-handshake fast path\n\n`allowed_trust_mask = Untrusted | Peer` — ставится на провайдера\nи проверяется ядром на каждый `Sessions::create`.",
 			"x": 4722,
 			"y": 404,
 			"width": 520,
@@ -384,7 +384,7 @@
 		{
 			"id": "n_tcp_plugin",
 			"type": "text",
-			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`goodnet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Boost.Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench (post inline-crypto Phase 1): 6.42 Gbps single-conn 16KB×1000.",
+			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Boost.Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench (post inline-crypto Phase 1): 6.42 Gbps single-conn 16KB×1000.",
 			"x": 8056,
 			"y": 1147,
 			"width": 540,
@@ -429,7 +429,7 @@
 		{
 			"id": "n_heartbeat_plugin",
 			"type": "text",
-			"text": "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\nIndependent git unit (`goodnet-io/handler-heartbeat`). GPL-2 + lex.\n\nРеализует `gn_handler_vtable_t`:\n- per-peer ping/pong на таймере\n- jitter `hash(conn_id) % 5s`\n- max_missed → `host_api->disconnect(conn)`\n- регистрирует extension `heartbeat.peer.miss` для соседних плагинов\n\nCooperative shutdown через `is_shutdown_requested` —\nре-arm таймера прекращается.",
+			"text": "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\nIndependent git unit (`GoodNet-io/handler-heartbeat`). GPL-2 + lex.\n\nРеализует `gn_handler_vtable_t`:\n- per-peer ping/pong на таймере\n- jitter `hash(conn_id) % 5s`\n- max_missed → `host_api->disconnect(conn)`\n- регистрирует extension `heartbeat.peer.miss` для соседних плагинов\n\nCooperative shutdown через `is_shutdown_requested` —\nре-arm таймера прекращается.",
 			"x": 3719,
 			"y": 414,
 			"width": 540,
@@ -438,7 +438,7 @@
 		{
 			"id": "n_int_tests",
 			"type": "text",
-			"text": "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\nmirror `goodnet-io/integration-tests`).\n\nCross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\nмомент.\n\nПодтягивается тем же `nix run .#setup` через slot map.\nЧисто-kernel \"integration\" тесты живут в `tests/unit/integration/`\nи линкуются с kernel напрямую.",
+			"text": "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\nmirror `GoodNet-io/integration-tests`).\n\nCross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\nмомент.\n\nПодтягивается тем же `nix run .#setup` через slot map.\nЧисто-kernel \"integration\" тесты живут в `tests/unit/integration/`\nи линкуются с kernel напрямую.",
 			"x": 4335,
 			"y": -140,
 			"width": 540,

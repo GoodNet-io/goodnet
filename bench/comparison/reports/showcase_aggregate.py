@@ -369,8 +369,9 @@ def emit_b4(out, cases):
 def emit_b5(out, cases, csv_data):
     section_header(out, "B.5", "Carrier failover",
         "Picker выбирает IPC (RTT 20µs). Mid-bench bench инжектит "
-        "`CONN_DOWN` на IPC conn (kernel auto-emit от "
-        "`notify_disconnect` pending в Slice-9-KERNEL). Picker "
+        "`CONN_DOWN` на IPC conn (the kernel observer that would "
+        "auto-emit the event from `notify_disconnect` is not "
+        "wired here; bench drives the picker directly). Picker "
         "переключается на TCP — следующий best-RTT. Zero packet "
         "loss across the flip.",
         "У libp2p/WebRTC failover между transport instances — "

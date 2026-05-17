@@ -91,7 +91,7 @@ GROUPS = [
         ["n_plug_mgr", "n_svc_res", "n_anchor"]),
     ("g_signal",  "SIGNAL INFRASTRUCTURE (core/kernel/)",  C_PURPLE,
         ["n_conn_events", "n_metrics", "n_timer"]),
-    # ── Plugin units (each ships in its own git, see goodnet-io/<kind>-<name>) ──
+    # ── Plugin units (each ships in its own git, see GoodNet-io/<kind>-<name>) ──
     ("g_proto",   "PROTOCOL PLUGINS (kernel-static)",      C_ORANGE,
         ["n_gnet_proto", "n_raw_proto"]),
     ("g_security", "SECURITY PLUGINS",                     C_ORANGE,
@@ -437,7 +437,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_noise_plugin": (
         "security-noise",
         "# security-noise\n`plugins/security/noise/`\n\n"
-        "Independent git unit (mirror `goodnet-io/security-noise`).\n"
+        "Independent git unit (mirror `GoodNet-io/security-noise`).\n"
         "GPL-2 + linking exception.\n\n"
         "Реализует `gn_security_provider_vtable_t`:\n"
         "- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n"
@@ -463,7 +463,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_tcp_plugin": (
         "link-tcp",
         "# link-tcp\n`plugins/links/tcp/`\n\n"
-        "Independent git unit (`goodnet-io/link-tcp`). GPL-2 + lex.\n\n"
+        "Independent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n"
         "`scheme = \"tcp\"`. Boost.Asio:\n"
         "- async accept / connect / read / write\n"
         "- per-connection strand + send queue\n"
@@ -507,7 +507,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_heartbeat_plugin": (
         "handler-heartbeat",
         "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\n"
-        "Independent git unit (`goodnet-io/handler-heartbeat`). GPL-2 + lex.\n\n"
+        "Independent git unit (`GoodNet-io/handler-heartbeat`). GPL-2 + lex.\n\n"
         "Реализует `gn_handler_vtable_t`:\n"
         "- per-peer ping/pong на таймере\n"
         "- jitter `hash(conn_id) % 5s`\n"
@@ -521,7 +521,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_int_tests": (
         "goodnet-integration-tests",
         "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\n"
-        "mirror `goodnet-io/integration-tests`).\n\n"
+        "mirror `GoodNet-io/integration-tests`).\n\n"
         "Cross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n"
         "(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\n"
         "момент.\n\n"
