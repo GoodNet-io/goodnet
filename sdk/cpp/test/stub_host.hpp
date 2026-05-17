@@ -179,6 +179,12 @@ struct HandlerStub {
     std::unordered_map<std::uint8_t,
                        PeerEntry>            peer_map;
 
+    /// `notify_rtt_sample` captures so handler tests can assert
+    /// per-conn RTT publish behaviour. Stored as `(conn, rtt_us)`
+    /// tuples; the helper at the bottom of the file wires the
+    /// thunk into the synthesized host_api_t.
+    std::vector<std::pair<gn_conn_id_t, std::uint64_t>> rtt_samples;
+
     /// Prime the peer registry. `marker` is `pk[0]`; tests build
     /// envelopes with that single byte as the public key.
     void add_peer(std::uint8_t marker, gn_conn_id_t conn,
@@ -232,15 +238,29 @@ struct HandlerStub {
         }
         return GN_ERR_NOT_FOUND;
     }
+
+    static gn_result_t on_notify_rtt_sample(void* host_ctx,
+                                              gn_conn_id_t conn,
+                                              std::uint64_t rtt_us) {
+        auto* h = static_cast<HandlerStub*>(host_ctx);
+        std::lock_guard lk(h->mu);
+        h->rtt_samples.emplace_back(conn, rtt_us);
+        return GN_OK;
+    }
 };
 
-/// Build a `host_api_t` with the three handler-side slots wired.
+/// Build a `host_api_t` with the handler-side slots wired:
+/// send + find_conn_by_pk + get_endpoint + notify_rtt_sample.
+/// The RTT slot lets heartbeat-style handlers publish samples
+/// the kernel would normally fold into a per-conn EWMA; tests
+/// inspect the captured list for assertions.
 [[nodiscard]] inline host_api_t
 make_handler_host_api(HandlerStub& h) noexcept {
     host_api_t api = empty_host_api(h);
-    api.send             = &HandlerStub::on_send;
-    api.find_conn_by_pk  = &HandlerStub::on_find_conn;
-    api.get_endpoint     = &HandlerStub::on_get_endpoint;
+    api.send              = &HandlerStub::on_send;
+    api.find_conn_by_pk   = &HandlerStub::on_find_conn;
+    api.get_endpoint      = &HandlerStub::on_get_endpoint;
+    api.notify_rtt_sample = &HandlerStub::on_notify_rtt_sample;
     return api;
 }
 
