@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   tests/unit/sdk/test_test_harness.cpp
-/// @brief  Coverage for `gn::sdk::test` namespace — shared stub host
-///         + fake link extracted in DX Tier 2 (2026-05-12).
+/// @brief  Coverage for `gn::sdk::test` namespace — the shared stub
+///         host + fake link helpers plugin tests consume.
 ///
-/// The full migration of per-plugin StubHost copies happens in a
-/// separate sweep; this file pins the shared contract so future
-/// regressions in the helper surface fail fast.
+/// Pins the shared contract so future regressions in the helper
+/// surface fail fast — plugin-side tests build on these classes
+/// and would otherwise track shape changes one at a time.
 
 #include <gtest/gtest.h>
 
