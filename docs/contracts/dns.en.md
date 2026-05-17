@@ -236,5 +236,5 @@ The reference `MemoryDnsBackend` ships in-tree as slice 1.
   helper for `tcp://example.com:443` → IP-literal rewriting at
   connect time. That is a pure-function URI rewrite, not a
   network service.
-- Legacy origin (archived):
-  `~/Desktop/projects/GoodNet_legacy/apps/store/`
+- Legacy origin: the routing-layer-that-doubled-as-DNS shape
+  predating the kernel/plugin split; archived outside the repo.

@@ -231,5 +231,5 @@ The reference `MemoryStore` ships in-tree. Future backends:
 - Reserved-id semantics:
   [`handler-registration.en.md`](handler-registration.en.md) §2a +
   [`system-handlers.en.md`](system-handlers.en.md) §1
-- Legacy origin (archived):
-  `~/Desktop/projects/GoodNet_legacy/apps/store/`
+- Legacy origin: the routing-layer-that-doubled-as-KV-DB shape
+  predating the kernel/plugin split; archived outside the repo.
