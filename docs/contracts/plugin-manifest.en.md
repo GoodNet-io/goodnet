@@ -304,9 +304,9 @@ no diagnostic trail.
 ### 8.4 Out of scope for v1
 
 - **Capability declarations.** Per-plugin `ext_provides` /
-  `ext_requires` / `capabilities` arrays land with the sandbox /
-  manifest-v2 work in v1.x; the v1 per-package JSON carries only
-  meta + integrity.
+  `ext_requires` / `capabilities` arrays are planned together with
+  the sandbox / manifest-v2 work; the v1 per-package JSON carries
+  only meta + integrity.
 - **Signed per-package manifests.** The per-package JSON is
   unsigned at v1. Tampered per-package metadata is detected at
   the operator-manifest layer (§2) when the operator regenerates
