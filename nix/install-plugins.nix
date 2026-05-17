@@ -18,7 +18,7 @@
 #   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
 #      <repo>.git`  (default — matches `init-mirrors`'s output
 #      directory)
-#   3. `https://github.com/GoodNet-io/<repo>`  (post-rc1 org repo)
+#   3. `https://github.com/GoodNet-io/<repo>`  (GitHub org repo)
 #
 # Modes:
 #   default — skip plugin slots that already exist on disk.

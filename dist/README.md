@@ -9,7 +9,7 @@ shape of a config or a systemd unit.
 | Path | Role |
 |---|---|
 | `example/`  | Reference `node.json` (kernel config) and `plugins.json` (manifest); dropped into `/etc/goodnet/` and adjusted per deployment |
-| `migrate/`  | Procedure for post-rc1 plugin spinoff out of the monorepo (`spinoff-cookbook.md`) |
+| `migrate/`  | Procedure for plugin spinoff out of the monorepo into its own GoodNet-io repo (`spinoff-cookbook.md`) |
 | `systemd/`  | `goodnetd.service` unit with `NoNewPrivileges`, `ProtectSystem`, `MemoryDenyWriteExecute`, etc. — drop into `/etc/systemd/system/` |
 
 ## Use
