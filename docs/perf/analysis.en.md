@@ -251,8 +251,8 @@ fair-comparison aggregate above by design. Each section is
 | B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses | PASS (425 k IPC picks vs 0 other) |
 | B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through env-gated `_test_clear_inline_crypto`; production-shape API in v1.x |
 | B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
-| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down` stand-in (Slice-9-KERNEL auto-emit hook pending) |
-| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up` stand-in (C.4 RTM_NEWLINK netlink hook pending) |
+| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel-side auto-emit from `notify_disconnect` is not wired |
+| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; an `RTM_NEWLINK` netlink observer that would auto-emit the event is not wired |
 
 Time-series cases (B.2 flip, B.3 trigger, B.5 failover, B.6
 mobility) emit CSV side-channels to
@@ -451,19 +451,15 @@ not asserted, not assumed.
   connection bring-up + peer-side wire signal so both halves of
   a session migrate symmetrically without bench harness
   reaching into private state.
-- **Slice-9-KERNEL auto-emit hooks** — `notify_connect` /
+- **Kernel-side strategy event emission** — `notify_connect` /
   `notify_disconnect` do not yet fire `CONN_UP` / `CONN_DOWN`
   events to strategy plugins. B.5 + B.6 fire `on_path_event`
-  manually; when the kernel-side hook lands, ~10 LOC of bench
+  manually; when the kernel-side hook lands, the bench
   stand-ins delete cleanly.
-- **C.4 Network mobility** — AF_NETLINK socket on
-  `RTM_NEWLINK` / `RTM_DELLINK` not yet wired; B.6 mobility
-  bench simulates the event through a synthetic second
-  carrier. With C.4 the bench just listens.
-- **Slice-9-HEARTBEAT** — kernel-side RTT measurement
-  (heartbeat extension writing `ConnectionRecord::last_rtt_us`)
-  is pending; B.2 / B.5 / B.6 inject RTT directly through
-  `picker.on_path_event(RTT_UPDATE)`.
+- **Network mobility** — AF_NETLINK socket on `RTM_NEWLINK` /
+  `RTM_DELLINK` is not wired; B.6 mobility bench simulates the
+  event through a synthetic second carrier. With the netlink
+  observer landed, the bench just listens.
 - **xprocess (inter-process)** — the operator-facing topology;
   current numbers are all in-process.
 - **Inter-host LAN** — no two-machine harness in tree yet.

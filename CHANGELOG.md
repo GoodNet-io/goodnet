@@ -199,10 +199,9 @@ kernel-driven architecture:
   `PerConnQueue::drain_scheduled` becomes the bottleneck.
 * `FailoverFixture/IpcDrop` — picker drives between three
   synthetic carriers, mid-iteration `CONN_DOWN` is injected on
-  the IPC slot, next pick routes to TCP. Stand-in for the
-  Slice-9-KERNEL auto-emit hook on `notify_disconnect` that is
-  still pending; the bench fires `on_path_event` manually so the
-  shape is testable now.
+  the IPC slot, next pick routes to TCP. The kernel-side
+  auto-emit hook on `notify_disconnect` is not wired; the bench
+  fires `on_path_event` manually so the shape is testable now.
 * `MobilityFixture/LanShortcut` — one carrier starts as the
   active path (synthetic TURN-relayed, RTT 60µs); mid-iteration
   a second carrier appears with RTT 2µs (synthetic LAN host
@@ -587,7 +586,8 @@ single teardown-race surface.
   `IPV6_V6ONLY=false` on `::` wildcard.
 - **IPC transport** — Boost.Asio `local::stream_protocol` with
   the same strand shape as TCP; `chmod 0700` on the parent
-  directory before bind closes the TR-C6 TOCTOU window.
+  directory before bind closes the bind-vs-permissions TOCTOU
+  window.
 - **UDP transport** — single-strand datagram path, MTU-gated send
   with all-or-nothing `send_batch` precheck, per-source
   `RateLimiterMap` on new-conn allocation, `notify_disconnect` on

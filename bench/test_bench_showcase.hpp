@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/test_bench_showcase.hpp
-/// @brief  Bench-only kernel scaffold for the free-kernel showcase
-///         (track Б of the plan in
-///         `~/.claude/plans/crispy-petting-kettle.md`).
+/// @brief  Bench-only kernel scaffold for the free-kernel
+///         showcase. Adds the helpers the single-carrier bench
+///         in `test_bench_helper.hpp` cannot reuse.
 ///
-/// `test_bench_helper.hpp` covers the single-carrier A.2 path; this
-/// header extends to the four GoodNet-distinctive moves the
-/// showcase bench has to demonstrate:
+/// The six showcase sections that consume this header:
 ///   §B.1  multi-connect under one peer identity (TCP + UDP + IPC
 ///         all registered through the same `host_api`).
 ///   §B.2  strategy-driven carrier selection through the in-tree
@@ -15,13 +13,14 @@
 ///         PoC by zeroing the kernel-side InlineCrypto state on an
 ///         established session (env-gated through
 ///         `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`).
-///   §B.5  carrier failover via manual `CONN_DOWN` injection (the
-///         kernel-side auto-emit hook for `notify_disconnect` is
-///         Slice-9-KERNEL pending).
+///   §B.5  carrier failover via manual `CONN_DOWN` injection. The
+///         kernel observer that would auto-fire the event from
+///         `notify_disconnect` is not wired here; the bench
+///         drives the picker directly.
 ///   §B.6  mobility / LAN shortcut — synthetic second carrier add
 ///         + `CONN_UP` injection so the strategy flips winner to
 ///         the new path, mimicking ICE-restart on a fresh
-///         interface without the C.4 netlink machinery.
+///         interface without a kernel-side netlink observer.
 ///
 /// Everything here lives under `gn::core::test` because some calls
 /// poke private kernel state (`SessionRegistry::find`,
@@ -210,9 +209,10 @@ inline gn_result_t register_strategy(
 }
 
 /// Inject a synthetic RTT sample into @p picker so the next
-/// `pick_conn` ranks this conn under the new EWMA. The kernel's
-/// own RTT measurement source (Slice-9-HEARTBEAT) is pending; the
-/// bench drives the picker directly until that lands.
+/// `pick_conn` ranks this conn under the new EWMA. The heartbeat
+/// handler publishes measured RTT through `notify_rtt_sample` in
+/// production; this helper exists for bench cases that want a
+/// specific RTT value rather than the measured one.
 inline void inject_rtt(
     ::gn::strategy::float_send_rtt::FloatSendRtt& picker,
     const ::gn::PublicKey& peer_pk,
@@ -248,8 +248,9 @@ inline void inject_conn_up(
 
 /// Inject a CONN_DOWN — emits when the kernel disconnects a conn.
 /// In production this would be auto-fired from
-/// `notify_disconnect`; Slice-9-KERNEL hook is pending so the
-/// bench fires manually right after `link->disconnect(conn)`.
+/// `notify_disconnect`; the kernel-side hook is not wired here,
+/// so the bench fires manually right after
+/// `link->disconnect(conn)`.
 inline void inject_conn_down(
     ::gn::strategy::float_send_rtt::FloatSendRtt& picker,
     const ::gn::PublicKey& peer_pk,
