@@ -46,9 +46,11 @@ inline constexpr std::uint32_t kIdentityRotationMsgId = 0x12;
 inline constexpr std::uint32_t kCapabilityBlobMsgId   = 0x13;
 
 /// User-level 2FA challenge / response wire pair — see
-/// `docs/recipes/user-2fa-via-plugins.md`. Apps drive the
-/// challenge-response via standard send / handler registration on
-/// these ids. Plugin-reserved (registerable, not injectable).
+/// `docs/contracts/system-handlers.en.md` §3 (table row `0x14` /
+/// `0x15`) which points to `identity.en.md` §6 for the protocol
+/// details. Apps drive the challenge-response via standard send /
+/// handler registration on these ids. Plugin-reserved
+/// (registerable, not injectable).
 inline constexpr std::uint32_t kIdentityChallengeMsgId = 0x14;
 inline constexpr std::uint32_t kIdentityResponseMsgId  = 0x15;
 

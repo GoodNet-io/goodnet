@@ -106,7 +106,7 @@ private:
 /// @brief MPSC adapter — producers coordinate via a spinlock, the
 ///        single consumer drains lock-free.
 ///
-/// Per `docs/impl/cpp/concurrency.md` the spinlock acquires only on
+/// Per `docs/impl/cpp/concurrency.ru.md` the spinlock acquires only on
 /// the push path. The drain path holds no lock, so the consumer never
 /// contends with a producer; the spinlock is only ever observed when
 /// two producers race to enqueue on the same connection.

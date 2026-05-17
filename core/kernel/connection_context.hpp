@@ -31,8 +31,9 @@ struct gn_connection_context_s {
     /// is the safe path: a regular peer claiming a foreign sender_pk
     /// would otherwise spoof handlers that authenticate by sender_pk.
     /// The kernel sets this from the connection record's `allows_relay`
-    /// flag, populated by the relay handler / operator configuration
-    /// (post-RC handler work pinned in `plugins/protocols/gnet/docs/wire-format.md`).
+    /// flag, populated by the relay handler / operator configuration.
+    /// See `plugins/protocols/gnet/docs/wire-format.md` for the wire
+    /// semantics on the relay frames themselves.
     bool               allows_relay{false};
 
     /// ABI evolution; must be zero-initialised.
