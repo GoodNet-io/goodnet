@@ -40,11 +40,12 @@
       # `/etc/goodnet`, so the wrapper script in `bin/goodnet-node`
       # invokes the real binary against the bundled paths.
       #
-      # **Daemon binary source** — the kernel repo no longer ships
-      # `goodnetd` since the apps/ tree extraction (2026-05-17). The
-      # `kernel` parameter below now expects a derivation that
-      # provides `bin/goodnetd` — typically pulled as a flake input
-      # from `github:GoodNet-io/goodnetd`. Passing the bare kernel
+      # **Daemon binary source** — the kernel repo does not ship
+      # `goodnetd`; the daemon lives at
+      # `github:GoodNet-io/goodnetd` and produces `bin/goodnetd`
+      # in its own derivation. The `kernel` parameter below
+      # expects a derivation that provides that path — typically
+      # pulled as a flake input. Passing the bare kernel
       # output (which only ships libraries + plugin .sos) fails the
       # build with a clear "no such file" pointing at the missing
       # binary. An operator's flake threads both inputs:
