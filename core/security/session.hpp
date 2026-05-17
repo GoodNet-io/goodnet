@@ -235,11 +235,9 @@ public:
     /// Bench-only seam: zero `inline_crypto_` keys + flip its
     /// `seeded_` flag so subsequent `encrypt_transport` /
     /// `decrypt_transport` fall through to the provider vtable
-    /// (`gn.security.null` is copy-through). This emulates the
-    /// production post-handshake Noise→Null handoff that v1.x will
-    /// expose through a kernel-driven `SessionRegistry::downgrade_*`
-    /// API; the bench needs the number now to ship the showcase
-    /// section.
+    /// (`gn.security.null` is copy-through). Emulates the planned
+    /// production post-handshake Noise→Null handoff that a kernel-
+    /// driven `SessionRegistry::downgrade_*` API will expose.
     ///
     /// **Fails closed** at runtime unless the environment variable
     /// `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` is set. Production

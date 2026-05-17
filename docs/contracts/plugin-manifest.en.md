@@ -200,8 +200,8 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 - **Signed manifests.** The v1 manifest is unsigned. An operator
   who wants tamper-evidence at rest signs the manifest file with
   Ed25519 outside the kernel and verifies the signature before
-  calling `parse`. v1.1 will land an in-kernel verifier so the
-  signed-manifest path is built in.
+  calling `parse`. An in-kernel verifier for the signed-manifest
+  path is planned.
 - **Live re-verification.** The manifest is consulted at load
   time; the kernel does not re-hash already-mapped plugins on a
   schedule. Tampering with a `.so` after `dlopen` does not change

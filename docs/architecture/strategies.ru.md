@@ -163,9 +163,9 @@ Plugin author resolves cycle'ы через graceful degradation:
 - float-send при init проверяет наличие `gn.heartbeat`; если
   нет — fallback на конфигурируемый RTT estimate.
 
-Composition contract'ом фиксируется в plugin's `manifest.json`
-under `requires` / `optional` keys (eventually; pre-rc1 — в
-README).
+Composition contract фиксируется в plugin's README. Перенос в
+`manifest.json` под `requires` / `optional` keys — планируемое
+расширение.
 
 ## Composition pattern
 
