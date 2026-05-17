@@ -104,7 +104,7 @@ All multi-byte integers are big-endian. Lengths cap at
 | offset | size | field |
 |---|---|---|
 | 0 | 8 | `request_id` (echoed from the request) |
-| 8 | 1 | `status` (0=ok, 1=bad-size, 2=not-found, 3=backend-error) |
+| 8 | 1 | `status` (0=ok, 1=bad-size, 2=not-found, 3=backend-error, 4=unauthorized) |
 | 9 | 1 | reserved (zero) |
 | 10 | 2 | `entry_count` (0 for PUT/DELETE acks) |
 | 12 | ... | `entry_count` × Entry record (§3.6) |
@@ -210,6 +210,17 @@ The reference `MemoryStore` ships in-tree. Future backends:
   system handlers (240+) but above application handlers (default
   128). Adjust via plugin manifest if a node hosts a handler
   that wants STORE envelopes to land first.
+- **First-writer-wins ACL on wire writes.** Each key binds to the
+  Noise-authenticated `sender_pk` of its initial wire-side PUT
+  (the gnet protocol layer stamps `sender_pk` on every deframed
+  envelope). Subsequent PUT or DELETE from a peer with a
+  different `sender_pk` is rejected with `status=4` /
+  `kStatusUnauthorized`. The original writer can update + delete
+  freely; ownership lapses when the owning peer deletes the key.
+  Envelopes with all-zero `sender_pk` (loopback / kernel-inject /
+  in-process callers via `put_local` / `del_local`) bypass the
+  gate — the kernel is implicitly trusted and the in-process
+  surface has no on-the-wire identity to authenticate.
 
 ---
 
