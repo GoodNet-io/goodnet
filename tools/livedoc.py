@@ -5,6 +5,7 @@ Usage:
     python3 tools/livedoc.py --all         # full refresh
     python3 tools/livedoc.py --abi         # ABI facts only
     python3 tools/livedoc.py --roadmap     # roadmap status only
+    python3 tools/livedoc.py --catalogs    # metrics + config keys + RFC coverage
     python3 tools/livedoc.py --diagrams    # SVG + canvas only
     python3 tools/livedoc.py --inject      # markdown rewrites only
     python3 tools/livedoc.py --check       # exit non-zero if drift
