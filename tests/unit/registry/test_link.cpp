@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_transport.cpp
 /// @brief  GoogleTest unit tests for `gn::core::LinkRegistry`.
 ///
-/// Pins the contract from `docs/contracts/host-api.md` §6 (scheme is
+/// Pins the contract from `docs/contracts/host-api.en.md` §6 (scheme is
 /// unique across loaded transports; lookups are O(1) under a shared
 /// mutex) and `link.en.md` §4 (id is allocated by the kernel, never
 /// by transports themselves).

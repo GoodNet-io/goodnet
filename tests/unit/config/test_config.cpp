@@ -1,7 +1,7 @@
 /// @file   tests/unit/config/test_config.cpp
 /// @brief  GoogleTest unit tests for `gn::core::Config`.
 ///
-/// Pins the contract from `docs/contracts/limits.md` §3 (cross-field
+/// Pins the contract from `docs/contracts/limits.en.md` §3 (cross-field
 /// invariants on `gn_limits_t`) plus the dotted-path lookup surface
 /// described in `host-api.en.md` §2 (config slots): JSON load is atomic;
 /// parse failure preserves prior state; `validate` rejects every

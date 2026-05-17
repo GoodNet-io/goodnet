@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_extension.cpp
 /// @brief  GoogleTest unit tests for `gn::core::ExtensionRegistry`.
 ///
-/// Pins the contract from `docs/contracts/abi-evolution.md` §2 (semver
+/// Pins the contract from `docs/contracts/abi-evolution.en.md` §2 (semver
 /// compatibility: major must match, registered minor must be >= requested
 /// minor) and `host-api.en.md` §2 (`query_extension_checked`,
 /// `register_extension`). Concurrent register/query is exercised under

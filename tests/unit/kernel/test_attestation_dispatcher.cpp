@@ -6,7 +6,7 @@
 /// kernel's transport, security, and protocol-layer machinery; those
 /// flows are exercised in the integration suite. The tests here
 /// pin the wire-layout invariants and the per-step rejection logic
-/// per `docs/contracts/attestation.md` §2 / §5.
+/// per `docs/contracts/attestation.en.md` §2 / §5.
 
 #include <gtest/gtest.h>
 

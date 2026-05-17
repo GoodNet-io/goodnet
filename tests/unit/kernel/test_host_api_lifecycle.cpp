@@ -2,7 +2,7 @@
 /// @brief  Unit tests for the connection-lifecycle host_api thunks.
 ///
 /// Exercises two contracts on `host_api->notify_connect` /
-/// `notify_disconnect` per `docs/contracts/host-api.md` and
+/// `notify_disconnect` per `docs/contracts/host-api.en.md` and
 /// `security-trust.en.md` §4:
 ///
 ///   * `notify_connect` consults `IProtocolLayer::allowed_trust_mask()`

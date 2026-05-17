@@ -1,7 +1,7 @@
 /// @file   tests/unit/config/test_config_concurrency.cpp
 /// @brief  Concurrency stress for `gn::core::Config` shared-lock semantics.
 ///
-/// Pins the read-side concurrency claim from `docs/contracts/config.md`
+/// Pins the read-side concurrency claim from `docs/contracts/config.en.md`
 /// §2 ("kernel resolves the dotted path under a shared lock") and the
 /// implementation note in `config.hpp` ("thread-safe for concurrent
 /// reads; reload is exclusive"): many `get_int64` / `get_string`

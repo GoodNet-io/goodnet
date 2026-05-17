@@ -1,9 +1,9 @@
 /// @file   tests/unit/kernel/test_router.cpp
 /// @brief  Tests for `gn::core::Router`.
 ///
-/// Pins the routing rules from `docs/contracts/protocol-layer.md` §6
+/// Pins the routing rules from `docs/contracts/protocol-layer.en.md` §6
 /// and the chain-dispatch order / `on_result` invariants from
-/// `docs/contracts/handler-registration.md` §3 + §6.
+/// `docs/contracts/handler-registration.en.md` §3 + §6.
 
 #include <gtest/gtest.h>
 

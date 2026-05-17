@@ -2,7 +2,7 @@
 /// @brief  GoogleTest unit tests for `gn::core::SecurityRegistry`.
 ///
 /// Pins the StackRegistry contract from
-/// `docs/contracts/security-trust.md` §5: a kernel admits N security
+/// `docs/contracts/security-trust.en.md` §5: a kernel admits N security
 /// providers concurrently, each declaring `allowed_trust_mask`. The
 /// registry rejects a duplicate `provider_id`, but distinct ids
 /// (e.g. `gn.security.null` + `gn.security.noise`) coexist so the

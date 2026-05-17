@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /// @file   tests/unit/util/test_uri.cpp
 /// @brief  parse_uri + UriParts — every recognised form and every
-///         failure mode from `docs/contracts/uri.md`.
+///         failure mode from `docs/contracts/uri.en.md`.
 
 #include <gtest/gtest.h>
 

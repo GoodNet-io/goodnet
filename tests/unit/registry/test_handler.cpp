@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_handler.cpp
 /// @brief  GoogleTest unit tests for `gn::core::HandlerRegistry`.
 ///
-/// Exercises the contract from `docs/contracts/handler-registration.md`:
+/// Exercises the contract from `docs/contracts/handler-registration.en.md`:
 /// rejection of malformed registrations, priority chain ordering with
 /// insertion-order tie-breaking, per-protocol namespace isolation,
 /// generation counter advancement, max-chain-length cap, and the

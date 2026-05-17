@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_connection.cpp
 /// @brief  GoogleTest unit tests for `gn::core::ConnectionRegistry`.
 ///
-/// Exercises the contract from `docs/contracts/registry.md`:
+/// Exercises the contract from `docs/contracts/registry.en.md`:
 /// monotonic id allocation, atomic three-index insert/erase, snapshot
 /// lookups by id / URI / pk, and the deadlock-free claim under
 /// concurrent insert and erase from multiple threads.

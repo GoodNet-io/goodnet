@@ -11,13 +11,13 @@
  *
  * Storage is delegated — this extension never carries `put` / `get`
  * slots for raw bytes. Those live on `gn.store` if a caller needs
- * untyped KV access. See `docs/contracts/dns.md` for the wire
- * surface, `docs/contracts/store.md` for the storage primitive.
+ * untyped KV access. See `docs/contracts/dns.en.md` for the wire
+ * surface, `docs/contracts/store.en.md` for the storage primitive.
  *
  * @par Not the SDK hostname resolver
  * `sdk/cpp/dns.hpp` is an unrelated header — that one rewrites
  * `tcp://example.com:443` URIs into IP literals at connect time
- * (see `docs/contracts/hostname-resolver.md`). Same word, different
+ * (see `docs/contracts/hostname-resolver.en.md`). Same word, different
  * concept: this header is the networked record-DB surface; that
  * one is a pure-function URI rewrite. Both keep the name because
  * the legacy `goodnetd-dns` binary covered the same conceptual
