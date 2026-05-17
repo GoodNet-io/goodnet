@@ -22,9 +22,10 @@ extern "C" {
  * @brief Per-connection state passed to @ref gn_protocol_layer_vtable_t.deframe
  *        and `.frame`.
  *
- * The struct is opaque to the plugin; accessor functions (TBD in
- * `sdk/connection.h` once the transport contract lands) provide read access
- * to local identity, remote identity, connection id, and a plugin-private
+ * The struct is opaque to the plugin; accessor functions in
+ * `sdk/connection.h` (`gn_ctx_local_pk` / `_remote_pk` / `_conn_id` /
+ * `_trust` / `_plugin_state`) provide read access to local identity,
+ * remote identity, connection id, trust class, and a plugin-private
  * scratch slot.
  */
 typedef struct gn_connection_context_s gn_connection_context_t;
