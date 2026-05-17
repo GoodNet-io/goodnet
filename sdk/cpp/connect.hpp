@@ -2,15 +2,15 @@
 /// @file   sdk/cpp/connect.hpp
 /// @brief  Scheme-dispatch sugar over `gn.link.<scheme>` extensions.
 ///
-/// Closes the DX gap documented in the 2026-05-12 audit: apps that
-/// want to `connect("wss://host:443")` should not have to:
+/// Apps that want to `connect("wss://host:443")` would otherwise
+/// have to:
 ///   1. Parse the scheme manually
 ///   2. Build the extension name `"gn.link.wss"` (or `ws`, or `tcp`)
 ///   3. Call `host_api->query_extension_checked` + cast vtables
 ///   4. Call `vt->connect(...)` and remember the conn id
 ///   5. Wrap the result in an RAII handle
 ///
-/// All of that becomes:
+/// `connect_to` collapses all of that:
 /// @code
 /// auto conn = gn::sdk::connect_to(host_api, "wss://host:443");
 /// if (!conn) return GN_ERR_NOT_FOUND;
