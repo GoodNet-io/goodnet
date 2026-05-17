@@ -18,10 +18,10 @@ shape of a config or a systemd unit.
 sudo cp dist/example/node.json    /etc/goodnet/node.json
 sudo cp dist/example/plugins.json /etc/goodnet/plugins.json
 sudo cp dist/systemd/goodnetd.service /etc/systemd/system/goodnetd.service
-sudo systemctl enable --now goodnet
+sudo systemctl enable --now goodnetd
 ```
 
-`docs/install.md` is the longer-form walkthrough.
+`docs/install.en.md` is the longer-form walkthrough.
 
 ## License
 
