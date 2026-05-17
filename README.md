@@ -309,13 +309,13 @@ against an SHA-256 manifest (`/etc/goodnet/plugins.json`).
 
 ## Running as a daemon
 
-`goodnet` is a multicall binary:
+`goodnetd` is a multicall binary:
 
 ```bash
-goodnet identity gen --out /etc/goodnet/identity.bin
-goodnet manifest gen build/plugins/libgoodnet_*.so > plugins.json
-goodnet config validate dist/example/node.json
-goodnet run --config dist/example/node.json \
+goodnetd identity gen --out /etc/goodnet/identity.bin
+goodnetd manifest gen build/plugins/libgoodnet_*.so > plugins.json
+goodnetd config validate dist/example/node.json
+goodnetd run --config dist/example/node.json \
             --manifest plugins.json \
             --identity /etc/goodnet/identity.bin
 ```

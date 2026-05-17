@@ -12,7 +12,7 @@
 ///
 /// Lifecycle:
 ///   1. Operator builds the manifest at distribution time —
-///      `goodnet manifest emit plugins/*.so > plugins.json`
+///      `goodnetd manifest emit plugins/*.so > plugins.json`
 ///      (tooling lives outside this header).
 ///   2. Operator hands the manifest to `Kernel::set_plugin_manifest`
 ///      before reaching `Load` phase.

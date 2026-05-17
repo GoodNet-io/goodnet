@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
     /// info, Debug = debug) and a Release-only console floor of WARN.
     /// The demo wants the kernel's INFO startup markers visible in
     /// either build, so push the console sink to `info` and lift the
-    /// logger level to match. Operators running `goodnet run` get the
+    /// logger level to match. Operators running `goodnetd run` get the
     /// same behaviour through the `log.console_level = "info"` knob in
     /// `dist/example/node.json`.
     {
