@@ -54,6 +54,24 @@ Phases 4–5 are the **two-phase activation**. Phases 7–9 mirror in reverse;
 phase 8 must complete before phase 9 to avoid dispatching into a torn-down
 plugin.
 
+PluginManager dispatches every phase through a runtime registry
+keyed by the manifest entry's `kind` string. The kernel ships
+three built-in runtimes:
+
+| Kind | Linkage | Discovery | Lifecycle |
+|---|---|---|---|
+| `dynamic` (default) | dlopen(.so) | path → integrity → dlopen | dlsym entry symbols |
+| `static` | linked into kernel | walk `gn_plugin_static_registry[]` | per-entry function pointers |
+| `remote` | subprocess worker | `RemoteHost::spawn` over `sdk/remote/wire.h` | `PLUGIN_CALL` wire frames |
+
+Host programs that bundle a custom runtime (WebAssembly host, FFI-
+via-IPC bridge, per-process sandbox) implement `IPluginRuntime`
+(in `core/plugin/plugin_runtime.hpp`) and register the instance
+through `PluginManager::register_runtime(kind, std::unique_ptr<
+IPluginRuntime>)` before `load`. From that point on, manifest
+entries whose `kind` field matches dispatch through the custom
+runtime; PluginManager itself is unchanged.
+
 ---
 
 ## 3. Plugin entry symbols
