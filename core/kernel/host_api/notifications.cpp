@@ -110,6 +110,30 @@ gn_result_t notify_connect(void* host_ctx,
         pc->kernel->on_conn_event().fire(ev);
     }
 
+    /// Notify every registered strategy that a new conn opened so
+    /// per-peer winner caches can consider it on the next dispatch.
+    /// Best-effort, same posture as the CONN_DOWN side: a strategy
+    /// throwing here does not unwind the connection registry
+    /// insertion already committed above.
+    {
+        auto strategies =
+            pc->kernel->extensions().query_prefix("gn.strategy.");
+        for (const auto& entry : strategies) {
+            const auto* sapi =
+                static_cast<const gn_strategy_api_t*>(entry.vtable);
+            if (!sapi || !sapi->on_path_event ||
+                sapi->api_size < sizeof(gn_strategy_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn   = new_id;
+            sample.rtt_us = 0;   // no probe landed yet — unknown
+            (void)sapi->on_path_event(
+                sapi->ctx, remote_pk,
+                GN_PATH_EVENT_CONN_UP, &sample);
+        }
+    }
+
     auto& sec = pc->kernel->security();
     auto ident = pc->kernel->node_identity();
     if (sec.is_active() && ident != nullptr) {
