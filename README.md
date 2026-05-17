@@ -10,7 +10,15 @@ The framing is Linux. The kernel does not know what TCP is, what
 Noise is, what an application is. It tracks logical connections,
 typed messages, public-key addresses, and registered handlers.
 Every transport, every cipher, every wire format lives in a
-plugin loaded through `dlopen` against a versioned C ABI.
+plugin loaded through one of three built-in runtimes — `dynamic`
+(dlopen the .so), `static` (link the plugin into the kernel
+binary at build time), or `remote` (spawn a subprocess worker
+talking over the wire codec). The `IPluginRuntime` interface
+is open: host programs that bundle a custom runtime
+(WebAssembly host, FFI-over-IPC bridge, per-process sandbox)
+register an instance through `PluginManager::register_runtime`
+and the kernel dispatches future manifest entries through it
+without touching `PluginManager` itself.
 
 ## Quickstart
 
