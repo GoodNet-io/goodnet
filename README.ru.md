@@ -120,9 +120,8 @@ dist/        пример operator-конфига + systemd unit
 ```
 
 Бинарь `goodnetd`, SSH-туннель `gssh`, и остальные operator-
-facing apps живут в отдельных репозиториях под `GoodNet-io/`
-(вынесены из `apps/` post-rc4 чтобы kernel tree остался
-library-only).
+facing apps живут в отдельных репозиториях под `GoodNet-io/` —
+kernel tree остаётся library-only.
 
 Каждый плагин под `plugins/<kind>/<name>/` — самодостаточная
 единица: свой `CMakeLists.txt`, свой `default.nix`, свой git,

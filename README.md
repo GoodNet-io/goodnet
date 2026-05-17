@@ -303,8 +303,7 @@ dist/        example operator config + systemd unit
 
 The `goodnetd` daemon binary, the `gssh` SSH tunnel, and any
 other operator-facing app live in their own repos under
-`GoodNet-io/` (extracted from `apps/` post-rc4 so the kernel
-tree stays library-only).
+`GoodNet-io/` — the kernel tree stays library-only.
 
 Each plugin under `plugins/<kind>/<name>/` is a self-contained
 unit: own `CMakeLists.txt`, own `default.nix`, own git, own
