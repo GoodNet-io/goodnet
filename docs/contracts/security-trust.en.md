@@ -151,7 +151,7 @@ names the canonical pattern.
 A bridge that mistakenly declares `Untrusted` on its IPC link
 under the canonical v1 stack (null security loaded) is rejected
 synchronously: the security-mask gate at
-`SessionRegistry::create` (`core/security/session.cpp:245-263`)
+`SessionRegistry::create` (`core/security/session.cpp:498-512`)
 sees the trust-class miss against `null_allowed_trust_mask =
 Loopback | IntraNode`, returns `GN_ERR_INVALID_ENVELOPE`, and
 `thunk_notify_connect` erases the conn record before the bridge
@@ -263,7 +263,7 @@ enumeration at registration:
 - The active **security provider** declares its admitted classes via
   `gn_security_provider_vtable_t::allowed_trust_mask`. The kernel
   checks the bit at `SessionRegistry::create`
-  (`core/security/session.cpp:245-258`); a miss returns
+  (`core/security/session.cpp:498-511`); a miss returns
   `GN_ERR_INVALID_ENVELOPE` and increments the same metric.
 
 The admitted set for any stack is the intersection of the two masks

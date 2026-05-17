@@ -259,7 +259,7 @@ exist in v1). A handler that hard-rejects on `INVALID_ID` would close
 the connection on a forward-compatible producer and leak the rejection
 to peers that played by every existing rule.
 
-`plugins/handlers/heartbeat/heartbeat.cpp:212-213` is the canonical
+`plugins/handlers/heartbeat/heartbeat.cpp:172-173` is the canonical
 reference: handler reads `env->conn_id`; on `GN_INVALID_ID` returns
 `CONTINUE` without recording PeerState — the conn-blind branch is a
 no-op, not a fault.
