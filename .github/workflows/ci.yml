@@ -32,6 +32,11 @@ jobs:
     # tools/livedoc.py --all` locally before pushing — the
     # tree-resident artefacts and the kernel sources go through
     # CI in lockstep.
+    #
+    # The same job also runs `pytest` over `tests/livedoc` and
+    # `tests/tools` so the python-side gates (livedoc parser
+    # contract, bench-regression comparator) catch a refactor
+    # that would otherwise slip past the C++ build-and-test job.
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -42,6 +47,8 @@ jobs:
           use-flakehub: false
       - name: Run livedoc --check
         run: nix develop --command python3 tools/livedoc.py --check
+      - name: Run python tests
+        run: nix develop --command pytest
 
   build-and-test:
     runs-on: ubuntu-latest
