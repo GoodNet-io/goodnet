@@ -940,5 +940,61 @@ TEST(ConnectionRegistry_Pin, GetPinnedPeerReturnsAllFields) {
     }
 }
 
+// ── update_rtt_sample ────────────────────────────────────────────────────
+
+/// Invalid id / zero sample short-circuit to nullopt — the
+/// host_api thunk uses this as the "silently dropped" signal.
+TEST(ConnectionRegistry_RttSample, InvalidIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.update_rtt_sample(GN_INVALID_ID, 1000).has_value());
+}
+
+TEST(ConnectionRegistry_RttSample, ZeroSampleReturnsNullopt) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+    EXPECT_FALSE(reg.update_rtt_sample(id, 0).has_value());
+}
+
+TEST(ConnectionRegistry_RttSample, UnknownIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.update_rtt_sample(/*never inserted*/ 9999,
+                                         1000).has_value());
+}
+
+/// The first observation seeds the EWMA — the slot moves from 0
+/// straight to `sample` rather than averaging against zero.
+TEST(ConnectionRegistry_RttSample, FirstObservationSeedsEwma) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+
+    auto smoothed = reg.update_rtt_sample(id, 10'000);
+    ASSERT_TRUE(smoothed.has_value());
+    EXPECT_EQ(smoothed.value_or(0u), 10'000u);
+
+    auto snap = reg.read_counters(id);
+    EXPECT_EQ(snap.last_rtt_us, 10'000u);
+}
+
+/// Subsequent observation runs EWMA(α = 1/8): next = (7·prev + s) / 8.
+/// 80ms outlier on a 10ms steady state → 18.75ms after one sample.
+TEST(ConnectionRegistry_RttSample, OutlierSampleSmoothsTowardSteadyState) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+
+    ASSERT_TRUE(reg.update_rtt_sample(id, 10'000).has_value());
+    auto smoothed = reg.update_rtt_sample(id, 80'000);
+    ASSERT_TRUE(smoothed.has_value());
+    EXPECT_NEAR(static_cast<double>(smoothed.value_or(0u)), 18'750.0, 50.0);
+
+    auto snap = reg.read_counters(id);
+    EXPECT_NEAR(static_cast<double>(snap.last_rtt_us), 18'750.0, 50.0);
+}
+
 }  // namespace
 }  // namespace gn::core
