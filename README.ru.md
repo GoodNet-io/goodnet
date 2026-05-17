@@ -113,12 +113,16 @@ Layout:
 core/        ядро и примитивы
 sdk/         публичный C ABI (host_api, link, security, protocol, handler, ...)
 plugins/     bundled link / security / protocol / handler плагины
-apps/        бинарь демона goodnet, gssh, demo
 examples/    bench harness, two-node демо
 docs/        contracts (авторитет), architecture (narrative), operator
 tests/       unit, integration, property, conformance
 dist/        пример operator-конфига + systemd unit
 ```
+
+Бинарь `goodnetd`, SSH-туннель `gssh`, и остальные operator-
+facing apps живут в отдельных репозиториях под `GoodNet-io/`
+(вынесены из `apps/` post-rc4 чтобы kernel tree остался
+library-only).
 
 Каждый плагин под `plugins/<kind>/<name>/` — самодостаточная
 единица: свой `CMakeLists.txt`, свой `default.nix`, свой git,

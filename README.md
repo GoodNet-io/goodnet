@@ -295,12 +295,16 @@ Layout:
 core/        kernel and primitives
 sdk/         public C ABI (host_api, link, security, protocol, handler, ...)
 plugins/     bundled link / security / protocol / handler plugins
-apps/        goodnet daemon binary, gssh, demo
 examples/    bench harness, two-node demo
 docs/        contracts (authoritative), architecture (narrative), operator
 tests/       unit, integration, property, conformance
 dist/        example operator config + systemd unit
 ```
+
+The `goodnetd` daemon binary, the `gssh` SSH tunnel, and any
+other operator-facing app live in their own repos under
+`GoodNet-io/` (extracted from `apps/` post-rc4 so the kernel
+tree stays library-only).
 
 Each plugin under `plugins/<kind>/<name>/` is a self-contained
 unit: own `CMakeLists.txt`, own `default.nix`, own git, own
