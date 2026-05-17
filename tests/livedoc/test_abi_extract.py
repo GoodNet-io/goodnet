@@ -60,6 +60,21 @@ def test_write_all_emits_five_yaml_files(tiny_repo):
         assert "slots:" in text
 
 
+def test_write_all_honours_monkeypatched_facts_root(tiny_repo):
+    """Pin `abi_extract.write_all()` against the default-argument
+    trap that corrupted the real facts files in commit 2474cd7
+    (mirror of the regression tests in the other livedoc writers).
+    Every returned path must live under the conftest-monkeypatched
+    `FACTS_ROOT`, not the real `docs/_facts/`."""
+    expected_root = tiny_repo / "docs" / "_facts"
+    written = abi_extract.write_all()
+    for name, path in written.items():
+        assert path.is_relative_to(expected_root), (
+            f"{name} → {path} escaped the monkeypatched FACTS_ROOT "
+            f"({expected_root})"
+        )
+
+
 def test_banner_re_handles_multiline_banner():
     """Banner that doesn't close `*/` on the same line still parses."""
     pat = abi_extract.BANNER_RE

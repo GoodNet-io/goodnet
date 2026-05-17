@@ -69,6 +69,15 @@ def test_compute_writes_all_bullets(tiny_repo):
     assert names == {"NAT-traversal pipeline", "Kademlia-style DHT"}
 
 
+def test_write_honours_monkeypatched_facts_path(tiny_repo):
+    """Pin `roadmap_status.write()` against the default-argument
+    trap that corrupted the real facts files in commit 2474cd7
+    (mirror of the regression tests in the other livedoc writers)."""
+    expected = tiny_repo / "docs" / "_facts" / "roadmap_status.yaml"
+    returned = roadmap_status.write()
+    assert returned == expected
+
+
 def test_any_rule_passes_when_one_matches(tiny_repo):
     mapping = {
         "X": {
