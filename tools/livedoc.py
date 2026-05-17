@@ -129,7 +129,7 @@ def _build_regions(facts: dict) -> dict[str, str]:
         "plugin_separation":     "Plugin process / git boundary — each plugin in its own checkout.",
         "c_cpp_bridging":        "C ABI ↔ C++ implementation bridging across the SDK boundary.",
         "nonce_window":          "Anti-replay nonce window in the Noise transport phase.",
-        "signal_bus":            "Signal-bus fanout for OFFER / ANSWER / EOC.",
+        "signal_bus":            "Signal-bus fanout for conn-state and config-reload channels.",
         "extension_query":       "Extension query path: query_extension_checked → vtable handoff.",
         "host_api_kinds":        "host_api_t KIND-tagged register/unregister discipline.",
         "composer_extension":    "Composer surface dispatch via bit-63 kComposerIdBit on conn-id.",
