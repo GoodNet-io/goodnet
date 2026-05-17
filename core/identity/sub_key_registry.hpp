@@ -111,8 +111,12 @@ private:
 /// 4 bits = purpose (1..15), bottom 60 bits = monotonic counter.
 [[nodiscard]] inline gn_key_id_t encode_key_id(gn_key_purpose_t purpose,
                                                 std::uint64_t    counter) noexcept {
-    const std::uint64_t purpose_bits =
-        (static_cast<std::uint64_t>(purpose) & 0x0Fu) << 60;
+    /// Widen `purpose` to `uint64_t` BEFORE the bitwise & so gcc
+    /// reasons about the masked value as `uint64_t`, not as the
+    /// underlying enum type — the latter triggers `-Wconversion`
+    /// because `0x0Fu` exceeds the enum's declared max (7).
+    const std::uint64_t purpose_u64 = static_cast<std::uint64_t>(purpose);
+    const std::uint64_t purpose_bits = (purpose_u64 & std::uint64_t{0x0F}) << 60;
     return static_cast<gn_key_id_t>(purpose_bits | (counter & 0x0FFFFFFFFFFFFFFFull));
 }
 
