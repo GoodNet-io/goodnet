@@ -36,9 +36,10 @@
 /// Protocol layers are registered explicitly by the host through
 /// `gn_core_register_protocol` (C ABI hosts) or through direct
 /// `kernel.protocol_layers().register_layer(...)` access (in-tree
-/// C++ hosts like `apps/goodnet`, `apps/gssh`). The kernel does not
-/// auto-register any plugin-supplied layer — `core/` includes
-/// nothing from `plugins/` per `abi-evolution.en.md` §3.
+/// C++ hosts like the `goodnetd` daemon at `goodnet-io/goodnetd`
+/// and other downstream apps). The kernel does not auto-register
+/// any plugin-supplied layer — `core/` includes nothing from
+/// `plugins/` per `abi-evolution.en.md` §3.
 struct gn_core_s {
     gn::core::Kernel                                  kernel;
     gn::core::PluginContext                           host_ctx;

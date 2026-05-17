@@ -145,13 +145,14 @@ cross.stdenv.mkDerivation {
   doCheck = false;
 
   # The static-plugin binary is just `bin/goodnet.exe`. With
-  # `-static -static-libgcc -static-libstdc++` (set in apps/goodnetd/
-  # CMakeLists.txt under WIN32) plus `--disable-shared` rebuilds of
-  # spdlog / fmt / libsodium in `buildInputs` above, the result is
-  # a single self-contained executable — no neighbouring DLLs are
-  # required at run-time. `dontPatchELF = true` skips the
-  # nix-mingw fixup that would copy in the dynamic mingw runtime
-  # DLLs that we just compiled away from.
+  # `-static -static-libgcc -static-libstdc++` (set in the downstream
+  # daemon's CMakeLists under WIN32 at goodnet-io/goodnetd) plus
+  # `--disable-shared` rebuilds of spdlog / fmt / libsodium in
+  # `buildInputs` above, the result is a single self-contained
+  # executable — no neighbouring DLLs are required at run-time.
+  # `dontPatchELF = true` skips the nix-mingw fixup that would copy
+  # in the dynamic mingw runtime DLLs that we just compiled away
+  # from.
   dontPatchELF = true;
 
   meta = {

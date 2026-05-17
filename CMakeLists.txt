@@ -273,8 +273,8 @@ if(GOODNET_STATIC_PLUGINS)
         # files actually land in `libgoodnet_kernel.a`. Targeting
         # `goodnet_kernel_objects` (OBJECT) drops the TARGET_OBJECTS
         # generator expression silently. Same registry then reaches
-        # apps/goodnet (links kernel), find_package consumers like
-        # Solas (link kernel), and in-process operator UIs.
+        # find_package consumers (Solas, the `goodnetd` daemon, etc.)
+        # and in-process operator UIs.
         # `gn_core_init` walks the registry via
         # `PluginManager::load_static` automatically under the
         # GOODNET_STATIC_PLUGINS compile gate.
@@ -285,7 +285,7 @@ if(GOODNET_STATIC_PLUGINS)
         # `goodnet_kernel_objects`'s link line. Bundling the
         # plugin .o files via TARGET_OBJECTS doesn't carry the
         # INTERFACE_LINK_LIBRARIES; the bundled symbols compile
-        # but the final link of a consumer (apps/goodnet, Solas)
+        # but the final link of a consumer (`goodnetd`, Solas)
         # fails with unresolved references unless the host
         # archive itself surfaces the requirement. Listed plugins
         # opt in here by name; new plugins with unique link deps
@@ -299,8 +299,9 @@ if(GOODNET_STATIC_PLUGINS)
         # `goodnet_kernel_shared` is currently built from the same
         # OBJECT lib without the per-plugin TARGET_OBJECTS bundling
         # — operator UIs that need static plugins in a shared
-        # variant should adjust the recipe; in-tree apps/goodnet
-        # and find_package consumers go through the STATIC variant.
+        # variant should adjust the recipe; the downstream daemon
+        # at goodnet-io/goodnetd and find_package consumers go
+        # through the STATIC variant.
         message(STATUS
             "  Static plugins    : ${_goodnet_static_plugin_list}")
     endif()

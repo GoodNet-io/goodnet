@@ -208,7 +208,7 @@ gn_result_t gn_core_init(gn_core_t* core) {
             // Don't roll back `init_done` — the kernel is otherwise
             // healthy and the host might recover by registering
             // providers in-process; just surface the diagnostic on
-            // stderr the same way `apps/goodnet run` does.
+            // stderr the same way `goodnetd run` does.
             (void)std::fprintf(stderr,
                 "gn_core_init: static plugin load failed — %s\n",
                 diag.c_str());

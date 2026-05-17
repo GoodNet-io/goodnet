@@ -365,7 +365,7 @@ Bridge не нашёл pk. Либо вписать вручную (см.
 
 - [install](../install.en.md) — production install бинарей и systemd unit'ов.
 - [deployment](./deployment.en.md) — server-side hardening, dedicated UID, file mode.
-- [gssh README](../../apps/gssh/README.md) — sibling repo doc, плотный command reference.
+- [gssh README](https://github.com/GoodNet-io/gssh) — sibling repo doc, плотный command reference.
 - [ecosystem](../architecture/ecosystem.ru.md) — где живёт gssh в семействе apps + plugins.
 - [security-flow](../architecture/security-flow.ru.md) — что именно делает Noise handshake.
 - [host-api-model](../architecture/host-api-model.ru.md) — почему bridge регистрирует
