@@ -370,7 +370,9 @@ Org doc + landing page при rc1.
 **Tooling:**
 - [ ] `nix run .#scaffold-binding -- <lang>` для bridges/<lang>/
   scaffold по аналогии с `new-plugin`
-- [ ] `nix run .#scaffold-app -- <name>` для apps/<name>/ scaffold
+- [ ] `nix run .#scaffold-app -- <name>` для GoodNet-io/<name>/
+  scaffold (apps живут в отдельных репозиториях since apps/
+  extraction)
 - [ ] `nix run .#publish` который автоматизирует push на github org
 
 **Bindings:**
