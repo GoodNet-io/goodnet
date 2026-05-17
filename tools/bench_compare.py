@@ -21,6 +21,10 @@ library so it runs in any Nix devShell or CI runner without
 extra setup. Picks the median (`real_time` if present else
 `cpu_time`) and discards Google Benchmark's aggregate rows
 (suffix `_mean`, `_median`, `_stddev`) to avoid double-counting.
+
+Smoke tests live in `tests/tools/test_bench_compare.py` (8
+cases pinning the regression detection + new/gone annotations
++ zero-baseline absolute-delta fallback).
 """
 
 from __future__ import annotations
