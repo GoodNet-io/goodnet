@@ -25,7 +25,8 @@ inline void build_nonce(std::uint64_t n,
 
 /// Constant-time check that the keys struct carries non-zero key
 /// material. A provider that opts out of inline crypto exports an
-/// all-zero struct (per `plugins/security/null/null.cpp:74`).
+/// all-zero struct (per `null_export_transport_keys` in
+/// `plugins/security/null/null.cpp`).
 [[nodiscard]] bool keys_nonzero(const gn_handshake_keys_t& k) noexcept {
     std::uint8_t acc = 0;
     for (std::size_t i = 0; i < InlineCrypto::kKeyBytes; ++i) {

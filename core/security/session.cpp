@@ -501,8 +501,8 @@ std::shared_ptr<SecuritySession> SessionRegistry::create(
         const std::uint32_t bit  = 1u << static_cast<unsigned>(trust);
         if ((mask & bit) == 0u) {
             /// `out_result = INVALID_ENVELOPE` is the same code the
-            /// protocol-layer gate in
-            /// `core/kernel/host_api/notifications.cpp:81` returns;
+            /// protocol-layer trust gate in
+            /// `core/kernel/host_api/notifications.cpp` returns;
             /// the caller maps both gates onto the
             /// `drop.trust_class_mismatch` metric so an operator
             /// watching the counter sees a uniform rate regardless
