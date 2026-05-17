@@ -195,9 +195,11 @@ A v2 header sits beside v1 as
 `sdk/test/conformance/<topic>-v2.hpp` with its own concept and
 traits names. v1 stays unchanged until every consumer has migrated;
 v1 is then removed in the next `MAJOR` SDK bump per
-`abi-evolution.en.md` §3b. The pre-rc1 reshape window from the same
-§3b applies here too: before `v1.0.0-rc1` any conformance header
-may be reshaped freely; after the tag the table above governs.
+`abi-evolution.en.md` §3b. The pre-`v1.0.0` reshape window from the
+same §3b applies here too: through the entire rc cycle (`v1.0.0-
+rc1`, `v1.0.0-rc2`, …) any conformance header may be reshaped
+freely; the table above governs only after the plain `v1.0.0`
+tag closes the window.
 
 ---
 
@@ -236,7 +238,7 @@ team coincide.
 - [`recipes/test-plugin.ru.md`](../recipes/test-plugin.ru.md) —
   walkthrough of a fresh plugin's first conformance instantiation
   and the full-ctest no-filter rule.
-- [`abi-evolution.en.md`](./abi-evolution.en.md) §3b — pre-rc1
+- [`abi-evolution.en.md`](./abi-evolution.en.md) §3b — pre-v1.0.0
   reshape window that conformance headers honour, and how new
   conformance contracts ride alongside SDK ABI bumps.
 - [`plugin-lifetime.en.md`](./plugin-lifetime.en.md) — phases at

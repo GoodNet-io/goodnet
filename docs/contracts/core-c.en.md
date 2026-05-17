@@ -660,10 +660,12 @@ on the host's compile-time view.
 The string form is for log lines and operator UI; the host **MUST
 NOT** parse it for compatibility decisions.
 
-The pre-RC reshape window from `abi-evolution.en.md` §3b applies to
-this surface: until `v1.0.0-rc1` is tagged the entries below may be
-removed, renamed, or reordered without a major bump. The window
-closes on the day the tag lands; from then on every rule in §3 of
+The pre-`v1.0.0` reshape window from `abi-evolution.en.md` §3b
+applies to this surface: through the entire rc cycle (`v1.0.0-rc1`,
+`v1.0.0-rc2`, …) the entries below may be removed, renamed, or
+reordered without a major bump. RC tags are integration
+checkpoints, not freeze points. The window closes only on the
+plain `v1.0.0` tag; from then on every rule in §3 of
 `abi-evolution.en.md` applies without exception.
 
 ---
