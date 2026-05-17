@@ -1,5 +1,5 @@
 /// @file   tests/unit/sdk/test_dsl_helpers.cpp
-/// @brief  Coverage for the C++ SDK helper headers added by Slice 1:
+/// @brief  Coverage for the C++ SDK helper headers:
 ///           - `sdk/cpp/subscription.hpp`  (RAII subscribe handle)
 ///           - `sdk/cpp/per_conn_map.hpp`  (auto-cleanup state map)
 ///           - `sdk/cpp/link_carrier.hpp`  (gn.link.<scheme> wrapper)

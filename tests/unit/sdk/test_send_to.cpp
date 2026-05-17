@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   tests/unit/sdk/test_send_to.cpp
 /// @brief  Coverage for `host_api->send_to(peer_pk, msg_id, payload)` —
-///         Slice 9-KERNEL strategy-dispatch thunk plus the SDK wrapper
+///         the strategy-dispatch thunk plus the SDK wrapper
 ///         `gn::sdk::send_to(...)`.
 
 #include <gtest/gtest.h>

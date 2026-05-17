@@ -687,9 +687,9 @@ typedef struct host_api_s {
      * @brief Peer-pk-level outbound send. Walks every live conn to
      *        @p peer_pk, queries the registered `gn.strategy.<name>`
      *        extension's `pick_conn`, and dispatches through the
-     *        chosen conn's `send` path. DX Tier 3 / Slice 9-KERNEL
-     *        sugar — closes the "must `find_conn_by_pk` + `send` by
-     *        hand" boilerplate documented in the 2026-05-12 audit.
+     *        chosen conn's `send` path. Closes the
+     *        `find_conn_by_pk` + `send` boilerplate that
+     *        peer-addressed handlers would otherwise hand-roll.
      *
      * Single-candidate fast path: when only one conn targets
      * @p peer_pk, dispatches directly without strategy lookup. When

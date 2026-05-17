@@ -152,13 +152,12 @@ connect_to_err(const host_api_t* api,
 }
 
 /// Peer-pk-level outbound send. Wraps `host_api->send_to`, the
-/// kernel-side dispatcher landed in Slice 9-KERNEL: walks live
-/// conns to @p peer_pk, asks the active `gn.strategy.*` extension
-/// to pick one, dispatches through `host_api->send`. Returns the
-/// kernel's `gn_result_t` verbatim.
+/// Walks live conns to @p peer_pk, asks the registered
+/// `gn.strategy.*` extensions to pick one, dispatches through
+/// `host_api->send`. Returns the kernel's `gn_result_t` verbatim.
 ///
-/// One-call replacement for the old "find_conn_by_pk + send"
-/// boilerplate every handler had to write.
+/// One-call wrapper for the find_conn_by_pk + send dispatch every
+/// peer-addressed handler would otherwise hand-roll.
 [[nodiscard]] inline gn_result_t
 send_to(const host_api_t* api,
          const std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],

@@ -198,8 +198,8 @@ The reference `MemoryStore` ships in-tree. Future backends:
   records they post-process on read.
 - **`cleanup_expired` is reactive**, not background: callers
   invoke it (typically through a kernel timer) when they want
-  expired entries dropped. Slice 1 ships no automatic cleanup
-  driver.
+  expired entries dropped. The handler ships no automatic
+  cleanup driver.
 - **`get_prefix` is unordered.** The reference backend iterates
   the hash-map; future ordered backends MAY guarantee an order
   but slice-1 callers cannot rely on it.
