@@ -147,8 +147,8 @@ public:
     /// kernel-side fast crypto seeded (`InlineCrypto`). The
     /// `drain_send_queue` path routes plaintext through
     /// `encrypt_batch_transport` only on this fast path; otherwise
-    /// a single-frame `encrypt_transport` runs synchronously per
-    /// the legacy path.
+    /// a single-frame `encrypt_transport` runs synchronously
+    /// through the provider's per-call API.
     [[nodiscard]] bool fast_crypto_active() const noexcept;
 
     /// Encrypt a batch of N plaintext frames in parallel through
