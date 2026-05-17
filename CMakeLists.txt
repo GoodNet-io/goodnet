@@ -31,7 +31,14 @@ endif()
 
 add_compile_options(
     -Wall -Wextra -Wpedantic
-    -Wshadow -Wconversion -Wnon-virtual-dtor -Woverloaded-virtual
+    -Wshadow -Wconversion
+    # `-Wnon-virtual-dtor` and `-Woverloaded-virtual` are C++-only;
+    # applying them to C TUs (e.g. tests/abi/test_layout.c) makes
+    # gcc print a "valid for C++/ObjC++ but not for C" warning on
+    # every C compile. Wrap in a generator expression so each
+    # language only sees the flags it understands.
+    "$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>"
     -Wno-unused-parameter
     # Strip the absolute build-tree prefix from `__FILE__` so log
     # output and assertion messages carry repo-relative paths
