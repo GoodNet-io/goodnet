@@ -37,7 +37,7 @@ _Plugin dlopen pipeline: discover → load → init → register._
 
 | Единица | Где живёт | Лицензия | Чему служит |
 |---|---|---|---|
-| **Kernel** | `GoodNet-io/kernel` (репо платформы) | GPL-2 + linking exception | C ABI таблица + 4 vtable-реестра + executor + signal bus |
+| **Kernel** | `GoodNet-io/goodnet` (репо платформы) | GPL-2 + linking exception | C ABI таблица + 4 vtable-реестра + executor + signal bus |
 | **Static plugin** | внутри kernel git'а под `plugins/protocols/<name>/` | GPL-2 (часть kernel binary) | Обязательные wire-слои: gnet (mesh-framing), raw (passthrough) |
 | **Loadable plugin** | `GoodNet-io/<kind>-<name>/` per плагин | GPL-2 + LE (стратегические) или MIT (периферия) или Apache-2 (TLS-OpenSSL) | handler / link / security / extension через `register_*`, dlopen'ятся ядром при старте |
 | **App** | `GoodNet-io/<app-name>/` per app | MIT по умолчанию | Operator-side бинари: используют kernel как library через `sdk/core.h` + `bridges/<lang>/`. Например `gssh`, `goodnet-panel`, `goodnet-store`. |
@@ -260,7 +260,7 @@ org name уже `GoodNet-io`, дублирование избыточно).
   description = "my-corporate-mesh node";
 
   inputs = {
-    goodnet.url = "github:GoodNet-io/kernel";
+    goodnet.url = "github:GoodNet-io/goodnet";
     link-tcp.url = "github:GoodNet-io/link-tcp";
     link-ice.url = "github:GoodNet-io/link-ice";
     security-noise.url = "github:GoodNet-io/security-noise";
@@ -354,7 +354,7 @@ Kernel и каждая loadable единица версионятся незав
    ещё нет
 
 Composition (operator flake'и) после rc1 ссылаются на
-`github:GoodNet-io/kernel/v1.0.0-rc1` и т.д. до этого — на local
+`github:GoodNet-io/goodnet/v1.0.0-rc1` и т.д. до этого — на local
 mirror'ах через `git+file:` (deprecated Nix форма, но pre-rc1
 acceptable).
 
