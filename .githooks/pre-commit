@@ -107,6 +107,29 @@ if [ "$abi_violations" -gt 0 ] || [ "$banlist_violations" -gt 0 ]; then
     exit 1
 fi
 
+# ── Livedoc drift gate ──────────────────────────────────────────────
+# Only run when the staged set touches source files that feed
+# livedoc (`sdk/`, `core/`, `docs/`). Skip purely-test or build
+# changes so the cheap commits stay cheap. The CI side
+# (`ci.yml` `livedoc-check`) runs unconditionally on main, so
+# the local gate is a fast-fail for the author, not the source
+# of truth.
+livedoc_relevant=$(printf '%s\n' "$staged_all" | \
+    grep -E '^(sdk|core|docs|plugins/protocols/(gnet|raw))/' || true)
+if [ -n "$livedoc_relevant" ] && [ -x tools/livedoc.py ]; then
+    if [ -z "${_GN_PRECOMMIT_INSIDE:-}" ]; then
+        _GN_PRECOMMIT_INSIDE=1 exec nix develop "${FLAKE_DIR:-.}" \
+            --command bash -- "$0" "$@"
+    fi
+    if ! python3 tools/livedoc.py --check >/dev/null 2>&1; then
+        echo "pre-commit: livedoc drift detected" >&2
+        python3 tools/livedoc.py --check >&2 || true
+        echo "pre-commit: run \`python3 tools/livedoc.py --all\` and re-stage" >&2
+        echo "pre-commit: bypass with \`git commit --no-verify\` only if intentional" >&2
+        exit 1
+    fi
+fi
+
 [ -z "$staged" ] && exit 0
 
 if [ ! -f build/compile_commands.json ]; then
