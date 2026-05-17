@@ -22,21 +22,24 @@ fast-path engages once both legs allocate channels.
 
 ```
 ice-3node/
-├── docker-compose.yml         — base stack: 1 STUN + 1 TURN + 1 coordinator
-├── peer/                      — GoodNet kernel + plugins + harness binary
-│   ├── Dockerfile             — alpine + nix-built static kernel + harness
-│   ├── harness.cpp            — minimal C++ binary (~150 LOC, see B.2)
-│   └── peer.json.tmpl         — config template; envsubst at boot
-├── stun/Dockerfile            — coturn in STUN-only mode
-├── turn/Dockerfile            — coturn full TURN with long-term auth
-├── nat-a/network.yml          — peer A NAT (full-cone / symmetric / shared)
-├── nat-b/network.yml          — peer B NAT
-├── scenarios/
-│   ├── full_cone.sh           — compose up + harness wait + assertion
-│   ├── hairpin.sh
-│   ├── symmetric_relay.sh
-│   └── all_relay.sh
-└── run_all.sh                 — orchestrate all four scenarios sequentially
+├── docker-compose.yml         — base stack: STUN + TURN + signal-dir
+├── peer/                      — GoodNet kernel + plugins + harness entrypoint
+│   ├── Dockerfile             — alpine + nix-built static kernel + plugins
+│   ├── peer.json.tmpl         — config template; envsubst at boot
+│   └── run.sh                 — entrypoint: template config, boot goodnetd,
+│                                publish pubkey, wait for peer, ICE-connect,
+│                                write `.done` marker on first inbound byte
+│                                (C++ harness binary planned)
+├── stun/                      — coturn in STUN-only mode (Dockerfile)
+├── turn/                      — coturn full TURN with long-term auth (Dockerfile)
+├── nat-a/                     — peer A NAT (full-cone / symmetric / shared)
+├── nat-b/                     — peer B NAT
+├── scenarios/                 — docker-compose override files per topology
+│   ├── full_cone.yml
+│   ├── hairpin.yml
+│   ├── symmetric_relay.yml
+│   └── all_relay.yml
+└── run_all.sh                 — orchestrate every scenario sequentially
 ```
 
 ## Runtime
@@ -53,7 +56,12 @@ for debugging.
 
 ## Status
 
-**This is a scaffold** — `harness.cpp` and the NAT-emulation
-networking are placeholders right now. The directory + compose file
-+ scenario shell scripts establish the contract for CI integration
-while the runtime binaries land iteratively.
+**This is a scaffold** — `peer/run.sh` is a placeholder entrypoint
+(boots `goodnetd` + does an env-substitution pass on the config),
+and the NAT-emulation networking under `nat-a/` / `nat-b/` is
+stubbed. The directory + compose stack + scenario overrides
+establish the contract for CI integration while the C++ harness
+binary that drives the actual connect-and-write-done dance lands
+iteratively. Running `run_all.sh` today brings up the topology
+cleanly and reports timeout for every scenario — useful for
+shape-checking the compose wiring.
