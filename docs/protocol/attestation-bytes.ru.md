@@ -247,7 +247,8 @@ device per local policy.
 
 Future: `cert.user_pk` ≠ `cert.issuer_pk` — external CA через
 capability bitmap, multi-CA chains. v1 — single user-key signature
-over device key; hierarchical делегирование post-v1.
+over device key; иерархическое делегирование запланировано как
+расширение.
 
 ---
 

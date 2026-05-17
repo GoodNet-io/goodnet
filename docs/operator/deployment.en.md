@@ -358,8 +358,8 @@ namespace:
 | `links.tls.*` | TLS transport plugin | `cert_path`, `key_path` |
 | `links.ipc.*` | IPC transport plugin | `socket_path` |
 | `heartbeat.*` | Heartbeat handler | `interval_ms`, `timeout_ms` |
-| `relay.*` | Relay plugin (post-v1) | `dedup_capacity` |
-| `dht.*` | DHT plugin (post-v1) | bucket parameters |
+| `relay.*` | Relay plugin (planned) | `dedup_capacity` |
+| `dht.*` | DHT plugin (planned) | bucket parameters |
 
 The kernel does not parse plugin namespaces; it returns values
 verbatim through `config_get`. Each plugin documents its keys in

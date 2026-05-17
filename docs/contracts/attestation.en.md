@@ -263,7 +263,7 @@ on a fresh session.
   reconnects on a fresh session.
 - **Attestation chains / multi-CA.** The cert is a single
   user-key signature over the device key. Hierarchical CA
-  delegation (cf. SSH certs, X.509 chains) is post-v1.
+  delegation (cf. SSH certs, X.509 chains) is a planned extension.
 
 ---
 
