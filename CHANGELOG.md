@@ -6,6 +6,123 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### IPluginRuntime polymorphic-loader abstraction
+
+PluginManager now dispatches every plugin-lifecycle step
+(load / init / register / unregister / shutdown / close)
+through a runtime registry keyed by the manifest entry's
+`kind` string. The kernel ships three built-in runtimes —
+`dynamic` (dlopen), `static` (gn_plugin_static_registry walk),
+`remote` (subprocess worker over `sdk/remote/wire.h`) — each
+owning its kind-specific entry-symbol resolution and load-state
+teardown.
+
+Host programs that bundle a custom linkage (WebAssembly host,
+FFI-over-IPC bridge, per-process sandbox manager) implement the
+`IPluginRuntime` interface in `core/plugin/plugin_runtime.hpp`
+and register an instance through
+`PluginManager::register_runtime(kind, std::unique_ptr<...>)`
+before `load`. Manifest entries whose `kind` field matches
+dispatch through the custom runtime; PluginManager itself stays
+unchanged. The kernel-internal abstraction is the load-bearing
+keystone for the future SDK `gn_core_register_runtime` slot —
+that addition is non-breaking once it lands.
+
+### host_api->notify_rtt_sample slot for RTT observability
+
+A new size-prefixed slot promoted out of `host_api_t._reserved`
+(total struct stays pinned at 488 B). Link plugins and the
+heartbeat handler push observed RTT samples through the slot;
+the kernel folds each sample into a per-conn EWMA(α = 1/8) per
+RFC 6298 and republishes the smoothed value to every registered
+strategy through `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`. The
+strategy chain ranks conns by latency without each strategy
+maintaining its own probe.
+
+LINK / HANDLER / UNKNOWN (host embedding) kinds can publish;
+other kinds get `GN_ERR_NOT_IMPLEMENTED`. Zero is the
+"no-sample" sentinel and silently dropped; unknown conn id
+returns `GN_ERR_NOT_FOUND`. The heartbeat handler now forwards
+every matched PONG-driven sample to the kernel after recording
+its own raw `last_rtt_us` for the gn.heartbeat extension's
+get_rtt slot.
+
+### DNS handler wire dispatch — 7 envelopes live
+
+handler-dns previously returned `GN_PROPAGATION_CONTINUE` for
+every msg_id; local callers reached the resolver only through
+the `gn.dns` extension vtable. This release ships full wire
+dispatch for the seven `DNS_*` envelopes per
+`docs/contracts/dns.en.md` §3:
+
+- `DNS_PUT` (0x0610) writes through the resolver with implicit
+  type = RrType::TXT (the wire treats values as opaque bytes
+  per the locked v1.x contract).
+- `DNS_GET` (0x0611) resolves exact-mode queries; prefix and
+  since modes ack with `kStatusBadSize` until the resolver
+  surface grows them.
+- `DNS_RESULT` (0x0612) carries responses framed per §3.6.
+- `DNS_DELETE` (0x0613) routes through the resolver.
+- `DNS_SUBSCRIBE` (0x0614) records the peer's interest; the
+  handler tracks subscribers under sub_mu_ and prunes them via
+  the conn-state DISCONNECTED channel.
+- `DNS_NOTIFY` (0x0615) auto-dispatches on every successful
+  wire-side PUT/DELETE that matches a subscriber's key (exact
+  or prefix mode).
+- `DNS_SYNC` (0x0616) is symmetric: request carries
+  record_count = 0, reply appends N records produced by
+  `StoreClient::get_since` filtered to TXT.
+
+Wire-side records use TXT as the implicit DNS record type
+because the locked layout does not carry an explicit type
+field; the extension surface keeps its typed
+`Resolver::put_record(name, type, rdata, ttl, flags)` shape.
+
+The pre-release misnamed the msg_id constants
+(`kMsgResolve` / `kMsgPutRecord` had the value-pair inverted
+from the contract); the rename to `kMsgPut` / `kMsgGet` /
+`kMsgResult` aligns the names with values.
+
+### handler-store first-writer-wins authority ACL
+
+Wire-side STORE_PUT and STORE_DELETE now consult the Noise-
+authenticated `sender_pk` the gnet protocol layer stamps on
+the envelope. The handler binds each key to its initial wire
+writer's public key; subsequent PUT or DELETE from a different
+peer is rejected with the new status code 4
+(`kStatusUnauthorized`) instead of silently allowing
+cross-peer overwrites. The original writer can update or delete
+freely; ownership lapses when the owning peer deletes the key.
+
+Loopback / in-process / test-fixture envelopes with all-zero
+sender_pk bypass the gate — the kernel is implicitly trusted
+and the `gn.store` extension callers (`put_local` / `del_local`)
+have no on-the-wire sender to authenticate.
+
+### Multi-strategy chain dispatch on send_to
+
+The kernel admits multiple `gn.strategy.*` plugins concurrently
+and walks the registered chain in registration order on each
+`host_api->send_to`. The first strategy that returns a real
+conn wins. A strategy with no opinion on the candidate set
+returns `GN_ERR_NOT_FOUND` and the chain advances to the next.
+The pre-rc4 single-strategy gate
+(`GN_ERR_LIMIT_REACHED` when more than one was registered) is
+removed. Single-strategy deployments work unchanged; the chain
+is the natural admission of composite setups
+(`rtt-optimal` + a `cost-aware` fallback).
+
+### gn_ctx_make_for_test / gn_ctx_destroy SDK test helpers
+
+A pair of C ABI entry points on `sdk/connection.h` that allocate
+and release a synthetic `gn_connection_context_t` for plugin
+test fixtures. Production code never calls them — the kernel
+manages context lifecycle itself — but the entry points let
+protocol-layer / security-layer plugin tests fixture a real
+kernel-shaped context without including kernel-internal
+headers (which the ABI hermeticity gate forbids for plugin
+TUs).
+
 ## [1.0.0-rc3] — 2026-05-13
 
 ### Real-mode round-trip bench cases for comparable libp2p / iroh side-by-side
