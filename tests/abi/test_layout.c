@@ -225,9 +225,11 @@ _Static_assert(offsetof(host_api_t, subscribe_capability_blob) == 400,
 _Static_assert(offsetof(host_api_t, announce_rotation) == 408,
                "host_api_t::announce_rotation offset pinned at 408");
 _Static_assert(offsetof(host_api_t, send_to) == 416,
-               "host_api_t::send_to offset pinned at 416 (Slice 9-KERNEL)");
-_Static_assert(offsetof(host_api_t, _reserved) == 424,
-               "host_api_t::_reserved offset pinned at 424");
+               "host_api_t::send_to offset pinned at 416");
+_Static_assert(offsetof(host_api_t, notify_rtt_sample) == 424,
+               "host_api_t::notify_rtt_sample offset pinned at 424");
+_Static_assert(offsetof(host_api_t, _reserved) == 432,
+               "host_api_t::_reserved offset pinned at 432");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 

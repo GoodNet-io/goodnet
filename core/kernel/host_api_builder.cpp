@@ -41,6 +41,7 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.unsubscribe             = &host_api_thunks::unsubscribe;
     a.for_each_connection     = &host_api_thunks::for_each_connection;
     a.notify_backpressure     = &host_api_thunks::notify_backpressure;
+    a.notify_rtt_sample       = &host_api_thunks::notify_rtt_sample;
 
     // ── Limits / config (host_api/control.cpp) ─────────────────────
     a.limits                = &host_api_thunks::limits;

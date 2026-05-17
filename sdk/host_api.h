@@ -717,6 +717,41 @@ typedef struct host_api_s {
                             const uint8_t* payload,
                             size_t payload_size);
 
+    /**
+     * @brief Publish a per-connection RTT sample observed by the
+     *        caller's transport or application layer.
+     *
+     * Link plugins (TCP keep-alive ACK timing, QUIC stream RTT,
+     * ICE connectivity-check echo) push carrier-level samples;
+     * the heartbeat handler pushes application-level samples
+     * from its PING/PONG protocol. The kernel folds each sample
+     * into a per-conn EWMA(α = 1/8) per RFC 6298 and stores the
+     * smoothed value in `ConnectionRegistry::counters.last_rtt_us`
+     * so `get_endpoint` snapshots reflect it. The kernel also
+     * republishes the sample to every registered strategy
+     * through `on_path_event(GN_PATH_EVENT_RTT_UPDATE, sample)`
+     * so the chain ranks conns by latency without each strategy
+     * maintaining its own probe.
+     *
+     * The slot is grown out of `_reserved` per
+     * `abi-evolution.en.md` §3 so existing consumers continue to
+     * link.
+     *
+     * Restricted to LINK or HANDLER kind callers (UNKNOWN — host
+     * embedding — also admitted). Other plugin kinds get
+     * @ref GN_ERR_NOT_IMPLEMENTED. A sample on an unknown conn id
+     * returns @ref GN_ERR_NOT_FOUND.
+     *
+     * @param conn     connection the sample belongs to.
+     * @param rtt_us   observed RTT in microseconds. Zero is the
+     *                 "no sample" sentinel and is silently dropped
+     *                 (the kernel still returns GN_OK so the
+     *                 caller can publish unconditionally).
+     */
+    gn_result_t (*notify_rtt_sample)(void* host_ctx,
+                                      gn_conn_id_t conn,
+                                      uint64_t rtt_us);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing
@@ -729,8 +764,12 @@ typedef struct host_api_s {
      * consumer treats unknown reserved contents as undefined and never
      * reads them. New fields are added by promoting a slot to a named
      * field, never by reusing existing reserved bytes.
+     *
+     * `notify_rtt_sample` was promoted out of `_reserved` so the
+     * array shrunk from 8 to 7 slots — total `host_api_t` size
+     * stays pinned at 488 bytes.
      */
-    void* _reserved[8];
+    void* _reserved[7];
 } host_api_t;
 
 GN_VTABLE_API_SIZE_FIRST(host_api_t);

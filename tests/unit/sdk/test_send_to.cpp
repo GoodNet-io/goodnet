@@ -315,6 +315,82 @@ TEST(HostApiPathEvent, NotifyConnectFiresConnUpToStrategy) {
     (void)api.unregister_extension(&ctx, "gn.strategy.spy");
 }
 
+/// notify_rtt_sample folds the observation into the kernel's EWMA
+/// and republishes it to every strategy through
+/// on_path_event(RTT_UPDATE). The sample carries the conn id and
+/// the smoothed value the kernel just stored, so strategies see
+/// the same view get_endpoint exposes.
+TEST(HostApiPathEvent, NotifyRttSampleFiresRttUpdateToStrategy) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    SpyStrategy spy;
+    auto vt = SpyStrategy::make_vtable(spy);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.spy",
+                                       GN_EXT_STRATEGY_VERSION, &vt),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xCA, 0xFE, 0xBA, 0xBE};
+    gn_conn_id_t cid = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "fake://h:0",
+                                   GN_TRUST_LOOPBACK,
+                                   GN_ROLE_RESPONDER, &cid),
+              GN_OK);
+
+    /// Drop the CONN_UP event so the test asserts only on
+    /// RTT_UPDATE.
+    {
+        std::lock_guard lk(spy.mu);
+        spy.events.clear();
+    }
+
+    /// First sample seeds the EWMA: the kernel stores the
+    /// observation verbatim and forwards it to the strategy.
+    ASSERT_EQ(api.notify_rtt_sample(&ctx, cid, /*rtt_us*/ 10'000),
+              GN_OK);
+
+    std::lock_guard lk(spy.mu);
+    ASSERT_EQ(spy.events.size(), 1u);
+    EXPECT_EQ(spy.events[0].kind, GN_PATH_EVENT_RTT_UPDATE);
+    EXPECT_EQ(spy.events[0].conn, cid);
+
+    (void)api.unregister_extension(&ctx, "gn.strategy.spy");
+}
+
+/// Zero is the "no sample" sentinel — the kernel silently drops
+/// it and returns GN_OK so plugins can publish unconditionally.
+/// No strategy event fires.
+TEST(HostApiPathEvent, NotifyRttSampleZeroIsSilent) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    SpyStrategy spy;
+    auto vt = SpyStrategy::make_vtable(spy);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.spy",
+                                       GN_EXT_STRATEGY_VERSION, &vt),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0x77};
+    gn_conn_id_t cid = GN_INVALID_ID;
+    ASSERT_EQ(api.notify_connect(&ctx, pk, "fake://h:0",
+                                   GN_TRUST_LOOPBACK,
+                                   GN_ROLE_RESPONDER, &cid),
+              GN_OK);
+    {
+        std::lock_guard lk(spy.mu);
+        spy.events.clear();
+    }
+
+    EXPECT_EQ(api.notify_rtt_sample(&ctx, cid, 0), GN_OK);
+    std::lock_guard lk(spy.mu);
+    EXPECT_TRUE(spy.events.empty())
+        << "zero sample must not fire a strategy event";
+
+    (void)api.unregister_extension(&ctx, "gn.strategy.spy");
+}
+
 /// notify_disconnect must fire on_path_event(CONN_DOWN) carrying
 /// the snapshotted conn id + remote_pk before the registry entry is
 /// erased — strategies need both to evict the conn from their model.

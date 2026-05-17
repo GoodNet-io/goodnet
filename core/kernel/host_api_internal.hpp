@@ -50,6 +50,20 @@ namespace host_api_internal {
            pc->kind == GN_PLUGIN_KIND_UNKNOWN;
 }
 
+/// RTT observers come from two places: transports (carrier-level
+/// RTT — TCP keep-alive ACK timing, QUIC stream RTT, ICE
+/// connectivity-check echo) and the heartbeat handler
+/// (application-level RTT through its PING/PONG protocol). Both
+/// publish through `notify_rtt_sample`. Other plugin kinds have no
+/// legitimate RTT to publish and are rejected before they touch the
+/// connection registry.
+[[nodiscard]] inline bool rtt_publisher_role(const PluginContext* pc) noexcept {
+    if (pc == nullptr) return false;
+    return pc->kind == GN_PLUGIN_KIND_LINK    ||
+           pc->kind == GN_PLUGIN_KIND_HANDLER ||
+           pc->kind == GN_PLUGIN_KIND_UNKNOWN;
+}
+
 /// Build a `gn_message_t` from the four pieces every assembly site
 /// always has. `payload` is `@borrowed` for the kernel call; the
 /// helper does not copy.
@@ -246,6 +260,8 @@ gn_result_t for_each_connection(void* host_ctx,
 gn_result_t notify_backpressure(void* host_ctx, gn_conn_id_t conn,
                                  gn_conn_event_kind_t kind,
                                  std::uint64_t pending_bytes);
+gn_result_t notify_rtt_sample(void* host_ctx, gn_conn_id_t conn,
+                               std::uint64_t rtt_us);
 gn_result_t register_vtable(void* host_ctx,
                              gn_register_kind_t kind,
                              const gn_register_meta_t* meta,
