@@ -502,13 +502,13 @@ Integration tests с реальным kernel'ом — через
 - [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
   формальный contract: vtable shape, propagation rules, snapshot
   dispatch invariants
-- [`recipes/write-handler-plugin.md`](../recipes/write-handler-plugin.ru.md) —
+- [`recipes/write-handler-plugin.ru.md`](../recipes/write-handler-plugin.ru.md) —
   пошаговое создание handler plugin'а от scaffold до commit
-- [`recipes/subscribe-conn-events.md`](../recipes/subscribe-conn-events.ru.md) —
+- [`recipes/subscribe-conn-events.ru.md`](../recipes/subscribe-conn-events.ru.md) —
   cleanup handler-side state on DISCONNECTED
-- [`recipes/register-extension.md`](../recipes/register-extension.ru.md) —
+- [`recipes/register-extension.ru.md`](../recipes/register-extension.ru.md) —
   handler-as-publisher pattern (handler + extension surface)
-- [`recipes/instrument-with-metrics.md`](../recipes/instrument-with-metrics.ru.md) —
+- [`recipes/instrument-with-metrics.ru.md`](../recipes/instrument-with-metrics.ru.md) —
   emit_counter через api в handler'е
 - [`routing`](routing.ru.md) — kernel router внутрь handler chain
 - [`extension-model`](extension-model.ru.md) — как handler-as-publisher

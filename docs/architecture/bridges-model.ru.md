@@ -239,7 +239,7 @@ service executor (один thread, под `set_timer` / `cancel_timer`), и
 плагиновые io_context'ы внутри link plugins. TCP-link plugin держит
 worker pool размером `max(1, hardware_concurrency()/2)` thread'ов на
 одном `io_context` per
-[multi-path.md](./multi-path.ru.md) — несколько connection'ов
+[multi-path.ru.md](./multi-path.ru.md) — несколько connection'ов
 прогрессируют параллельно, per-Session strand сериализует I/O одной
 связи. UDP / WS / IPC / TLS на момент v1 спавнят ровно один worker;
 будущие минорные релизы могут расширить пул, контракт это допускает.
