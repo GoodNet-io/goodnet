@@ -58,9 +58,11 @@ dispatch for the seven `DNS_*` envelopes per
 - `DNS_PUT` (0x0610) writes through the resolver with implicit
   type = RrType::TXT (the wire treats values as opaque bytes
   per the locked v1.x contract).
-- `DNS_GET` (0x0611) resolves exact-mode queries; prefix and
-  since modes ack with `kStatusBadSize` until the resolver
-  surface grows them.
+- `DNS_GET` (0x0611) resolves exact / prefix / since modes.
+  Exact dispatches through the typed Resolver; prefix and since
+  bypass the Resolver and walk the store extension directly
+  (`StoreClient::get_prefix` / `get_since` with the TXT-prefixed
+  key), filtering decoded results back to `RrType::TXT`.
 - `DNS_RESULT` (0x0612) carries responses framed per §3.6.
 - `DNS_DELETE` (0x0613) routes through the resolver.
 - `DNS_SUBSCRIBE` (0x0614) records the peer's interest; the
