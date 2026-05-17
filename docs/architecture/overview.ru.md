@@ -160,9 +160,10 @@ register-вход с KIND-тегом, четыре notify-входа для link
 
 Все слоты size-prefix-эволюционируемы: плагин, собранный против
 старшего SDK, гейтит вызов через `GN_API_HAS(api, slot)` и читает
-поле, только если producer'овский `api_size` его покрывает. Размер
-поверхности — около 21 named-слота; больше не появится без минорного
-ABI bump'а с обратной совместимостью.
+поле, только если producer'овский `api_size` его покрывает. На
+текущий момент — 41 named-слот плюс 8 reserved pointers (точный
+список см. `docs/contracts/host-api.en.md` §2); добавление новых
+слотов идёт через `api_size`-эволюцию без ABI bump'а.
 
 KIND-тегированный `register_vtable(KIND, meta, vtable, self,
 &out_id)` принимает `GN_REGISTER_HANDLER` (имя — protocol id, плюс
