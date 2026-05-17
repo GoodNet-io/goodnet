@@ -1,6 +1,6 @@
 struct: host_api_s
 header: sdk/host_api.h
-named_slots: 40
+named_slots: 41
 reserved_slots: 8
 families:
   Capability TLV transport (capability-tlv.en.md):
@@ -45,6 +45,8 @@ families:
   Metrics (metrics.en.md):
   - emit_counter
   - iterate_counters
+  Path observability (host-api.en.md):
+  - notify_rtt_sample
   Peer identity readers (identity.en.md §5):
   - get_peer_user_pk
   - get_peer_device_pk
@@ -312,3 +314,9 @@ slots:
   line: 714
   family: Identity rotation (identity.en.md §7)
   doc: outbound send.
+- name: notify_rtt_sample
+  signature: gn_result_t (*)(void *, gn_conn_id_t, uint64_t)
+  file: sdk/host_api.h
+  line: 753
+  family: Path observability (host-api.en.md)
+  doc: a per-connection RTT sample observed by the

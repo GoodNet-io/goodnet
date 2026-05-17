@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Track Б — free-kernel showcase bench aggregator.
+"""Free-kernel showcase bench aggregator.
 
 Reads the JSON output of `bench_showcase` (google-benchmark format)
 plus the per-section CSV side-channels emitted by the bench's
@@ -479,11 +479,11 @@ def main(argv):
         csv_data[tag] = parse_csv_series(path)
 
     out = [f"# Showcase bench report — {args.commit_sha}", ""]
-    out.append("_Track Б — free-kernel showcase. Each section "
-               "demonstrates one GoodNet-distinctive move no other "
-               "stack reproduces natively. NOT a fair-comparison "
-               "track (that lives in `bench/reports/<sha>.md` "
-               "section А); this report's reader is asked «попробуй "
+    out.append("_Free-kernel showcase. Each section demonstrates "
+               "one GoodNet-distinctive move no other stack "
+               "reproduces natively. NOT a fair-comparison surface "
+               "(that lives in `bench/reports/<sha>.md` section "
+               "А); this report's reader is asked «попробуй "
                "повторить»._")
     out.append("")
 

@@ -218,8 +218,9 @@ void run_send_recv(Fixture& f, ::benchmark::State& state) {
     report_resources(state, res);
 }
 
-/// Echo round-trip body — track А shape that matches libp2p / iroh
-/// echo runners. Bob sends `kPingMsgId`; alice's `RxEchoResponder`
+/// Echo round-trip body — matches the shape libp2p / iroh echo
+/// runners use, so the round-trip numbers are directly
+/// comparable. Bob sends `kPingMsgId`; alice's `RxEchoResponder`
 /// fires `api->send(env->conn_id, kPongMsgId, payload)` back; bob's
 /// pong counter advances on arrival. Latency captured T0=ping-send
 /// → T1=pong-receive. Two passes through the production stack

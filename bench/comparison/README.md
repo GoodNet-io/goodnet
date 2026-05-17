@@ -18,8 +18,8 @@ documents per run:
   + framing/mux). Driven by `aggregate.py` + the runners listed in
   this README. See `docs/perf/methodology.en.md` §1.3 (pairing
   rule).
-* **`bench/reports/showcase-<sha>.md`** — free-kernel showcase
-  ("track Б"). Six narrative sections (multi-connect, strategy-
+* **`bench/reports/showcase-<sha>.md`** — free-kernel showcase.
+  Six narrative sections (multi-connect, strategy-
   driven carrier selection, post-handshake Noise→Null handoff
   PoC, multi-thread fanout, carrier failover, mobility LAN
   shortcut). NOT a fair-comparison surface — every section is a

@@ -238,7 +238,7 @@ Full payload sweep + handshake numbers live in
 
 ### Free-kernel showcase — capabilities no other stack has
 
-The `bench_showcase` binary (track Б) wraps six fixtures, each
+The `bench_showcase` binary wraps six fixtures, each
 demonstrating one capability that requires the kernel-driven
 architecture. The report lives at `bench/reports/showcase-<sha>.md`
 through `showcase_aggregate.py` — separate from the
@@ -488,7 +488,7 @@ nix develop --command cmake --build build-release --target \
     bench_dtls bench_quic bench_ice bench_wss_over_tls \
     bench_tcp_scale bench_noise bench_real_e2e
 
-# Free-kernel showcase (track Б — opt-in, needs strategies sub-checkout)
+# Free-kernel showcase (opt-in, needs strategies sub-checkout)
 nix develop --command cmake -B build-release \
     -DCMAKE_BUILD_TYPE=Release -DGOODNET_BUILD_BENCH=ON \
     -DGOODNET_BENCH_STRATEGIES=ON

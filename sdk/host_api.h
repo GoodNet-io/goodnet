@@ -717,6 +717,12 @@ typedef struct host_api_s {
                             const uint8_t* payload,
                             size_t payload_size);
 
+    /* ── Path observability (host-api.en.md) ────────────────────────────
+     *
+     * Slots that publish carrier-level measurements to the kernel
+     * so the per-conn EWMA + strategy chain can react.
+     */
+
     /**
      * @brief Publish a per-connection RTT sample observed by the
      *        caller's transport or application layer.
