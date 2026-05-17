@@ -190,7 +190,7 @@ gn_result_t send_to(void* host_ctx,
         return send(host_ctx, chosen, msg_id, payload, payload_size);
     }
     /// Every strategy passed; pick the head of the candidate set
-    /// as the documented fallback per `strategy.md` §3.
+    /// as the documented fallback on `gn_strategy_api_t::pick_conn`.
     return send(host_ctx, candidates[0].conn,
                  msg_id, payload, payload_size);
 }

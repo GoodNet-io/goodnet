@@ -323,7 +323,7 @@ typedef struct host_api_s {
     gn_result_t (*announce_rotation)(void* host_ctx,
                                       int64_t valid_from_unix_ts);
 
-    /* ── Multi-path send to a peer (strategy.en.md §3) ──────────────────── */
+    /* ── Multi-path send to a peer (sdk/extensions/strategy.h) ──────────── */
     /* Resolves `peer_pk` to live conns, walks the registered          */
     /* `gn.strategy.*` chain in registration order, dispatches through */
     /* the first strategy's pick. Single-candidate fast path bypasses  */
@@ -335,7 +335,7 @@ typedef struct host_api_s {
                             const uint8_t* payload,
                             size_t payload_size);
 
-    /* ── Per-conn RTT sample publish (strategy.en.md §3 + RFC 6298) ─────── */
+    /* ── Per-conn RTT sample publish (sdk/extensions/strategy.h + RFC 6298) ── */
     /* Link plugins + the heartbeat handler push observed RTT samples */
     /* through this slot. The kernel folds each sample into a per-    */
     /* conn EWMA(alpha = 1/8) and republishes the *smoothed* value to */

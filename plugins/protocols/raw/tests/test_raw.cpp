@@ -97,7 +97,7 @@ TEST(RawProtocol, DeframeWorksOnIntraNode) {
     const std::uint8_t wire[] = {0xFF};
     gn_deframe_result_t res{};
     /// `IntraNode` is the second trust class permitted for `raw`
-    /// per security-trust.md §4.
+    /// per security-trust.en.md §4.
     EXPECT_EQ(vt.deframe(nullptr, ctx.get(), wire, sizeof(wire), &res), GN_OK);
 }
 
@@ -106,7 +106,7 @@ TEST(RawProtocol, DeframeRefusesUntrusted) {
     auto ctx = make_ctx(GN_TRUST_UNTRUSTED, 0x00, 0x00);
     const std::uint8_t bytes[] = {0x01};
     gn_deframe_result_t res{};
-    /// Per security-trust.md §4 raw is permitted only on
+    /// Per security-trust.en.md §4 raw is permitted only on
     /// LOOPBACK / INTRA_NODE; deframe on UNTRUSTED returns the
     /// invariant-violation code so the kernel drops the frame.
     EXPECT_EQ(vt.deframe(nullptr, ctx.get(), bytes, sizeof(bytes), &res),

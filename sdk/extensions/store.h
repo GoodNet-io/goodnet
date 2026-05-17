@@ -9,11 +9,12 @@
  * across nodes by `since_timestamp` watermark. This extension
  * brings that surface forward as a v1 handler plugin.
  *
- * The plugin owns a pluggable `IStore` backend (memory for the
- * reference; sqlite + DHT + Redis planned per backend.md §2) and
- * a wire dispatcher that maps the seven `STORE_*` envelope types
- * onto the backend. Local callers reach the same surface through
- * the in-process extension vtable below — no wire framing, no
+ * The plugin owns a pluggable `IStore` backend (a memory backend
+ * and a SQLite backend ship today; further backends like DHT /
+ * Redis can land behind the same `IStore` interface). A wire
+ * dispatcher maps the seven `STORE_*` envelope types onto the
+ * backend. Local callers reach the same surface through the
+ * in-process extension vtable below — no wire framing, no
  * conn-id needed.
  *
  * @par msg_id allocation
