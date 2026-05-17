@@ -57,6 +57,3 @@ for debugging.
 networking are placeholders right now. The directory + compose file
 + scenario shell scripts establish the contract for CI integration
 while the runtime binaries land iteratively.
-
-See `~/.claude/plans/glowing-tickling-cocke.md` §B for the
-roadmap.
