@@ -431,10 +431,10 @@
 
           # `nix run .#pull-plugin -- <repo-name>` — clone a loadable
           # plugin's git into `plugins/<kind>/<name>/` so the kernel
-          # build picks it up. Defaults to a local mirror under
-          # `~/Desktop/projects/GoodNet-io/` pre-rc1 and falls back
-          # to `github:GoodNet-io/<repo-name>` once the org repos
-          # are public.
+          # build picks it up. Defaults to a local bare mirror under
+          # `${XDG_DATA_HOME}/goodnet-mirrors/` (overridable via
+          # `GOODNET_PLUGIN_MIRROR_DIR`) and falls back to
+          # `github:GoodNet-io/<repo-name>` if no mirror is set up.
           gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
 
           # `nix run .#install-plugins` — pull every canonical
