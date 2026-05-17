@@ -299,11 +299,11 @@ untrusted link runs an external Noise/TLS terminator in front of
 the kernel; the kernel sees the terminated end as a `Loopback` or
 `IntraNode` link and admits null on it.
 
-A future StackRegistry (v1.x) will introduce an explicit opt-in for
-plaintext-on-untrusted as a deployment-time descriptor, so operators
-can declare it in config rather than build a custom security
-provider. Until then the safer path through the static masks is the
-only path.
+A future deployment-time descriptor on the StackRegistry will
+introduce an explicit opt-in for plaintext-on-untrusted so
+operators can declare it in config rather than build a custom
+security provider. Until then the safer path through the static
+masks is the only path.
 
 ---
 
