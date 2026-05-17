@@ -343,9 +343,10 @@ pipe + per-peer cache. Pre-v1 — только `gn.strategy.*` shipped.
 
 Используется через `host_api->query_extension_checked(
 "gn.strategy.rtt-optimal", 0x00010000, ...)` + прямой вызов
-`pick_conn` из kernel's outbound dispatch (Слайс 9-KERNEL pending).
-Pre-9-KERNEL plugin compiled и тестируется в изоляции — picker
-logic покрыт unit-тестами без живого kernel dispatch.
+`pick_conn` из kernel's outbound dispatch (`send_to` в
+`core/kernel/host_api/messaging.cpp`). Picker logic дополнительно
+покрыт unit-тестами в собственном репо plugin'а без зависимости
+от живого kernel dispatch.
 
 ## Cross-references
 

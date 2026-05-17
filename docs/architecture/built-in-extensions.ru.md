@@ -319,8 +319,10 @@ bump'а major'а.
 **Имена.** `gn.strategy.<plugin-name>` — например
 `gn.strategy.rtt-optimal`, `gn.strategy.cost-aware` (last не
 landed). Каждый strategy plugin регистрируется под собственным
-именем; kernel-side dispatch (когда landed, Слайс 9-KERNEL)
-выберет одну активную strategy на узел по operator-config'у.
+именем; kernel-side dispatch (`send_to` в
+`core/kernel/host_api/messaging.cpp`) допускает несколько
+strategy одновременно и обходит цепочку в registration
+order — первая, что возвращает реальный `conn`, выигрывает.
 
 **API-сводка.** vtable `gn_strategy_api_t`:
 

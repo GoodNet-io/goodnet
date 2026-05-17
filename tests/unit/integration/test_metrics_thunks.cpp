@@ -70,10 +70,10 @@ TEST(HostApiMetrics, EmitCounterIncrementsThroughThunk) {
     Bag bag;
     const auto visited = api.iterate_counters(
         api.host_ctx, &collect, &bag);
-    /// `metrics.cardinality_rejected` is pre-created (Wave 9.1)
-    /// and surfaces in iteration even when zero — the exporter
-    /// always sees `=0` rather than missing-on-healthy. Drop it
-    /// before counting the test's own contribution.
+    /// `metrics.cardinality_rejected` is pre-created and surfaces
+    /// in iteration even when zero — the exporter always sees
+    /// `=0` rather than missing-on-healthy. Drop it before
+    /// counting the test's own contribution.
     bag.seen.erase("metrics.cardinality_rejected");
     EXPECT_EQ(visited, 3u)
         << "iterate sees the test's two counters + the pre-created "

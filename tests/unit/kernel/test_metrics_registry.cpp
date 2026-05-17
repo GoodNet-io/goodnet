@@ -66,9 +66,9 @@ TEST(MetricsRegistry, ForEachVisitsEveryCounterOnce) {
     });
 
     /// `metrics.cardinality_rejected` is pre-created in the
-    /// constructor (Wave 9.1) and stays at 0 in this test —
-    /// the iteration MUST surface it so an exporter scrape sees
-    /// a `metrics.cardinality_rejected = 0` line on a healthy
+    /// constructor and stays at 0 in this test — the iteration
+    /// MUST surface it so an exporter scrape sees a
+    /// `metrics.cardinality_rejected = 0` line on a healthy
     /// registry. Filter the sentinel before counting the test's
     /// own counters.
     seen.erase("metrics.cardinality_rejected");

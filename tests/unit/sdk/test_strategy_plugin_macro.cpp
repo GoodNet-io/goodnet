@@ -1,13 +1,13 @@
 /// @file   tests/unit/sdk/test_strategy_plugin_macro.cpp
-/// @brief  Coverage for `sdk/extensions/strategy.h` + `sdk/cpp/
-///         strategy_plugin.hpp` (Слайс 9-SDK foundation).
+/// @brief  Coverage for `sdk/extensions/strategy.h` and
+///         `sdk/cpp/strategy_plugin.hpp`.
 ///
 /// The `GN_STRATEGY_PLUGIN` macro expands at file scope, emitting
 /// `gn_plugin_*` extern "C" symbols that would clash with any other
 /// translation unit in this gtest binary. Following the
 /// `test_dsl_helpers.cpp` convention, the macro itself is NOT
-/// invoked here — its real-world coverage comes from the future
-/// `plugins/strategies/float_send_rtt` plugin (Слайс 9-RTT).
+/// invoked here — its real-world coverage comes from the
+/// `plugins/strategies/float_send_rtt` plugin.
 ///
 /// What this file DOES cover:
 ///   1. C ABI shape — `gn_strategy_api_t` and helpers compile as C++.
