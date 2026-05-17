@@ -119,8 +119,17 @@ typedef struct gn_strategy_api_s {
      *
      * @return GN_OK and a conn id taken from @p candidates on success.
      *         GN_ERR_NULL_ARG if any pointer is NULL or count is 0.
-     *         GN_ERR_NOT_FOUND if every candidate is currently
-     *         unsuitable (kernel falls back to lowest-priority conn).
+     *         GN_ERR_NOT_FOUND when the strategy has no opinion on
+     *         the candidate set — the kernel walks to the next
+     *         registered strategy; when every registered strategy
+     *         passes, the kernel falls back to the head of @p
+     *         candidates. Any other `gn_result_t` aborts the chain
+     *         and surfaces back to the `host_api->send_to` caller.
+     *
+     * `GN_OK` paired with `*out_chosen == GN_INVALID_ID` is treated
+     * the same as `GN_ERR_NOT_FOUND` for compatibility, but plugins
+     * should return `GN_ERR_NOT_FOUND` explicitly when they have
+     * no opinion.
      */
     gn_result_t (*pick_conn)(
         void* ctx,

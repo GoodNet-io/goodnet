@@ -39,6 +39,13 @@ struct ExtensionEntry {
     /// that want an anchor-bearing handle should reach for the C++
     /// `query_extension_with_anchor` overload.
     std::shared_ptr<void> lifetime_anchor;
+
+    /// Monotonic registration sequence. The strategy-chain dispatch
+    /// (`host_api->send_to`) walks chained plugins in the order
+    /// they were registered; `query_prefix` sorts results by this
+    /// field so the iteration is deterministic regardless of the
+    /// underlying hash-map order.
+    std::uint64_t         seq = 0;
 };
 
 class ExtensionRegistry {
@@ -87,6 +94,7 @@ private:
     mutable std::shared_mutex                       mu_;
     std::unordered_map<std::string, ExtensionEntry> entries_;
     std::uint32_t                                   max_entries_ = 0;
+    std::uint64_t                                   next_seq_    = 0;
 };
 
 } // namespace gn::core

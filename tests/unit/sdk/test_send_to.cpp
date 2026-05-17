@@ -568,6 +568,32 @@ struct PassthroughStrategy {
     }
 };
 
+/// Strategy that returns GN_OK but writes GN_INVALID_ID to
+/// `out_chosen`. Per `strategy.h`, the kernel treats this the
+/// same as `GN_ERR_NOT_FOUND` and continues the chain.
+struct OkButInvalidStrategy {
+    std::atomic<int> pick_calls{0};
+
+    static gn_result_t pick_conn(void* ctx,
+                                  const std::uint8_t*,
+                                  const gn_path_sample_t*,
+                                  std::size_t,
+                                  gn_conn_id_t* out_chosen) {
+        auto* s = static_cast<OkButInvalidStrategy*>(ctx);
+        s->pick_calls.fetch_add(1);
+        if (out_chosen) *out_chosen = GN_INVALID_ID;
+        return GN_OK;
+    }
+
+    static gn_strategy_api_t make_vtable(OkButInvalidStrategy& s) {
+        gn_strategy_api_t vt{};
+        vt.api_size  = sizeof(vt);
+        vt.pick_conn = &pick_conn;
+        vt.ctx       = &s;
+        return vt;
+    }
+};
+
 /// With two strategies registered where the first one returns
 /// NOT_FOUND, the kernel must consult the second one in the same
 /// dispatch. NOT_FOUND means "I have no opinion on this candidate
@@ -607,6 +633,45 @@ TEST(HostApiSendTo, FirstStrategyNotFoundFallsThroughToSecond) {
 
     (void)api.unregister_extension(&ctx, "gn.strategy.pass");
     (void)api.unregister_extension(&ctx, "gn.strategy.last");
+}
+
+/// A strategy that returns `(GN_OK, GN_INVALID_ID)` must be
+/// treated the same as `GN_ERR_NOT_FOUND` — the chain advances
+/// to the next strategy. Pins the lenient interpretation
+/// documented on `gn_strategy_api_t::pick_conn`.
+TEST(HostApiSendTo, OkButInvalidIdFallsThroughLikeNotFound) {
+    Kernel k;
+    auto ctx = make_ctx(k);
+    auto api = build_host_api(ctx);
+
+    OkButInvalidStrategy quiet;
+    PickLastStrategy     winner;
+    auto vt_quiet  = OkButInvalidStrategy::make_vtable(quiet);
+    auto vt_winner = PickLastStrategy::make_vtable(winner);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.quiet",
+                                       GN_EXT_STRATEGY_VERSION, &vt_quiet),
+              GN_OK);
+    ASSERT_EQ(api.register_extension(&ctx, "gn.strategy.winner",
+                                       GN_EXT_STRATEGY_VERSION, &vt_winner),
+              GN_OK);
+
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES] = {0xEE};
+    const auto conns = spawn_conns(ctx, api, pk, 2);
+    ASSERT_EQ(conns.size(), 2u);
+
+    const std::uint8_t payload[1] = {0x77};
+    (void)api.send_to(&ctx, pk, 0x10, payload, 1);
+
+    /// Quiet ran (registered + invoked); winner also ran because
+    /// the kernel kept walking after the GN_INVALID_ID response.
+    EXPECT_GE(quiet.pick_calls.load(), 1)
+        << "quiet strategy must be invoked";
+    EXPECT_GE(winner.pick_calls.load(), 1)
+        << "kernel must fall through to next strategy when "
+           "out_chosen is GN_INVALID_ID";
+
+    (void)api.unregister_extension(&ctx, "gn.strategy.quiet");
+    (void)api.unregister_extension(&ctx, "gn.strategy.winner");
 }
 
 TEST(SdkSendToWrapper, ForwardsPayloadAndPeerPk) {
