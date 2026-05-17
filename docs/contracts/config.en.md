@@ -330,26 +330,25 @@ kernel into a path-handling argument.
 - **Runtime reload.** v1 ships a one-shot load. An application
   that needs hot reload constructs a fresh `Config`, loads,
   validates, swaps it with the running instance, and re-runs
-  `Kernel::set_limits`. v1.1 will absorb the dance into a
-  kernel-side `Config::reload` entry plus a plugin-facing
-  reload signal channel.
+  `Kernel::set_limits`. A kernel-side `Config::reload` entry
+  plus a plugin-facing reload signal channel is planned.
 - **Layered config.** Defaults → site override → per-deploy
   override merge is the embedding application's responsibility
   in v1 — the application composes the JSON document before
-  calling `load_json`. v1.1 may surface a layered API if real
-  deployments drive one.
+  calling `load_json`. A layered API may surface as a planned
+  extension if real deployments drive one.
 - **Per-plugin schema discovery.** Plugins do not register the
   keys they read. A typo in an operator's config silently maps
   to a `GN_ERR_NOT_FOUND` and the plugin falls through to
-  its built-in default — the operator gets no warning. v1.1
-  adds a `reads_config` whitelist in `plugin-manifest.en.md` so
-  the kernel logs unknown-key warnings at load time and gates
+  its built-in default — the operator gets no warning. A
+  `reads_config` whitelist in `plugin-manifest.en.md` is planned
+  so the kernel logs unknown-key warnings at load time and gates
   per-section reads against the plugin's declared scope.
 - **Capability gate for sensitive values.** Any loaded plugin
   can read every config-tree node; nothing in v1 prevents a
   malicious plugin from reading `links.tls.key_path`. The
-  same `reads_config` mechanism above is the v1.1 fix. v1
-  assumes the plugins directory is operator-controlled and
+  same planned `reads_config` mechanism above carries the fix.
+  v1 assumes the plugins directory is operator-controlled and
   every loaded plugin is trusted (see `plugin-manifest.en.md` §3).
 - **Adding new value types.** The current `config_get` covers
   `INT64`, `BOOL`, `DOUBLE`, `STRING`, `ARRAY_SIZE` and indexed
