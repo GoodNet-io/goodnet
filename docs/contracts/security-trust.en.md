@@ -42,10 +42,11 @@ produces or routes a connection — it is never inferred from defaults.
 
 ```c
 typedef enum gn_trust_class_e {
-    GN_TRUST_UNTRUSTED  = 0,  /**< inbound connection from internet, default */
-    GN_TRUST_PEER       = 1,  /**< pubkey known + Noise handshake completed */
-    GN_TRUST_LOOPBACK   = 2,  /**< local IPC or 127.0.0.1 — no encryption needed */
-    GN_TRUST_INTRA_NODE = 3   /**< between plugins of the same kernel; in-process */
+    GN_TRUST_UNTRUSTED          = 0,  /**< inbound connection from internet, default */
+    GN_TRUST_PEER               = 1,  /**< pubkey known + Noise handshake completed */
+    GN_TRUST_LOOPBACK           = 2,  /**< local IPC or 127.0.0.1 — no encryption needed */
+    GN_TRUST_INTRA_NODE         = 3,  /**< between plugins of the same kernel; in-process */
+    GN_TRUST_ANONYMOUS_LOOPBACK = 4   /**< anonymous local ingress (bridge plugins); zero sender_pk OK */
 } gn_trust_class_t;
 ```
 
@@ -91,6 +92,7 @@ properties:
 | Intra-process pipe | `IntraNode` |
 | `Untrusted` after Noise handshake **and successful mutual attestation** | upgrade to `Peer` |
 | `Loopback` / `IntraNode` after handshake | unchanged — gate refuses any transition off these classes |
+| Anonymous bridge edge on `tcp://127.0.0.1` / `ipc://` | `AnonymousLoopback` — zero peer pk OK, see §3.5 |
 
 The kernel verifies the upgrade path on every transition:
 
@@ -166,6 +168,65 @@ trust classes — and the foreign client then cannot drive the
 Noise handshake, which is the original «stall» symptom for
 mis-declared bridges in non-canonical stacks. The IntraNode
 declaration above avoids both failure modes.
+
+---
+
+## 3.5. `ANONYMOUS_LOOPBACK` — zero-sender ingress for bridges
+
+### When the class is correct
+
+`GN_TRUST_ANONYMOUS_LOOPBACK` is the trust class for bridge plugins
+that accept anonymous traffic on a loopback-scope carrier and inject
+the bytes into the kernel as MESSAGE envelopes without an
+authenticated `sender_pk`. The canonical case is the raw-inject
+bridge: a foreign client dials in over `tcp://127.0.0.1:9999`, the
+bridge does not negotiate identity, and the kernel routes the bytes
+to a handler that consumes opaque payloads. Other fits:
+
+- A simulation / replay harness that injects pre-captured frames
+  through the inject API with no peer identity.
+- An out-of-process IPC bridge whose foreign side lacks a public
+  key the kernel can verify.
+
+The bridge declares `trust = GN_TRUST_ANONYMOUS_LOOPBACK` at
+`notify_connect` and passes a zero `remote_pk`. The router accepts
+the resulting zero-`sender_pk` envelope; without this trust class
+the inject path would die at the `DroppedZeroSender` rule.
+
+### Security implications — loopback-only
+
+The class is intentionally narrow:
+
+- The router accepts a zero `sender_pk` **only when** the inbound
+  envelope's `conn_id` resolves to a record with
+  `trust == GN_TRUST_ANONYMOUS_LOOPBACK` **and** the record's
+  scheme/uri is loopback-scope (`ipc://`, `tcp://127.x`,
+  `tcp://[::1]`, `tcp://localhost`). Any other host classification
+  drops back to the legacy `DroppedZeroSender` outcome.
+- A bridge that mis-declares the class on a public-network URI is
+  still rejected by the loopback-scope check; the operator does
+  not gain a cross-host anonymous ingress by typo.
+- No transition off `GN_TRUST_ANONYMOUS_LOOPBACK` is allowed —
+  `gn_trust_can_upgrade` returns false for every target except
+  the identity transition. Anonymous bridges stay anonymous.
+
+### Contract with the router
+
+```
+on inbound envelope from anonymous loopback conn:
+    if sender_pk == ZERO:
+        require conn.trust == GN_TRUST_ANONYMOUS_LOOPBACK
+        require is_loopback_scope(conn.scheme, conn.uri)
+        else drop as DroppedZeroSender
+    proceed with normal routing (broadcast | local | relay)
+```
+
+The relaxation lives in `core/kernel/router.cpp::accept_zero_sender`
+and the loopback-scope predicate lives in
+`core/kernel/router.cpp::is_loopback_scope`. The Kernel ctor wires
+the lookup once; in-tree test fixtures that construct a Router
+without a kernel leave the lookup unset and observe the legacy
+reject-zero-sender behaviour by default.
 
 ---
 
