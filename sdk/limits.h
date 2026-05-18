@@ -92,7 +92,7 @@ typedef struct gn_limits_s {
      * cliff — the alternative (LRU eviction) silently loses
      * established counters and produces missing-data spikes on
      * every Prometheus scrape. Default 8192 = built-in counters
-     * + ~7 plugins × ~50 names + headroom; matches the per-target
+     * + ~13 plugins × ~50 names + headroom; matches the per-target
      * scrape budget Prometheus's default config tolerates.
      *
      * Slot promoted out of `_reserved[]` per `abi-evolution.en.md`
