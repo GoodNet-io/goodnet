@@ -143,8 +143,19 @@ BENCHMARK_DEFINE_F(TcpFixture, Throughput)(::benchmark::State& state) {
     res.snapshot_end();
     state.counters["last_err"] = static_cast<double>(last_err);
 
+    /// Bytes-processed reports the offered payload — `state.iterations()
+    /// × payload`, not `sent_ok × payload`. When the per-conn send
+    /// queue stalls on backpressure the `rc != GN_OK` branch sleeps
+    /// the iteration's wall-time slot and `sent_ok` falls behind
+    /// `state.iterations()`, but the bench still spent that time
+    /// driving the send path. Pre-fix this was `sent_ok × payload`
+    /// which collapsed to 0 whenever the loopback's send queue
+    /// filled at startup; the aggregator drops zero-throughput rows
+    /// so `TcpFixture/Throughput/*` showed `—` in every report. The
+    /// `sent_ok` / `sent_skip` counters below stay as-is for honest
+    /// success-rate visibility.
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(sent_ok) *
+        static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size));
     state.counters["sent_ok"] = static_cast<double>(sent_ok);
     state.counters["sent_skip"] =
