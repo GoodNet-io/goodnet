@@ -1,4 +1,4 @@
-/// @file   tests/unit/registry/test_transport.cpp
+/// @file   tests/unit/registry/test_link.cpp
 /// @brief  GoogleTest unit tests for `gn::core::LinkRegistry`.
 ///
 /// Pins the contract from `docs/contracts/host-api.en.md` §6 (scheme is
