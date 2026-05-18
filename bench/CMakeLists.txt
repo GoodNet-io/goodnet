@@ -144,6 +144,23 @@ endif()
 # can exercise the consent-loss + restart dispatch path. Needs the
 # ICE plugin's private session headers, so the include path picks
 # the plugin source tree explicitly.
+# Sustained-burn — a 60-second TCP run that surfaces long-tail
+# behaviour (thermal throttle, allocator slowdown, conn-state leak)
+# the 0.3-second windows of the other benches cannot reach.
+if(TARGET goodnet_tcp_objects)
+    add_executable(bench_sustained plugins/bench_sustained.cpp)
+    target_link_libraries(bench_sustained PRIVATE
+        goodnet_bench_harness
+        goodnet_tcp_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_sustained PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
 if(TARGET goodnet_ice_objects)
     add_executable(bench_failover plugins/bench_failover.cpp)
     target_link_libraries(bench_failover PRIVATE
