@@ -3,4 +3,5 @@
 # build it kicks.
 
 add_subdirectory(two_node)
+add_subdirectory(hello-echo)
 add_subdirectory(bench)

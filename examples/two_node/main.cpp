@@ -1,57 +1,86 @@
+// SPDX-License-Identifier: Apache-2.0
 /// @file   examples/two_node/main.cpp
 /// @brief  Two GoodNet kernels in one process, talking over TCP under
-///         a Noise XX handshake. The shortest path from `nix run .#demo`
-///         to "two endpoints established a confidential channel and
-///         exchanged a frame", suitable as the first thing a user runs
-///         after `git clone`.
+///         a Noise XX handshake — using ONLY the public SDK surface
+///         (`sdk/core.h` C ABI + `sdk/cpp/*` C++ sugar).
+///
+/// No `core/*` or `plugins/*` private headers. Mirrors the canonical
+/// embedding shape from `apps/gssh/mode_bridge.cpp`:
+///
+///   create core → install_identity (skipped: ephemeral)
+///   → gn_core_init → gn_core_load_plugins_batch (noise + tcp)
+///   → subscribe (conn_state + msg) → gn_core_start
+///   → listen / connect → pump until message arrives.
 
-#include <core/identity/node_identity.hpp>
-#include <core/kernel/host_api_builder.hpp>
-#include <core/kernel/kernel.hpp>
-#include <core/kernel/plugin_context.hpp>
-#include <core/plugin/plugin_manager.hpp>
-#include <core/util/log.hpp>
-
-#include <plugins/protocols/gnet/protocol.hpp>
-#include <plugins/links/tcp/tcp.hpp>
-
-#include <sdk/handler.h>
+#include <sdk/conn_events.h>
+#include <sdk/core.h>
+#include <sdk/cpp/connect.hpp>
+#include <sdk/cpp/link_carrier.hpp>
 #include <sdk/host_api.h>
-#include <sdk/link.h>
 #include <sdk/types.h>
+
+#include <sodium.h>
 
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
+#include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <fstream>
+#include <ios>
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <span>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #ifndef GOODNET_NOISE_PLUGIN_PATH
-#error "GOODNET_NOISE_PLUGIN_PATH must be defined to locate the noise .so"
+#error "GOODNET_NOISE_PLUGIN_PATH must be defined at build time"
+#endif
+#ifndef GOODNET_TCP_PLUGIN_PATH
+#error "GOODNET_TCP_PLUGIN_PATH must be defined at build time"
 #endif
 
 namespace {
 
 using namespace std::chrono_literals;
-using gn::core::Kernel;
-using gn::core::PluginContext;
-using gn::core::PluginManager;
-using gn::core::SecurityPhase;
-using gn::core::build_host_api;
-using gn::plugins::gnet::GnetProtocol;
-using TcpLink = gn::link::tcp::TcpLink;
 
 constexpr std::uint32_t kDemoMsgId = 0xC0FFEEu;
 
-/// Receiver state for the demo handler. `wait_for_message` blocks
-/// until the kernel routes one envelope through `handle_message`.
+/// Helper: compute SHA-256 of a file into @p out_digest. Matches the
+/// digest the kernel's manifest verifier computes inside
+/// `gn_core_load_plugin`.
+[[nodiscard]] gn_result_t sha256_of_file(const std::string& path,
+                                          std::uint8_t out_digest[32]) {
+    if (!out_digest) return GN_ERR_NULL_ARG;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return GN_ERR_NOT_FOUND;
+    if (sodium_init() < 0) return GN_ERR_INTEGRITY_FAILED;
+
+    crypto_hash_sha256_state st;
+    crypto_hash_sha256_init(&st);
+    constexpr std::size_t kChunk = 64 * 1024;
+    std::vector<unsigned char> buf(kChunk);
+    while (f.good()) {
+        f.read(reinterpret_cast<char*>(buf.data()),
+                static_cast<std::streamsize>(buf.size()));
+        const auto n = f.gcount();
+        if (n > 0) {
+            crypto_hash_sha256_update(
+                &st, buf.data(), static_cast<unsigned long long>(n));
+        }
+        if (!f.good() && !f.eof()) return GN_ERR_INTEGRITY_FAILED;
+    }
+    crypto_hash_sha256_final(&st, out_digest);
+    return GN_OK;
+}
+
+/// Inbound message sink — populated through `gn_core_subscribe`.
 struct Inbox {
     std::mutex                mu;
     std::condition_variable   cv;
@@ -59,231 +88,237 @@ struct Inbox {
     bool                      received = false;
 };
 
-gn_propagation_t handler_consume(void* self, const gn_message_t* env) {
-    auto* inbox = static_cast<Inbox*>(self);
+void on_message(void* ud,
+                 gn_conn_id_t /*conn*/,
+                 std::uint32_t /*msg_id*/,
+                 const std::uint8_t* payload,
+                 std::size_t payload_size) {
+    auto* inbox = static_cast<Inbox*>(ud);
+    if (!inbox || !payload) return;
     {
         std::lock_guard lk(inbox->mu);
-        inbox->payload.assign(env->payload, env->payload + env->payload_size);
+        inbox->payload.assign(payload, payload + payload_size);
         inbox->received = true;
     }
     inbox->cv.notify_all();
-    return GN_PROPAGATION_CONSUMED;
 }
 
-/// Thin C-ABI link vtable that hands kernel-side calls down to the
-/// in-tree `TcpLink`. Listen / connect run through `TcpLink` directly
-/// because the demo wants the resolved port back from `listen_port()`.
-gn_result_t tcp_send(void* self, gn_conn_id_t conn,
-                      const std::uint8_t* bytes, std::size_t size) {
-    if (!self || (!bytes && size > 0)) return GN_ERR_NULL_ARG;
-    return static_cast<TcpLink*>(self)->send(
-        conn, std::span<const std::uint8_t>(bytes, size));
+/// Conn-event sink for the dialing side — flips a flag once the
+/// Noise handshake lifts trust above `Untrusted`.
+struct DialState {
+    std::atomic<gn_conn_id_t> conn_id{GN_INVALID_ID};
+    std::atomic<bool>         trust_upgraded{false};
+    std::atomic<bool>         disconnected{false};
+};
+
+void on_conn_event(void* ud, const gn_conn_event_t* ev) {
+    auto* s = static_cast<DialState*>(ud);
+    if (!s || !ev) return;
+    switch (ev->kind) {
+        case GN_CONN_EVENT_CONNECTED:
+            s->conn_id.store(ev->conn, std::memory_order_release);
+            /// Loopback connections may land already above Untrusted
+            /// on the synchronous CONNECTED event; treat that as a
+            /// green light the same way `gssh/mode_bridge` does.
+            if (ev->trust != GN_TRUST_UNTRUSTED) {
+                s->trust_upgraded.store(true, std::memory_order_release);
+            }
+            break;
+        case GN_CONN_EVENT_TRUST_UPGRADED:
+            s->trust_upgraded.store(true, std::memory_order_release);
+            break;
+        case GN_CONN_EVENT_DISCONNECTED:
+            s->disconnected.store(true, std::memory_order_release);
+            break;
+        default:
+            break;
+    }
 }
 
-gn_result_t tcp_disconnect(void* self, gn_conn_id_t conn) {
-    if (!self) return GN_ERR_NULL_ARG;
-    return static_cast<TcpLink*>(self)->disconnect(conn);
-}
+/// Owns one kernel handle + its loaded plugins. Destructor walks
+/// `gn_core_destroy` which drives `PreShutdown → Shutdown` and drains
+/// every loaded plugin.
+class Node {
+public:
+    explicit Node(std::string name) : name_(std::move(name)) {
+        core_ = gn_core_create();
+        if (!core_) std::exit(1);
 
-const char* tcp_scheme(void*)                                                 { return "tcp"; }
-gn_result_t tcp_listen_unused(void*, const char*)                              { return GN_ERR_NOT_IMPLEMENTED; }
-gn_result_t tcp_connect_unused(void*, const char*)                             { return GN_ERR_NOT_IMPLEMENTED; }
-gn_result_t tcp_batch_unused(void*, gn_conn_id_t, const gn_byte_span_t*, std::size_t) { return GN_ERR_NOT_IMPLEMENTED; }
-const char* tcp_ext_name(void*)                                                { return nullptr; }
-const void* tcp_ext_vtable(void*)                                              { return nullptr; }
-void        tcp_destroy(void*)                                                 {}
-
-const gn_link_vtable_t kTcpVtable = []() {
-    gn_link_vtable_t v{};
-    v.api_size         = sizeof(v);
-    v.scheme           = &tcp_scheme;
-    v.listen           = &tcp_listen_unused;
-    v.connect          = &tcp_connect_unused;
-    v.send             = &tcp_send;
-    v.send_batch       = &tcp_batch_unused;
-    v.disconnect       = &tcp_disconnect;
-    v.extension_name   = &tcp_ext_name;
-    v.extension_vtable = &tcp_ext_vtable;
-    v.destroy          = &tcp_destroy;
-    return v;
-}();
-
-/// One side of the conversation. Owns its kernel, its node identity,
-/// its TCP transport instance, and the noise security plugin (loaded
-/// through `PluginManager`, which handles dlopen + symbol resolution
-/// + lifecycle drain on shutdown).
-struct Node {
-    Kernel                          kernel;
-    std::shared_ptr<GnetProtocol>   proto = std::make_shared<GnetProtocol>();
-    std::shared_ptr<TcpLink>        tcp   = std::make_shared<TcpLink>();
-    PluginContext                   host_ctx;
-    host_api_t                      api{};
-    PluginManager                   plugins{kernel};
-
-    explicit Node(std::string name) {
-        gn::core::protocol_layer_id_t proto_id =
-            gn::core::kInvalidProtocolLayerId;
-        (void)kernel.protocol_layers().register_layer(proto, &proto_id);
-
-        if (auto ident = gn::core::identity::NodeIdentity::generate(0)) {
-            kernel.identities().add(ident->device().public_key());
-            kernel.set_node_identity(std::move(*ident));
-        } else {
-            std::cerr << "[demo] node identity generation failed\n";
+        if (gn_core_init(core_) != GN_OK) {
+            std::cerr << "[" << name_ << "] gn_core_init failed\n";
             std::exit(1);
         }
 
-        host_ctx.plugin_name = std::move(name);
-        host_ctx.kernel      = &kernel;
-        api                  = build_host_api(host_ctx);
-        tcp->set_host_api(&api);
-
-        gn_link_id_t tid = GN_INVALID_ID;
-        if (kernel.links().register_link(
-                "tcp", "", &kTcpVtable, tcp.get(), &tid) != GN_OK) {
-            std::cerr << "[demo] register_link(tcp) failed\n";
-            std::exit(1);
+        /// Batch-load noise + tcp so the kernel's PluginManager
+        /// composes both registrations in one pass — same shape gssh
+        /// uses in `discover_and_load_plugins`.
+        const std::string paths[] = {
+            GOODNET_NOISE_PLUGIN_PATH,
+            GOODNET_TCP_PLUGIN_PATH,
+        };
+        std::vector<std::uint8_t> digests(2 * 32);
+        const char* c_paths[2] = {paths[0].c_str(), paths[1].c_str()};
+        for (std::size_t i = 0; i < 2; ++i) {
+            if (sha256_of_file(paths[i], digests.data() + i * 32) != GN_OK) {
+                std::cerr << "[" << name_ << "] sha256 failed for "
+                          << paths[i] << "\n";
+                std::exit(1);
+            }
         }
-
-        const std::vector<std::string> noise_paths{GOODNET_NOISE_PLUGIN_PATH};
-        std::string diag;
-        if (plugins.load(std::span<const std::string>(noise_paths), &diag)
-                != GN_OK) {
-            std::cerr << "[demo] noise plugin load failed: " << diag << "\n";
+        if (const auto rc = gn_core_load_plugins_batch(
+                core_, c_paths, digests.data(), 2);
+            rc != GN_OK) {
+            std::cerr << "[" << name_ << "] plugin batch load failed: "
+                      << gn_strerror(rc) << "\n";
             std::exit(1);
         }
     }
 
     ~Node() {
-        /// Shut TCP first so every live connection closes and the
-        /// kernel-side `SecuritySession` records get destroyed
-        /// synchronously through `notify_disconnect`. Then
-        /// `plugins.shutdown()` drains its now-free anchor instantly.
-        if (tcp) tcp->shutdown();
-        plugins.shutdown();
+        if (core_) gn_core_destroy(core_);
     }
+
+    Node(const Node&)            = delete;
+    Node& operator=(const Node&) = delete;
+
+    [[nodiscard]] gn_core_t*         core() const noexcept { return core_; }
+    [[nodiscard]] const host_api_t*  api()  const noexcept {
+        return gn_core_host_api(core_);
+    }
+    [[nodiscard]] const std::string& name() const noexcept { return name_; }
+
+private:
+    std::string name_;
+    gn_core_t*  core_ = nullptr;
 };
-
-bool wait_until(const std::function<bool()>& pred,
-                 std::chrono::milliseconds timeout) {
-    const auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-        if (pred()) return true;
-        std::this_thread::sleep_for(10ms);
-    }
-    return false;
-}
-
-bool find_transport_session(Kernel& k, gn_conn_id_t* out_id) {
-    for (gn_conn_id_t id = 1; id <= 8; ++id) {
-        auto s = k.sessions().find(id);
-        if (s && s->phase() == SecurityPhase::Transport) {
-            *out_id = id;
-            return true;
-        }
-    }
-    return false;
-}
 
 }  // namespace
 
 int main() {
-    /// The kernel logger defaults to a build-aware level (Release =
-    /// info, Debug = debug) and a Release-only console floor of WARN.
-    /// The demo wants the kernel's INFO startup markers visible in
-    /// either build, so push the console sink to `info` and lift the
-    /// logger level to match. Operators running `goodnetd run` get the
-    /// same behaviour through the `log.console_level = "info"` knob in
-    /// `dist/example/node.json`.
-    {
-        gn::log::LogConfig lc;
-        lc.level         = "info";
-        lc.console_level = "info";
-        (void)gn::log::init_with(lc);
-    }
-
     std::cout << "[demo] GoodNet two-node quickstart\n"
-              << "[demo] noise plugin: " << GOODNET_NOISE_PLUGIN_PATH << "\n";
+              << "[demo] noise plugin: " << GOODNET_NOISE_PLUGIN_PATH << "\n"
+              << "[demo] tcp   plugin: " << GOODNET_TCP_PLUGIN_PATH   << "\n";
 
     Node alice("alice");
     Node bob  ("bob");
 
+    /// Alice subscribes for the demo msg id BEFORE start so the
+    /// callback is in place when the first inbound envelope lands.
     Inbox alice_inbox;
-    gn_handler_vtable_t vt{};
-    vt.api_size       = sizeof(vt);
-    vt.handle_message = &handler_consume;
-
-    gn_handler_id_t hid = GN_INVALID_ID;
-    if (alice.kernel.handlers().register_handler(
-            "gnet-v1", kDemoMsgId, /*priority*/128,
-            &vt, &alice_inbox, &hid) != GN_OK) {
-        std::cerr << "[demo] alice.register_handler failed\n";
+    const std::uint64_t msg_sub = gn_core_subscribe(
+        alice.core(), kDemoMsgId, &on_message, &alice_inbox);
+    if (msg_sub == 0) {
+        std::cerr << "[alice] gn_core_subscribe failed\n";
         return 1;
     }
 
-    if (alice.tcp->listen("tcp://127.0.0.1:0") != GN_OK) {
-        std::cerr << "[demo] alice.listen failed\n";
+    /// Bob subscribes to conn-state so we can wait on trust upgrade
+    /// before the first `gn_core_send_to`.
+    DialState bob_state;
+    const std::uint64_t conn_sub = gn_core_on_conn_state(
+        bob.core(), &on_conn_event, &bob_state);
+    if (conn_sub == 0) {
+        std::cerr << "[bob] gn_core_on_conn_state failed\n";
         return 1;
     }
-    const auto port = alice.tcp->listen_port();
-    std::cout << "[demo] alice listening on tcp://127.0.0.1:" << port << "\n";
 
+    /// `gn_core_start` walks each kernel from Ready → Running before
+    /// any traffic can flow.
+    if (gn_core_start(alice.core()) != GN_OK ||
+        gn_core_start(bob.core())   != GN_OK) {
+        std::cerr << "[demo] gn_core_start failed\n";
+        return 1;
+    }
+
+    /// Alice listens through the `gn.link.tcp` extension that the
+    /// just-loaded tcp plugin published. The carrier owns the
+    /// listener for the lifetime of the demo.
+    auto alice_listener = gn::sdk::listen_to(
+        alice.api(), "tcp://127.0.0.1:0");
+    if (!alice_listener) {
+        std::cerr << "[alice] listen_to failed\n";
+        return 1;
+    }
+    const auto port = alice_listener->listen_port();
+    if (port == 0) {
+        std::cerr << "[alice] listen_port returned 0 — composer port "
+                     "not exposed by the link plugin\n";
+        return 1;
+    }
     const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
-    std::cout << "[demo] bob   dialling   " << uri << "\n";
-    if (bob.tcp->connect(uri) != GN_OK) {
-        std::cerr << "[demo] bob.connect failed\n";
+    std::cout << "[alice] listening on " << uri << "\n";
+
+    /// Bob dials through `gn_core_connect`. The kernel resolves the
+    /// scheme to the same tcp plugin Alice listens on.
+    std::cout << "[bob]   dialling   " << uri << "\n";
+    gn_conn_id_t bob_conn = GN_INVALID_ID;
+    if (const auto rc = gn_core_connect(
+            bob.core(), uri.c_str(), /*scheme=*/nullptr, &bob_conn);
+        rc != GN_OK) {
+        std::cerr << "[bob] connect failed: " << gn_strerror(rc) << "\n";
         return 1;
     }
 
-    /// Wait for both sides to reach the Transport phase. The Noise XX
-    /// handshake completes asynchronously on each side's TCP strand;
-    /// until both `Transport` flags raise the encrypted send path is
-    /// not yet open.
-    if (!wait_until([&] {
-            for (gn_conn_id_t id = 1; id <= 8; ++id) {
-                auto a = alice.kernel.sessions().find(id);
-                auto b = bob.kernel.sessions().find(id);
-                if (a && a->phase() == SecurityPhase::Transport &&
-                    b && b->phase() == SecurityPhase::Transport) {
-                    return true;
-                }
-            }
-            return false;
-        }, 5s)) {
+    /// Wait for Noise XX to lift Bob's side from Untrusted to Peer.
+    /// The kernel publishes `TRUST_UPGRADED` once the handshake
+    /// completes on the dial strand.
+    const auto deadline = std::chrono::steady_clock::now() + 5s;
+    while (!bob_state.trust_upgraded.load(std::memory_order_acquire) &&
+           !bob_state.disconnected.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(20ms);
+    }
+    if (bob_state.disconnected.load(std::memory_order_acquire)) {
+        std::cerr << "[demo] peer disconnected before trust upgrade\n";
+        return 1;
+    }
+    if (!bob_state.trust_upgraded.load(std::memory_order_acquire)) {
         std::cerr << "[demo] timeout: handshake stalled\n";
         return 1;
     }
-    std::cout << "[demo] noise XX completed; transport phase active\n";
+    std::cout << "[demo] noise XX complete; transport phase active\n";
 
-    gn_conn_id_t bob_conn = GN_INVALID_ID;
-    if (!find_transport_session(bob.kernel, &bob_conn)) {
-        std::cerr << "[demo] no transport-phase session on bob's side\n";
+    /// Some link plugins land `bob_conn` synchronously on the
+    /// `gn_core_connect` return; others publish only through the
+    /// CONNECTED event. Reach for whichever produced the id.
+    if (bob_conn == GN_INVALID_ID) {
+        bob_conn = bob_state.conn_id.load(std::memory_order_acquire);
+    }
+    if (bob_conn == GN_INVALID_ID) {
+        std::cerr << "[bob] no connection id observed\n";
         return 1;
     }
 
     const std::string greeting = "hello from bob";
-    std::cout << "[demo] bob   send  msg_id=0x" << std::hex << kDemoMsgId
+    std::cout << "[bob]   send  msg_id=0x" << std::hex << kDemoMsgId
               << std::dec << " payload=\"" << greeting << "\"\n";
 
-    if (bob.api.send(bob.api.host_ctx, bob_conn, kDemoMsgId,
-                      reinterpret_cast<const std::uint8_t*>(greeting.data()),
-                      greeting.size()) != GN_OK) {
-        std::cerr << "[demo] bob.send failed\n";
+    if (const auto rc = gn_core_send_to(
+            bob.core(), bob_conn, kDemoMsgId,
+            reinterpret_cast<const std::uint8_t*>(greeting.data()),
+            greeting.size());
+        rc != GN_OK) {
+        std::cerr << "[bob] send failed: " << gn_strerror(rc) << "\n";
         return 1;
     }
 
+    /// Wait for Alice's subscribe callback to flip the inbox flag.
     {
         std::unique_lock lk(alice_inbox.mu);
         if (!alice_inbox.cv.wait_for(lk, 3s,
                 [&] { return alice_inbox.received; })) {
-            std::cerr << "[demo] timeout: alice never received the message\n";
+            std::cerr << "[demo] timeout: alice never received the "
+                         "message\n";
             return 1;
         }
     }
     const std::string echoed(
         reinterpret_cast<const char*>(alice_inbox.payload.data()),
         alice_inbox.payload.size());
-    std::cout << "[demo] alice recv payload=\"" << echoed << "\"\n";
+    std::cout << "[alice] recv payload=\"" << echoed << "\"\n";
+
+    gn_core_unsubscribe(alice.core(), msg_sub);
+    gn_core_off_conn_state(bob.core(), conn_sub);
 
     std::cout << "[demo] ok\n";
     return 0;

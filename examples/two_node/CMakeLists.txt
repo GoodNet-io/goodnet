@@ -1,28 +1,33 @@
 # goodnet-demo — two-node Noise-over-TCP quickstart.
 #
 # Single-process binary that runs both ends of an encrypted handshake
-# on loopback and round-trips one application message. The kernel
-# noise plugin is dlopen'd at runtime; its path is threaded in as a
-# compile-time string so a packaged build does not depend on the
+# on loopback and round-trips one application message. Pure downstream
+# consumer of the SDK: links against `GoodNet::sdk` (header-only) and
+# `GoodNet::kernel_shared` (C ABI runtime) only — no kernel-private
+# headers, no in-tree `goodnet_tcp_objects`, no protocol layer target.
+#
+# Noise + TCP plugins are dlopen'd at runtime; their paths thread in
+# as compile-time strings so a packaged build does not depend on the
 # build tree's layout.
 
 add_executable(goodnet_demo main.cpp)
 
 target_link_libraries(goodnet_demo
     PRIVATE
-        goodnet_kernel
-        GoodNet::protocol_gnet
-        goodnet_tcp_objects
+        GoodNet::sdk
+        GoodNet::kernel_shared
+        PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}
 )
 
 target_compile_features(goodnet_demo PRIVATE cxx_std_23)
 
-if(TARGET goodnet_security_noise)
-    add_dependencies(goodnet_demo goodnet_security_noise)
+if(TARGET goodnet_security_noise AND TARGET goodnet_link_tcp)
+    add_dependencies(goodnet_demo goodnet_security_noise goodnet_link_tcp)
     target_compile_definitions(goodnet_demo
         PRIVATE
             "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+            "GOODNET_TCP_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_link_tcp>\""
     )
 endif()
 
