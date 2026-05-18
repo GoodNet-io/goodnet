@@ -1,6 +1,6 @@
 # goodnetd.service — systemd unit for the GoodNet daemon binary.
 #
-# The daemon ships from the `goodnet-io/goodnetd` repo (the kernel
+# The daemon ships from the `GoodNet-io/goodnetd` repo (the kernel
 # repo carries this unit only as a packaging convenience). Operators
 # install at /etc/systemd/system/goodnetd.service, drop a `node.json`
 # and `plugins.json` into /etc/goodnet/, and run:
