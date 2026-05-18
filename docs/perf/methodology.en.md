@@ -167,6 +167,72 @@ weight this over steady-state throughput.
 Sorted ascending by P50 in the report so the cheapest setup
 is at the top.
 
+### 2.6 Send vs recv asymmetry
+
+Real-mode rows report a single throughput number per row but
+the underlying send path and recv path are NOT structurally
+symmetric, and the number lands closer to whichever side is
+the bottleneck. The asymmetry is a property of the current
+data-plane layout, not a measurement artefact.
+
+**Send path** fans out:
+```
+host_api->send →
+   protocol layer framing →
+   per-conn send queue →
+   CryptoWorkerPool::run_batch — encrypt jobs across N workers →
+   coalesced wire bytes →
+   link plugin write
+```
+`InlineCrypto::reserve_send_nonces(k)` pre-allocates `k` nonces
+so workers can encrypt independently; the AEAD seal cost
+parallelises across the pool's worker count
+(`core/crypto/crypto_worker_pool.cpp`).
+
+**Recv path** today is single-threaded:
+```
+link plugin notify_inbound_bytes →
+   SecuritySession::decrypt_transport — InlineCrypto::decrypt,
+       runs on the calling thread →
+   protocol layer deframe →
+   HandlerRegistry dispatch
+```
+There is no `decrypt_batch_transport` consumer wired to
+`notify_inbound_bytes` yet — each inbound frame walks the
+chain on the link plugin's IO strand without being split
+across workers. AEAD open cost serialises.
+
+The consequence visible in bench rows:
+
+- `<Plug>EchoRoundtrip` (full RTT — both directions, both
+  peers encrypt+decrypt) reflects the recv-side ceiling on
+  every leg.
+- `<Plug>Echo` one-way send→receive is dominated by recv
+  decrypt for the receiver, send encrypt for the sender; the
+  receiver's single-threaded chain is the lower bound on
+  steady-state rate.
+- Same payload, both peers identically configured: the
+  number on the row IS the recv-side rate, not the send-side
+  rate, because recv finishes after send.
+
+`bench_real_e2e.cpp` does not isolate the two sides today —
+a recv-only fixture that feeds a pre-recorded ciphertext
+stream into `notify_inbound_bytes` and measures
+`HandlerRegistry::dispatch` arrival rate is the shape
+needed to surface the recv path as its own row.
+
+Making recv structurally symmetric with send is a follow-up
+that mirrors the send-side primitives on the inbound path:
+`InlineCrypto::reserve_recv_nonces(k)` paralleling
+`reserve_send_nonces`, a `make_decrypt_job` shape paralleling
+`make_encrypt_job`,
+`SecuritySession::decrypt_batch_transport(spans, out, pool)`
+paralleling `encrypt_batch_transport`, and a batched gather
+inside `notify_inbound_bytes` that splits N inbound frames
+across the `CryptoWorkerPool`. With those in place the row
+reports a rate that reflects both sides fanning out through
+the pool; the asymmetry above collapses.
+
 ---
 
 ## 3. What the report is NOT trying to say
