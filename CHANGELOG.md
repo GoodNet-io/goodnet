@@ -6,6 +6,8 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0-rc5] — 2026-05-19
+
 ### Subprocess plugin runtime — LINK / SECURITY / HANDLER host-call slots
 
 The subprocess runtime now hosts the same vtable surface that
