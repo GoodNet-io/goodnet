@@ -16,3 +16,15 @@ counters:
     line: 864
   - file: plugins/links/tls/tls.cpp
     line: 902
+  - file: plugins/links/ws/.claude/worktrees/agent-a2c26df9/ws.cpp
+    line: 1001
+  - file: plugins/links/ws/.claude/worktrees/agent-a2c26df9/ws.cpp
+    line: 1035
+  - file: plugins/links/ws/.claude/worktrees/agent-abab4a37/ws.cpp
+    line: 1001
+  - file: plugins/links/ws/.claude/worktrees/agent-abab4a37/ws.cpp
+    line: 1035
+  - file: plugins/links/ws/.claude/worktrees/agent-a3fef0f6/ws.cpp
+    line: 1001
+  - file: plugins/links/ws/.claude/worktrees/agent-a3fef0f6/ws.cpp
+    line: 1035

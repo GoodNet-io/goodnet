@@ -4,7 +4,7 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 316
+    line: 319
 - name: ice.check_interval_ms
   type: int64
   family: ice
@@ -29,18 +29,90 @@ keys:
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 278
+- name: ice.lite_mode
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 326
+- name: ice.mdns_obfuscate_host_candidates
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 404
+- name: ice.mdns_resolve_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 408
 - name: ice.path_mtu
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 307
+- name: ice.pmtu_active_probing
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 425
+- name: ice.pmtu_probe_concurrency
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 432
+- name: ice.pmtu_probe_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 428
+- name: ice.reactive_interface_change
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 329
 - name: ice.session_timeout_s
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 274
+- name: ice.symmetric_port_prediction_attempts
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 336
+- name: ice.symmetric_port_prediction_enabled
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 332
+- name: ice.turn_allocate_timeout_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 381
+- name: ice.turn_backup_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 388
+- name: ice.turn_failover_min_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 394
 - name: ice.turn_password
   type: string
   family: ice
@@ -58,13 +130,13 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 352
+    line: 373
 - name: ice.turn_tls
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 361
+    line: 417
 - name: ice.turn_username
   type: string
   family: ice

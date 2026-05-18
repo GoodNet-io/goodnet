@@ -23,6 +23,8 @@
 | [RFC 8305](https://datatracker.ietf.org/doc/html/rfc8305) | Happy Eyeballs Version 2 | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ○ planned | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8085](https://datatracker.ietf.org/doc/html/rfc8085) | UDP Usage Guidelines | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) | Multicast DNS | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/html/rfcdraft-ietf-mmusic-mdns-ice-candidates) | Using Multicast DNS to Protect Privacy When Exposing ICE Candidates | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 
 ### Noise / cryptography
 
@@ -48,6 +50,7 @@
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
 | [RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455) | The WebSocket Protocol | ✓ full | [`plugins/links/ws`](../../plugins/links/ws) |
+| [RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692) | Compression Extensions for WebSocket (permessage-deflate) | — | [`plugins/links/ws`](../../plugins/links/ws) |
 | [RFC 5389](https://datatracker.ietf.org/doc/html/rfc5389) | STUN — Short-Term Credential (alias) | — out of scope |  |
 <!-- /livedoc:rfc_coverage_table -->
 

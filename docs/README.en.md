@@ -171,4 +171,10 @@ manual edits.
 |---|---|---|
 | noise | [`plugins/security/noise`](../../plugins/security/noise) | Noise XX security provider for GoodNet. Pattern |
 | null | [`plugins/security/null`](../../plugins/security/null) | Loopback / IntraNode pass-through security provider. Used on |
+
+### Strategies plugins
+
+| Name | Path | Notes |
+|---|---|---|
+| float_send_rtt | [`plugins/strategies/float_send_rtt`](../../plugins/strategies/float_send_rtt) | Reference multi-path strategy plugin. Picks the connection with |
 <!-- /livedoc:plugin_inventory -->

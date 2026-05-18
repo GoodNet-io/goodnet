@@ -13,10 +13,10 @@
 		{
 			"id": "g_sdk",
 			"type": "group",
-			"x": 8624,
+			"x": 8549,
 			"y": 877,
-			"width": 3684,
-			"height": 1403,
+			"width": 3708,
+			"height": 1463,
 			"color": "3",
 			"label": "SDK INTERFACES (sdk/*.h)"
 		},
@@ -33,10 +33,10 @@
 		{
 			"id": "g_registry",
 			"type": "group",
-			"x": 1717,
-			"y": 1791,
-			"width": 3648,
-			"height": 399,
+			"x": 1762,
+			"y": 1811,
+			"width": 3588,
+			"height": 420,
 			"color": "4",
 			"label": "REGISTRIES (core/registry/)"
 		},
@@ -53,17 +53,17 @@
 		{
 			"id": "g_signal",
 			"type": "group",
-			"x": 6190,
-			"y": 1801,
-			"width": 1745,
-			"height": 379,
+			"x": 6161,
+			"y": 1821,
+			"width": 1701,
+			"height": 400,
 			"color": "6",
 			"label": "SIGNAL INFRASTRUCTURE (core/kernel/)"
 		},
 		{
 			"id": "g_proto",
 			"type": "group",
-			"x": 11093,
+			"x": 11334,
 			"y": 394,
 			"width": 1209,
 			"height": 340,
@@ -73,7 +73,7 @@
 		{
 			"id": "g_security",
 			"type": "group",
-			"x": 4700,
+			"x": 6380,
 			"y": 334,
 			"width": 1195,
 			"height": 460,
@@ -85,7 +85,7 @@
 			"type": "group",
 			"x": 4370,
 			"y": 1077,
-			"width": 4276,
+			"width": 4201,
 			"height": 400,
 			"color": "2",
 			"label": "LINK PLUGINS"
@@ -94,16 +94,16 @@
 			"id": "g_handlers",
 			"type": "group",
 			"x": 3669,
-			"y": 344,
+			"y": 334,
 			"width": 640,
-			"height": 440,
+			"height": 460,
 			"color": "2",
 			"label": "HANDLER PLUGINS"
 		},
 		{
 			"id": "g_ext_tests",
 			"type": "group",
-			"x": 4313,
+			"x": 5993,
 			"y": -210,
 			"width": 640,
 			"height": 400,
@@ -113,11 +113,11 @@
 		{
 			"id": "g_roadmap",
 			"type": "group",
-			"x": 5444,
+			"x": 6610,
 			"y": -170,
-			"width": 6606,
+			"width": 13405,
 			"height": 320,
-			"color": "1",
+			"color": "4",
 			"label": "ROADMAP STATUS (auto, see roadmap_status.yaml)"
 		},
 		{
@@ -151,7 +151,7 @@
 			"id": "n_host_api",
 			"type": "text",
 			"text": "# host_api_t\n`sdk/host_api.h`\n\nPublic host vtable — **41 named slots** + `8` reserved.\nКарточка перерисовывается из `docs/_facts/host_api.yaml`\nчерез `make livedoc` (libclang AST walk → YAML).\n\n**Семейства slot'ов:**\n- Capability TLV transport: `present_capability_blob`, `subscribe_capability_blob`\n- Channel subscription: `subscribe_conn_state`, `subscribe_config_reload`, `unsubscribe`\n- Configuration: `config_get`\n- Connection iteration: `for_each_connection`, `notify_backpressure`\n- Cooperative cancellation: `is_shutdown_requested`\n- Extension API: `query_extension_checked`, `register_extension`, `unregister_extension`\n- Foreign-payload injection: `inject`, `kick_handshake`\n- Identity primitives: `register_local_key`, `delete_local_key`, `list_local_keys`, `sign_local`, `sign_local_by_id`\n- Identity rotation: `announce_rotation`\n- Limits read access: `limits`\n- Link-side notifications: `notify_connect`, `notify_inbound_bytes`, `notify_disconnect`\n- Messaging: `send`, `disconnect`\n- Metrics: `emit_counter`, `iterate_counters`\n- Path observability: `notify_rtt_sample`\n- Peer identity readers: `get_peer_user_pk`, `get_peer_device_pk`, `get_handshake_hash`\n- Peer-addressed messaging: `send_to`\n- Registry queries: `find_conn_by_pk`, `get_endpoint`\n- Security registration: `register_security`, `unregister_security`\n- Service executor: `set_timer`, `cancel_timer`\n- Universal handler / link registration: `register_vtable`, `unregister_vtable`\n\nКаждая запись принимает `host_ctx` первым аргументом — тот\nже указатель, что плагин получил на init.",
-			"x": 10482,
+			"x": 10433,
 			"y": 947,
 			"width": 540,
 			"height": 680
@@ -159,35 +159,35 @@
 		{
 			"id": "n_handler_iface",
 			"type": "text",
-			"text": "# gn_handler_vtable_t\n`sdk/handler.h`\n\nHandler — обработчик envelope'ов на конкретный `msg_id` или wildcard.\n\n```c\ngn_propagation_t (*on_message)(void* self,\n                                const gn_message_header_t*,\n                                const gn_endpoint_t*,\n                                const uint8_t* payload, size_t);\nvoid (*on_conn_state)(void* self, gn_conn_id_t,\n                       const char* uri, gn_conn_state_t);\n```\n\nРегистрируется через\n`register_vtable(GN_REGISTER_HANDLER, meta{name, msg_id, priority}, vt, self, &id)`.",
-			"x": 9291,
-			"y": 1097,
-			"width": 540,
-			"height": 380
+			"text": "# gn_handler_vtable_t\n`sdk/handler.h`\n\nHandler — обработчик envelope'ов на конкретный `msg_id`.\n\n```c\nconst char* (*protocol_id)(void* self);\nvoid (*supported_msg_ids)(void* self,\n                           const uint32_t** out_ids,\n                           size_t* out_count);\ngn_propagation_t (*handle_message)(void* self,\n                                    const gn_message_t* envelope);\nvoid (*on_result)(void* self, const gn_message_t* env,\n                  gn_propagation_t result);\nvoid (*on_init)(void* self);\nvoid (*on_shutdown)(void* self);\n```\n\nРегистрируется через `register_vtable(GN_REGISTER_HANDLER,\nmeta{name=protocol_id, msg_id, priority, namespace_id},\nvt, self, &id)`.",
+			"x": 9216,
+			"y": 1047,
+			"width": 535,
+			"height": 480
 		},
 		{
 			"id": "n_link_iface",
 			"type": "text",
-			"text": "# gn_link_vtable_t\n`sdk/link.h`\n\nLink — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n```c\ngn_result_t (*listen)(void* self, const char* uri);\ngn_result_t (*connect)(void* self, const char* uri,\n                       const uint8_t pk[GN_PUBLIC_KEY_BYTES]);\ngn_result_t (*send)(void* self, gn_conn_id_t,\n                    const uint8_t* bytes, size_t);\ngn_result_t (*close)(void* self, gn_conn_id_t);\nvoid        (*shutdown)(void* self);\nuint32_t    (*properties)(void* self);  // stream/datagram/...\n```\n\nРегистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\nConn-id ownership gate: только владелец схемы может звать\n`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n(`security-trust.en.md` §6a).",
-			"x": 8674,
+			"text": "# gn_link_vtable_t\n`sdk/link.h`\n\nLink — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n```c\nconst char* (*scheme)(void* self);\ngn_result_t (*listen)(void* self, const char* uri);\ngn_result_t (*connect)(void* self, const char* uri);\ngn_result_t (*send)(void* self, gn_conn_id_t conn,\n                    const uint8_t* bytes, size_t size);\ngn_result_t (*send_batch)(void* self, gn_conn_id_t conn,\n                          const gn_byte_span_t* batch, size_t count);\ngn_result_t (*disconnect)(void* self, gn_conn_id_t conn);\nconst char* (*extension_name)(void* self);\nconst void* (*extension_vtable)(void* self);\nvoid        (*destroy)(void* self);\n```\n\nРегистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`, `ice://`, `quic://`).\nConn-id ownership gate: только владелец схемы может звать\n`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n(`security-trust.en.md` §6a).",
+			"x": 8599,
 			"y": 1771,
 			"width": 540,
-			"height": 460
+			"height": 520
 		},
 		{
 			"id": "n_security_iface",
 			"type": "text",
-			"text": "# gn_security_provider_vtable_t\n`sdk/security.h`\n\nSecurity provider — handshake + AEAD.\n\n```c\nhandshake_open(self, conn, trust, role,\n               local_sk, local_pk, remote_pk, &state);\nhandshake_step(self, state, in, in_size, &out_msg);\nhandshake_complete(self, state) -> int;\nexport_transport_keys(self, state, &keys);\nencrypt(self, state, plain, plain_size, &out);\ndecrypt(self, state, cipher, cipher_size, &out);\nrekey(self, state); handshake_close(self, state);\nallowed_trust_mask(self) -> uint32_t;\n```\n\nv1: один активный провайдер на ядро. Per-trust-class селекция\nуезжает в StackRegistry в v1.x.",
-			"x": 9909,
-			"y": 1067,
-			"width": 497,
-			"height": 440
+			"text": "# gn_security_provider_vtable_t\n`sdk/security.h`\n\nSecurity provider — handshake + AEAD.\n\n```c\nprovider_id(self) -> const char*;\nhandshake_open(self, conn, trust, role,\n               local_sk, local_pk, remote_pk, &state);\nhandshake_step(self, state, in, in_size, &out_msg);\nhandshake_complete(self, state) -> int;\nexport_transport_keys(self, state, &keys);\nencrypt(self, state, plain, plain_size, &out);\ndecrypt(self, state, cipher, cipher_size, &out);\nrekey(self, state); handshake_close(self, state);\ndestroy(self);\nallowed_trust_mask(self) -> uint32_t;\n```\n\nMulti-provider StackRegistry — kernel picks the first registered\nprovider whose `allowed_trust_mask` admits the conn's trust class\n(`null` on Loopback / IntraNode, `noise` on Untrusted / Peer in\nthe same process).",
+			"x": 9828,
+			"y": 1027,
+			"width": 527,
+			"height": 520
 		},
 		{
 			"id": "n_protocol_iface",
 			"type": "text",
 			"text": "# gn_protocol_layer_t\n`sdk/protocol.h`\n\nFraming layer — режет байтовый поток на envelope'ы.\n\nРеализаций две, обе линкуются в kernel binary как STATIC\n(не отдельные `.so`):\n- **GnetProtocol** — каноничный wire-формат (header + payload)\n- **RawProtocol** — passthrough для локальных стеков (loopback / intra-node).\n\n`allowed_trust_mask()` ограничивает класс trust, на который\nформат соглашается принять конн (raw — только Loopback / IntraNode).",
-			"x": 11718,
+			"x": 11667,
 			"y": 1137,
 			"width": 540,
 			"height": 300
@@ -196,7 +196,7 @@
 			"id": "n_trust",
 			"type": "text",
 			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.en.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.en.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
-			"x": 11100,
+			"x": 11050,
 			"y": 1097,
 			"width": 540,
 			"height": 380
@@ -205,7 +205,7 @@
 			"id": "n_limits",
 			"type": "text",
 			"text": "# gn_limits_t\n`sdk/limits.h`\n\nResource bounds: max_connections, pending_queue_bytes_high/low/hard,\nmax_payload_bytes, max_handlers_per_msg_id, max_relay_ttl,\nmax_plugins, max_extensions, max_timers, max_counter_names,\ninject_rate_per_source/burst/lru_cap, ...\n\nДоступен через `host_api->limits()` — borrowed `const`-указатель\nна всё время жизни плагина. Hard-coded параллельные пороги в\ncore/plugins запрещены.",
-			"x": 8674,
+			"x": 8599,
 			"y": 1147,
 			"width": 540,
 			"height": 280
@@ -241,53 +241,53 @@
 			"id": "n_conn_reg",
 			"type": "text",
 			"text": "# ConnectionRegistry\n`core/registry/connection.{hpp,cpp}`\n\n16 шардованных bucket'ов под shared_mutex.\nХранит `ConnectionContext`: conn_id, link_scheme, remote_pk, trust,\nstate, security session, pending counters.\n\nВторичные индексы: pubkey → conn_id (для `find_conn_by_pk`).",
-			"x": 1767,
-			"y": 1891,
+			"x": 1812,
+			"y": 1921,
 			"width": 540,
 			"height": 220
 		},
 		{
 			"id": "n_handler_reg",
 			"type": "text",
-			"text": "# HandlerRegistry\n`core/registry/handler.{hpp,cpp}`\n\nRegistry для KIND_HANDLER. Поиск по `msg_id` →\nприоритетно отсортированный список. `lookup` возвращает snapshot\nby-value, чьи lifetime_anchor копии держат плагин загруженным\nдо конца dispatch'а.",
-			"x": 3589,
-			"y": 1901,
-			"width": 520,
+			"text": "# HandlerRegistry\n`core/registry/handler.{hpp,cpp}`\n\nRegistry для KIND_HANDLER. Ключ — triple `(namespace_id,\nprotocol_id, msg_id)` → priority-sorted chain. `lookup`\nвозвращает snapshot by-value, чьи lifetime_anchor копии\nдержат плагин загруженным до конца dispatch'а.",
+			"x": 3635,
+			"y": 1931,
+			"width": 460,
 			"height": 200
 		},
 		{
 			"id": "n_link_reg",
 			"type": "text",
-			"text": "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\nRegistry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n`ipc`, `tls`).\n\n**Conn-id ownership gate** (`security-trust.en.md` §6a):\nхранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\nЛюбая попытка чужого link'а позвать `notify_*` для conn_id, чей\nscheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`.",
-			"x": 4775,
-			"y": 1871,
+			"text": "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\nRegistry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n`ipc`, `tls`, `ice`, `quic`).\n\n**Conn-id ownership gate** (`security-trust.en.md` §6a):\nхранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\nЛюбая попытка чужого link'а позвать `notify_*` для conn_id, чей\nscheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`.",
+			"x": 4760,
+			"y": 1901,
 			"width": 540,
 			"height": 260
 		},
 		{
 			"id": "n_sec_reg",
 			"type": "text",
-			"text": "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\nОдин активный provider'ный slot v1 (`security-trust.en.md` §6).\nВторой `register_security` возвращает `GN_ERR_LIMIT_REACHED`.\n\nПри `Sessions::create` ядро сверяет `trust` конна с\n`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n`metrics.drop.trust_class_mismatch`.",
-			"x": 4186,
+			"text": "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\nMulti-provider StackRegistry: держит N security providers'ов,\nкаждый объявляет admitted trust classes через\n`allowed_trust_mask`. `find_for_trust(trust)` выбирает первый\nregistered provider чей mask admits класс. Только дубликат\n`provider_id` возвращает `GN_ERR_LIMIT_REACHED`.\n\nПри `Sessions::create` ядро сверяет `trust` конна с\n`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n`metrics.drop.trust_class_mismatch`.",
+			"x": 4172,
 			"y": 1881,
 			"width": 512,
-			"height": 240
+			"height": 300
 		},
 		{
 			"id": "n_ext_reg",
 			"type": "text",
-			"text": "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\nГлобальный namespace для plugin↔plugin контрактов\n(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n`register_extension(name, version, vtable)` —\n`query_extension_checked(name, version, &vtable)` —\nверсия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\nЯдро — pure registry; никаких встроенных extension'ов.",
-			"x": 2972,
-			"y": 1861,
+			"text": "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\nГлобальный namespace для plugin↔plugin контрактов\n(`gn.heartbeat`, `gn.store`, `gn.dns`, `gn.strategy.*`,\n`gn.link.<scheme>`, `gn.ui`, ...).\n\n`register_extension(name, version, vtable)` —\n`query_extension_checked(name, version, &vtable)` —\nверсия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\nЯдро — pure registry; никаких встроенных extension'ов.",
+			"x": 3018,
+			"y": 1881,
 			"width": 540,
-			"height": 280
+			"height": 300
 		},
 		{
 			"id": "n_session_reg",
 			"type": "text",
 			"text": "# SessionRegistry\n`core/security/session.{hpp,cpp}`\n\nPer-conn security state: handshake state-machine + AEAD ключи\npost-handshake. Хранит `gn_secure_buffer_t`-ownership ссылки на\nвыходные сообщения handshake'а до коммита.",
-			"x": 2384,
-			"y": 1911,
+			"x": 2429,
+			"y": 1941,
 			"width": 512,
 			"height": 180
 		},
@@ -321,18 +321,18 @@
 		{
 			"id": "n_conn_events",
 			"type": "text",
-			"text": "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\nОдин pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\nНесёт state-машину conn'а: `Connecting → Handshake → Established →\nClosing → Closed` плюс backpressure soft/clear.\n\nПодписки парятся с lifetime_anchor подписчика —\n`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\nесли плагин уже выгрузился.",
-			"x": 7351,
-			"y": 1871,
-			"width": 535,
-			"height": 260
+			"text": "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\nОдин pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\nШесть событий: `CONNECTED`, `DISCONNECTED`, `TRUST_UPGRADED`\n(Untrusted → Peer), `BACKPRESSURE_SOFT` / `_CLEAR` (queue\nwatermark crossings), `IDENTITY_ROTATED`.\n\nПодписки парятся с lifetime_anchor подписчика —\n`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\nесли плагин уже выгрузился.",
+			"x": 7322,
+			"y": 1891,
+			"width": 490,
+			"height": 280
 		},
 		{
 			"id": "n_metrics",
 			"type": "text",
 			"text": "# MetricsRegistry\n`core/kernel/metrics_registry.{hpp,cpp}`\n\nПлоский UTF-8 keyed counter store. Плагины зовут\n`emit_counter(name)` для cross-cutting телеметрии,\nexporter (отдельный плагин) ходит через `iterate_counters`.\n\nCardinality cap = `limits.max_counter_names` (8192 default);\nчерез cliff — `metrics.cardinality_rejected` поднимается.",
-			"x": 6240,
-			"y": 1881,
+			"x": 6211,
+			"y": 1911,
 			"width": 490,
 			"height": 240
 		},
@@ -340,8 +340,8 @@
 			"id": "n_timer",
 			"type": "text",
 			"text": "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\nОдин shared service executor (`timer.en.md`). Все таймеры\nплагинов парятся с их lifetime_anchor.\nПосле shutdown_requested — pending fire'ы дропаются\nдо того как зайдут в плагин.",
-			"x": 6807,
-			"y": 1901,
+			"x": 6778,
+			"y": 1931,
 			"width": 467,
 			"height": 200
 		},
@@ -349,7 +349,7 @@
 			"id": "n_gnet_proto",
 			"type": "text",
 			"text": "# gnet protocol\n`plugins/protocols/gnet/`\n\nКаноничный wire-формат — header + payload + framing.\nЛинкуется как **STATIC** в kernel binary (kernel-internal),\nне отдельный `.so`.\n\n`allowed_trust_mask = Untrusted | Peer | Loopback | IntraNode`.",
-			"x": 11143,
+			"x": 11384,
 			"y": 464,
 			"width": 512,
 			"height": 220
@@ -358,7 +358,7 @@
 			"id": "n_raw_proto",
 			"type": "text",
 			"text": "# raw protocol\n`plugins/protocols/raw/`\n\nPassthrough — payload = envelope. Без framing'а, без reassembly.\nТолько для локальных стеков.\n\n`allowed_trust_mask = Loopback | IntraNode` —\nядро отбивает попытки использовать raw на `Untrusted`.",
-			"x": 11732,
+			"x": 11973,
 			"y": 464,
 			"width": 520,
 			"height": 220
@@ -367,7 +367,7 @@
 			"id": "n_noise_plugin",
 			"type": "text",
 			"text": "# security-noise\n`plugins/security/noise/`\n\nIndependent git unit (mirror `GoodNet-io/security-noise`).\nGPL-2 + linking exception.\n\nРеализует `gn_security_provider_vtable_t`:\n- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n- libsodium для AEAD / KDF / random\n- export_transport_keys → передаёт ключи в kernel-side\n  `InlineCrypto` для post-handshake fast path\n\n`allowed_trust_mask = Untrusted | Peer` — ставится на провайдера\nи проверяется ядром на каждый `Sessions::create`.",
-			"x": 4750,
+			"x": 6430,
 			"y": 404,
 			"width": 520,
 			"height": 340
@@ -376,7 +376,7 @@
 			"id": "n_null_plugin",
 			"type": "text",
 			"text": "# security-null\n`plugins/security/null/`\n\nIndependent git unit. MIT.\n\nPassthrough provider — `needs_handshake = false`,\nencrypt/decrypt = identity copy.\n\n`allowed_trust_mask = Loopback | IntraNode` —\nпод канонический v1 stack включается **только** для локальных\nконн'ов; попытка взять null на `Untrusted` отбивается ядром\nсинхронно. Plain-text-on-untrusted в v1 unreachable.",
-			"x": 5348,
+			"x": 7028,
 			"y": 424,
 			"width": 497,
 			"height": 300
@@ -384,8 +384,8 @@
 		{
 			"id": "n_tcp_plugin",
 			"type": "text",
-			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Boost.Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench: 6.42 Gbps single-conn 16KB×1000.",
-			"x": 8056,
+			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Standalone Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench: см. `bench/reports/` (`bench_tcp` fixture).",
+			"x": 7981,
 			"y": 1147,
 			"width": 540,
 			"height": 280
@@ -394,7 +394,7 @@
 			"id": "n_udp_plugin",
 			"type": "text",
 			"text": "# link-udp\n`plugins/links/udp/`\n\nIndependent git unit. GPL-2 + lex.\n\n`scheme = \"udp\"`. Datagram link — без reliability, без ordering.\nApplication-level reassembly через protocol layer.",
-			"x": 6854,
+			"x": 6779,
 			"y": 1187,
 			"width": 520,
 			"height": 200
@@ -402,17 +402,17 @@
 		{
 			"id": "n_ws_plugin",
 			"type": "text",
-			"text": "# link-ws\n`plugins/links/ws/`\n\nIndependent git unit. GPL-2 + lex.\n\n`scheme = \"ws\"` / `\"wss\"`. Boost.Beast — binary frames только.\nBrowser-friendly путь к ядру.",
+			"text": "# link-ws\n`plugins/links/ws/`\n\nIndependent git unit. GPL-2 + lex.\n\n`scheme = \"ws\"` / `\"wss\"`. In-house RFC 6455 framing\n(plugins/links/ws/wire.hpp) — binary frames только.\nBrowser-friendly путь к ядру.",
 			"x": 5038,
-			"y": 1187,
-			"width": 505,
-			"height": 200
+			"y": 1177,
+			"width": 430,
+			"height": 220
 		},
 		{
 			"id": "n_ipc_plugin",
 			"type": "text",
 			"text": "# link-ipc\n`plugins/links/ipc/`\n\nIndependent git unit. MIT.\n\n`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\nBridge-плагины поверх IPC объявляют `IntraNode` на\n`notify_connect` — null security их пропустит без handshake'а\n(`security-trust.en.md` §3, bridge-плагины).",
-			"x": 7452,
+			"x": 7377,
 			"y": 1157,
 			"width": 527,
 			"height": 260
@@ -421,7 +421,7 @@
 			"id": "n_tls_plugin",
 			"type": "text",
 			"text": "# link-tls\n`plugins/links/tls/`\n\nIndependent git unit. Apache-2.0 (OpenSSL compat).\n\n`scheme = \"tls\"`. Identity authentication — задача security pipeline'а,\nне TLS. По умолчанию `verify_peer = true` (OpenSSL trust store);\n`links.tls.verify_peer = false` — opt-out для случая, когда Noise\nповерху берёт identity на себя.",
-			"x": 6238,
+			"x": 6163,
 			"y": 1167,
 			"width": 540,
 			"height": 240
@@ -429,17 +429,17 @@
 		{
 			"id": "n_heartbeat_plugin",
 			"type": "text",
-			"text": "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\nIndependent git unit (`GoodNet-io/handler-heartbeat`). GPL-2 + lex.\n\nРеализует `gn_handler_vtable_t`:\n- per-peer ping/pong на таймере\n- jitter `hash(conn_id) % 5s`\n- max_missed → `host_api->disconnect(conn)`\n- регистрирует extension `heartbeat.peer.miss` для соседних плагинов\n\nCooperative shutdown через `is_shutdown_requested` —\nре-arm таймера прекращается.",
+			"text": "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\nIndependent git unit (`GoodNet-io/handler-heartbeat`). GPL-2 + lex.\n\nРеализует `gn_handler_vtable_t`:\n- per-peer ping/pong на таймере\n- jitter `hash(conn_id) % 5s`\n- max_missed → `host_api->disconnect(conn)`\n- регистрирует `gn.heartbeat` extension (RTT + STUN-on-the-wire\n  observed-address reflection) для соседних плагинов\n\nCooperative shutdown через `is_shutdown_requested` —\nре-arm таймера прекращается.",
 			"x": 3719,
-			"y": 414,
+			"y": 404,
 			"width": 540,
-			"height": 320
+			"height": 340
 		},
 		{
 			"id": "n_int_tests",
 			"type": "text",
 			"text": "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\nmirror `GoodNet-io/integration-tests`).\n\nCross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\nмомент.\n\nПодтягивается тем же `nix run .#setup` через slot map.\nЧисто-kernel \"integration\" тесты живут в `tests/unit/integration/`\nи линкуются с kernel напрямую.",
-			"x": 4363,
+			"x": 6043,
 			"y": -140,
 			"width": 540,
 			"height": 280
@@ -457,7 +457,7 @@
 			"id": "n_quic_plugin",
 			"type": "text",
 			"text": "# gn.link.quic\n`plugins/links/quic/`\n\nDiscovered at canvas-render time from the plugin tree. Run `make livedoc` to refresh after adding or removing a link plugin checkout.",
-			"x": 5620,
+			"x": 5545,
 			"y": 1207,
 			"width": 540,
 			"height": 160
@@ -465,17 +465,17 @@
 		{
 			"id": "n_rm_nat_traversal_pipeline",
 			"type": "text",
-			"text": "# ✗ NAT-traversal pipeline\n\nstatus: **missing**\n\nevidence: plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 5494,
+			"text": "# ✓ NAT-traversal pipeline\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 6660,
 			"y": -100,
-			"width": 540,
+			"width": 377,
 			"height": 200
 		},
 		{
 			"id": "n_rm_multi_path_scheduler",
 			"type": "text",
 			"text": "# ✓ Multi-path scheduler\n\nstatus: **done**\n\nevidence: plugins/strategies/float_send_rtt/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6111,
+			"x": 7115,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -483,8 +483,35 @@
 		{
 			"id": "n_rm_directed_relay_direct_upgrade",
 			"type": "text",
-			"text": "# ✗ Directed relay → direct upgrade\n\nstatus: **missing**\n\nevidence: plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6619,
+			"text": "# ✓ Directed relay → direct upgrade\n\nstatus: **done**\n\nevidence: plugins/links/ice/session.cpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 7622,
+			"y": -100,
+			"width": 392,
+			"height": 200
+		},
+		{
+			"id": "n_rm_dplpmtud_active_path_mtu_probing",
+			"type": "text",
+			"text": "# ✓ DPLPMTUD active path-MTU probing\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 8091,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_multi_turn_fallback",
+			"type": "text",
+			"text": "# ✓ Multi-TURN fallback\n\nstatus: **done**\n\nevidence: token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 8708,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_ipv6_mdns_dual_stack",
+			"type": "text",
+			"text": "# ✓ IPv6 mDNS dual-stack\n\nstatus: **done**\n\nevidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 9325,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -493,7 +520,7 @@
 			"id": "n_rm_kademlia_style_dht",
 			"type": "text",
 			"text": "# ✗ Kademlia-style DHT\n\nstatus: **missing**\n\nevidence: plugins/handlers/kademlia/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7236,
+			"x": 9943,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -502,7 +529,7 @@
 			"id": "n_rm_address_based_forwarding",
 			"type": "text",
 			"text": "# ✗ Address-based forwarding\n\nstatus: **missing**\n\nevidence: plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7691,
+			"x": 10397,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -511,7 +538,7 @@
 			"id": "n_rm_kv_storage_handler",
 			"type": "text",
 			"text": "# ✓ KV storage handler\n\nstatus: **done**\n\nevidence: plugins/handlers/store/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8308,
+			"x": 11015,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -520,7 +547,7 @@
 			"id": "n_rm_gossip_sync_handler",
 			"type": "text",
 			"text": "# ✗ Gossip sync handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/gossip/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8763,
+			"x": 11469,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -529,7 +556,88 @@
 			"id": "n_rm_offline_outbound_queue",
 			"type": "text",
 			"text": "# ✗ Offline outbound queue\n\nstatus: **missing**\n\nevidence: token 'outbound_queue' absent; token 'offline_queue' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 9217,
+			"x": 11924,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_subprocess_security_handler_worker_proxy",
+			"type": "text",
+			"text": "# ✓ Subprocess SECURITY/HANDLER worker proxy\n\nstatus: **done**\n\nevidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 12542,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_recv_side_parallel_decrypt",
+			"type": "text",
+			"text": "# ✓ Recv-side parallel decrypt\n\nstatus: **done**\n\nevidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 13159,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_link_capability_gate",
+			"type": "text",
+			"text": "# ✓ Link capability gate\n\nstatus: **done**\n\nevidence: core/kernel/link_capability.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 13776,
+			"y": -100,
+			"width": 407,
+			"height": 200
+		},
+		{
+			"id": "n_rm_dynamicruntime_dlsym_cache",
+			"type": "text",
+			"text": "# ✓ DynamicRuntime dlsym cache\n\nstatus: **done**\n\nevidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 14260,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_required_plugin_manifest_pinning",
+			"type": "text",
+			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 14877,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_gn_core_unload_plugin_hot_reload",
+			"type": "text",
+			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 15495,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_subprocess_host_call_slot_completion",
+			"type": "text",
+			"text": "# ✓ Subprocess HOST_CALL slot completion\n\nstatus: **done**\n\nevidence: symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 16112,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_per_slot_reply_timeout_override",
+			"type": "text",
+			"text": "# ✓ Per-slot reply-timeout override\n\nstatus: **done**\n\nevidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 16729,
+			"y": -100,
+			"width": 540,
+			"height": 200
+		},
+		{
+			"id": "n_rm_wire_codec_gn_err_wire_decode",
+			"type": "text",
+			"text": "# ✓ Wire codec GN_ERR_WIRE_DECODE\n\nstatus: **done**\n\nevidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 17346,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -537,17 +645,17 @@
 		{
 			"id": "n_rm_fuzz_harness",
 			"type": "text",
-			"text": "# ✗ Fuzz harness\n\nstatus: **missing**\n\nevidence: tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 9834,
+			"text": "# ✓ Fuzz harness\n\nstatus: **done**\n\nevidence: tests/fuzz/CMakeLists.txt present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 17965,
 			"y": -100,
-			"width": 540,
+			"width": 377,
 			"height": 200
 		},
 		{
 			"id": "n_rm_coverage_gating",
 			"type": "text",
 			"text": "# ✗ Coverage gating\n\nstatus: **missing**\n\nevidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 10452,
+			"x": 18419,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -556,7 +664,7 @@
 			"id": "n_rm_plugin_templates_and_scaffolder",
 			"type": "text",
 			"text": "# ✓ Plugin templates and scaffolder\n\nstatus: **done**\n\nevidence: nix/plugin.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11070,
+			"x": 19036,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -565,7 +673,7 @@
 			"id": "n_rm_test_vectors",
 			"type": "text",
 			"text": "# ✗ Test vectors\n\nstatus: **missing**\n\nevidence: tests/vectors/ absent; docs/test-vectors/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11525,
+			"x": 19491,
 			"y": -100,
 			"width": 475,
 			"height": 200
