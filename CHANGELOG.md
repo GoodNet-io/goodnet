@@ -6,6 +6,160 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Subprocess LINK runtime — host-call slot completion
+
+`RemoteHost::handle_host_call_` now decodes the four LINK
+host-call opcodes that previously fell through the default branch:
+`NOTIFY_CONNECT` (0x13), `NOTIFY_DISCONNECT` (0x14),
+`REGISTER_VTABLE` (0x15), `UNREGISTER_VTABLE` (0x16). The
+worker-side library (`sdk/cpp/remote_plugin.cpp`) gains four
+matching `host_api_t` thunks wired into `g_state.synth_api`, so a
+subprocess LINK plugin can finally drive the same host surface a
+static or dynamic LINK plugin sees.
+
+The remote LINK vtable proxy's `send_batch` slot is also
+synthesised — it loops over each frame, issuing one
+`link_send_thunk` PLUGIN_CALL per frame. The fallback path in
+`internal.cpp` (scalar `send`) is unchanged; callers iterating the
+vtable directly now observe a non-null `send_batch`.
+
+`plugins/workers/remote_echo` exercises the new surface end-to-
+end: `echo_connect` calls `notify_connect` with synthesised
+pk/uri/loopback-trust/initiator-role; three new gtest cases under
+`plugins/workers/remote_echo/tests/test_remote_echo_slots.cpp`
+round-trip notify_connect, send_batch via the proxy, and
+register/unregister via call_register.
+
+### gn_core_unload_plugin — host-driven hot-reload
+
+The C ABI entry point `gn_core_unload_plugin(name)` now drives a
+real per-name teardown through a new `PluginManager::unload(name)`
+path. The existing `shutdown` / `rollback` walks were factored into
+a shared `teardown_one()` helper so the per-name path reuses the
+quiescence-gated unregister → shutdown → close chain without
+duplicating it. Idempotent on unknown name (`GN_ERR_NOT_FOUND`);
+NULL argument is rejected with `GN_ERR_INVALID_ARGUMENT`.
+`docs/contracts/plugin-lifetime.en.md` §6.1 documents the
+host-driven hot-reload contract: after `unload(name)` returns
+`GN_OK`, the host may re-prime with a fresh
+`gn_core_load_plugins`. Two new integration tests exercise the
+reload (`CoreUnloadReload`) and multi-protocol coexistence
+(`RegisterSecondProtocol`) paths.
+
+### DynamicRuntime — symbols cached at load
+
+`DynamicRuntime::load` now resolves every `gn_plugin_*` symbol
+once via `dlsym` and stores function pointers on the owning
+`PluginInstance` (a new `DynamicPluginSymbols` aggregate). The
+init / register / unregister / shutdown entry points dereference
+the cached pointers instead of re-issuing `dlsym` per call —
+measurable on hot paths that load and tear down many plugins
+back-to-back (test harnesses, hot-reload). `close()` resets the
+symbol cache alongside `dlclose` so a reused `PluginInstance`
+never holds a dangling pointer. A diagnostic
+`dlsym_call_count()` counter on `DynamicRuntime` lets white-box
+tests assert the cache holds: three new cases in
+`test_dynamic_runtime_dlsym_cache.cpp` cover resolve-on-load,
+no-re-resolve across 64 register/unregister cycles, and
+cache-clear on dlclose.
+
+### PluginManifest — per-plugin quiescence override + O(1) find
+
+`ManifestEntry` carries an optional `quiescence_timeout_s` field
+parsed from JSON; the rollback path consults the per-plugin value
+first and falls back to the global default. Long-running handlers
+declare longer drain windows without inflating the global timeout
+for every plugin. The override is documented in
+`docs/contracts/plugin-manifest.en.md` §2.
+
+`PluginManifest::find(path)` is now O(1) — a sibling
+`std::unordered_map<std::string, std::size_t>` index keyed on the
+canonicalised path runs alongside the order-preserving vector,
+rebuilt on every `add_entry` / `parse`. Remote-heavy deployments
+with hundreds of subprocess entries see find drop from O(N) to
+hash-lookup cost.
+
+`set_manifest` and `set_manifest_required` now assert
+`!active_` — those setters are bootstrap-only and racing them
+against an active session is a programming error the comment
+already promised to catch.
+
+### Wire codec — decode-failure error code
+
+`sdk/types.h` adds `GN_ERR_WIRE_DECODE = -17` distinguishing CBOR
+decode failures (type-tag mismatch, truncated payload, bad tag)
+from numeric range violations (`GN_ERR_OUT_OF_RANGE`, kept for
+actual overflow into a smaller target type). The
+`wire_codec::Reader` accepts an optional `std::string* diag`
+output parameter — the offset + decoder's expectation lands in
+`diag` on failure, matching the diagnostic shape
+`PluginManifest::parse` already exposes. `gn_strerror` learns the
+new code. Existing `!= GN_OK` call sites in `remote_host.cpp` and
+the worker library are unaffected.
+
+### Bench infrastructure — bytes-processed metering + parody/real fence
+
+`bench/plugins/bench_real_e2e.cpp` and `bench/plugins/bench_tcp.cpp`
+both reported `bytes_per_second` as `meter.size() × payload` or
+`sent_ok × payload` — counts that excluded iterations where the
+arrival deadline was missed or backpressure forced a continue.
+A bring-up transient could silently zero the row and the
+aggregator would drop it from the report entirely. Both helpers
+now use `state.iterations() × payload`, matching
+`bench_udp.cpp::EchoRoundtrip`. All `RealFixture*Echo` rows and
+`TcpFixture/Throughput` rows now emit non-zero throughput.
+
+`bench/comparison/reports/aggregate.py` tags every row with a
+`mode` field (`"real"` for libp2p / iroh / `RealFixture*`,
+`"parody"` for iperf3 / socat / synthetic) and refuses to mix
+shapes inside the same pivot cell via a new
+`ModeMismatchError`. The aggregator exits non-zero if a
+mis-tagged parody row sneaks into a real-mode column.
+
+`docs/perf/methodology.en.md` §2.6 documents the send/recv
+asymmetry as a structural property of the data plane: send fans
+out through `CryptoWorkerPool::run_batch` via
+`reserve_send_nonces` + `encrypt_batch_transport`; recv walks
+`decrypt_transport` single-threaded inside `notify_inbound_bytes`.
+The follow-up shape (`reserve_recv_nonces`,
+`decrypt_batch_transport`, batched gather) is described as
+factual missing primitives, not a regression.
+
+### RFC coverage — RFC 7692 not-implemented explicit
+
+`tools/livedoc/rfc_coverage.yaml` and the rendered
+`docs/_facts/rfc_coverage.yaml` declare RFC 7692
+(permessage-deflate WebSocket compression) explicitly
+`not-implemented`: a client offering
+`Sec-WebSocket-Extensions: permessage-deflate` in the handshake
+gets a response with no `Sec-WebSocket-Extensions` echo, so per
+RFC 7692 §5.1 the extension never activates and the connection
+falls back to uncompressed frames. RFC 6455 entry gains a §5.4
+fragmentation-reassembly detail (max 16 MiB merged, 64 KiB
+single-frame cap) matching the WS plugin's actual ceiling.
+
+### Attestation — v1 format frozen, extension namespace documented
+
+`docs/contracts/attestation.en.md` adds a §Stability paragraph
+declaring the current Ed25519 / 232-byte / msg_id 0x11 layout as
+the canonical v1 schema. Future attestation schemes register
+under a new extension namespace; the kernel-side
+`AttestationDispatcher` is the kept-stable shim for this format.
+The dispatcher's file-header comment and
+`docs/architecture/security-flow.ru.md` §attestation
+cross-reference the new contract paragraph.
+
+### Doc — plugin-lifetime future runtimes + remote-plugin trust model
+
+`docs/contracts/plugin-lifetime.en.md` §2a notes that
+`IPluginRuntime` is a C++ interface today; a C ABI version is the
+natural development when WASM / eBPF runtimes arrive (the
+runtime itself can be a loadable module). `docs/contracts/remote-
+plugin.en.md` calls out that the subprocess trust model is
+operator-vetted manifest + sha256, not runtime isolation, and
+documents the `descriptor_name_storage_` runtime-mirrored
+pattern as the price of supporting HELLO-payload names.
+
 ### IPluginRuntime polymorphic-loader abstraction
 
 PluginManager now dispatches every plugin-lifecycle step
