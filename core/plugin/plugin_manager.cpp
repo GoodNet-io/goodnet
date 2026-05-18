@@ -124,6 +124,12 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     instances_.reserve(paths.size());
     std::vector<ServiceDescriptor> descriptors;
     descriptors.reserve(paths.size());
+    /// Track every path that survived `open_one` in canonical form so
+    /// the required-plugin pin (`ManifestEntry::required`) can match
+    /// after the post-resolve reorder clears `inst.path`. The set is
+    /// authoritative for "this path's plugin reached register".
+    std::vector<std::string> opened_paths;
+    opened_paths.reserve(paths.size());
     for (const auto& p : paths) {
         PluginInstance inst{};
         std::string diag;
@@ -134,6 +140,7 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
             return rc;
         }
         descriptors.push_back(inst.descriptor);
+        opened_paths.push_back(PluginManifest::canonical_path(inst.path));
         instances_.push_back(std::move(inst));
     }
 
@@ -207,21 +214,19 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     }
 
     /// Phase 6: required-plugin pin enforcement. Every manifest entry
-    /// tagged `required = true` must have a corresponding loaded +
-    /// registered instance, identified by canonical path. A missing
-    /// required plugin returns `GN_ERR_INVALID_STATE` and rolls back
-    /// the whole load so no half-state survives.
+    /// tagged `required = true` must have a corresponding registered
+    /// instance, identified by canonical path through `opened_paths`.
+    /// The resolver clears `inst.path` during reorder, so `opened_paths`
+    /// is the authoritative record of "which paths reached this point".
+    /// A missing required plugin returns `GN_ERR_INVALID_STATE` and
+    /// rolls back the whole load so no half-state survives.
     if (!manifest_.empty()) {
         std::vector<std::string> missing;
         for (const auto& me : manifest_.entries()) {
             if (!me.required) continue;
-            const bool present = std::any_of(
-                instances_.begin(), instances_.end(),
-                [&](const PluginInstance& inst) {
-                    return inst.registered &&
-                           PluginManifest::canonical_path(inst.path) ==
-                               me.path;
-                });
+            const bool present = std::find(opened_paths.begin(),
+                                           opened_paths.end(),
+                                           me.path) != opened_paths.end();
             if (!present) missing.push_back(me.path);
         }
         if (!missing.empty()) {

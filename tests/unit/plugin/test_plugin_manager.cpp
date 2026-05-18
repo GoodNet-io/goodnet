@@ -554,3 +554,118 @@ TEST(PluginRuntime_Registry, RegisterRuntimeRejectsNullArgs) {
     EXPECT_EQ(pm.register_runtime("nullrt", nullptr),
               GN_ERR_NULL_ARG);
 }
+
+// ── Required-plugin pinning (`ManifestEntry::required`) ────────────────────
+//
+// `plugin-manifest.en.md`: entries tagged `required = true` make
+// `PluginManager::load` refuse to complete without that path among
+// the registered set. Used to pin `gn.link.tcp` + `gn.link.tls` in
+// the kernel's default deployment so a misconfigured operator never
+// silently runs without the minimum carrier set.
+
+TEST(PluginManager_ManifestRequired,
+     ManifestRequiredPluginMissingFailsLoad) {
+    /// Manifest pins a path the load list does not contain, with the
+    /// `required` flag set. Even though the only path the host hands
+    /// to `load` is the null .so and that load succeeds, the
+    /// post-register required-set walk must fail with INVALID_STATE
+    /// and name the absent path in the diagnostic.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    PluginManifest m;
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+    /// Mark a separate, deliberately-absent entry as required.
+    ManifestEntry req{};
+    req.path     = "/some/required/path/libgoodnet_link_tls.so";
+    req.required = true;
+    /// Tunnel the prebuilt entry through the JSON parser so the
+    /// canonicalisation rules apply identically to a real manifest.
+    /// Simpler: use `add_entry` followed by a manual required flag
+    /// edit via re-parse. Here we round-trip through JSON to also
+    /// exercise the `required` parse path.
+    const std::string js = std::string("{\"plugins\":[") +
+        "{\"path\":\"" + GOODNET_NULL_PLUGIN_PATH +
+        "\",\"sha256\":\"" + PluginManifest::encode_hex(*digest) +
+        "\"}," +
+        "{\"path\":\"/some/required/path/libgoodnet_link_tls.so\","
+        "\"sha256\":\"" + std::string(64, '0') +
+        "\",\"required\":true}" +
+        "]}";
+    PluginManifest parsed;
+    std::string parse_diag;
+    ASSERT_EQ(PluginManifest::parse(js, parsed, parse_diag), GN_OK)
+        << parse_diag;
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(parsed));
+
+    std::string diag;
+    const std::vector<std::string> paths = {GOODNET_NULL_PLUGIN_PATH};
+    EXPECT_EQ(pm.load(paths, &diag), GN_ERR_INVALID_STATE);
+    EXPECT_NE(diag.find("required plugin"), std::string::npos) << diag;
+    EXPECT_NE(diag.find("libgoodnet_link_tls"), std::string::npos)
+        << "diag must name the missing required path so the operator "
+           "can fix it: " << diag;
+    EXPECT_EQ(pm.size(), 0u)
+        << "failed required-plugin pin must roll the load back to zero";
+}
+
+TEST(PluginManager_ManifestRequired,
+     RequiredEntryPresentAndRegisteredSucceeds) {
+    /// Same shape as above but the required entry's path is in the
+    /// `load` list. The post-register walk must pass.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    const std::string js = std::string("{\"plugins\":[") +
+        "{\"path\":\"" + GOODNET_NULL_PLUGIN_PATH +
+        "\",\"sha256\":\"" + PluginManifest::encode_hex(*digest) +
+        "\",\"required\":true}" +
+        "]}";
+    PluginManifest parsed;
+    std::string parse_diag;
+    ASSERT_EQ(PluginManifest::parse(js, parsed, parse_diag), GN_OK)
+        << parse_diag;
+    ASSERT_FALSE(parsed.entries().empty());
+    EXPECT_TRUE(parsed.entries().front().required);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(parsed));
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    EXPECT_EQ(pm.size(), 1u);
+    pm.shutdown();
+}
+
+TEST(PluginManager_ManifestRequired, ParserRejectsNonBooleanRequired) {
+    /// Operator typo guard: `"required": "yes"` must fail parse
+    /// rather than collapse to false and silently lose the pin.
+    const std::string js =
+        "{\"plugins\":["
+        "{\"path\":\"/p.so\",\"sha256\":\""
+        + std::string(64, '0') +
+        "\",\"required\":\"yes\"}"
+        "]}";
+    PluginManifest parsed;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(js, parsed, diag),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("required"), std::string::npos) << diag;
+}
+
+TEST(PluginManager_ManifestRequired, DefaultRequiredFlagIsFalse) {
+    /// Entries that omit the `required` key must default to false so
+    /// the existing manifests continue to load every entry without
+    /// rejecting any of them as missing.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    PluginManifest m;
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+    ASSERT_FALSE(m.entries().empty());
+    EXPECT_FALSE(m.entries().front().required);
+}
