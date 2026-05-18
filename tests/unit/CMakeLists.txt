@@ -77,6 +77,24 @@ if(TARGET remote_echo_worker)
     )
 endif()
 
+# SECURITY proxy regression — same fall-back shape as remote_echo.
+if(TARGET remote_noise_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_noise_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_NOISE_STUB_PATH=\"$<TARGET_FILE:remote_noise_stub_worker>\""
+    )
+endif()
+
+# HANDLER proxy regression — same fall-back shape as remote_echo.
+if(TARGET remote_handler_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_handler_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_HANDLER_STUB_PATH=\"$<TARGET_FILE:remote_handler_stub_worker>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_unit_tests
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60

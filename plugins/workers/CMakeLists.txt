@@ -6,3 +6,11 @@
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/remote_echo/CMakeLists.txt")
     add_subdirectory(remote_echo)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/remote_noise_stub/CMakeLists.txt")
+    add_subdirectory(remote_noise_stub)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/remote_handler_stub/CMakeLists.txt")
+    add_subdirectory(remote_handler_stub)
+endif()
