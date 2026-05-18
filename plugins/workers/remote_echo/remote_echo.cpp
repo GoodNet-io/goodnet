@@ -21,7 +21,6 @@ namespace {
 
 struct EchoSelf {
     const host_api_t* api = nullptr;
-    gn_conn_id_t      next_conn = 1;
 };
 
 EchoSelf g_self{};
