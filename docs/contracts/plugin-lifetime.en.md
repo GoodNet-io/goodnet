@@ -72,6 +72,28 @@ IPluginRuntime>)` before `load`. From that point on, manifest
 entries whose `kind` field matches dispatch through the custom
 runtime; PluginManager itself is unchanged.
 
+### 2a. Future runtimes
+
+`IPluginRuntime` is a C++ abstract class today
+(`core/plugin/plugin_runtime.hpp`). `dynamic`, `static`, and
+`remote` are peer implementations linked into the kernel binary
+through the C++ surface — none of them is privileged over the
+others, and none lives in a separately-loadable module. The
+runtime registry is the integration point.
+
+A C-ABI version of the same interface is the natural extension
+when foreign-language runtimes arrive — a WASM host loader, an
+eBPF runtime that maps GoodNet plugins onto kernel-side BPF
+programs, an FFI bridge that JITs a non-C++ language into a
+worker. Each of those wants to ship as a separately-loaded
+module rather than be statically linked into the kernel, so the
+runtime itself becomes a plugin. The shape of the C-ABI surface
+mirrors the C++ interface: `init`, `register`, `unregister`,
+`shutdown`, `discover`-style entry points plus a vtable that
+`PluginManager` invokes through. Until such a runtime lands,
+the C++ interface is the only registration surface and the three
+built-in kinds cover every shipped configuration.
+
 ---
 
 ## 3. Plugin entry symbols
