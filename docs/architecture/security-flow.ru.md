@@ -203,6 +203,15 @@ v1 не вводит wait-time bound. Plugin'ы, которым нужен deadl
 `Loopback` и `IntraNode` пропускают весь шаг — их trust
 финализирован на `notify_connect`.
 
+Формат заморожен — Ed25519-подпись над 232-байтовым payload'ом
+на `msg_id = 0x11` — это канонический v1 schema; альтернативные
+attestation-схемы регистрируются под отдельным extension-
+namespace `gn.security.attestation.*` рядом с v1, не вытесняя
+его. Дисспетчер живёт в kernel-коде (`core/kernel/
+attestation_dispatcher.{hpp,cpp}`) и не выносится в плагин,
+чтобы trust upgrade нельзя было подменить через подмену .so.
+Детальная формулировка — [attestation.en.md §11](../contracts/attestation.en.md).
+
 ---
 
 ## Distinct-provider-id invariant

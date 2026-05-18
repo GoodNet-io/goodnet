@@ -13,6 +13,18 @@
 /// The dispatcher is provider-agnostic: any security session that
 /// exports a `gn_handshake_keys_t::handshake_hash` (per
 /// `plugins/security/noise/docs/handshake.md` §2) carries the flow.
+///
+/// This class is the v1-canonical implementation of the
+/// `docs/contracts/attestation.en.md` §11 frozen format (Ed25519,
+/// 232-byte payload, `msg_id == 0x11`) — not the only-possible
+/// shape of an attestation gate. Alternative attestation schemes
+/// (post-quantum signatures, hierarchical CA delegation, different
+/// payload sizes) register under a separate
+/// `gn.security.attestation.*` extension namespace and run
+/// alongside this dispatcher rather than replacing it. The class
+/// is therefore kept in `core/kernel/`, not extracted to a
+/// plugin-side module: the v1 gate must run in kernel code so the
+/// trust upgrade cannot be subverted by plugin replacement.
 
 #pragma once
 

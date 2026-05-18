@@ -323,7 +323,38 @@ more frequent re-attestation.
 
 ---
 
-## 11. Cross-references
+## 11. Stability
+
+The attestation format defined here — Ed25519 signature over a
+232-byte payload carried on system `msg_id = 0x11`, with the
+136-byte cert / 32-byte binding / 64-byte signature layout of §2 —
+is the canonical v1 schema and is **frozen**. The wire payload
+size, layout, hash algorithm, signature algorithm, and reserved
+msg_id are not subject to amendment under this contract surface;
+the `_reserved` slot in the embedded cert is the sole extension
+point and grows only at the tail per the frontmatter `Stability`
+note.
+
+Future attestation schemes — alternative signature suites, post-
+quantum experiments, hierarchical CA delegation (per §9), longer
+or shorter payload shapes — register under a separate
+`gn.security.attestation.*` extension namespace and do not
+displace the v1 dispatcher. The kernel-side
+`AttestationDispatcher` (`core/kernel/attestation_dispatcher.{hpp,
+cpp}`) is the kept-stable shim for this format and is **not
+extracted to a plugin** within this contract surface: the gate
+between `Untrusted` and `Peer` runs in kernel code so that the
+trust upgrade cannot be subverted by replacing or unloading a
+plugin, and the v1 payload shape is small enough that an
+extension-namespace registration is the right tool for new
+schemes rather than a plugin-side rewrite of the existing one.
+
+A future attestation scheme is a peer of v1 under a fresh
+extension namespace, not a replacement for it.
+
+---
+
+## 12. Cross-references
 
 - Attestation cert format and verification: `identity.en.md` §4.
 - Trust upgrade gate fired by §6: `security-trust.en.md` §3.
