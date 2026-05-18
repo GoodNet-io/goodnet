@@ -5,7 +5,7 @@
 # intentionally noisy (rare; prefer fixing the diagnostic).
 #
 # Wires through CMake's `compile_commands.json` from the `build/`
-# directory; `nix run .#dev` populates it. clang-tidy needs every
+# directory; `nix run .#build` populates it. clang-tidy needs every
 # `-isystem` flag the dev shell injects through `NIX_CFLAGS_COMPILE`
 # (gtest, spdlog, boost) — git launches hooks with a stripped env, so
 # the body re-enters `nix develop` and runs there.
