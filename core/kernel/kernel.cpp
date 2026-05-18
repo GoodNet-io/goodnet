@@ -78,6 +78,21 @@ Kernel::Kernel() noexcept {
         GN_EXT_LINK_CAPABILITY,
         GN_EXT_LINK_CAPABILITY_VERSION,
         static_cast<const void*>(&kLinkCapabilityApi));
+
+    /// Wire the connection-metadata lookup so the router can apply
+    /// the `GN_TRUST_ANONYMOUS_LOOPBACK` + loopback-scope relaxation
+    /// of the zero-sender drop rule. The lookup peeks at the conn
+    /// record's `trust` field and parses the scheme/uri to classify
+    /// loopback. Anything else falls back to the legacy
+    /// `DroppedZeroSender` path.
+    router_.set_conn_lookup(
+        [this](gn_conn_id_t id, Router::ConnInfo& out) {
+            auto rec = connections_.find_by_id(id);
+            if (!rec) return false;
+            out.trust       = rec->trust;
+            out.is_loopback = is_loopback_scope(rec->scheme, rec->uri);
+            return true;
+        });
 }
 
 /// Joins the timer executor before the default member sequence

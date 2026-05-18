@@ -23,16 +23,28 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 #include <string_view>
 
 #include <sdk/handler.h>
+#include <sdk/trust.h>
 #include <sdk/types.h>
 
 #include <core/kernel/identity_set.hpp>
 #include <core/registry/handler.hpp>
 
 namespace gn::core {
+
+/// Classify a connection's scope as "loopback" for the purposes of
+/// the `GN_TRUST_ANONYMOUS_LOOPBACK` zero-sender relaxation gate.
+/// `ipc://` is always loopback; `tcp://`, `udp://`, `tls://`,
+/// `quic://`, `ws://`, `wss://`, `raw-inject://` are loopback iff
+/// their host parses to 127.0.0.0/8, ::1, or one of the
+/// `127.0.0.1` / `localhost` literal forms.
+/// Any other scheme defaults to `false` — the conservative answer.
+[[nodiscard]] bool is_loopback_scope(std::string_view scheme,
+                                      std::string_view uri) noexcept;
 
 /// Outcome of routing one inbound envelope.
 ///
@@ -53,6 +65,17 @@ enum class RouteOutcome {
 /// handler registry.
 class Router {
 public:
+    /// Connection metadata the router consults for the zero-sender
+    /// relaxation gate (`GN_TRUST_ANONYMOUS_LOOPBACK` + loopback scope).
+    /// `lookup` returns `false` when the conn id is unknown — callers
+    /// then fall back to the default `DroppedZeroSender` path.
+    struct ConnInfo {
+        gn_trust_class_t trust          = GN_TRUST_UNTRUSTED;
+        bool             is_loopback    = false;
+    };
+    using ConnLookup =
+        std::function<bool(gn_conn_id_t, ConnInfo&)>;
+
     Router(LocalIdentityRegistry& identities,
            HandlerRegistry&  handlers) noexcept;
 
@@ -73,13 +96,21 @@ public:
     [[nodiscard]] bool relay_available() const noexcept;
     void               set_relay_available(bool v) noexcept;
 
+    /// Install the connection-metadata lookup. Called once at kernel
+    /// startup. When unset (test fixtures) the router falls back to
+    /// the legacy reject-zero-sender behaviour.
+    void set_conn_lookup(ConnLookup fn);
+
 private:
     [[nodiscard]] RouteOutcome dispatch_chain(std::string_view    protocol_id,
                                               const gn_message_t& env) const;
 
+    [[nodiscard]] bool accept_zero_sender(const gn_message_t& env) const;
+
     LocalIdentityRegistry&     identities_;
     HandlerRegistry&      handlers_;
     mutable std::atomic<bool> relay_available_{false};
+    ConnLookup                conn_lookup_;
 };
 
 } // namespace gn::core
