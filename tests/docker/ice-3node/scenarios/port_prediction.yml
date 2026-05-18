@@ -1,0 +1,26 @@
+# Scenario: peer A is behind a synthetic symmetric NAT that
+# allocates strictly sequential WAN ports (stride = 1) across
+# destinations; peer B is behind plain full-cone. The standard
+# ICE srflx pair fails because A's WAN port differs between the
+# STUN reflector and peer B's destination. The rc5 port-
+# prediction salvo at `srflx + 1, + 2, …` is expected to find
+# the working pair within a small fan-out. Assertion: the
+# nominated pair's remote port differs from peer A's advertised
+# srflx port — i.e. nomination used a predicted port, not the
+# original mapping.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: symmetric_stride
+      STRIDE_BASE: "40000"
+      STRIDE_STEP: "1"
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+
+  peer_a:
+    environment:
+      ICE_PORT_PREDICTION_STRIDE_MAX: "8"
+  peer_b:
+    environment:
+      ICE_PORT_PREDICTION_STRIDE_MAX: "8"

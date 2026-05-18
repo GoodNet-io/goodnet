@@ -12,13 +12,15 @@ FROM debian:bookworm-slim
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         iptables iproute2 conntrack ipset netcat-openbsd \
+        python3 \
     && rm -rf /var/lib/apt/lists/*
 
 COPY init-nat.sh /usr/local/bin/init-nat.sh
-RUN chmod +x /usr/local/bin/init-nat.sh
+COPY stride-nat.py /usr/local/bin/stride-nat.py
+RUN chmod +x /usr/local/bin/init-nat.sh /usr/local/bin/stride-nat.py
 
-# NAT_MODE: full_cone | symmetric | shared. Compose-override
-# rewrites this env per scenario.
+# NAT_MODE: full_cone | symmetric | shared | symmetric_stride.
+# Compose-override rewrites this env per scenario.
 ENV NAT_MODE=full_cone
 ENV LAN_IFACE=eth0
 ENV WAN_IFACE=eth1

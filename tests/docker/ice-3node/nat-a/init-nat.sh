@@ -1,23 +1,32 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
 #
-# Bring up the NAT type the scenario asks for. Three modes:
+# Bring up the NAT type the scenario asks for. Four modes:
 #
-# * full_cone   — single SNAT to the WAN-side IP. Once a flow opens
-#                 the reverse mapping is permissive, so any peer can
-#                 send to (WAN-IP, allocated-port) and reach the LAN
-#                 endpoint. STUN srflx candidates work directly.
+# * full_cone         — single SNAT to the WAN-side IP. Once a flow
+#                       opens the reverse mapping is permissive, so any
+#                       peer can send to (WAN-IP, allocated-port) and
+#                       reach the LAN endpoint. STUN srflx candidates
+#                       work directly.
 #
-# * symmetric   — same SNAT but the source port is REWRITTEN per
-#                 destination (achieved via PREROUTING + a separate
-#                 conntrack zone). A peer learning (WAN-IP, port) for
-#                 one destination can't reuse it for another, so ICE
-#                 falls back to TURN relay.
+# * symmetric         — same SNAT but the source port is REWRITTEN per
+#                       destination (achieved via PREROUTING + a
+#                       separate conntrack zone). A peer learning
+#                       (WAN-IP, port) for one destination can't reuse
+#                       it for another, so ICE falls back to TURN.
 #
-# * shared      — both LAN sides translate through the SAME upstream
-#                 IP. Used for the hairpin scenario where peers A and
-#                 B share NAT-A (NAT-B is unused). Hairpin loopback
-#                 enabled so A→B via WAN-IP works inside the NAT.
+# * shared            — both LAN sides translate through the SAME
+#                       upstream IP. Used for the hairpin scenario
+#                       where peers A and B share NAT-A (NAT-B is
+#                       unused). Hairpin loopback enabled so A→B via
+#                       WAN-IP works inside the NAT.
+#
+# * symmetric_stride  — symmetric semantics but with DETERMINISTIC
+#                       sequential-port allocation across destinations
+#                       (stride controlled by STRIDE_BASE + STRIDE_STEP
+#                       env). Used by the port-prediction scenario to
+#                       give the peer-side prediction salvo a
+#                       learnable target.
 #
 # Logs to stdout so `docker compose logs nat_a` shows the chosen
 # mode + the iptables ruleset.
@@ -66,6 +75,29 @@ case "${NAT_MODE}" in
             -o "${WAN_IFACE}" -j MASQUERADE
         iptables -t nat -A POSTROUTING -s "${LAN_SUBNET}" \
             -d "${LAN_SUBNET}" -j MASQUERADE
+        ;;
+    symmetric_stride)
+        # Synthetic symmetric NAT with deterministic
+        # sequential-port allocation. Outbound UDP is redirected
+        # into a userland forwarder which binds upstream sockets
+        # on a strictly increasing WAN port (base + k*step).
+        # Used by the port-prediction scenario so the peer's
+        # +1/+2/+3 salvo lands on a learnable destination.
+        REDIRECT_PORT="${REDIRECT_PORT:-9999}"
+        STRIDE_BASE="${STRIDE_BASE:-40000}"
+        STRIDE_STEP="${STRIDE_STEP:-1}"
+        iptables -t nat -A PREROUTING -i "${LAN_IFACE}" \
+            -p udp -j REDIRECT --to-ports "${REDIRECT_PORT}"
+        # Also masquerade non-UDP traffic so STUN-over-TCP and
+        # control plane traffic still reaches the Internet
+        # subnet without being trapped by the forwarder.
+        iptables -t nat -A POSTROUTING -s "${LAN_SUBNET}" \
+            -o "${WAN_IFACE}" ! -p udp -j MASQUERADE
+        export REDIRECT_PORT STRIDE_BASE STRIDE_STEP \
+               LAN_IFACE WAN_IFACE
+        echo "[init-nat] launching stride-nat daemon" \
+             "base=${STRIDE_BASE} step=${STRIDE_STEP}"
+        python3 /usr/local/bin/stride-nat.py &
         ;;
     *)
         echo "[init-nat] unknown NAT_MODE=${NAT_MODE}" >&2
