@@ -37,7 +37,7 @@ pkgs.writeShellApplication {
 
     if [ $# -ne 2 ]; then
       cat >&2 <<USAGE
-    Usage: nix run .#new-plugin -- <kind> <name>
+    Usage: nix run .#plugin -- new <kind> <name>
       <kind>: handlers | links | protocols | security
       <name>: lowercase identifier matching [a-z][a-z0-9_-]*
     USAGE
@@ -306,7 +306,7 @@ pkgs.writeShellApplication {
 
     ## Status
 
-    Scaffolded by `nix run .#new-plugin`. Replace the TODOs in
+    Scaffolded by `nix run .#plugin -- new`. Replace the TODOs in
     `__NAME__.cpp`, the test cases in `tests/test___NAME__.cpp`,
     the description in `default.nix`, and the placeholder
     `LICENSE` before merging into the plugin set.

@@ -39,7 +39,7 @@ pkgs.writeShellApplication {
 
     if [ $# -ne 1 ]; then
       cat >&2 <<USAGE
-    Usage: nix run .#pull-plugin -- <repo-name>
+    Usage: nix run .#plugin -- pull <repo-name>
       <repo-name>: <kind-singular>-<name>
                    examples: security-noise, link-tcp, handler-heartbeat
     USAGE
@@ -93,8 +93,9 @@ pkgs.writeShellApplication {
       echo "pull-plugin: $repo_name not available at" >&2
       echo "  - $mirror" >&2
       echo "  - $remote_url" >&2
-      echo "  Run \`nix run .#init-mirrors\` from a checkout that" >&2
-      echo "  already has the plugin gits, or wait until the org" >&2
+      echo "  Run \`nix run .#setup\` from a checkout that already" >&2
+      echo "  has the plugin gits (it invokes init-mirrors as part" >&2
+      echo "  of the bootstrap), or wait until the org" >&2
       echo "  repo at $remote_url is published." >&2
       exit 1
     fi

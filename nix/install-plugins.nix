@@ -29,9 +29,9 @@
 #
 # Failure mode. If a plugin is not present and none of the three
 # sources resolve, exit non-zero with a clear message pointing
-# the operator at `nix run .#init-mirrors` (which establishes
-# the local mirrors when at least one operator already has the
-# plugin gits checked out somewhere).
+# the operator at `nix run .#setup` (which establishes the local
+# mirrors as part of the bootstrap when at least one operator
+# already has the plugin gits checked out somewhere).
 
 { pkgs }:
 
@@ -46,7 +46,7 @@ pkgs.writeShellApplication {
       case "$1" in
         --update) update=1 ;;
         *) echo "install-plugins: unknown arg '$1'" >&2
-           echo "  usage: nix run .#install-plugins [-- --update]" >&2
+           echo "  usage: nix run .#plugin -- install [--update]" >&2
            exit 1 ;;
       esac
     fi
@@ -117,8 +117,9 @@ pkgs.writeShellApplication {
         echo "install-plugins: $repo not available at" >&2
         echo "  - $mirror" >&2
         echo "  - $remote_url" >&2
-        echo "  Run \`nix run .#init-mirrors\` from a checkout that" >&2
-        echo "  already has the plugin gits, or wait until the org" >&2
+        echo "  Run \`nix run .#setup\` from a checkout that already" >&2
+        echo "  has the plugin gits (it invokes init-mirrors as part" >&2
+        echo "  of the bootstrap), or wait until the org" >&2
         echo "  repo at $remote_url is published." >&2
         failed+=("$repo")
       fi
