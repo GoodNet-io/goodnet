@@ -60,6 +60,7 @@ def _grep_repo(pattern: str, *, paths: list[str]) -> str | None:
         "--include=*.yaml", "--include=*.nix",
         "--exclude-dir=.git", "--exclude-dir=build*",
         "--exclude-dir=build-release", "--exclude-dir=node_modules",
+        "--exclude-dir=.claude",
         pattern, *paths,
     ]
     try:

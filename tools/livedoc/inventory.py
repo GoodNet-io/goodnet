@@ -42,7 +42,10 @@ def _grep_plugin(plugin_dir: Path, pattern: str) -> str | None:
             ["grep", "-rIn", "-m", "1",
              "--include=*.h", "--include=*.hpp",
              "--include=*.c", "--include=*.cpp",
-             "--exclude-dir=.git",
+             "--exclude-dir=.git", "--exclude-dir=.claude",
+             "--exclude-dir=build", "--exclude-dir=build-release",
+             "--exclude-dir=build-asan", "--exclude-dir=build-tsan",
+             "--exclude-dir=build-mdns-test",
              pattern, str(plugin_dir)],
             capture_output=True, text=True, timeout=10,
         )

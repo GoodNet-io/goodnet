@@ -51,6 +51,8 @@ def _grep_lines() -> list[tuple[str, int, str]]:
         "--include=*.c", "--include=*.h",
         "--exclude-dir=.git", "--exclude-dir=build",
         "--exclude-dir=build-release", "--exclude-dir=tests",
+        "--exclude-dir=.claude", "--exclude-dir=build-asan",
+        "--exclude-dir=build-tsan", "--exclude-dir=build-mdns-test",
         "emit_counter\\|iterate_counters",
         *paths,
     ]
