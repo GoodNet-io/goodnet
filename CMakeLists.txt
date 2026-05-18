@@ -40,6 +40,15 @@ add_compile_options(
     "$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>"
     "$<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>"
     -Wno-unused-parameter
+    # GCC 15 emits `-Wfree-nonheap-object` false positives on
+    # heavily-inlined `std::vector` reserve+push_back paths
+    # (e.g. `frame_tcp_stun`, several gnet codec hot loops). The
+    # analyzer reports `operator delete called on pointer ... with
+    # nonzero offset` — the offset is the std::vector header size
+    # the inliner exposed, not a real bug. Silenced under
+    # `$<$<CXX_COMPILER_ID:GNU>>` so clang builds (asan/tsan/fuzz)
+    # keep the diagnostic.
+    "$<$<CXX_COMPILER_ID:GNU>:-Wno-free-nonheap-object>"
     # Strip the absolute build-tree prefix from `__FILE__` so log
     # output and assertion messages carry repo-relative paths
     # (`core/util/log.hpp:42`) instead of the full filesystem
