@@ -87,9 +87,9 @@ client.send(payload)  →  server.read()  →  server.send(payload)  →  client
 ```
 
 Считается общее число успешно «прокачанных туда-обратно» байт за
-`ECHO_DURATION`. Это симметрично с GoodNet `EchoRoundtrip`
-фикстурами (`bench_udp`, `bench_ws`) — те же байты считаются
-по тем же правилам.
+`ECHO_DURATION`. Это симметрично с GoodNet `RealFixture*Echo/
+*EchoRoundtrip` фикстурами в `bench/plugins/bench_real_e2e.cpp` —
+те же байты считаются по тем же правилам.
 
 **libp2p**: один длинный bi-directional yamux substream, `write_all
 + read_exact` цикл. Substream open платится один раз; steady-state
@@ -102,23 +102,29 @@ limited by yamux frame overhead.
 
 ## Fair-compare caveat
 
-GoodNet `Throughput` бенчи (`UdpFixture::Throughput`,
-`WsFixture::Throughput`) — **send-only**: считают только
-одностороннюю прокачку. Цифры вроде «UDP @ 1200 B = 1.6 GiB/s» не
-сравниваются напрямую с libp2p / iroh — те всегда round-trip.
+GoodNet parody `Throughput` бенчи (`UdpFixture::Throughput`,
+`WsFixture::Throughput`, `TcpFixture::Throughput`,
+`IpcFixture::Throughput` в `bench/plugins/bench_<plug>.cpp`) —
+**send-only**: считают только одностороннюю прокачку. Цифры
+вроде «UDP @ 1200 B = 1.6 GiB/s» не сравниваются напрямую с
+libp2p / iroh — те всегда round-trip.
 
-Для честного сравнения смотрят:
+Для честного сравнения смотрят real-mode `RealFixture*Echo`
+семейство:
 
 | Фикстура | Methodology |
 |---|---|
-| `UdpFixture/Throughput/<N>` | send-only (vs iperf3 UDP) |
-| `WsFixture/Throughput/<N>` | send-only (vs iperf3 TCP) |
-| **`UdpFixture/EchoRoundtrip/<N>`** | round-trip (vs libp2p / iroh) |
-| **`WsFixture/EchoRoundtrip/<N>`** | round-trip (vs libp2p / iroh) |
+| `UdpFixture/Throughput/<N>` | send-only parody (vs iperf3 UDP) |
+| `WsFixture/Throughput/<N>` | send-only parody (vs iperf3 TCP) |
+| `TcpFixture/Throughput/<N>` | send-only parody (vs iperf3 TCP) |
+| `IpcFixture/Throughput/<N>` | send-only parody (vs socat AF_UNIX) |
+| **`RealFixtureTcpEcho/TcpEchoRoundtrip/<N>`** | round-trip vs libp2p (TCP + Noise XX + Yamux) |
+| **`RealFixtureUdpEcho/UdpEchoRoundtrip/<N>`** | round-trip (no Rust P2P peer on UDP yet) |
+| **`RealFixtureIpcEcho/IpcEchoRoundtrip/<N>`** | round-trip (no Rust P2P peer on AF_UNIX) |
 
-Aggregator выводит side-by-side table в `## Echo round-trip —
-side-by-side` секции отчёта, где GoodNet UDP/WS EchoRoundtrip
-стоят рядом со строками libp2p и iroh per payload.
+QUIC round-trip pairing для iroh ждёт `RealFixtureQuic*Echo`.
+Aggregator выводит side-by-side table в `## А. Comparable echo
+round-trip — production stack vs libp2p / iroh` секции отчёта.
 
 ## Versions pinned
 
