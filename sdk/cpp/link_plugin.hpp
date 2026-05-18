@@ -63,6 +63,7 @@
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
 #include <sdk/link.h>
+#include <sdk/trust.h>
 #include <sdk/types.h>
 
 namespace gn::sdk::detail {
@@ -190,18 +191,51 @@ template <class T>
     }
 }
 
+/// Forward the macro-supplied default trust class to the link
+/// class when it exposes `set_default_trust_class`. Silent no-op
+/// for link classes that do not consume the hint (every existing
+/// link), so `GN_LINK_PLUGIN_EX` is opt-in.
+template <class T>
+void default_trust_class_dispatch(T& link,
+                                  gn_trust_class_t trust) noexcept {
+    if constexpr (requires { link.set_default_trust_class(trust); }) {
+        link.set_default_trust_class(trust);
+    } else {
+        (void)link; (void)trust;
+    }
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
 /// concept. Defines the full plugin entry surface in an anonymous
 /// namespace and the matching `extern "C"` symbols. Place at file
 /// scope in exactly one translation unit per shared object.
+///
+/// `GN_LINK_PLUGIN_EX(Class, "scheme", "protocol_id", trust_class)`
+/// is the extended variant for link plugins that declare a
+/// non-default protocol layer or a default trust class hint:
+///
+/// - `protocol_id` becomes `gn_register_meta_t::protocol_id` at
+///   `register_vtable`. Pass `nullptr` to keep the kernel default.
+/// - `trust_class` is forwarded to `Class::set_default_trust_class`
+///   if the link class exposes that method, otherwise the value
+///   is silently ignored. The link impl uses the stored value on
+///   its `notify_connect` calls.
+///
+/// `GN_LINK_PLUGIN(Class, "scheme")` desugars to
+/// `GN_LINK_PLUGIN_EX(Class, "scheme", nullptr, GN_TRUST_UNTRUSTED)`.
 #define GN_LINK_PLUGIN(Class, SchemeStrLiteral)                              \
+    GN_LINK_PLUGIN_EX(Class, SchemeStrLiteral, nullptr, GN_TRUST_UNTRUSTED)
+
+#define GN_LINK_PLUGIN_EX(Class, SchemeStrLiteral, ProtocolIdExpr, TrustClassExpr) \
     namespace {                                                                \
     using _gn_link_instance_t = ::gn::sdk::detail::LinkPluginInstance<Class>;\
     constexpr const char  _gn_link_scheme[]   = SchemeStrLiteral;                \
     constexpr const char  _gn_link_extension_prefix[] = GN_EXT_LINK_PREFIX; \
     constexpr const char  _gn_link_plugin_name[] = "goodnet_link_" SchemeStrLiteral; \
+    constexpr const char* _gn_link_protocol_id = (ProtocolIdExpr);             \
+    constexpr ::gn_trust_class_t _gn_link_default_trust = (TrustClassExpr);    \
                                                                                \
     inline auto& _gn_link_of(void* self) {                                       \
         return *static_cast<_gn_link_instance_t*>(self)->link;              \
@@ -441,6 +475,8 @@ template <class T>
             p->api      = api;                                                 \
             p->host_ctx = api->host_ctx;                                       \
             p->link = std::make_shared<Class>();                          \
+            ::gn::sdk::detail::default_trust_class_dispatch(                   \
+                *p->link, _gn_link_default_trust);                             \
             p->link->set_host_api(api);                                   \
             p->caps = Class::capabilities();                                   \
             _gn_link_install_ext(p);                                             \
@@ -458,6 +494,7 @@ template <class T>
         gn_register_meta_t _gn_link_meta{};                                      \
         _gn_link_meta.api_size = sizeof(gn_register_meta_t);                     \
         _gn_link_meta.name     = _gn_link_scheme;                                  \
+        _gn_link_meta.protocol_id = _gn_link_protocol_id;                        \
         if (auto rc = p->api->register_vtable(                                 \
                 p->host_ctx, GN_REGISTER_LINK, &_gn_link_meta,                   \
                 &_gn_link_kVtable, p, &p->link_id);                              \
