@@ -140,6 +140,34 @@ if(TARGET goodnet_ice_objects AND TARGET goodnet_udp_objects)
     )
 endif()
 
+# Failover policies — drives `IceSession` directly so the bench
+# can exercise the consent-loss + restart dispatch path. Needs the
+# ICE plugin's private session headers, so the include path picks
+# the plugin source tree explicitly.
+if(TARGET goodnet_ice_objects)
+    add_executable(bench_failover plugins/bench_failover.cpp)
+    target_link_libraries(bench_failover PRIVATE
+        goodnet_bench_harness
+        goodnet_ice_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    target_include_directories(bench_failover PRIVATE
+        ${CMAKE_SOURCE_DIR}
+    )
+    # LTO on the bench target's link line confuses the LTO inliner —
+    # `goodnet_ice_objects` linked directly as object files (not a
+    # static lib) makes the LTO plugin lose track of cross-TU
+    # references inside session.cpp / turn.cpp. Disable LTO for this
+    # bench specifically; the regression sensitivity we care about
+    # here is dispatch / mutex / atomic cost, not crypto inlining.
+    set_target_properties(bench_failover PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+        INTERPROCEDURAL_OPTIMIZATION OFF
+    )
+endif()
+
 # Subprocess plugin runtime — wire-proxy round-trip cost. Drives
 # the LINK / HANDLER / SECURITY proxies through the same kernel-
 # side RemoteHost the production runtime uses, with the in-tree
