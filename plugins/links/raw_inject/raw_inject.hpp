@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   plugins/links/raw_inject/raw_inject.hpp
-/// @brief  Raw TCP transport that bridges to the kernel through
-///         `host_api->inject(GN_INJECT_LAYER_MESSAGE)`.
+/// @brief  Raw byte-translator that bridges a foreign-protocol TCP
+///         carrier to the kernel through `host_api->inject`.
 ///
-/// SOCKS5-shape: the client speaks plain TCP, the plugin pipes
-/// inbound bytes through `inject` as anonymous-source MESSAGE
-/// envelopes. The link declares the `raw-v1` protocol layer so the
-/// handler's reply is written verbatim to the TCP socket — no GNET
-/// framing on either edge.
+/// L2 composer plugin over `gn.link.tcp`. The plugin owns no
+/// socket — every accept / read / write goes through the TCP
+/// carrier's extension vtable. Inbound bytes flow as MESSAGE
+/// envelopes through `inject(GN_INJECT_LAYER_MESSAGE)`; outbound
+/// bytes from the handler reach the foreign client via the TCP
+/// carrier's send slot.
 
 #pragma once
 
@@ -19,15 +20,10 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <thread>
 #include <unordered_map>
 #include <vector>
 
-#include <asio/executor_work_guard.hpp>
-#include <asio/io_context.hpp>
-#include <asio/ip/tcp.hpp>
-#include <asio/strand.hpp>
-
+#include <sdk/cpp/link_carrier.hpp>
 #include <sdk/extensions/link.h>
 #include <sdk/host_api.h>
 #include <sdk/trust.h>
@@ -37,7 +33,7 @@ namespace gn::link::raw_inject {
 
 /// Protocol id the link declares at registration. The `raw-v1`
 /// protocol carries no framing; outbound bytes are written through
-/// the TCP socket exactly as the handler produced them.
+/// the TCP carrier exactly as the handler produced them.
 inline constexpr const char kProtocolId[] = "raw-v1";
 
 /// Configuration knobs the plugin reads from the live config tree at
@@ -63,12 +59,10 @@ public:
     RawInjectLink& operator=(const RawInjectLink&) = delete;
 
     [[nodiscard]] gn_result_t listen(std::string_view uri);
-
     [[nodiscard]] gn_result_t connect(std::string_view uri);
 
     [[nodiscard]] gn_result_t send(gn_conn_id_t conn,
                                     std::span<const std::uint8_t> bytes);
-
     [[nodiscard]] gn_result_t send_batch(
         gn_conn_id_t conn,
         std::span<const std::span<const std::uint8_t>> frames);
@@ -76,6 +70,7 @@ public:
     [[nodiscard]] gn_result_t disconnect(gn_conn_id_t conn);
 
     void set_host_api(const host_api_t* api) noexcept;
+    void set_default_trust_class(gn_trust_class_t t) noexcept;
     void shutdown();
 
     void set_config(const Config& cfg) noexcept;
@@ -96,26 +91,39 @@ public:
     [[nodiscard]] static gn_link_caps_t capabilities() noexcept;
 
 private:
-    class Session;
+    /// Per-conn state — links the TCP composer id allocated by the
+    /// carrier on accept with the kernel-side conn id allocated by
+    /// `notify_connect`.
+    struct Session {
+        gn_conn_id_t carrier_id = GN_INVALID_ID;
+        gn_conn_id_t kernel_id  = GN_INVALID_ID;
+        std::string  peer_uri;
+    };
 
-    void start_accept();
-    void on_accept(std::shared_ptr<Session> session,
-                    const std::error_code& ec);
-    void register_session(gn_conn_id_t id, std::shared_ptr<Session> s);
-    [[nodiscard]] bool claim_disconnect(gn_conn_id_t id);
-    [[nodiscard]] std::shared_ptr<Session> find_session(gn_conn_id_t id) const;
+    [[nodiscard]] gn_result_t ensure_carrier();
 
-    asio::io_context                                          ioc_;
-    asio::executor_work_guard<asio::io_context::executor_type> work_;
-    std::vector<std::thread>                                  workers_;
+    void on_carrier_accept(gn_conn_id_t carrier_id,
+                            std::string_view peer_uri);
+    void on_carrier_data(gn_conn_id_t carrier_id,
+                          std::span<const std::uint8_t> bytes);
 
-    std::optional<asio::ip::tcp::acceptor> acceptor_;
-    std::atomic<std::uint16_t>             listen_port_{0};
-    std::atomic<bool>                      shutdown_{false};
+    void dispatch_inject(const std::shared_ptr<Session>& session,
+                          std::span<const std::uint8_t> bytes);
 
-    mutable std::mutex                                                   sessions_mu_;
-    std::unordered_map<gn_conn_id_t, std::shared_ptr<Session>>           sessions_;
-    std::vector<gn_conn_id_t>                                            published_ids_;
+    [[nodiscard]] std::shared_ptr<Session>
+        session_by_carrier(gn_conn_id_t carrier_id) const;
+    [[nodiscard]] std::shared_ptr<Session>
+        session_by_kernel(gn_conn_id_t kernel_id) const;
+
+    const host_api_t*                       api_ = nullptr;
+    std::atomic<bool>                       shutdown_{false};
+
+    std::optional<gn::sdk::LinkCarrier>     carrier_;
+    std::atomic<std::uint16_t>              listen_port_{0};
+
+    mutable std::mutex                                              sessions_mu_;
+    std::unordered_map<gn_conn_id_t, std::shared_ptr<Session>>      by_carrier_;
+    std::unordered_map<gn_conn_id_t, std::shared_ptr<Session>>      by_kernel_;
 
     std::atomic<std::uint64_t> bytes_in_{0};
     std::atomic<std::uint64_t> bytes_out_{0};
@@ -125,7 +133,7 @@ private:
     mutable std::mutex cfg_mu_;
     Config              cfg_;
 
-    const host_api_t* api_ = nullptr;
+    gn_trust_class_t   default_trust_ = GN_TRUST_ANONYMOUS_LOOPBACK;
 };
 
 }  // namespace gn::link::raw_inject

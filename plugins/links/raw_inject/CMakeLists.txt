@@ -23,7 +23,7 @@ add_library(goodnet_raw_inject_objects OBJECT
     raw_inject.cpp
 )
 target_link_libraries(goodnet_raw_inject_objects
-    PUBLIC GoodNet::sdk asio::asio Threads::Threads)
+    PUBLIC GoodNet::sdk Threads::Threads)
 target_compile_features(goodnet_raw_inject_objects PUBLIC cxx_std_23)
 target_compile_options(goodnet_raw_inject_objects PRIVATE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter)
@@ -36,7 +36,7 @@ add_plugin(goodnet_link_raw_inject
     plugin_entry.cpp
 )
 target_link_libraries(goodnet_link_raw_inject
-    PRIVATE goodnet_raw_inject_objects asio::asio Threads::Threads)
+    PRIVATE goodnet_raw_inject_objects Threads::Threads)
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)

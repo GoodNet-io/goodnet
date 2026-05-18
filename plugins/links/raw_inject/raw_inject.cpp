@@ -1,38 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   plugins/links/raw_inject/raw_inject.cpp
-/// @brief  Raw TCP listen + accept; inbound bytes flow through
-///         `host_api->inject(GN_INJECT_LAYER_MESSAGE)`, outbound
-///         bytes from the handler land on the same TCP socket.
+/// @brief  L2 byte-translator over `gn.link.tcp`. Inbound bytes
+///         ride `host_api->inject(GN_INJECT_LAYER_MESSAGE)`;
+///         outbound bytes ride the TCP carrier's send slot.
 
 #include "raw_inject.hpp"
 
 #include <sdk/convenience.h>
 #include <sdk/cpp/uri.hpp>
 
-#include <asio/bind_executor.hpp>
-#include <asio/buffer.hpp>
-#include <asio/dispatch.hpp>
-#include <asio/post.hpp>
-#include <asio/write.hpp>
-#include <system_error>
-
 #include <algorithm>
-#include <array>
 #include <cstring>
-#include <deque>
 #include <exception>
-#include <thread>
 #include <utility>
 #include <vector>
 
 namespace gn::link::raw_inject {
 namespace {
 
-constexpr std::size_t kReadBufferSize = std::size_t{16} * 1024;
-
-/// Map a `raw_inject://host:port` URI to the host / port pair used by
-/// the asio resolver. Mirrors `tcp://host:port` parsing but accepts
-/// the `raw_inject` scheme up front.
 struct HostPort {
     std::string  host;
     std::uint16_t port = 0;
@@ -49,164 +34,29 @@ struct HostPort {
     return r;
 }
 
+[[nodiscard]] std::string make_tcp_uri(const HostPort& hp) {
+    std::string out = "tcp://";
+    out += hp.host;
+    out += ':';
+    out += std::to_string(hp.port);
+    return out;
+}
+
+[[nodiscard]] std::string make_peer_uri(std::string_view tcp_uri) {
+    std::string out;
+    if (tcp_uri.starts_with("tcp://")) {
+        out  = "raw-inject://";
+        out += tcp_uri.substr(6);
+    } else {
+        out  = "raw-inject://";
+        out += tcp_uri;
+    }
+    return out;
+}
+
 }  // namespace
 
-// ── Session ──────────────────────────────────────────────────────────────
-
-class RawInjectLink::Session
-    : public std::enable_shared_from_this<Session> {
-public:
-    Session(asio::ip::tcp::socket sock,
-             std::weak_ptr<RawInjectLink> transport)
-        : socket_(std::move(sock)),
-          strand_(socket_.get_executor()),
-          transport_(std::move(transport)) {}
-
-    asio::ip::tcp::socket& socket() noexcept { return socket_; }
-
-    gn_conn_id_t conn_id = GN_INVALID_ID;
-
-    void start_read() {
-        socket_.async_read_some(
-            asio::buffer(read_buf_),
-            asio::bind_executor(strand_,
-                [self = shared_from_this()](
-                    const std::error_code& ec, std::size_t n) {
-                    auto t = self->transport_.lock();
-                    if (!t) return;
-                    if (ec) {
-                        const gn_result_t reason =
-                            (ec == asio::error::eof) ? GN_OK
-                                                      : GN_ERR_NULL_ARG;
-                        if (t->claim_disconnect(self->conn_id) &&
-                            t->api_ && t->api_->notify_disconnect) {
-                            (void)t->api_->notify_disconnect(
-                                t->api_->host_ctx, self->conn_id, reason);
-                        }
-                        return;
-                    }
-                    if (n > 0) {
-                        t->bytes_in_.fetch_add(n, std::memory_order_relaxed);
-                        t->frames_in_.fetch_add(1, std::memory_order_relaxed);
-                        self->dispatch_inject(*t, n);
-                    }
-                    self->start_read();
-                }));
-    }
-
-    void do_send(std::span<const std::uint8_t> data) {
-        auto buf = std::make_shared<std::vector<std::uint8_t>>(
-            data.begin(), data.end());
-        asio::dispatch(strand_,
-            [self = shared_from_this(), buf = std::move(buf)]() mutable {
-                self->write_queue_.push_back(std::move(buf));
-                self->maybe_start_write();
-            });
-    }
-
-    void do_close() {
-        asio::dispatch(strand_, [self = shared_from_this()] {
-            std::error_code ec;
-            (void)self->socket_.close(ec);
-        });
-    }
-
-private:
-    void dispatch_inject(RawInjectLink& t, std::size_t n) {
-        if (!t.api_ || !t.api_->inject) return;
-
-        Config cfg = t.config();
-
-        if (cfg.max_payload != 0 && n > cfg.max_payload) {
-            if (t.api_->emit_counter) {
-                t.api_->emit_counter(t.api_->host_ctx,
-                                      "raw_inject.drop.too_large");
-            }
-            return;
-        }
-
-        const std::uint8_t* payload = read_buf_.data();
-        std::size_t         size    = n;
-        std::uint32_t       msg_id  = cfg.default_msg_id;
-
-        if (cfg.encode_msg_id == "stream") {
-            if (n < 4) {
-                if (t.api_->emit_counter) {
-                    t.api_->emit_counter(t.api_->host_ctx,
-                                          "raw_inject.drop.short_stream");
-                }
-                return;
-            }
-            msg_id = (static_cast<std::uint32_t>(payload[0]) << 24) |
-                     (static_cast<std::uint32_t>(payload[1]) << 16) |
-                     (static_cast<std::uint32_t>(payload[2]) << 8)  |
-                      static_cast<std::uint32_t>(payload[3]);
-            payload += 4;
-            size    -= 4;
-        }
-
-        const gn_result_t rc = t.api_->inject(
-            t.api_->host_ctx,
-            GN_INJECT_LAYER_MESSAGE,
-            conn_id,
-            msg_id,
-            payload, size);
-
-        if (rc != GN_OK && t.api_->emit_counter) {
-            t.api_->emit_counter(t.api_->host_ctx,
-                                  "raw_inject.inject.error");
-        }
-    }
-
-    void maybe_start_write() {
-        if (write_in_flight_ || write_queue_.empty()) return;
-        write_in_flight_ = true;
-        auto buf = write_queue_.front();
-        const std::size_t buf_size = buf->size();
-        asio::async_write(socket_, asio::buffer(*buf),
-            asio::bind_executor(strand_,
-                [self = shared_from_this(), buf, buf_size](
-                    const std::error_code& ec, std::size_t n) {
-                    self->write_queue_.pop_front();
-                    self->write_in_flight_ = false;
-                    auto t = self->transport_.lock();
-                    if (!t) return;
-                    if (ec) {
-                        if (t->claim_disconnect(self->conn_id) &&
-                            t->api_ && t->api_->notify_disconnect) {
-                            (void)t->api_->notify_disconnect(
-                                t->api_->host_ctx, self->conn_id,
-                                GN_ERR_NULL_ARG);
-                        }
-                        return;
-                    }
-                    t->bytes_out_.fetch_add(n, std::memory_order_relaxed);
-                    t->frames_out_.fetch_add(1, std::memory_order_relaxed);
-                    self->maybe_start_write();
-                }));
-    }
-
-    asio::ip::tcp::socket                                       socket_;
-    asio::strand<asio::any_io_executor>                         strand_;
-    std::weak_ptr<RawInjectLink>                                transport_;
-
-    std::array<std::uint8_t, kReadBufferSize>                   read_buf_{};
-    std::deque<std::shared_ptr<std::vector<std::uint8_t>>>      write_queue_;
-    bool                                                        write_in_flight_ = false;
-};
-
-// ── RawInjectLink ────────────────────────────────────────────────────────
-
-RawInjectLink::RawInjectLink()
-    : ioc_(),
-      work_(asio::make_work_guard(ioc_)) {
-    const unsigned hc = std::thread::hardware_concurrency();
-    const unsigned n  = std::max(1u, hc / 2);
-    workers_.reserve(n);
-    for (unsigned i = 0; i < n; ++i) {
-        workers_.emplace_back([this] { ioc_.run(); });
-    }
-}
+RawInjectLink::RawInjectLink() = default;
 
 RawInjectLink::~RawInjectLink() {
     try {
@@ -217,8 +67,7 @@ RawInjectLink::~RawInjectLink() {
         }
     } catch (...) {
         if (api_) {
-            gn_log_warn(api_,
-                "raw_inject: shutdown threw non-std exception");
+            gn_log_warn(api_, "raw_inject: shutdown threw non-std");
         }
     }
 }
@@ -261,6 +110,10 @@ void RawInjectLink::set_host_api(const host_api_t* api) noexcept {
     set_config(cfg);
 }
 
+void RawInjectLink::set_default_trust_class(gn_trust_class_t t) noexcept {
+    default_trust_ = t;
+}
+
 void RawInjectLink::set_config(const Config& cfg) noexcept {
     std::lock_guard lk(cfg_mu_);
     cfg_ = cfg;
@@ -277,7 +130,7 @@ std::uint16_t RawInjectLink::listen_port() const noexcept {
 
 std::size_t RawInjectLink::session_count() const noexcept {
     std::lock_guard lk(sessions_mu_);
-    return sessions_.size();
+    return by_kernel_.size();
 }
 
 RawInjectLink::Stats RawInjectLink::stats() const noexcept {
@@ -299,38 +152,50 @@ gn_link_caps_t RawInjectLink::capabilities() noexcept {
     return c;
 }
 
+gn_result_t RawInjectLink::ensure_carrier() {
+    if (carrier_) return GN_OK;
+    if (!api_) return GN_ERR_INVALID_STATE;
+    auto opt = gn::sdk::LinkCarrier::query(api_, "tcp");
+    if (!opt) return GN_ERR_NOT_FOUND;
+    carrier_.emplace(std::move(*opt));
+    return GN_OK;
+}
+
 gn_result_t RawInjectLink::listen(std::string_view uri_sv) {
     if (shutdown_.load(std::memory_order_acquire)) return GN_ERR_INVALID_STATE;
 
     const auto hp = parse_listen_uri(uri_sv);
     if (!hp.ok) return GN_ERR_INVALID_ENVELOPE;
 
-    std::error_code ec;
-    const auto addr = asio::ip::make_address(hp.host, ec);
-    if (ec) return GN_ERR_INVALID_ENVELOPE;
-    asio::ip::tcp::endpoint ep(addr, hp.port);
-
-    try {
-        asio::ip::tcp::acceptor acceptor(ioc_);
-        acceptor.open(ep.protocol());
-        std::error_code reuse_ec;
-        (void)acceptor.set_option(
-            asio::ip::tcp::acceptor::reuse_address(true), reuse_ec);
-        acceptor.bind(ep);
-        acceptor.listen();
-        listen_port_.store(acceptor.local_endpoint().port(),
-                            std::memory_order_release);
-        acceptor_.emplace(std::move(acceptor));
-    } catch (const std::exception& e) {
-        if (api_) {
-            gn_log_warn(api_,
-                "raw_inject: listen failed (uri=%.*s): %s",
-                static_cast<int>(uri_sv.size()), uri_sv.data(), e.what());
-        }
-        return GN_ERR_NULL_ARG;
+    if (const auto rc = ensure_carrier(); rc != GN_OK) {
+        gn_log_warn(api_,
+            "raw_inject: ensure_carrier(tcp) failed rc=%d", rc);
+        return rc;
     }
 
-    start_accept();
+    auto self_weak = weak_from_this();
+    const gn_result_t accept_rc = carrier_->on_accept(
+        [self_weak](gn_conn_id_t c, std::string_view peer) {
+            if (auto t = self_weak.lock()) {
+                t->on_carrier_accept(c, peer);
+            }
+        });
+    if (accept_rc != GN_OK) {
+        gn_log_warn(api_,
+            "raw_inject: carrier on_accept rc=%d", accept_rc);
+        return accept_rc;
+    }
+
+    const std::string tcp_uri = make_tcp_uri(hp);
+    const gn_result_t listen_rc = carrier_->listen(tcp_uri);
+    if (listen_rc != GN_OK) {
+        gn_log_warn(api_,
+            "raw_inject: carrier listen %s rc=%d",
+            tcp_uri.c_str(), listen_rc);
+        return listen_rc;
+    }
+    listen_port_.store(carrier_->listen_port(),
+                        std::memory_order_release);
     return GN_OK;
 }
 
@@ -341,87 +206,113 @@ gn_result_t RawInjectLink::connect(std::string_view /*uri_sv*/) {
     return GN_ERR_NOT_IMPLEMENTED;
 }
 
-void RawInjectLink::start_accept() {
-    if (shutdown_.load(std::memory_order_acquire) || !acceptor_) return;
+void RawInjectLink::on_carrier_accept(gn_conn_id_t carrier_id,
+                                       std::string_view peer_uri) {
+    if (shutdown_.load(std::memory_order_acquire)) return;
+    if (!api_ || !api_->notify_connect) return;
+    if (!carrier_) return;
 
-    auto session = std::make_shared<Session>(
-        asio::ip::tcp::socket(ioc_),
-        weak_from_this());
+    auto session = std::make_shared<Session>();
+    session->carrier_id = carrier_id;
+    session->peer_uri   = peer_uri.empty()
+        ? std::string{"raw-inject://anonymous"}
+        : make_peer_uri(peer_uri);
 
-    if (!acceptor_.has_value()) return;
-    auto& sock = session->socket();
-    acceptor_->async_accept(sock,
-        [weak = std::weak_ptr<RawInjectLink>(shared_from_this()),
-         session = std::move(session)](
-            const std::error_code& ec) mutable {
-            if (auto t = weak.lock()) t->on_accept(std::move(session), ec);
+    std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+    gn_conn_id_t kernel_conn = GN_INVALID_ID;
+    const gn_result_t rc = api_->notify_connect(
+        api_->host_ctx, remote_pk, session->peer_uri.c_str(),
+        default_trust_, GN_ROLE_RESPONDER, &kernel_conn);
+    if (rc != GN_OK || kernel_conn == GN_INVALID_ID) {
+        (void)carrier_->disconnect(carrier_id, 1);
+        return;
+    }
+    session->kernel_id = kernel_conn;
+
+    {
+        std::lock_guard lk(sessions_mu_);
+        by_carrier_[carrier_id] = session;
+        by_kernel_[kernel_conn] = session;
+    }
+
+    auto self_weak = weak_from_this();
+    (void)carrier_->on_data(carrier_id,
+        [self_weak](gn_conn_id_t c,
+                     std::span<const std::uint8_t> bytes) {
+            if (auto t = self_weak.lock()) {
+                t->on_carrier_data(c, bytes);
+            }
         });
 }
 
-void RawInjectLink::on_accept(std::shared_ptr<Session> session,
-                                const std::error_code& ec) {
-    if (ec || shutdown_.load(std::memory_order_acquire)) return;
+void RawInjectLink::on_carrier_data(gn_conn_id_t carrier_id,
+                                     std::span<const std::uint8_t> bytes) {
+    if (shutdown_.load(std::memory_order_acquire)) return;
+    auto session = session_by_carrier(carrier_id);
+    if (!session) return;
+    bytes_in_.fetch_add(bytes.size(), std::memory_order_relaxed);
+    frames_in_.fetch_add(1,           std::memory_order_relaxed);
+    dispatch_inject(session, bytes);
+}
 
-    if (api_ && api_->notify_connect) {
-        /// Anonymous source from the application's POV — but the
-        /// kernel router rejects zero-sender envelopes. Derive a
-        /// per-session synthetic pk from the listener's wall-clock
-        /// snapshot + a session counter so every connection looks
-        /// distinct to the kernel without leaking peer identity.
-        std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
-        {
-            static std::atomic<std::uint64_t> tag{1};
-            const auto seq = tag.fetch_add(1, std::memory_order_relaxed);
-            remote_pk[0]   = 0xFA;  // 'fake anonymous' marker
-            remote_pk[1]   = static_cast<std::uint8_t>(seq      );
-            remote_pk[2]   = static_cast<std::uint8_t>(seq >>  8);
-            remote_pk[3]   = static_cast<std::uint8_t>(seq >> 16);
-            remote_pk[4]   = static_cast<std::uint8_t>(seq >> 24);
-            remote_pk[5]   = static_cast<std::uint8_t>(seq >> 32);
-            remote_pk[6]   = static_cast<std::uint8_t>(seq >> 40);
-            remote_pk[7]   = static_cast<std::uint8_t>(seq >> 48);
-            remote_pk[8]   = static_cast<std::uint8_t>(seq >> 56);
+void RawInjectLink::dispatch_inject(
+    const std::shared_ptr<Session>& session,
+    std::span<const std::uint8_t> bytes) {
+    if (!api_ || !api_->inject) return;
+
+    Config cfg = config();
+
+    if (cfg.max_payload != 0 && bytes.size() > cfg.max_payload) {
+        if (api_->emit_counter) {
+            api_->emit_counter(api_->host_ctx,
+                                "raw_inject.drop.too_large");
         }
-        gn_conn_id_t conn = GN_INVALID_ID;
-        std::error_code re_ec;
-        const auto remote = session->socket().remote_endpoint(re_ec);
-        std::string uri = "raw-inject://";
-        if (!re_ec) {
-            if (remote.address().is_v6()) {
-                uri += '[';
-                uri += remote.address().to_string();
-                uri += ']';
-            } else {
-                uri += remote.address().to_string();
-            }
-            uri += ':';
-            uri += std::to_string(remote.port());
-        } else {
-            uri += "anonymous";
-        }
-        const gn_result_t rc = api_->notify_connect(
-            api_->host_ctx, remote_pk, uri.c_str(),
-            GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER, &conn);
-        if (rc == GN_OK && conn != GN_INVALID_ID) {
-            session->conn_id = conn;
-            register_session(conn, session);
-            session->start_read();
-        } else {
-            session->do_close();
-        }
-    } else {
-        session->do_close();
+        return;
     }
 
-    start_accept();
+    const std::uint8_t* payload = bytes.data();
+    std::size_t         size    = bytes.size();
+    std::uint32_t       msg_id  = cfg.default_msg_id;
+
+    if (cfg.encode_msg_id == "stream") {
+        if (size < 4) {
+            if (api_->emit_counter) {
+                api_->emit_counter(api_->host_ctx,
+                                    "raw_inject.drop.short_stream");
+            }
+            return;
+        }
+        msg_id = (static_cast<std::uint32_t>(payload[0]) << 24) |
+                 (static_cast<std::uint32_t>(payload[1]) << 16) |
+                 (static_cast<std::uint32_t>(payload[2]) << 8)  |
+                  static_cast<std::uint32_t>(payload[3]);
+        payload += 4;
+        size    -= 4;
+    }
+
+    const gn_result_t rc = api_->inject(
+        api_->host_ctx,
+        GN_INJECT_LAYER_MESSAGE,
+        session->kernel_id,
+        msg_id,
+        payload, size);
+
+    if (rc != GN_OK && api_->emit_counter) {
+        api_->emit_counter(api_->host_ctx, "raw_inject.inject.error");
+    }
 }
 
 gn_result_t RawInjectLink::send(gn_conn_id_t conn,
-                                  std::span<const std::uint8_t> bytes) {
-    auto session = find_session(conn);
+                                 std::span<const std::uint8_t> bytes) {
+    auto session = session_by_kernel(conn);
     if (!session) return GN_ERR_NOT_FOUND;
-    session->do_send(bytes);
-    return GN_OK;
+    if (!carrier_) return GN_ERR_INVALID_STATE;
+    const gn_result_t rc = carrier_->send(session->carrier_id, bytes);
+    if (rc == GN_OK) {
+        bytes_out_.fetch_add(bytes.size(), std::memory_order_relaxed);
+        frames_out_.fetch_add(1,           std::memory_order_relaxed);
+    }
+    return rc;
 }
 
 gn_result_t RawInjectLink::send_batch(
@@ -429,7 +320,7 @@ gn_result_t RawInjectLink::send_batch(
     std::span<const std::span<const std::uint8_t>> frames) {
     if (frames.empty()) return GN_OK;
     if (frames.size() == 1) return send(conn, frames[0]);
-    auto session = find_session(conn);
+    auto session = session_by_kernel(conn);
     if (!session) return GN_ERR_NOT_FOUND;
     std::size_t total = 0;
     for (auto& f : frames) total += f.size();
@@ -438,72 +329,69 @@ gn_result_t RawInjectLink::send_batch(
     for (auto& f : frames) {
         joined.insert(joined.end(), f.begin(), f.end());
     }
-    session->do_send(joined);
-    return GN_OK;
+    return send(conn, joined);
 }
 
 gn_result_t RawInjectLink::disconnect(gn_conn_id_t conn) {
     std::shared_ptr<Session> session;
     {
         std::lock_guard lk(sessions_mu_);
-        auto it = sessions_.find(conn);
-        if (it == sessions_.end()) return GN_OK;
+        auto it = by_kernel_.find(conn);
+        if (it == by_kernel_.end()) return GN_OK;
         session = std::move(it->second);
-        sessions_.erase(it);
+        by_kernel_.erase(it);
+        by_carrier_.erase(session->carrier_id);
     }
-    session->do_close();
+    if (carrier_) {
+        (void)carrier_->disconnect(session->carrier_id, 0);
+    }
     return GN_OK;
 }
 
-void RawInjectLink::register_session(gn_conn_id_t id,
-                                       std::shared_ptr<Session> s) {
+std::shared_ptr<RawInjectLink::Session>
+RawInjectLink::session_by_carrier(gn_conn_id_t carrier_id) const {
     std::lock_guard lk(sessions_mu_);
-    sessions_[id] = std::move(s);
-    published_ids_.push_back(id);
-}
-
-bool RawInjectLink::claim_disconnect(gn_conn_id_t id) {
-    std::lock_guard lk(sessions_mu_);
-    if (shutdown_.load(std::memory_order_acquire)) return false;
-    return sessions_.erase(id) > 0;
+    auto it = by_carrier_.find(carrier_id);
+    return (it == by_carrier_.end()) ? nullptr : it->second;
 }
 
 std::shared_ptr<RawInjectLink::Session>
-RawInjectLink::find_session(gn_conn_id_t id) const {
+RawInjectLink::session_by_kernel(gn_conn_id_t kernel_id) const {
     std::lock_guard lk(sessions_mu_);
-    auto it = sessions_.find(id);
-    return (it == sessions_.end()) ? nullptr : it->second;
+    auto it = by_kernel_.find(kernel_id);
+    return (it == by_kernel_.end()) ? nullptr : it->second;
 }
 
 void RawInjectLink::shutdown() {
-    std::vector<gn_conn_id_t> ids_to_emit;
+    if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
+
+    std::vector<std::shared_ptr<Session>> drain;
     {
         std::lock_guard lk(sessions_mu_);
-        if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
-        ids_to_emit = std::move(published_ids_);
-        published_ids_.clear();
-        for (auto& [id, s] : sessions_) s->do_close();
-        sessions_.clear();
+        drain.reserve(by_kernel_.size());
+        for (auto& [_, s] : by_kernel_) drain.push_back(s);
+        by_kernel_.clear();
+        by_carrier_.clear();
     }
 
-    if (acceptor_) {
-        std::error_code ec;
-        (void)acceptor_->close(ec);
-        acceptor_.reset();
+    if (carrier_) {
+        for (const auto& s : drain) {
+            (void)carrier_->disconnect(s->carrier_id, 1);
+        }
     }
-
     if (api_ && api_->notify_disconnect) {
-        for (const auto id : ids_to_emit) {
-            (void)api_->notify_disconnect(api_->host_ctx, id, GN_OK);
+        for (const auto& s : drain) {
+            (void)api_->notify_disconnect(
+                api_->host_ctx, s->kernel_id, GN_OK);
         }
     }
 
-    work_.reset();
-    ioc_.stop();
-    for (auto& w : workers_) {
-        if (w.joinable()) w.join();
-    }
-    workers_.clear();
+    /// `LinkCarrier` dtor unsubscribes every per-conn data sub +
+    /// the accept-bus sub it installed; the carrier vtable's
+    /// `unsubscribe_*` slots wait for in-flight callbacks per
+    /// `link.en.md` §8 so the reset is safe even if a callback is
+    /// mid-flight.
+    carrier_.reset();
 }
 
 }  // namespace gn::link::raw_inject
