@@ -1914,7 +1914,7 @@ def gen_link_carriers():
         "tcp":  "byte stream; TURN-over-TCP framing (16-bit BE len)",
         "ws":   "RFC 6455 WebSocket framing; mask handling per spec",
         "tls":  "stream framed like tcp; TURNS:// over TLS 1.3",
-        "quic": "ngtcp2-backed; carrier scheme detect:\n"
+        "quic": "OpenSSL-3.6-native QUIC; carrier scheme detect:\n"
                 "  · 64 hex chars → gn.link.ice\n"
                 "  · else → gn.link.udp",
         "ipc":  "AF_UNIX stream / datagram; Loopback trust",
