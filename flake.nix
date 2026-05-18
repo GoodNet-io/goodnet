@@ -241,6 +241,18 @@
             };
           };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # Truly-static kernel + bundled plugin set against musl +
+          # `pkgsStatic` versions of openssl, libsodium, spdlog, fmt,
+          # libstdc++, libgcc. The resulting `bin/goodnet` has no
+          # dynamic dependencies (ldd reports "not a dynamic
+          # executable") and runs unchanged inside a `scratch`
+          # container, a chroot, or a stripped embedded rootfs.
+          # Linux-only because pkgsStatic targets the musl Linux
+          # cross; Darwin static builds use a different toolchain.
+          goodnet-core-static = import ./nix/goodnet-static.nix {
+            inherit pkgs;
+          };
+
           # Reproducible Docker image around the static kernel.
           # Linux-only because dockerTools.buildLayeredImage emits a
           # Linux container; building from a Darwin host requires a
@@ -267,22 +279,65 @@
           # the full `CMAKE_PREFIX_PATH` / `PKG_CONFIG_PATH` that the
           # dev shell wires from `inputsFrom = [ goodnet-core ]`.
 
-          # `nix run .#build [-- release|debug]` — single build app
-          # with subarg-driven variant select. Default debug. Each
-          # variant lives in its own \`build-<variant>/\` so debug
-          # and release coexist without pin-ponging the cache.
+          # `nix run .#build [-- release|debug|static]` — single
+          # build app with subarg-driven variant select. Default
+          # debug.
+          #
+          # `debug` and `release` re-enter the dev shell and run a
+          # plain CMake build under the dynamic gcc15 toolchain;
+          # each variant lives in its own `build-<variant>/` so the
+          # two coexist without pin-ponging the cache.
+          #
+          # `static` is the truly-static cut: rather than running a
+          # second CMake under the dev shell (which would inherit
+          # the host's dynamic OpenSSL / libsodium / libstdc++ and
+          # produce a "static plugins, dynamic libc" hybrid), it
+          # dispatches to `nix build .#goodnet-core-static`. That
+          # derivation rebuilds the kernel under `pkgsStatic` against
+          # musl + statically-archived dependencies, then mirrors the
+          # resulting tree at `build-static/` so the rest of the
+          # repo's tooling (smoke tests, packaging scripts) keeps
+          # finding the binary at the same path as the other
+          # variants. The Nix store path is the source of truth; the
+          # `build-static/` copy is a convenience.
           gn-build = pkgs.writeShellScriptBin "gn-build" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-debug}"
               shift || true
-              static_flag=""
+              if [ "$variant" = "static" ]; then
+                # `nix build .#goodnet-core-static` produces a result
+                # symlink with `lib/libgoodnet_kernel.a` + worker
+                # binaries at `bin/`. Mirror the layout at
+                # `build-static/` so external tooling (Docker
+                # packaging, smoke scripts) reads the same path the
+                # debug / release variants populate. The nix store
+                # tree is read-only; `chmod -R u+w` after copy so a
+                # subsequent run can prune the mirror.
+                flake_dir="''${FLAKE_DIR:-.}"
+                echo ">>> static: nix build $flake_dir#goodnet-core-static"
+                ${pkgs.nix}/bin/nix build "$flake_dir#goodnet-core-static" \
+                  -o "$flake_dir/result-static" "$@"
+                if [ -d "$flake_dir/build-static" ]; then
+                  chmod -R u+w "$flake_dir/build-static"
+                  rm -rf "$flake_dir/build-static/bin" \
+                         "$flake_dir/build-static/lib"
+                fi
+                mkdir -p "$flake_dir/build-static"
+                cp -rL "$flake_dir/result-static/bin" \
+                       "$flake_dir/build-static/bin"
+                cp -rL "$flake_dir/result-static/lib" \
+                       "$flake_dir/build-static/lib"
+                chmod -R u+w "$flake_dir/build-static"
+                echo ""
+                echo "static build complete:"
+                echo "  $flake_dir/build-static/bin/  (statically linked ELFs)"
+                echo "  $flake_dir/build-static/lib/  (.a archives)"
+                exit 0
+              fi
               tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
                 debug)   build_type=Debug   ; build_dir=build         ;;
                 release) build_type=Release ; build_dir=build-release ;;
-                static)  build_type=Release ; build_dir=build-static
-                         static_flag="-DGOODNET_STATIC_PLUGINS=ON"
-                         tests_flag="-DGOODNET_BUILD_TESTS=OFF"      ;;
                 *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
@@ -290,7 +345,7 @@
                 echo ">>> Configuring $build_type build in $build_dir..."
                 cmake -B "$build_dir" -G Ninja \
                   -DCMAKE_BUILD_TYPE=$build_type \
-                  $tests_flag $static_flag
+                  $tests_flag
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"

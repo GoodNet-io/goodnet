@@ -140,6 +140,26 @@ static.gcc15Stdenv.mkDerivation {
 
   doCheck = false;
 
+  # The operator-facing `goodnetd` daemon now ships from a separate
+  # repo (`github.com/GoodNet-io/goodnetd`), so this derivation's
+  # `apps/` subtree is empty and the install phase ships only the
+  # static archive + plugin object library + worker subprocesses.
+  # Copy the `remote_echo` worker into `bin/` so the smoke test
+  # (`ldd $out/bin/remote_echo` / `file $out/bin/remote_echo`) has
+  # a real ELF to inspect — every other artefact is a `.a` archive
+  # and `ldd` would refuse those outright. The worker links the
+  # same kernel object library + libsodium + OpenSSL + spdlog the
+  # daemon does, so its dynamic-section closure is a faithful
+  # proxy for "did pkgsStatic catch every system library".
+  postInstall = ''
+    mkdir -p $out/bin
+    for w in remote_echo remote_noise_stub remote_handler_stub remote_slow_stub; do
+      if [ -x "workers/$w" ]; then
+        install -m 0755 "workers/$w" "$out/bin/$w"
+      fi
+    done
+  '';
+
   meta = {
     description =
       "GoodNet kernel + bundled plugins — truly static musl build.";
