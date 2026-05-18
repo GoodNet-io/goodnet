@@ -27,8 +27,9 @@ NetBSD, DragonFly). На Windows вместо `dlopen` подключается
 канонический путь — TOCTOU-окно чуть шире, чем под Linux с
 openat2, но интегриристика остаётся.
 
-Bundled плагины (tcp/udp/ws/ice/quic/tls/heartbeat/noise/null/
-strategies) живут в своих гитах. Каждый плагин ставит
+Bundled плагины (link-{tcp,udp,ws,ipc,tls,ice,quic},
+handler-{heartbeat,store,dns}, security-{noise,null},
+strategy-float_send_rtt) живут в своих гитах. Каждый плагин ставит
 `meta.platforms = lib.platforms.linux` в своём `flake.nix`, пока
 не сделан явный darwin-порт. На macOS bundled-плагины поэтому не
 попадают в `goodnet.compose`, и оператор получает kernel-only

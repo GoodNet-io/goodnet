@@ -15,8 +15,9 @@
       #   `plugin_manager.cpp` falls back from `openat2` to the
       #   `O_NOFOLLOW` integrity gate behind `__linux__`. Only the
       #   IPC plugin currently carries the `LOCAL_PEERCRED` port;
-      #   other plugins (tcp/udp/ws/ice/quic/tls/heartbeat/noise/
-      #   null/strategies) live in their own gits and gate
+      #   other plugins (link-{tcp,udp,ws,ice,quic,tls},
+      #   handler-{heartbeat,store,dns}, security-{noise,null},
+      #   strategy-float_send_rtt) live in their own gits and gate
       #   themselves via `meta.platforms` — they simply don't appear
       #   in the per-plugin flake's output set on Darwin until each
       #   is ported. The composed-node derivation here keeps
