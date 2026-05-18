@@ -114,7 +114,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # `mold` is the single biggest link-time win for a multi-target build
-# like this one (kernel + 8 plugins + 3 test binaries). Auto-detect at
+# like this one (kernel + 13 plugins + 3 test binaries). Auto-detect at
 # configure time; absence is silent — the default ld stays in use.
 if(GOODNET_USE_MOLD)
     find_program(GOODNET_MOLD_BIN mold)

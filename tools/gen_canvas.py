@@ -9,10 +9,10 @@ Reads the architecture description from this file, computes a layout via
 Graphviz `dot`, and writes a JSON Canvas document. The shape matches the
 current code:
 
-  * 8 loadable plugin units + kernel + integration-tests, drawn as
-    independent cells (each lives in its own git checkout under
-    plugins/<kind>/<name>/, with goodnet-integration-tests as the 9th
-    sibling).
+  * 13 loadable plugin units + kernel + integration-tests + bridges-cpp,
+    drawn as independent cells (each lives in its own git checkout —
+    plugin slots under plugins/<kind>/<name>/, the bridges-cpp slot at
+    bridges/cpp/, and the integration-tests overlay at tests/integration/).
   * Kernel as a pure registry: handlers / links / security providers /
     extensions are all owned by plugins and reach the kernel through
     `host_api->register_*`.

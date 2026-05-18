@@ -8,11 +8,14 @@
 # is the single hook a new contributor or a CI runner uses to
 # materialise them locally.
 #
-# Repo list. The 8 loadable plugins that the kernel binary
-# `dlopen`s at runtime: handler-heartbeat, link-{tcp, udp, ws,
-# ipc, tls}, security-{noise, null}. Statically-linked plugins
-# under `plugins/protocols/` are part of the kernel build and
-# do not need pulling.
+# Repo list. The loadable plugins that the kernel binary
+# `dlopen`s at runtime: handler-{heartbeat, store, dns},
+# link-{tcp, udp, ws, ipc, tls, ice}, security-{noise, null};
+# plus the operator-side bridges-cpp slot at `bridges/cpp/`.
+# Statically-linked plugins under `plugins/protocols/` are part
+# of the kernel build and do not need pulling. The link-quic and
+# strategy-float_send_rtt plugins exist in-tree but have no
+# external mirror yet, so they are not part of the install set.
 #
 # Source lookup (first hit wins):
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo>.git`  (env override)
@@ -65,13 +68,17 @@ pkgs.writeShellApplication {
     # second pass through the loop body.
     declare -A slot_to_repo=(
       [plugins/handlers/heartbeat]=handler-heartbeat
+      [plugins/handlers/store]=handler-store
+      [plugins/handlers/dns]=handler-dns
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
+      [plugins/links/ice]=link-ice
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [bridges/cpp]=bridges-cpp
       [tests/integration]=integration-tests
     )
 

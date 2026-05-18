@@ -321,7 +321,7 @@ checked-out единиц рядом с собой:
   как обычные тесты.
 
 Запуск `nix run .#test` от kernel root прогоняет всё что
-checked-out: kernel-only тесты + 8 plugin тестов + bindings smoke
+checked-out: kernel-only тесты + 13 plugin тестов + bindings smoke
 + integration suite. Без чекаут'а каких-то — просто skipped через
 `if(EXISTS)` guard. Без фейков, без mocks — каждый тест запускается
 в своей реальной среде.

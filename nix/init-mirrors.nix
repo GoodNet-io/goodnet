@@ -3,8 +3,10 @@
 # Establishes the per-plugin "page" (a bare git mirror) that
 # stands in for the `GoodNet-io/<repo>` github URL when the
 # operator is working offline or against a private fork.
-# For each plugin slot under `plugins/<kind>/<name>/` that has its
-# own nested `.git/`:
+# For each slot listed in `slot_to_repo` below (the plugin slots
+# under `plugins/<kind>/<name>/`, plus the operator-side
+# `bridges/cpp/` and the `tests/integration/` overlay) that has
+# its own nested `.git/`:
 #
 #   - If a bare mirror at `${MIRROR_DIR}/<repo>.git` does not exist,
 #     `git clone --bare` the plugin's working git into it.
@@ -45,13 +47,17 @@ pkgs.writeShellApplication {
     # `GoodNet-io/<kind-singular>-<name>`).
     declare -A slot_to_repo=(
       [plugins/handlers/heartbeat]=handler-heartbeat
+      [plugins/handlers/store]=handler-store
+      [plugins/handlers/dns]=handler-dns
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
+      [plugins/links/ice]=link-ice
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [bridges/cpp]=bridges-cpp
       [tests/integration]=integration-tests
     )
 
