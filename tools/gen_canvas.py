@@ -339,7 +339,8 @@ NODES: dict[str, tuple[str, str]] = {
         "ExtensionRegistry",
         "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\n"
         "Глобальный namespace для plugin↔plugin контрактов\n"
-        "(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n"
+        "(`gn.heartbeat`, `gn.store`, `gn.dns`, `gn.strategy.*`,\n"
+        "`gn.link.<scheme>`, `gn.ui`, ...).\n\n"
         "`register_extension(name, version, vtable)` —\n"
         "`query_extension_checked(name, version, &vtable)` —\n"
         "версия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\n"
