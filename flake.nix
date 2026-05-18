@@ -416,14 +416,20 @@
 
           # Opt-in: wire `.githooks/` into the local clone so
           # `git commit` runs `clang-tidy --warnings-as-errors=*` on
-          # staged C++ files. Mirrors the CI strict lint gate at
-          # commit time so PR feedback never trips on a diagnostic
-          # the author already had in front of them.
+          # staged C++ files (pre-commit) and `git push` to
+          # `refs/heads/main` re-runs the cheap CI subset
+          # (livedoc --check + pytest + vanilla ctest) before the
+          # push leaves the machine (pre-push). Both hooks live in
+          # `.githooks/`; `core.hooksPath` picks the directory up
+          # wholesale, so a new file in `.githooks/` is auto-wired
+          # without touching this script.
           gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
             set -euo pipefail
             git config core.hooksPath .githooks
             echo ">>> hooks installed: .githooks/"
-            echo "    bypass any single commit with: git commit --no-verify"
+            echo "    pre-commit  : clang-tidy on staged C++"
+            echo "    pre-push    : test gate on push to main"
+            echo "    bypass once : git commit/push --no-verify"
           '';
 
           # `nix run .#run -- <demo|node|goodnetd> [args]` — single
