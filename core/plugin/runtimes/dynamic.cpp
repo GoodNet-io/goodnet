@@ -34,53 +34,15 @@ namespace gn::core {
 
 namespace {
 
-using gn_plugin_sdk_version_fn = void (*)(uint32_t*, uint32_t*, uint32_t*);
-using gn_plugin_init_fn        = gn_result_t (*)(const host_api_t*, void**);
-using gn_plugin_register_fn    = gn_result_t (*)(void*);
-using gn_plugin_unregister_fn  = gn_result_t (*)(void*);
-using gn_plugin_shutdown_fn    = void (*)(void*);
-using gn_plugin_descriptor_fn  = const gn_plugin_descriptor_t* (*)();
-
-struct PluginSymbols {
-    gn_plugin_sdk_version_fn  sdk_version;
-    gn_plugin_init_fn         init;
-    gn_plugin_register_fn     register_self;
-    gn_plugin_unregister_fn   unregister_self;
-    gn_plugin_shutdown_fn     shutdown;
-    gn_plugin_descriptor_fn   descriptor;     // optional; may be null
-};
-
-[[nodiscard]] gn_result_t resolve_symbols(void* so, PluginSymbols& out,
-                                          std::string& diagnostic) {
-    out.sdk_version     = reinterpret_cast<gn_plugin_sdk_version_fn>(
-                              dlsym(so, "gn_plugin_sdk_version"));
-    out.init            = reinterpret_cast<gn_plugin_init_fn>(
-                              dlsym(so, "gn_plugin_init"));
-    out.register_self   = reinterpret_cast<gn_plugin_register_fn>(
-                              dlsym(so, "gn_plugin_register"));
-    out.unregister_self = reinterpret_cast<gn_plugin_unregister_fn>(
-                              dlsym(so, "gn_plugin_unregister"));
-    out.shutdown        = reinterpret_cast<gn_plugin_shutdown_fn>(
-                              dlsym(so, "gn_plugin_shutdown"));
-    out.descriptor      = reinterpret_cast<gn_plugin_descriptor_fn>(
-                              dlsym(so, "gn_plugin_descriptor"));
-
-    if (!out.sdk_version || !out.init || !out.register_self
-        || !out.unregister_self || !out.shutdown) {
-        diagnostic = "missing required gn_plugin_* entry symbol";
-        return GN_ERR_VERSION_MISMATCH;
-    }
-    return GN_OK;
-}
-
-[[nodiscard]] bool sdk_version_compatible(const PluginSymbols& syms) noexcept {
+[[nodiscard]] bool sdk_version_compatible(
+    const DynamicPluginSymbols& syms) noexcept {
     std::uint32_t major = 0, minor = 0, patch = 0;
     syms.sdk_version(&major, &minor, &patch);
     if (major != GN_SDK_VERSION_MAJOR) return false;
     return GN_SDK_VERSION_MINOR >= minor;
 }
 
-ServiceDescriptor descriptor_from_symbol(const PluginSymbols& syms,
+ServiceDescriptor descriptor_from_symbol(const DynamicPluginSymbols& syms,
                                          const std::string& path_fallback) {
     ServiceDescriptor sd;
     if (syms.descriptor != nullptr) {
@@ -105,6 +67,31 @@ ServiceDescriptor descriptor_from_symbol(const PluginSymbols& syms,
 }
 
 }  // namespace
+
+gn_result_t DynamicRuntime::resolve_symbols_(void* so,
+                                              DynamicPluginSymbols& out,
+                                              std::string& diagnostic) {
+    out.sdk_version     = reinterpret_cast<gn_plugin_sdk_version_fn>(
+                              dlsym(so, "gn_plugin_sdk_version"));
+    out.init            = reinterpret_cast<gn_plugin_init_fn>(
+                              dlsym(so, "gn_plugin_init"));
+    out.register_self   = reinterpret_cast<gn_plugin_register_fn>(
+                              dlsym(so, "gn_plugin_register"));
+    out.unregister_self = reinterpret_cast<gn_plugin_unregister_fn>(
+                              dlsym(so, "gn_plugin_unregister"));
+    out.shutdown        = reinterpret_cast<gn_plugin_shutdown_fn>(
+                              dlsym(so, "gn_plugin_shutdown"));
+    out.descriptor      = reinterpret_cast<gn_plugin_descriptor_fn>(
+                              dlsym(so, "gn_plugin_descriptor"));
+    dlsym_calls_ += 6;
+
+    if (!out.sdk_version || !out.init || !out.register_self
+        || !out.unregister_self || !out.shutdown) {
+        diagnostic = "missing required gn_plugin_* entry symbol";
+        return GN_ERR_VERSION_MISMATCH;
+    }
+    return GN_OK;
+}
 
 gn_result_t DynamicRuntime::load(const std::string& path,
                                   const PluginLoadContext& ctx,
@@ -227,28 +214,29 @@ gn_result_t DynamicRuntime::load(const std::string& path,
     }
 #endif
 
-    PluginSymbols syms{};
-    auto rc = resolve_symbols(out.so_handle, syms, diag);
+    auto rc = resolve_symbols_(out.so_handle, out.symbols, diag);
     if (rc != GN_OK) {
         dlclose(out.so_handle);
         out.so_handle = nullptr;
+        out.symbols = {};
 #ifdef __linux__
         if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
 #endif
         return rc;
     }
 
-    if (!sdk_version_compatible(syms)) {
+    if (!sdk_version_compatible(out.symbols)) {
         diag = "sdk-version mismatch in " + path;
         dlclose(out.so_handle);
         out.so_handle = nullptr;
+        out.symbols = {};
 #ifdef __linux__
         if (out.integrity_fd >= 0) { ::close(out.integrity_fd); out.integrity_fd = -1; }
 #endif
         return GN_ERR_VERSION_MISMATCH;
     }
 
-    out.descriptor = descriptor_from_symbol(syms, path);
+    out.descriptor = descriptor_from_symbol(out.symbols, path);
 
     out.ctx = std::make_unique<PluginContext>();
     out.ctx->plugin_name = out.descriptor.plugin_name;
@@ -264,35 +252,32 @@ gn_result_t DynamicRuntime::load(const std::string& path,
 }
 
 gn_result_t DynamicRuntime::init(PluginInstance& inst) {
-    auto* fn = reinterpret_cast<gn_plugin_init_fn>(
-        dlsym(inst.so_handle, "gn_plugin_init"));
     const auto tag =
         "plugin." + inst.descriptor.plugin_name + ".gn_plugin_init";
-    return safe_call_result(tag.c_str(), fn, &inst.api, &inst.self);
+    return safe_call_result(tag.c_str(), inst.symbols.init,
+                             &inst.api, &inst.self);
 }
 
 gn_result_t DynamicRuntime::register_plugin(PluginInstance& inst) {
-    auto* fn = reinterpret_cast<gn_plugin_register_fn>(
-        dlsym(inst.so_handle, "gn_plugin_register"));
-    return safe_call_result("plugin.gn_plugin_register", fn, inst.self);
+    return safe_call_result("plugin.gn_plugin_register",
+                             inst.symbols.register_self, inst.self);
 }
 
 void DynamicRuntime::unregister(PluginInstance& inst) {
-    if (auto* fn = reinterpret_cast<gn_plugin_unregister_fn>(
-            dlsym(inst.so_handle, "gn_plugin_unregister"))) {
+    if (inst.symbols.unregister_self != nullptr) {
         /// `gn_result_t` discarded — the unregister path continues
         /// to teardown regardless of the plugin's reported outcome;
         /// we only care that no exception escapes the C ABI
         /// boundary.
         (void)safe_call_result("plugin.gn_plugin_unregister",
-                                fn, inst.self);
+                                inst.symbols.unregister_self, inst.self);
     }
 }
 
 void DynamicRuntime::shutdown(PluginInstance& inst) {
-    if (auto* fn = reinterpret_cast<gn_plugin_shutdown_fn>(
-            dlsym(inst.so_handle, "gn_plugin_shutdown"))) {
-        safe_call_void("plugin.gn_plugin_shutdown", fn, inst.self);
+    if (inst.symbols.shutdown != nullptr) {
+        safe_call_void("plugin.gn_plugin_shutdown",
+                        inst.symbols.shutdown, inst.self);
     }
 }
 
@@ -305,6 +290,7 @@ void DynamicRuntime::close(PluginInstance& inst, bool drained) {
     if (drained && inst.so_handle != nullptr) {
         dlclose(inst.so_handle);
         inst.so_handle = nullptr;
+        inst.symbols = {};
     }
     /// The integrity fd pinned the inode for the duration of the
     /// dlopen call. Closing it now reclaims the fd number for
