@@ -1,10 +1,10 @@
 # Windows MVP cross-build via `pkgs.pkgsCross.mingwW64`. Produces a
 # static-plugin single-`goodnet.exe` that bundles kernel + gnet
-# protocol + lean plugin set (TCP + UDP + Noise + Null + heartbeat).
-# OpenSSL-requiring plugins (TLS, QUIC, WS) and POSIX-leaning
-# (handler-store, handler-dns, ICE, IPC) stay out of the bundle for
-# the first cut — `plugins/CMakeLists.txt` skips them under
-# `WIN32`.
+# protocol + lean plugin set (TCP + UDP + IPC + Noise + Null +
+# heartbeat). OpenSSL-requiring plugins (TLS, QUIC, WS) and POSIX-
+# leaning (handler-store, handler-dns, ICE, strategies/float_send_rtt)
+# stay out of the bundle for the first cut — `plugins/CMakeLists.txt`
+# skips them under `WIN32`.
 #
 # This derivation is consumed from the parent flake's
 # `packages.<linux-system>.goodnet-windows` slot — it stays

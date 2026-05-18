@@ -27,9 +27,9 @@
 # OpenSSL mingw (TLS, QUIC, WS) or rely on POSIX-only resolver
 # subsystems (handler/dns via c-ares). ICE and store/strategies stay
 # off the first cut until their CI smoke is wired. The lean Windows
-# bundle is kernel + gnet + Noise + Null + TCP + UDP + Heartbeat;
-# the rest will lift in a follow-up cut once each plugin's mingw
-# build is verified.
+# bundle is kernel + gnet + Noise + Null + TCP + UDP + IPC +
+# Heartbeat; the rest will lift in a follow-up cut once each plugin's
+# mingw build is verified.
 set(_GOODNET_WINDOWS_SKIP FALSE)
 if(WIN32)
     set(_GOODNET_WINDOWS_SKIP TRUE)
