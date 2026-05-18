@@ -400,6 +400,66 @@ TEST(CoreC, HostApiAccessorReturnsBuiltTable) {
     gn_core_destroy(core);
 }
 
+// ── gn_core_query_extension_checked — public C ABI extension lookup ────────
+
+#include <sdk/extensions/link_capability.h>
+
+TEST(CoreC, QueryLinkCapabilityViaPublicCABI) {
+    /// External clients (raw-socket adapters, FFI bindings) consume
+    /// `gn.link.capability` through the public C ABI lookup, not the
+    /// internal `Kernel::extensions()` accessor. This test pins that
+    /// the kernel registers the surface during `gn_core_create` and
+    /// the public lookup returns a working vtable that produces a
+    /// usable snapshot.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    const void* raw = gn_core_query_extension_checked(
+        core, GN_EXT_LINK_CAPABILITY, GN_EXT_LINK_CAPABILITY_VERSION);
+    ASSERT_NE(raw, nullptr);
+
+    const auto* api =
+        static_cast<const gn_link_capability_api_t*>(raw);
+    ASSERT_EQ(api->api_size, sizeof(gn_link_capability_api_t));
+    ASSERT_NE(api->get, nullptr);
+
+    gn_link_capability_t cap{};
+    EXPECT_EQ(api->get(api->ctx, &cap), 0);
+    /// Any sane test host can bind at least one socket family.
+    EXPECT_TRUE(cap.can_bind_udp_v4 || cap.can_bind_udp_v6 ||
+                cap.can_bind_tcp_v4 || cap.can_bind_tcp_v6);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, QueryUnknownExtensionReturnsNull) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_query_extension_checked(
+                  core, "gn.does.not.exist", 1u),
+              nullptr);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, QueryWrongVersionReturnsNull) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    /// A producer-version bump beyond the consumer's pin must surface
+    /// as a NULL lookup; the consumer cannot safely read fields the
+    /// older producer did not emit.
+    EXPECT_EQ(gn_core_query_extension_checked(
+                  core, GN_EXT_LINK_CAPABILITY, 0xFFFFFFFFu),
+              nullptr);
+
+    gn_core_destroy(core);
+}
+
 // ── gn_core_register_protocol — C ABI host-side protocol registration ──────
 
 #include <sdk/protocol.h>
