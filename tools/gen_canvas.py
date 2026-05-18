@@ -513,7 +513,8 @@ NODES: dict[str, tuple[str, str]] = {
         "- per-peer ping/pong на таймере\n"
         "- jitter `hash(conn_id) % 5s`\n"
         "- max_missed → `host_api->disconnect(conn)`\n"
-        "- регистрирует extension `heartbeat.peer.miss` для соседних плагинов\n\n"
+        "- регистрирует `gn.heartbeat` extension (RTT + STUN-on-the-wire\n"
+        "  observed-address reflection) для соседних плагинов\n\n"
         "Cooperative shutdown через `is_shutdown_requested` —\n"
         "ре-arm таймера прекращается."
     ),
