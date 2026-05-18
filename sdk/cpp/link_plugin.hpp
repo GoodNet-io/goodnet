@@ -205,6 +205,22 @@ void default_trust_class_dispatch(T& link,
     }
 }
 
+/// Optional post-register hook — invoked by the macro after the
+/// kernel accepts the link vtable + extension registration. Used
+/// by composer-only link plugins (raw_inject) that have to bind
+/// their carrier acceptor at register time rather than wait for
+/// an external `core.listen` call. Silent no-op for link classes
+/// that do not opt in.
+template <class T>
+[[nodiscard]] gn_result_t on_registered_dispatch(T& link) noexcept {
+    if constexpr (requires { link.on_registered(); }) {
+        return link.on_registered();
+    } else {
+        (void)link;
+        return GN_OK;
+    }
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
@@ -508,6 +524,10 @@ void default_trust_class_dispatch(T& link,
                 rc == GN_OK) {                                                 \
                 p->extension_registered = true;                                \
             }                                                                  \
+        }                                                                      \
+        if (auto rc = ::gn::sdk::detail::on_registered_dispatch(               \
+                *p->link); rc != GN_OK) {                                      \
+            return rc;                                                         \
         }                                                                      \
         return GN_OK;                                                          \
     }                                                                          \

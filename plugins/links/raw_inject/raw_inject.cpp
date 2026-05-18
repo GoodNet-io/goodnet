@@ -199,6 +199,11 @@ gn_result_t RawInjectLink::listen(std::string_view uri_sv) {
     return GN_OK;
 }
 
+gn_result_t RawInjectLink::on_registered() {
+    const auto cfg = config();
+    return listen(cfg.listen_uri);
+}
+
 gn_result_t RawInjectLink::connect(std::string_view /*uri_sv*/) {
     /// `raw_inject` is a one-way bridge: foreign clients dial in, the
     /// kernel routes their bytes through `inject`. Outbound dial is

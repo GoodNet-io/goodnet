@@ -61,6 +61,13 @@ public:
     [[nodiscard]] gn_result_t listen(std::string_view uri);
     [[nodiscard]] gn_result_t connect(std::string_view uri);
 
+    /// Macro post-register hook. Reads the live `raw_inject.listen`
+    /// config + calls `listen()` so the bridge binds its TCP
+    /// carrier acceptor as soon as the kernel finishes the link
+    /// registration. Pure auto-start convenience — the kernel
+    /// could equally call `listen` later through an external slot.
+    [[nodiscard]] gn_result_t on_registered();
+
     [[nodiscard]] gn_result_t send(gn_conn_id_t conn,
                                     std::span<const std::uint8_t> bytes);
     [[nodiscard]] gn_result_t send_batch(
