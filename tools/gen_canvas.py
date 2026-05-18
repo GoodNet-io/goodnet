@@ -392,8 +392,9 @@ NODES: dict[str, tuple[str, str]] = {
         "ConnEvents channel",
         "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\n"
         "Один pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\n"
-        "Несёт state-машину conn'а: `Connecting → Handshake → Established →\n"
-        "Closing → Closed` плюс backpressure soft/clear.\n\n"
+        "Шесть событий: `CONNECTED`, `DISCONNECTED`, `TRUST_UPGRADED`\n"
+        "(Untrusted → Peer), `BACKPRESSURE_SOFT` / `_CLEAR` (queue\n"
+        "watermark crossings), `IDENTITY_ROTATED`.\n\n"
         "Подписки парятся с lifetime_anchor подписчика —\n"
         "`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\n"
         "если плагин уже выгрузился."
