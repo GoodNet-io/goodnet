@@ -165,7 +165,7 @@ guard ships on the target platform.
 3. **Distribute manifest with binaries.** Manifest and binaries
    travel together. An attacker who can replace a binary without
    replacing the manifest is detected at next load; an attacker
-   who can replace both is the threat scope of v1.1's signed
+   who can replace both is the threat scope of the planned signed
    manifest (see §7).
 4. **Install at runtime.** The operator parses the manifest into
    `PluginManifest::parse`, hands it to

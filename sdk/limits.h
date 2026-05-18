@@ -20,7 +20,7 @@ extern "C" {
  *
  * Loaded from `Config::limits` before the kernel reaches the `Wire` phase.
  * Most fields determine at-startup allocations; runtime reload is not
- * supported in v1.x — operators restart the kernel to change limits.
+ * supported — operators restart the kernel to change limits.
  */
 typedef struct gn_limits_s {
     /* Connections */

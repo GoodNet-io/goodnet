@@ -127,7 +127,7 @@ typedef void (*gn_link_accept_cb_t)(
  * `ctx` is the plugin's `self` pointer; every entry takes it as the
  * first argument. Versioned with @ref GN_EXT_LINK_VERSION.
  *
- * Slots split into three groups by maturity in v1.x:
+ * Slots split into three groups by maturity:
  *
  *   * **Steady** — `get_stats`, `get_capabilities`, `send`,
  *     `send_batch`, `close`. Implemented by every baseline link

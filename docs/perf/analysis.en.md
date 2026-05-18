@@ -249,7 +249,7 @@ fair-comparison aggregate above by design. Each section is
 |---|---|---|---|---|
 | B.1 | `MultiConnFixture/FallbackThroughput` | One peer pk holds three live conn records (TCP + UDP + IPC); registry returns all three on `for_each` | `alice.kernel->connections().size() == 3` | PASS |
 | B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses | PASS (425 k IPC picks vs 0 other) |
-| B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through env-gated `_test_clear_inline_crypto`; production-shape API is planned |
+| B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through compile-gated `_test_clear_inline_crypto` (`GOODNET_BENCH_SHOWCASE`); production-shape API is planned |
 | B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
 | B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel auto-emit from `notify_disconnect` is wired (notifications.cpp:558), the explicit inject lets the bench drive specific timing |
 | B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; an `RTM_NEWLINK` netlink observer that would auto-emit the event is not wired |
@@ -443,10 +443,12 @@ not asserted, not assumed.
   `GN_ERR_NOT_IMPLEMENTED` (composer-only over UDP carrier);
   `bench_real_e2e` needs a LinkCarrier + composer chain
   bring-up in `test_bench_helper.hpp`. Until landed, the iroh
-  column in section А has no GoodNet pair.
-- **Production Noise→Null handoff** — B.3 runs through an
-  env-gated `_test_clear_inline_crypto` PoC seam in
-  `SecuritySession`. A kernel-driven `SessionRegistry::downgrade_*`
+  column in the comparison section has no GoodNet pair.
+- **Production Noise→Null handoff** — B.3 runs through a
+  compile-gated `_test_clear_inline_crypto` PoC seam in
+  `SecuritySession` (built only with `GOODNET_BENCH_SHOWCASE`;
+  default kernel binaries drop the symbol entirely). A
+  kernel-driven `SessionRegistry::downgrade_*`
   API + trust-class hook on connection bring-up + peer-side wire
   signal is planned, so both halves of a session migrate
   symmetrically without bench harness reaching into private state.

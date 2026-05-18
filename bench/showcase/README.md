@@ -4,8 +4,8 @@ Six bench sections that demonstrate what GoodNet does
 **architecturally** that other p2p / RPC stacks (`libp2p`,
 `iroh`, `WebRTC`, `gRPC`) cannot reproduce natively. NOT a fair
 comparison track — that lives in `bench/reports/<sha>.md`
-section А (`bench_real_e2e.cpp` round-trip cases pivoted side-
-by-side with `libp2p-echo` and `iroh-echo`).
+comparison section (`bench_real_e2e.cpp` round-trip cases pivoted
+side-by-side with `libp2p-echo` and `iroh-echo`).
 
 The reader of this report is asked «попробуй повторить» — every
 acceptance row is something `libp2p` / `iroh` / `WebRTC` /

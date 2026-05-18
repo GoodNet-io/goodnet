@@ -46,7 +46,7 @@ uint64_t (*iterate_counters)(void* host_ctx,
 | Name | NUL-terminated UTF-8; the kernel does not validate shape or charset. Convention: `<subsystem>.<event>.<reason>` |
 | Concurrency | safe from any thread. The implementation pairs a `shared_mutex` with per-slot atomic increments — readers never block readers, and an existing-counter increment never blocks a reader |
 | Delivery | best-effort; the counter is observable to subsequent reads but not flushed to any external sink — that is exporter business |
-| Truncation | none. 64-bit counters wrap after 2^64 events; no realistic deployment hits this in v1.x |
+| Truncation | none. 64-bit counters wrap after 2^64 events; no realistic deployment hits this |
 
 Empty or NULL @p name on `emit_counter` is dropped silently. NULL
 visitor on `iterate_counters` returns zero.
@@ -129,7 +129,7 @@ rejection classes together regardless of the emission path.
 declined this byte sequence on the inbound path". Every reason
 surfaces through exactly one counter; a reason without an
 emitter is a contract bug, not an enum quietly waiting for
-v1.1. The currently-emitting reasons:
+a future release. The currently-emitting reasons:
 
 | Counter | Emitter | Trigger |
 |---|---|---|

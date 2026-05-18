@@ -313,7 +313,7 @@ outlives `notify_disconnect`, so a reconnect cannot quietly
 introduce a different signing key under the same identity.
 `registry.en.md` §8a holds the registry-side specification.
 
-A v1.1 release adds an explicit revocation registry the operator
+A future revision adds an explicit revocation registry the operator
 publishes alongside their identity rotation.
 
 Operators who need stronger isolation today shorten the cert's
