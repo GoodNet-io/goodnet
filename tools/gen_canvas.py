@@ -311,10 +311,10 @@ NODES: dict[str, tuple[str, str]] = {
     "n_handler_reg": (
         "HandlerRegistry",
         "# HandlerRegistry\n`core/registry/handler.{hpp,cpp}`\n\n"
-        "Registry для KIND_HANDLER. Поиск по `msg_id` →\n"
-        "приоритетно отсортированный список. `lookup` возвращает snapshot\n"
-        "by-value, чьи lifetime_anchor копии держат плагин загруженным\n"
-        "до конца dispatch'а."
+        "Registry для KIND_HANDLER. Ключ — triple `(namespace_id,\n"
+        "protocol_id, msg_id)` → priority-sorted chain. `lookup`\n"
+        "возвращает snapshot by-value, чьи lifetime_anchor копии\n"
+        "держат плагин загруженным до конца dispatch'а."
     ),
     "n_link_reg": (
         "LinkRegistry",
