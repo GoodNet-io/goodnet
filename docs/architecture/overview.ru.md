@@ -159,7 +159,7 @@ register-вход с KIND-тегом, четыре notify-входа для link
 Хвост — массив `_reserved[8]` для будущих расширений.
 
 Все слоты size-prefix-эволюционируемы: плагин, собранный против
-старшего SDK, гейтит вызов через `GN_API_HAS(api, slot)` и читает
+старшего SDK, гейтит вызов через `GN_API_HAS(host_api_t, api, slot)` и читает
 поле, только если producer'овский `api_size` его покрывает. На
 текущий момент — 41 named-слот плюс 8 reserved pointers (точный
 список см. `docs/contracts/host-api.en.md` §2); добавление новых

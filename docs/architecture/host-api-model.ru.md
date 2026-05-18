@@ -158,10 +158,10 @@ at the tail; восемь зарезервированных void* в `_reserved
 байты `_reserved` не reused — это ломает ABI на consumer'ах,
 собранных против промежуточной версии.
 
-`GN_API_HAS(api, slot)` из `sdk/abi.h` сочетает size-prefix presence check с null-pointer check'ом:
+`GN_API_HAS(api_type, api, slot)` из `sdk/abi.h` сочетает size-prefix presence check с null-pointer check'ом:
 
 ```c
-if (GN_API_HAS(api, kick_handshake)) {
+if (GN_API_HAS(host_api_t, api, kick_handshake)) {
     api->kick_handshake(host_ctx, conn);
 }
 ```

@@ -135,7 +135,8 @@ typedef struct host_api_s {
     /* prefix, key-value records) without rewriting the host_api      */
     /* shape on every step. The first field of `gn_log_api_t` is its  */
     /* own `api_size`; consumers gate access to entries beyond their  */
-    /* compile-time view through `GN_API_HAS(&api->log, slot)` from   */
+    /* compile-time view through `GN_API_HAS(gn_log_api_t,            */
+    /* &api->log, slot)` from                                          */
     /* `sdk/abi.h`.                                                    */
     gn_log_api_t log;
 
@@ -359,7 +360,7 @@ Plugins query a slot's presence through the size-prefix helpers in
 `sdk/abi.h` before calling into a tail entry:
 
 ```c
-if (GN_API_HAS(api, kick_handshake)) {
+if (GN_API_HAS(host_api_t, api, kick_handshake)) {
     api->kick_handshake(host_ctx, conn);
 }
 ```

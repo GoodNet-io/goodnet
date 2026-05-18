@@ -93,7 +93,7 @@ gn_result_t (*unregister_extension)(void* host_ctx,
 
 В терминах ABI ядра vtable — `const void*`. Layout определяет плагин-публикатор в собственном SDK header'е. Конвенция:
 
-- Первое поле — `uint32_t api_size`, сохраняемое `sizeof()` структуры на момент сборки публикатора. Consumer гейтит чтение полей через `GN_API_HAS(vt, slot)`.
+- Первое поле — `uint32_t api_size`, сохраняемое `sizeof()` структуры на момент сборки публикатора. Consumer гейтит чтение полей через `GN_API_HAS(vt_type, vt, slot)`.
 - Все методы — `int (*name)(void* ctx, ...args)` или `gn_result_t (*name)(void* ctx, ...args)`. Первый аргумент каждого метода — `ctx`, который сам vtable несёт в собственном поле `void* ctx;` ближе к концу.
 - Хвост — `void* _reserved[N]` для будущих slot'ов в рамках одного major'а.
 

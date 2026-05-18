@@ -449,7 +449,7 @@ Producer аллоцирует структуру (typically — статичес
 `host_api->register_extension(host_ctx, GN_EXT_<AREA>, GN_EXT_<AREA>_VERSION, &g_<area>_api_instance)`.
 Consumer после `query_extension_checked` cast'ит `*out_vtable`
 обратно к `const gn_<X>_api_t*`, обязательно проверяет
-`GN_API_HAS(vt, slot)` чтобы гейтить slot из более нового minor'а,
+`GN_API_HAS(vt_type, vt, slot)` чтобы гейтить slot из более нового minor'а,
 и зовёт `vt->method(vt->ctx, ...)`.
 
 ---

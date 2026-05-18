@@ -86,8 +86,8 @@ Rules:
   was added after `MINOR` 0.
 - Producers populate `api_size` with `sizeof()` at build time of the
   *producer*. The consumer never trusts a hard-coded constant.
-- Helper macros (`GN_API_HAS(api, field)`) live in `sdk/abi.h` to keep
-  the pattern uniform across plugins.
+- Helper macros (`GN_API_HAS(api_type, api, field)`) live in
+  `sdk/abi.h` to keep the pattern uniform across plugins.
 
 Without size-prefix, adding a single function pointer would force every
 already-compiled plugin to rebuild.
@@ -140,7 +140,7 @@ register thunk and therefore validate consumer-side instead:
 | Vtable | Why no kernel validation | Where it is validated |
 |---|---|---|
 | `gn_protocol_layer_vtable_t` | The kernel holds an `std::shared_ptr<gn::IProtocolLayer>` C++ wrapper rather than the C vtable; a future C-only protocol adapter performs the `api_size` check before constructing the wrapper. | producer-side until the C adapter ships; the field is populated today so adapter introduction is non-breaking |
-| `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(out, slot)` before invoking any slot added after `MINOR` 0 |
+| `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(vt_type, out, slot)` before invoking any slot added after `MINOR` 0 |
 
 ---
 
