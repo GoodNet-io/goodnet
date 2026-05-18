@@ -13,9 +13,9 @@ counters:
   - file: plugins/links/tcp/tcp.cpp
     line: 768
   - file: plugins/links/tls/tls.cpp
-    line: 864
+    line: 868
   - file: plugins/links/tls/tls.cpp
-    line: 902
+    line: 906
 - name: raw_inject.inject.error
   family: raw_inject
   kinds:

@@ -1,8 +1,8 @@
-total: 1402
+total: 1411
 groups:
 - tree: kernel
-  count: 878
-  files: 79
+  count: 881
+  files: 80
 - tree: plugins/handlers/dns
   count: 73
   files: 4
@@ -10,7 +10,7 @@ groups:
   count: 11
   files: 1
 - tree: plugins/handlers/store
-  count: 43
+  count: 48
   files: 2
 - tree: plugins/links/ice
   count: 128
@@ -43,7 +43,7 @@ groups:
   count: 63
   files: 4
 - tree: plugins/protocols/raw
-  count: 10
+  count: 11
   files: 1
 - tree: plugins/security/noise
   count: 56
@@ -60,7 +60,7 @@ groups:
 by_plugin:
   handlers/dns: 73
   handlers/heartbeat: 11
-  handlers/store: 43
+  handlers/store: 48
   links/ice: 128
   links/ipc: 8
   links/portmap: 8
@@ -71,7 +71,7 @@ by_plugin:
   links/udp: 21
   links/ws: 15
   protocols/gnet: 63
-  protocols/raw: 10
+  protocols/raw: 11
   security/noise: 56
   security/null: 18
   strategies/float_send_rtt: 10

@@ -19,6 +19,7 @@
 | [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445) | Interactive Connectivity Establishment (ICE) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 5389](https://datatracker.ietf.org/doc/html/rfc5389) | Session Traversal Utilities for NAT (STUN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) | Traversal Using Relays around NAT (TURN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 6062](https://datatracker.ietf.org/doc/html/rfc6062) | TURN Extensions for TCP Allocations | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) | Trickle ICE for SDP | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8305](https://datatracker.ietf.org/doc/html/rfc8305) | Happy Eyeballs Version 2 | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |

@@ -226,7 +226,7 @@ features:
 
   "Rust":
     rule:
-      file_exists: bridges/goodnet-rs/Cargo.toml
+      file_exists: bindings/rust/Cargo.toml
 
   "Python":
     rule:

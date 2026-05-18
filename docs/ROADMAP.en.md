@@ -57,7 +57,7 @@ to refresh the table.
 | Android build | ✓ done | nix/goodnet-android.nix present |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
-| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
+| Rust | ✓ done | bindings/rust/Cargo.toml present |
 | Python | ✓ done | bindings/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |

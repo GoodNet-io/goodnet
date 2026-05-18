@@ -124,8 +124,8 @@ features:
   status: missing
   evidence: sdk/c99/ absent
 - name: Rust
-  status: missing
-  evidence: bridges/goodnet-rs/Cargo.toml absent
+  status: done
+  evidence: bindings/rust/Cargo.toml present
 - name: Python
   status: done
   evidence: bindings/python/pyproject.toml present
