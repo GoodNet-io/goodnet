@@ -30,7 +30,7 @@ The on-disk identifier the helpers act under
 
 | `msg_id` | Handler | Surface | Kernel implementation | Spec |
 |---|---|---|---|---|
-| `0x10` | reserved | — | — | reserved for future system handler |
+| `0x10` | heartbeat (PING/PONG) | plugin-registerable; inject-boundary blocked | `plugins/handlers/heartbeat/` | extension surface `gn.heartbeat` per [`sdk/extensions/heartbeat.h`](../../sdk/extensions/heartbeat.h) |
 | `0x11` | attestation | hard-reserved (kernel intercepts; plugins cannot register) | `core/kernel/attestation_dispatcher.cpp::on_inbound` | [`attestation.en.md`](attestation.en.md) |
 | `0x12` | identity rotation announce | hard-reserved (kernel intercepts) | `core/kernel/host_api/notifications.cpp` rotation branch in `notify_inbound_bytes` + `core/identity/rotation.cpp` (verify) + `core/registry/connection.cpp::apply_rotation` | [`identity.en.md`](identity.en.md) §10 |
 | `0x13` | capability blob distribution | hard-reserved (kernel intercepts) | `core/kernel/host_api/notifications.cpp` capability branch in `notify_inbound_bytes` + `core/kernel/capability_blob.cpp` (`CapabilityBlobBus`) | [`capability-tlv.en.md`](capability-tlv.en.md) |
@@ -46,12 +46,12 @@ Two access classes share the range:
   chain never sees the bytes. Plugin attempts to register a
   handler on these ids are rejected by `HandlerRegistry` with
   `GN_ERR_INVALID_ENVELOPE`.
-- **Plugin-registerable (`0x14`, `0x15`).** Apps register
-  handlers normally and drive challenge / response logic
-  themselves. The kernel does not intercept these ids — but
-  `host_api->inject(LAYER_MESSAGE)` rejects them through the
-  identity-range gate so a bridge plugin cannot spoof a 2FA
-  event onto a connection it does not own.
+- **Plugin-registerable (`0x10`, `0x14`, `0x15`).** Apps and
+  bundled plugins register handlers normally and drive the wire
+  exchange themselves. The kernel does not intercept these ids
+  — but `host_api->inject(LAYER_MESSAGE)` rejects them through
+  the identity-range gate so a bridge plugin cannot spoof a
+  heartbeat or 2FA event onto a connection it does not own.
 
 Both classes live under `is_identity_range_msg_id()` per
 [`handler-registration.en.md`](handler-registration.en.md) §2a; the
