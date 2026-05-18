@@ -37,7 +37,7 @@
 
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
-| [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) | QUIC — A UDP-Based Multiplexed and Secure Transport | 🚧 partial | [`plugins/links/quic`](../../plugins/links/quic) |
+| [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) | QUIC — A UDP-Based Multiplexed and Secure Transport | ✓ full | [`plugins/links/quic`](../../plugins/links/quic) |
 
 ### TLS
 

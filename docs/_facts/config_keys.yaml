@@ -5,6 +5,24 @@ keys:
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 319
+- name: ice.auto_restart_backoff_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 447
+- name: ice.auto_restart_max_attempts
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 443
+- name: ice.auto_restart_on_consent_loss
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 439
 - name: ice.check_interval_ms
   type: int64
   family: ice
@@ -58,19 +76,19 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 439
+    line: 455
 - name: ice.pmtu_probe_concurrency
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 446
+    line: 462
 - name: ice.pmtu_probe_timeout_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 442
+    line: 458
 - name: ice.reactive_interface_change
   type: int64
   family: ice

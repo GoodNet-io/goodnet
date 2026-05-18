@@ -112,13 +112,17 @@ rfcs:
   - rfc: 9000
     title: QUIC — A UDP-Based Multiplexed and Secure Transport
     area: QUIC
-    status: partial
+    status: full
     implementation: plugins/links/quic
     notes: "OpenSSL-3.6-native QUIC (OSSL_QUIC_server_method /
             OSSL_QUIC_client_method + SSL_new_stream); works over
             plain UDP carrier. Carrier scheme detect: 64-hex peer-pk
-            → gn.link.ice carrier (route detection only, end-to-end
-            handshake over ICE nominated pair tracked in ROADMAP)."
+            → gn.link.ice carrier. Unit coverage:
+            QuicComposer.HandshakeAndPayloadRoundTrip (QUIC-over-UDP)
+            and QuicLink.ComposerConnectIcePeerPkRoutesToIceCarrier
+            (route detection). End-to-end handshake over an ICE-
+            nominated pair exercised by tests/docker/ice-3node
+            scenarios/quic_over_ice.yml."
 
   - rfc: 8446
     title: TLS 1.3
