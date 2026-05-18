@@ -251,7 +251,7 @@ fair-comparison aggregate above by design. Each section is
 | B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses | PASS (425 k IPC picks vs 0 other) |
 | B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through compile-gated `_test_clear_inline_crypto` (`GOODNET_BENCH_SHOWCASE`); production-shape API is planned |
 | B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
-| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel auto-emit from `notify_disconnect` is wired (notifications.cpp:558), the explicit inject lets the bench drive specific timing |
+| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel auto-emit from `notify_disconnect` is wired (`core/kernel/host_api/notifications.cpp:562`), the explicit inject lets the bench drive specific timing |
 | B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; the production auto-emit goes through `plugins/links/ice/interface_watcher` re-gather on `RTM_NEWLINK`/`RTM_DELLINK`, the bench still injects explicitly for deterministic timing |
 
 Time-series cases (B.2 flip, B.3 trigger, B.5 failover, B.6
@@ -453,9 +453,9 @@ not asserted, not assumed.
   signal is planned, so both halves of a session migrate
   symmetrically without bench harness reaching into private state.
 - **Kernel-side strategy event emission** — `notify_connect`
-  fires `CONN_UP` (`core/kernel/host_api/notifications.cpp:133`)
+  fires `CONN_UP` (`core/kernel/host_api/notifications.cpp:131`)
   and `notify_disconnect` fires `CONN_DOWN`
-  (`core/kernel/host_api/notifications.cpp:558`) to every
+  (`core/kernel/host_api/notifications.cpp:562`) to every
   registered strategy. B.5 + B.6 nevertheless inject their own
   `on_path_event` calls so the bench can drive specific event
   timing without staging a full kernel connect/disconnect dance;

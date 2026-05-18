@@ -170,10 +170,14 @@ sudo systemctl reload goodnetd         # re-read /etc/goodnet/node.json
 sudo systemctl restart goodnetd        # full restart with kernel teardown
 ```
 
-Hot reload of the kernel config (without process restart) lands in
-v1.x — until then `restart` is the supported path. The unit file's
-`KillSignal=SIGTERM` + `TimeoutStopSec=30` gives plugins 30 seconds
-to drain in-flight async work before `SIGKILL`.
+The kernel exposes `Kernel::reload_config(text)` as a C-API
+(`core/kernel/kernel.cpp:173`) but the shipped `goodnetd` unit does
+not wire a SIGHUP / `ExecReload=` handler; `systemctl reload
+goodnetd` is therefore not supported on the upstream unit and
+`restart` is the operator-facing path until a daemon-side handler
+ships. The unit file's `KillSignal=SIGTERM` + `TimeoutStopSec=30`
+gives plugins 30 seconds to drain in-flight async work before
+`SIGKILL`.
 
 ---
 

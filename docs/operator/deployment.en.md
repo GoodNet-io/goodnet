@@ -247,9 +247,16 @@ source of truth via Ansible / salt / a config repo. The format is
 small enough that templating works cleanly.
 
 NAT traversal between nodes unable to dial each other directly
-lands with the relay / DHT plugins. Today a NAT'd peer reaches
-out to a publicly-routable peer first (which caches the address)
-or ships through a well-known relay. See the project ROADMAP.
+rides on the `plugins/links/ice` plugin: host / server-reflexive
+(STUN) / relay (TURN) candidates, prioritised connectivity checks,
+and pair-promotion nomination. Configure STUN / TURN servers
+through `ice.stun_servers` / `ice.turn_servers` in
+[`config`](../contracts/config.en.md); pair the ICE link with
+the heartbeat plugin so RTT informs the multi-path scheduler.
+The `ice://` URI shape in §4.2 above is the canonical addressing
+form; ICE rendez-vous still requires an exchange path for the
+candidate set (heartbeat extension, a signaling handler, or a
+bridge) per `plugins/links/ice/README.md`.
 
 ---
 

@@ -189,49 +189,41 @@ so workers can encrypt independently; the AEAD seal cost
 parallelises across the pool's worker count
 (`core/crypto/crypto_worker_pool.cpp`).
 
-**Recv path** today is single-threaded:
+**Recv path** mirrors the send-side fan-out:
 ```
 link plugin notify_inbound_bytes →
-   SecuritySession::decrypt_transport — InlineCrypto::decrypt,
-       runs on the calling thread →
+   SecuritySession::decrypt_batch_transport_stream — splits
+       inbound frames across CryptoWorkerPool workers →
    protocol layer deframe →
    HandlerRegistry dispatch
 ```
-There is no `decrypt_batch_transport` consumer wired to
-`notify_inbound_bytes` yet — each inbound frame walks the
-chain on the link plugin's IO strand without being split
-across workers. AEAD open cost serialises.
+`InlineCrypto::reserve_recv_nonces(k)` pre-allocates `k`
+nonces so workers can decrypt independently; the AEAD open
+cost parallelises across the pool's worker count
+(`core/crypto/crypto_worker_pool.cpp`). A `batch-of-one`
+fast path in `decrypt_batch_transport_stream` falls through
+to the scalar `InlineCrypto::decrypt` so a single inbound
+frame does not pay the latch / cv handshake.
 
-The consequence visible in bench rows:
+The send and recv paths share the `CryptoWorkerPool`
+instance, so a recv batch and a send batch in flight at the
+same time both pull workers from the same pool. The visible
+shape in bench rows:
 
 - `<Plug>EchoRoundtrip` (full RTT — both directions, both
-  peers encrypt+decrypt) reflects the recv-side ceiling on
-  every leg.
-- `<Plug>Echo` one-way send→receive is dominated by recv
-  decrypt for the receiver, send encrypt for the sender; the
-  receiver's single-threaded chain is the lower bound on
-  steady-state rate.
+  peers encrypt+decrypt) reflects steady-state symmetric
+  load on the pool.
+- `<Plug>Echo` one-way send→receive splits work across
+  encrypt jobs on the sender side and decrypt jobs on the
+  receiver side; same pool layout on both ends.
 - Same payload, both peers identically configured: the
-  number on the row IS the recv-side rate, not the send-side
-  rate, because recv finishes after send.
+  reported number is dominated by whichever pool side has
+  fewer workers idle when the bench window samples.
 
-`bench_real_e2e.cpp` does not isolate the two sides today —
-a recv-only fixture that feeds a pre-recorded ciphertext
-stream into `notify_inbound_bytes` and measures
-`HandlerRegistry::dispatch` arrival rate is the shape
-needed to surface the recv path as its own row.
-
-Making recv structurally symmetric with send is a follow-up
-that mirrors the send-side primitives on the inbound path:
-`InlineCrypto::reserve_recv_nonces(k)` paralleling
-`reserve_send_nonces`, a `make_decrypt_job` shape paralleling
-`make_encrypt_job`,
-`SecuritySession::decrypt_batch_transport(spans, out, pool)`
-paralleling `encrypt_batch_transport`, and a batched gather
-inside `notify_inbound_bytes` that splits N inbound frames
-across the `CryptoWorkerPool`. With those in place the row
-reports a rate that reflects both sides fanning out through
-the pool; the asymmetry above collapses.
+`bench_real_e2e.cpp` measures both sides through one fixture;
+a recv-only row that feeds a pre-recorded ciphertext stream
+into `notify_inbound_bytes` and isolates the decrypt half is
+the shape needed to surface recv-only as its own number.
 
 ---
 

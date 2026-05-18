@@ -668,7 +668,7 @@ slots, sees foreign-protocol bytes on a shared TCP/UDP/IPC socket,
 and feeds them through `inject(LAYER_FRAME)` — is not part of this
 contract. The baseline link plugins (TCP, UDP, WS, IPC) inherit
 `GN_ERR_NOT_IMPLEMENTED` defaults for the composer slots through the
-`GN_LINK_PLUGIN` macro (`sdk/cpp/link_plugin.hpp:216-240`); TLS, WS
+`*_dispatch` helper templates in `sdk/cpp/link_plugin.hpp:111-155`; TLS, WS
 and ICE are the links that override the composer surface, but those
 expose their own L2 shapes, not a foreign-protocol composer surface.
 The L1-shared subscribe pattern is the relay / DHT layer's surface.
