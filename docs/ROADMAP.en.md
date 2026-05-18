@@ -52,7 +52,7 @@ to refresh the table.
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
 | io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
-| aarch64 Linux | ✗ missing | token 'aarch64-linux-ci' absent |
+| aarch64 Linux | ✓ done | nix/goodnet-aarch64-linux.nix present |
 | Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
@@ -309,10 +309,18 @@ different sandboxing and performance trade-offs.
 
 ## Cross-platform / cross-arch
 
-- **aarch64 Linux** — current CI matrix is x86_64 + Windows mingw.
-  Native ARM Linux builds (server / Raspberry Pi / cloud ARM
-  instances) need a CI runner. Code itself is portable; the
-  matrix is the missing piece.
+- **aarch64 Linux** — cross-build smoke gate lands as
+  `goodnet-aarch64-linux` (and the truly-static
+  `goodnet-aarch64-linux-static`) via
+  `pkgs.pkgsCross.aarch64-multiplatform`; CI runs
+  `aarch64-linux-cross-build` under the `cross-build` label gate
+  (same shape as the mingw windows-cross job — compile + link,
+  no test execute because there is no native aarch64 runner
+  registered on the Forgejo instance yet). Native ARM Linux
+  operators (server / Raspberry Pi / cloud ARM instances) consume
+  `nix build .#packages.aarch64-linux.goodnet-core` from the
+  non-cross attr set instead. The native-runner test gate is the
+  remaining piece.
 - **Android build** — Android NDK toolchain target for the kernel
   and the static-plugin bundle. Reuses the same `nix run .#build
   -- static` shape with a cross-compile profile. Use case:

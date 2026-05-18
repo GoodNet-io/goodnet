@@ -240,6 +240,45 @@
               license     = pkgs.lib.licenses.mit;
             };
           };
+
+          # Pip-installable Python wrapper over libgoodnet_kernel
+          # through cffi (ABI mode). Pure-Python, no compiled
+          # extensions — the kernel `.so` is loaded at runtime via
+          # `dlopen`. The `goodnet-core` derivation is propagated so
+          # the kernel library is on the consumer's runtime closure;
+          # users still need `GOODNET_CORE_LIB` or `LD_LIBRARY_PATH`
+          # pointing at `${goodnet-core}/lib/` for the dlopen to
+          # resolve. See `bindings/python/README.md` for the runtime
+          # dependency notes.
+          goodnet-python = pkgs.python3Packages.buildPythonPackage {
+            pname   = "goodnet";
+            version = "0.1.0";
+            src     = ./bindings/python;
+            format  = "pyproject";
+            nativeBuildInputs = with pkgs.python3Packages; [
+              setuptools wheel
+            ];
+            propagatedBuildInputs = [
+              pkgs.python3Packages.cffi
+              goodnet-core
+            ];
+            # Tests gated on libgoodnet_kernel.so being reachable;
+            # the smoke suite skips gracefully when it is not, but
+            # the Nix sandbox blocks network and dlopen of paths
+            # outside the build closure. We point GOODNET_CORE_LIB
+            # at the propagated kernel build so `pytest` can drive
+            # the lifecycle round-trip during `nix build`.
+            checkInputs = [ pkgs.python3Packages.pytest ];
+            preCheck = '''
+              export GOODNET_CORE_LIB=${goodnet-core}/lib/libgoodnet_kernel.so
+            ''';
+            pythonImportsCheck = [ "goodnet" "goodnet._ffi" "goodnet.errors" ];
+            meta = {
+              description = "Python bindings for the GoodNet network kernel (cffi ABI mode).";
+              license     = pkgs.lib.licenses.mit;
+              platforms   = pkgs.lib.platforms.linux ++ pkgs.lib.platforms.darwin;
+            };
+          };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           # Truly-static kernel + bundled plugin set against musl +
           # `pkgsStatic` versions of openssl, libsodium, spdlog, fmt,

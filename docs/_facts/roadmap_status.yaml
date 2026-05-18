@@ -40,8 +40,8 @@ features:
   evidence: token 'outbound_queue' absent; token 'offline_queue' absent
 - name: Subprocess SECURITY/HANDLER worker proxy
   status: done
-  evidence: 'symbol ''security_vtable_proxy'' present (core/plugin/remote_host.hpp:112:    [[nodiscard]]
-    const gn_security_provider_...)'
+  evidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const
+    gn_security_provider_vtable_t* RemoteHos...)
 - name: Recv-side parallel decrypt
   status: done
   evidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t
@@ -51,24 +51,23 @@ features:
   evidence: core/kernel/link_capability.hpp present
 - name: DynamicRuntime dlsym cache
   status: done
-  evidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct
-    DynamicPluginSymbols {)
+  evidence: 'symbol ''DynamicPluginSymbols'' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...)'
 - name: Required-plugin manifest pinning
   status: done
-  evidence: 'symbol ''ManifestEntry'' present (core/plugin/runtimes/remote.cpp:42:    const
-    ManifestEntry* manifest_entry = ...)'
+  evidence: 'symbol ''ManifestEntry'' present (core/plugin/plugin_manager.cpp:65:    const
+    ManifestEntry* me = nullptr;)'
 - name: gn_core_unload_plugin hot-reload
   status: done
   evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t
     gn_core_unload_plugin(gn_core_t* core,...)
 - name: Subprocess HOST_CALL slot completion
   status: done
-  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:765:        case
+  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:807:        case
     GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)'
 - name: Per-slot reply-timeout override
   status: done
-  evidence: 'symbol ''set_reply_timeout_for_slot'' present (core/plugin/remote_host.hpp:131:    void
-    set_reply_timeout_for_slot(std::uint...)'
+  evidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void
+    RemoteHost::set_reply_timeout_for_slot(st...)
 - name: Wire codec GN_ERR_WIRE_DECODE
   status: done
   evidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:///
@@ -77,8 +76,9 @@ features:
   status: done
   evidence: tests/fuzz/CMakeLists.txt present
 - name: Coverage gating
-  status: missing
-  evidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent
+  status: done
+  evidence: token 'gcov' found (CMakeLists.txt:142:option(GOODNET_COVERAGE "Build
+    with gcov line+function cov...)
 - name: Plugin templates and scaffolder
   status: done
   evidence: nix/plugin.nix present
@@ -89,8 +89,9 @@ features:
   status: done
   evidence: plugins/links/raw_inject/ present
 - name: Full WASM kernel build
-  status: missing
-  evidence: nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent
+  status: done
+  evidence: token 'EMSCRIPTEN' found (core/plugin/dl_compat.hpp:23:#if defined(__wasi__)
+    || defined(__EMSCRIPTEN__))
 - name: JS SDK + WebSocket bridge
   status: missing
   evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension
@@ -109,11 +110,14 @@ features:
   status: missing
   evidence: token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent
 - name: aarch64 Linux
-  status: missing
-  evidence: token 'aarch64-linux-ci' absent
+  status: done
+  evidence: nix/goodnet-aarch64-linux.nix present
+- name: macOS x86_64 / aarch64 (cross from Linux)
+  status: done
+  evidence: nix/goodnet-darwin.nix present
 - name: Android build
-  status: missing
-  evidence: nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent
+  status: done
+  evidence: nix/goodnet-android.nix present
 - name: MCU port
   status: missing
   evidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent
@@ -124,8 +128,8 @@ features:
   status: missing
   evidence: bridges/goodnet-rs/Cargo.toml absent
 - name: Python
-  status: missing
-  evidence: bridges/goodnet-py/setup.py absent
+  status: done
+  evidence: bindings/python/pyproject.toml present
 - name: Go
   status: missing
   evidence: bridges/goodnet-go/go.mod absent

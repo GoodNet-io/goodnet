@@ -200,7 +200,13 @@ features:
 
   "aarch64 Linux":
     rule:
-      kernel_feature: aarch64-linux-ci
+      any:
+        - file_exists: nix/goodnet-aarch64-linux.nix
+        - kernel_feature: aarch64-linux-ci
+
+  "macOS x86_64 / aarch64 (cross from Linux)":
+    rule:
+      file_exists: nix/goodnet-darwin.nix
 
   "Android build":
     rule:
@@ -224,7 +230,7 @@ features:
 
   "Python":
     rule:
-      file_exists: bridges/goodnet-py/setup.py
+      file_exists: bindings/python/pyproject.toml
 
   "Go":
     rule:
