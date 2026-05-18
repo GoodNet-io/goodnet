@@ -66,6 +66,8 @@ __pycache__/
 # CI
 !.github/**/*.yml
 !.github/**/*.yaml
+!.forgejo/**/*.yml
+!.forgejo/**/*.yaml
 
 # SDK (header-only headers + the worker stub static library — the
 # stub mirrors `core/plugin/remote_host.*` from the worker side so
