@@ -76,5 +76,23 @@ esac
 echo "[init-nat] iptables -t nat -L -nv:"
 iptables -t nat -L -nv
 
+# Optional: clip the WAN-side egress MTU via netem so DPLPMTUD
+# probing has something to discover. PATH_MTU=0 (default) leaves
+# the link untouched.
+PATH_MTU="${PATH_MTU:-0}"
+if [ "${PATH_MTU}" -gt 0 ]; then
+    echo "[init-nat] clipping ${WAN_IFACE} MTU to ${PATH_MTU} via netem"
+    # tc on debian needs the iproute2 package which is already
+    # present; ignore errors if netem isn't loadable in the
+    # container's kernel namespace.
+    tc qdisc add dev "${WAN_IFACE}" root netem mtu "${PATH_MTU}" \
+        2>/dev/null || \
+        echo "[init-nat] WARN: tc netem mtu unsupported, " \
+             "falling back to interface MTU"
+    ip link set dev "${WAN_IFACE}" mtu "${PATH_MTU}" || true
+    echo "[init-nat] tc qdisc show:"
+    tc qdisc show dev "${WAN_IFACE}"
+fi
+
 # Keep the container alive after rules install.
 exec sleep infinity

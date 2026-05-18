@@ -1,0 +1,22 @@
+# Scenario: both peers full-cone NAT, but the WAN-facing
+# interface of each NAT container is clipped to 900-byte MTU
+# via `tc qdisc … netem mtu 900`. The active DPLPMTUD probe in
+# the rc5 ICE stack must discover the cap and converge the
+# session's effective path-MTU to 900. Assertion: peer's logged
+# `effective_path_mtu` settles at 900 within the probe interval.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+      PATH_MTU: "900"
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+      PATH_MTU: "900"
+
+  peer_a:
+    environment:
+      ICE_PMTU_ACTIVE_PROBING: "true"
+  peer_b:
+    environment:
+      ICE_PMTU_ACTIVE_PROBING: "true"
