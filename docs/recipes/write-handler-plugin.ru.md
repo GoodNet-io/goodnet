@@ -113,8 +113,8 @@ mirror в `~/.local/share/goodnet-mirrors/handler-echo.git` до тех пор,
 Per-package JSON собирается из `<so>` инструментом `goodnetd plugin hash`
 автоматически. Trust root — operator-manifest со списком
 `(path, sha256)` пар (§2 plugin-manifest). Подпись Ed25519 поверх
-operator-manifest — отдельный шаг, выполняется снаружи ядра до v1.1
-(§7).
+operator-manifest — отдельный шаг, выполняется снаружи ядра; in-kernel
+verifier для signed-manifest path запланирован (§7 plugin-manifest).
 
 ---
 
