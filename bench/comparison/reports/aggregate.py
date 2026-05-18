@@ -58,6 +58,13 @@ def is_real_row(row):
 def parse_gbench(j, out):
     for b in j.get("benchmarks", []):
         name = b.get("name", "?")
+        # Aggregate rows (suffix _mean / _median / _stddev / _cv)
+        # double-count individual iterations. Skip them; the
+        # iteration rows already carry the numbers we want.
+        if name.endswith(("_mean", "_median", "_stddev", "_cv")):
+            continue
+        if b.get("aggregate_name") in ("mean", "median", "stddev", "cv"):
+            continue
         bps  = b.get("bytes_per_second")
         time = b.get("real_time")
         unit = b.get("time_unit", "ns")
@@ -176,6 +183,9 @@ def parse_comparison(j, out):
         return
     if j.get("metric") == "comparison_weights":
         out["comparison_weights"] = j
+        return
+    if j.get("metric") == "env_facts":
+        out["env_facts"] = j
         return
     if "rows" in j:
         # Tag the table itself so per-payload pivot validators can
@@ -305,30 +315,187 @@ def fmt_per_byte(n):
     return f"{v/1000:.2f} μs/B"
 
 
+def _baseline_index_from_report(path):
+    """Parse a previous markdown bench report and extract the perf
+    rows that have a comparable throughput / time value. Returns a
+    `{case_name: {'time_ns': float|None, 'throughput_bps': float|None}}`
+    map. The Δ-baseline column joins on `case_name`; rows present in
+    the current run but absent from the baseline render as `(new)`,
+    and vice-versa as `(gone)`.
+
+    The aggregator emits one row per case under `## Parody — GoodNet
+    plugin matrix` (and `## Real — ...`) — the regex below picks up
+    the `| <case> | <Time> | <Throughput> | ...` shape. Numbers are
+    parsed by `_parse_time_ns_from_md` and `_parse_throughput_bps_from_md`
+    which mirror `fmt_ns` / `fmt_bytes_per_sec` inverses."""
+    out = {}
+    try:
+        text = Path(path).read_text()
+    except (OSError, FileNotFoundError):
+        return out
+    row_re = re.compile(
+        r"^\| ([A-Za-z][A-Za-z0-9_/:.\-]+(?:/[A-Za-z0-9_]+)*)"
+        r" \| ([^|]+?) \| ([^|]+?) \| ")
+    for line in text.splitlines():
+        m = row_re.match(line)
+        if not m:
+            continue
+        case  = m.group(1).strip()
+        if case == "Case":
+            continue
+        t_str = m.group(2).strip()
+        bp_str = m.group(3).strip()
+        out[case] = {
+            "time_ns":         _parse_time_ns_from_md(t_str),
+            "throughput_bps":  _parse_throughput_bps_from_md(bp_str),
+        }
+    return out
+
+
+def _parse_time_ns_from_md(s):
+    """Inverse of `fmt_ns` — accepts `5.1 ms` / `42 ns` / `1.2 μs` etc.
+    Returns None for `—` or unparseable strings."""
+    if not s or s == "—" or s == "-":
+        return None
+    try:
+        n = float(s.split()[0])
+    except (ValueError, IndexError):
+        return None
+    if "ms" in s:
+        return n * 1e6
+    if "μs" in s or "us" in s:
+        return n * 1e3
+    if " s" in s:
+        return n * 1e9
+    return n  # ns
+
+
+def _parse_throughput_bps_from_md(s):
+    """Inverse of `fmt_bytes_per_sec`. Accepts `2.03 GiB/s` etc."""
+    if not s or s == "—" or s == "-":
+        return None
+    try:
+        n = float(s.split()[0])
+    except (ValueError, IndexError):
+        return None
+    if "GiB" in s:
+        return n * 1024 * 1024 * 1024
+    if "MiB" in s:
+        return n * 1024 * 1024
+    if "KiB" in s:
+        return n * 1024
+    if "TiB" in s:
+        return n * 1024 * 1024 * 1024 * 1024
+    return n
+
+
+def _baseline_delta(current, baseline_entry, is_latency):
+    """Compute the regression marker + percent delta. `current` is
+    the active row's throughput_bps (or time_ns when `is_latency`);
+    `baseline_entry` is the matched dict from `_baseline_index_from_report`.
+    Returns a markdown-safe string (`+12.3% [REGRESSION]` /
+    `-4.1% improvement` / `—` when no baseline)."""
+    if baseline_entry is None:
+        return "—"
+    if is_latency:
+        base = baseline_entry.get("time_ns")
+        cur  = current
+    else:
+        base = baseline_entry.get("throughput_bps")
+        cur  = current
+    if base is None or cur is None or base <= 0:
+        return "—"
+    delta_pct = (cur - base) / base * 100.0
+    # Latency regression: current LARGER than baseline by >15% — bad.
+    # Throughput regression: current SMALLER than baseline by >10% — bad.
+    # The marker text is `[REGRESSION]` because emoji are banned and
+    # bench reports need a plain-text scannable marker.
+    if is_latency:
+        if delta_pct > 15.0:
+            return f"+{delta_pct:.1f}% [REGRESSION]"
+        if delta_pct < -15.0:
+            return f"{delta_pct:.1f}% improvement"
+    else:
+        if delta_pct < -10.0:
+            return f"{delta_pct:.1f}% [REGRESSION]"
+        if delta_pct > 10.0:
+            return f"+{delta_pct:.1f}% improvement"
+    return f"{delta_pct:+.1f}%"
+
+
 def main(argv):
     p = argparse.ArgumentParser()
     p.add_argument("commit_sha")
     p.add_argument("output")
     p.add_argument("inputs", nargs="+")
+    p.add_argument("--baseline", default=None,
+                   help="Path to a previous bench report markdown for "
+                        "delta-vs-baseline column. Disabled when absent.")
     args = p.parse_args(argv)
 
+    baseline_idx = (_baseline_index_from_report(args.baseline)
+                    if args.baseline else {})
+
     aggregated = {}
+    skipped_inputs = []
     for path in args.inputs:
         try:
             with open(path) as f:
                 content = f.read().strip()
             if not content:
+                skipped_inputs.append((path, "empty file"))
                 continue
             j = json.loads(content)
         except (json.JSONDecodeError, OSError) as e:
             print(f"warn: skipping {path}: {e}", file=sys.stderr)
+            # An empty / truncated JSON usually means the binary
+            # crashed mid-run. Track those so the report's `## Known
+            # crashes` section can call out the missing rows by name
+            # rather than letting them silently vanish from the matrix.
+            skipped_inputs.append((path, str(e)))
             continue
         if "benchmarks" in j:
             parse_gbench(j, aggregated)
         else:
             parse_comparison(j, aggregated)
+    if skipped_inputs:
+        aggregated["skipped_inputs"] = skipped_inputs
 
     out = [f"# Benchmark report — {args.commit_sha}", ""]
+    if args.baseline:
+        out.append(f"_Baseline: `{args.baseline}` — Δ-vs-baseline "
+                   f"column in `## Parody` / `## Real` tables flags "
+                   f"regressions (`[REGRESSION]` marker on >15% latency "
+                   f"slowdown or >10% throughput drop)._")
+        out.append("")
+    # ── Environment header ────────────────────────────────────────
+    #
+    # Bench numbers shift across CPU governors, turbo state, SMT
+    # config, ASLR setting — the canonical answer to "why is this row
+    # 30% slower than last week" is the env. Document it inline so a
+    # reader picking up the report a quarter later can see the
+    # mismatch at a glance.
+    if env := aggregated.get("env_facts"):
+        out.append("## Environment")
+        out.append("")
+        out.append("| Fact | Value |")
+        out.append("|---|---|")
+        out.append(f"| CPU | {env.get('cpu_model', '?')} "
+                   f"({env.get('cpu_cores', '?')} cores) |")
+        out.append(f"| RAM | {env.get('ram', '?')} |")
+        out.append(f"| Kernel | {env.get('kernel', '?')} |")
+        gov = env.get('governor', '?')
+        gov_str = (f"`{gov}` (run `cpupower frequency-set -g performance` "
+                   f"for production-grade numbers — see "
+                   f"`docs/perf/methodology.en.md` §Environmental controls)"
+                   if gov not in ("performance", "?")
+                   else f"`{gov}`")
+        out.append(f"| CPU governor | {gov_str} |")
+        out.append(f"| Turbo | {env.get('turbo', '?')} |")
+        out.append(f"| SMT | {env.get('smt', '?')} |")
+        out.append(f"| ASLR | {env.get('aslr', '?')} (0=off, 1=stack, 2=full) |")
+        out.append(f"| NUMA nodes | {env.get('numa_nodes', '?')} |")
+        out.append("")
 
     # ── TL;DR cross-stack throughput at the canonical payload ────────
     #
@@ -596,37 +763,65 @@ def main(argv):
         out.append("")
 
     def emit_perf_table(rows, shape_label):
-        out.append("| Case | Time | Throughput | CPU/B | P50 lat | "
-                   "P99 lat | RSS Δ | RSS Peak Δ | VSZ Peak Δ | "
-                   "Sock Mem Δ | Minor Faults | Ctx Sw (vol/inv) |")
-        out.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
+        # Δ-baseline column only emitted when --baseline is set.
+        delta_col = " Δ vs baseline |" if baseline_idx else ""
+        delta_sep = "---|" if baseline_idx else ""
+        out.append("| Case | Status | Time | Throughput |" + delta_col +
+                   " CPU/B | P50 lat | P99 lat | RSS Δ | RSS Peak Δ | "
+                   "VSZ Peak Δ | Sock Mem Δ | Minor Faults | "
+                   "Ctx Sw (vol/inv) |")
+        out.append("|---|---|---|---|" + delta_sep +
+                   "---|---|---|---|---|---|---|---|---|")
         for r in rows:
             tput = (fmt_bytes_per_sec(r["throughput_bps"])
                     if r["throughput_bps"] else "-")
             mf = r.get("minor_faults")
             mf_str = f"{int(mf):,}" if mf is not None and mf > 0 else "—"
-            # Voluntary / involuntary context switches as a pair.
-            # Voluntary = thread gave up the slice (mutex / condvar /
-            # io_context post / sleep) — high count means lots of
-            # synchronisation. Involuntary = preempted (slice
-            # expired / higher-priority task arrived) — high count
-            # means saturated CPU. Both reveal whether a throughput
-            # number was bottlenecked by sync vs CPU.
             vol = r.get("vol_ctx_sw")
             inv = r.get("inv_ctx_sw")
             if vol is None and inv is None:
                 cs_str = "—"
             else:
                 cs_str = (f"{int(vol or 0):,} / {int(inv or 0):,}")
-            # Strip the `RealFixture/` prefix from the case name in
-            # the Real table so a reader scanning the column gets
-            # `TcpEcho/1024` not `RealFixture/TcpEcho/1024` repeated.
             case = r["case"]
             if shape_label == "real" and case.startswith(_REAL_PREFIX):
                 case = case[len(_REAL_PREFIX):]
+            # Status column makes SkipWithError visible. `error` is
+            # the bench fixture's diagnostic ("send failed mid-loop",
+            # "handshake timeout") propagated from
+            # google-benchmark's `error_message`. Rows that ran
+            # cleanly show `ok` — operators scanning for the SKIP /
+            # CRASH cells get them at a glance instead of having to
+            # cross-reference the JSON.
+            if r.get("error"):
+                status = f"SKIP: {r['error']}"
+            elif r.get("throughput_bps") or r.get("time_ns"):
+                status = "ok"
+            else:
+                status = "no data"
+            # Δ vs baseline column. Throughput-bearing rows compare
+            # `throughput_bps`; latency-bearing rows (no throughput)
+            # compare `time_ns`. Rows where the current bench reports
+            # no number get `—`. Rows absent from baseline get `(new)`.
+            if baseline_idx:
+                bl = baseline_idx.get(case)
+                if bl is None:
+                    delta_cell = "(new)"
+                elif r.get("throughput_bps"):
+                    delta_cell = _baseline_delta(
+                        float(r["throughput_bps"]), bl, is_latency=False)
+                elif r.get("time_ns"):
+                    delta_cell = _baseline_delta(
+                        float(r["time_ns"]), bl, is_latency=True)
+                else:
+                    delta_cell = "—"
+                delta_col_str = f" {delta_cell} |"
+            else:
+                delta_col_str = ""
             out.append(
-                f"| {case} | {fmt_ns(r['time_ns'])} | {tput} | "
-                f"{fmt_per_byte(r.get('cpu_ns_per_byte'))} | "
+                f"| {case} | {status} | {fmt_ns(r['time_ns'])} | {tput} |"
+                + delta_col_str +
+                f" {fmt_per_byte(r.get('cpu_ns_per_byte'))} | "
                 f"{fmt_ns(r['p50_ns'])} | {fmt_ns(r['p99_ns'])} | "
                 f"{fmt_kb(r.get('rss_kb_delta'))} | "
                 f"{fmt_kb(r.get('rss_peak_kb_delta'))} | "
@@ -1010,6 +1205,45 @@ def main(argv):
                     f"— | "
                     f"**{fmt_size_bytes(bs['kernel_static_bytes'])}** |")
         out.append("")
+
+    # ── Known crashes ─────────────────────────────────────────────
+    #
+    # A bench binary that crashed during the run produced either no
+    # output, an empty file, or a truncated JSON. The runner forwards
+    # those paths; the aggregator surfaces them as a named section so
+    # the matrix below isn't quietly missing rows. See
+    # `docs/perf/methodology.en.md` §4.3 for the operator's
+    # "honest fixture failures" contract.
+    if skipped := aggregated.get("skipped_inputs"):
+        # Surface only crashes that *match* a known bench binary name —
+        # otherwise empty / unparseable comparison-runner outputs leak
+        # in here. The runner's filename convention is
+        # `bench_<plugin>.json` for gbench inputs and arbitrary names
+        # for comparison-harness JSON; matching on the prefix keeps
+        # the section focused on the bench plugin crashes that
+        # operators care about.
+        bench_crashes = [
+            (Path(p).stem, reason) for p, reason in skipped
+            if Path(p).stem.startswith("bench_")
+        ]
+        if bench_crashes:
+            out.append("## Known crashes — bench binaries that "
+                       "produced no output")
+            out.append("")
+            out.append("_These bench binaries either exited before "
+                       "writing their JSON header (segfault / heap "
+                       "corruption) or wrote partial JSON the parser "
+                       "could not decode. The matrix above is missing "
+                       "every row from these binaries — by design, "
+                       "since a `—` row would lie about whether the "
+                       "fixture ran. Operators reproduce by running "
+                       "the binary directly._")
+            out.append("")
+            out.append("| Binary | Parse failure |")
+            out.append("|---|---|")
+            for name, reason in bench_crashes:
+                out.append(f"| `{name}` | `{reason}` |")
+            out.append("")
 
     if tables := aggregated.get("tables"):
         for tbl in tables:
