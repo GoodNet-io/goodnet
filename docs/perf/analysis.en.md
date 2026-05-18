@@ -471,9 +471,8 @@ not asserted, not assumed.
 - **Chaos bench (`tc netem` loss / latency injection)** — opt-in
   via `GN_BENCH_CHAOS=1`, not in default report.
 
-The methodology requires every gap above eventually fills — see
-[`feedback_bench_methodology.md`](../../bench/README.md) for the
-recipe.
+The methodology requires every gap above to be filled — see
+[`bench/README.md`](../../bench/README.md) for the recipe.
 
 ## How to reproduce
 
