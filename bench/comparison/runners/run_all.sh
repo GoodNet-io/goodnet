@@ -16,22 +16,36 @@ trap 'rm -rf $tmp' EXIT
 mkdir -p bench/reports
 
 echo "=== GoodNet plugin matrix ==="
-# `bench_udp` / `bench_dtls` / `bench_quic` / `bench_ice` crash on
-# HEAD: a glibc malloc.c:2610 heap-arena assertion in the UDP
-# loopback path pre-dates the bench overhaul (reproduces on c146231
-# too) and DTLS / QUIC / ICE inherit it via their UDP carrier. The
-# stub-JSON below seeds the aggregator's `## Known crashes` section
-# so the missing rows are explicit in the report; the binaries
-# themselves are excluded from the auto-run so they don't poison
-# the shell with a coredump.
-for crashed in bench_udp bench_dtls bench_quic bench_ice; do
+# `bench_udp` / `bench_dtls` / `bench_quic` crash on HEAD: a glibc
+# malloc.c:2610 heap-arena assertion in the UDP loopback path
+# pre-dates the bench overhaul (reproduces on c146231 too) and
+# DTLS / QUIC inherit it via their UDP carrier. The stub-JSON
+# below seeds the aggregator's `## Known crashes` section so the
+# missing rows are explicit in the report; the binaries themselves
+# are excluded from the auto-run so they don't poison the shell
+# with a coredump.
+#
+# `bench_ice` previously crashed on the same UDP arena bug; the
+# rc5 bench-overhaul cycle moved bench_ice off the auto-iter ramp
+# (explicit `Iterations()` caps) and the binary now runs to
+# completion. It joins the default_set below.
+for crashed in bench_udp bench_dtls bench_quic; do
     # Tiny invalid-JSON marker — aggregator's parse_gbench raises
     # JSONDecodeError, which `skipped_inputs` then captures and the
     # `## Known crashes` section renders.
     printf 'crashed: UdpLink malloc.c:2610 heap-arena assertion\n' \
         > "$tmp/${crashed}.json"
 done
-for b in bench_tcp bench_tcp_scale bench_ipc bench_ws bench_tls; do
+# `bench_ice` and `bench_subprocess` and `bench_failover` join the
+# day-to-day set; `bench_sustained` stays opt-in because of its
+# ~60-second wall time (gate it through `GOODNET_BENCH_SUSTAINED`
+# so the runner only includes it when explicitly requested).
+default_set=(bench_tcp bench_tcp_scale bench_ipc bench_ws bench_tls
+             bench_ice bench_subprocess bench_failover)
+if [[ "${GOODNET_BENCH_SUSTAINED:-0}" == "1" ]]; then
+    default_set+=(bench_sustained)
+fi
+for b in "${default_set[@]}"; do
     # Prefer Release-build binaries when available. Debug runs
     # through the same syscalls and gets within ~5% on throughput
     # benches but skews crypto-heavy numbers (Noise handshake) by

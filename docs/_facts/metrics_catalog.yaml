@@ -16,3 +16,10 @@ counters:
     line: 864
   - file: plugins/links/tls/tls.cpp
     line: 902
+- name: raw_inject.inject.error
+  family: raw_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 306

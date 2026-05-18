@@ -117,11 +117,11 @@ _40 config key(s) read by core / plugins, grouped by family._
 
 | Key | Type | Reader |
 |---|---|---|
-| `raw_inject.default_msg_id` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L242`](../../plugins/links/raw_inject/raw_inject.cpp#L242) |
-| `raw_inject.encode_msg_id` | `string` | [`plugins/links/raw_inject/raw_inject.cpp#L254`](../../plugins/links/raw_inject/raw_inject.cpp#L254) |
-| `raw_inject.listen` | `string` | [`plugins/links/raw_inject/raw_inject.cpp#L235`](../../plugins/links/raw_inject/raw_inject.cpp#L235) |
-| `raw_inject.max_payload` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L250`](../../plugins/links/raw_inject/raw_inject.cpp#L250) |
-| `raw_inject.rate_limit_per_sec` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L246`](../../plugins/links/raw_inject/raw_inject.cpp#L246) |
+| `raw_inject.default_msg_id` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L91`](../../plugins/links/raw_inject/raw_inject.cpp#L91) |
+| `raw_inject.encode_msg_id` | `string` | [`plugins/links/raw_inject/raw_inject.cpp#L103`](../../plugins/links/raw_inject/raw_inject.cpp#L103) |
+| `raw_inject.listen` | `string` | [`plugins/links/raw_inject/raw_inject.cpp#L84`](../../plugins/links/raw_inject/raw_inject.cpp#L84) |
+| `raw_inject.max_payload` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L99`](../../plugins/links/raw_inject/raw_inject.cpp#L99) |
+| `raw_inject.rate_limit_per_sec` | `int64` | [`plugins/links/raw_inject/raw_inject.cpp#L95`](../../plugins/links/raw_inject/raw_inject.cpp#L95) |
 
 ### `udp` keys
 

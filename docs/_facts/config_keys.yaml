@@ -10,19 +10,19 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 447
+    line: 479
 - name: ice.auto_restart_max_attempts
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 443
+    line: 475
 - name: ice.auto_restart_on_consent_loss
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 439
+    line: 471
 - name: ice.check_interval_ms
   type: int64
   family: ice
@@ -76,19 +76,19 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 455
+    line: 487
 - name: ice.pmtu_probe_concurrency
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 462
+    line: 494
 - name: ice.pmtu_probe_timeout_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 458
+    line: 490
 - name: ice.reactive_interface_change
   type: int64
   family: ice
@@ -118,13 +118,13 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 425
+    line: 457
 - name: ice.tcp_so_timeout_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 431
+    line: 463
 - name: ice.turn_allocate_timeout_s
   type: int64
   family: ice
@@ -149,6 +149,12 @@ keys:
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 262
+- name: ice.turn_requested_transport
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 430
 - name: ice.turn_servers
   type: string
   family: ice
@@ -196,31 +202,31 @@ keys:
   family: raw_inject
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 242
+    line: 91
 - name: raw_inject.encode_msg_id
   type: string
   family: raw_inject
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 254
+    line: 103
 - name: raw_inject.listen
   type: string
   family: raw_inject
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 235
+    line: 84
 - name: raw_inject.max_payload
   type: int64
   family: raw_inject
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 250
+    line: 99
 - name: raw_inject.rate_limit_per_sec
   type: int64
   family: raw_inject
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 246
+    line: 95
 - name: udp.new_conn_burst
   type: int64
   family: udp
