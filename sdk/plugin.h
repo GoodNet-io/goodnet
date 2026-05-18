@@ -129,10 +129,10 @@ GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self);
 /**
  * @brief Plugin role declared in the descriptor.
  *
- * The kernel splits its host-API surface by role: only `Transport`
+ * The kernel splits its host-API surface by role: only `LINK`
  * plugins may invoke the loader-side `notify_connect` /
  * `notify_inbound_bytes` / `notify_disconnect` / `kick_handshake`
- * entries; calls from other roles are rejected. `Unknown` is
+ * entries; calls from other roles are rejected. `UNKNOWN` is
  * permissive (treated as no-gate) for plugins whose descriptor
  * leaves the field zero-initialised.
  */
