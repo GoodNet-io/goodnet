@@ -20,15 +20,27 @@ to refresh the table.
 
 | Feature | Status | Evidence |
 |---|---|---|
-| NAT-traversal pipeline | ✗ missing | plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered in plugins/ |
+| NAT-traversal pipeline | ✓ done | plugins/links/ice/ present |
 | Multi-path scheduler | ✓ done | plugins/strategies/float_send_rtt/ present |
-| Directed relay → direct upgrade | ✗ missing | plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not registered in plugins/ |
+| Directed relay → direct upgrade | ✓ done | plugins/links/ice/session.cpp present |
+| DPLPMTUD active path-MTU probing | ✓ done | plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present |
+| Multi-TURN fallback | ✓ done | token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...) |
+| IPv6 mDNS dual-stack | ✓ done | token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...) |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
 | Address-based forwarding | ✗ missing | plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/ |
 | KV storage handler | ✓ done | plugins/handlers/store/ present |
 | Gossip sync handler | ✗ missing | plugins/handlers/gossip/ absent |
 | Offline outbound queue | ✗ missing | token 'outbound_queue' absent; token 'offline_queue' absent |
-| Fuzz harness | ✗ missing | tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent |
+| Subprocess SECURITY/HANDLER worker proxy | ✓ done | symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...) |
+| Recv-side parallel decrypt | ✓ done | symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...) |
+| Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
+| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {) |
+| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...) |
+| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
+| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
+| Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...) |
+| Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
+| Fuzz harness | ✓ done | tests/fuzz/CMakeLists.txt present |
 | Coverage gating | ✗ missing | token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |

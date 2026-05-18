@@ -1,15 +1,24 @@
 features:
 - name: NAT-traversal pipeline
-  status: missing
-  evidence: plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered
-    in plugins/
+  status: done
+  evidence: plugins/links/ice/ present
 - name: Multi-path scheduler
   status: done
   evidence: plugins/strategies/float_send_rtt/ present
 - name: Directed relay → direct upgrade
-  status: missing
-  evidence: plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not
-    registered in plugins/
+  status: done
+  evidence: plugins/links/ice/session.cpp present
+- name: DPLPMTUD active path-MTU probing
+  status: done
+  evidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present
+- name: Multi-TURN fallback
+  status: done
+  evidence: 'token ''turn_servers'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers`
+    ...); token ''turn_backup_interval_s'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)'
+- name: IPv6 mDNS dual-stack
+  status: done
+  evidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr
+    const char* kMdnsIPv6Multicast...)
 - name: Kademlia-style DHT
   status: missing
   evidence: plugins/handlers/kademlia/ absent
@@ -26,9 +35,44 @@ features:
 - name: Offline outbound queue
   status: missing
   evidence: token 'outbound_queue' absent; token 'offline_queue' absent
+- name: Subprocess SECURITY/HANDLER worker proxy
+  status: done
+  evidence: 'symbol ''security_vtable_proxy'' present (core/plugin/remote_host.hpp:112:    [[nodiscard]]
+    const gn_security_provider_...)'
+- name: Recv-side parallel decrypt
+  status: done
+  evidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t
+    SecuritySession::decrypt_batch_tran...)
+- name: Link capability gate
+  status: done
+  evidence: core/kernel/link_capability.hpp present
+- name: DynamicRuntime dlsym cache
+  status: done
+  evidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct
+    DynamicPluginSymbols {)
+- name: Required-plugin manifest pinning
+  status: done
+  evidence: 'symbol ''ManifestEntry'' present (core/plugin/runtimes/remote.cpp:42:    const
+    ManifestEntry* manifest_entry = ...)'
+- name: gn_core_unload_plugin hot-reload
+  status: done
+  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t
+    gn_core_unload_plugin(gn_core_t* core,...)
+- name: Subprocess HOST_CALL slot completion
+  status: done
+  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:765:        case
+    GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)'
+- name: Per-slot reply-timeout override
+  status: done
+  evidence: 'symbol ''set_reply_timeout_for_slot'' present (core/plugin/remote_host.hpp:131:    void
+    set_reply_timeout_for_slot(std::uint...)'
+- name: Wire codec GN_ERR_WIRE_DECODE
+  status: done
+  evidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:///
+    Errors return `GN_ERR_WIRE_DECODE` for malf...)
 - name: Fuzz harness
-  status: missing
-  evidence: tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent
+  status: done
+  evidence: tests/fuzz/CMakeLists.txt present
 - name: Coverage gating
   status: missing
   evidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent
