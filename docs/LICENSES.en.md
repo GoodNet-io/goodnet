@@ -107,8 +107,8 @@ shapes only what ships in `GoodNet-io/goodnet`.
 
 When a plugin is lifted to its own `GoodNet-io/<plugin>` repository
 (see `dist/migrate/spinoff-cookbook.md`), its `LICENSE` travels with
-the tree. Strategic plugins promoted post-rc1 carry the GPL-2 +
-Linking Exception text in full at the spinoff repo's root; the
-in-tree thin pointer at `plugins/<kind>/<name>/LICENSE` references
-the canonical kernel `core/LICENSE` while the plugin lives in the
-monorepo.
+the tree. After spinoff, strategic plugins carry the GPL-2 +
+Linking Exception text in full at the spinoff repo's root; while
+the plugin lives in the monorepo, the in-tree thin pointer at
+`plugins/<kind>/<name>/LICENSE` references the canonical kernel
+`core/LICENSE` instead.

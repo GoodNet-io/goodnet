@@ -517,7 +517,8 @@ surface, на остаток escape hatch'и `core.host_api()` и
 - [`core-c.en.md`](../contracts/core-c.en.md) — full contract operator-side
   C ABI, который binding оборачивает
 - [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — правила
-  совместимости pre-rc1 и post-rc1
+  ABI совместимости (reshape window + `_reserved` slot + `api_size`
+  gating)
 - [`error-handling`](../impl/cpp/error-handling.ru.md) —
   `gn_result_t` и mapping в C++ exceptions / `std::expected`
 - [`memory-management`](../impl/cpp/memory-management.ru.md) —

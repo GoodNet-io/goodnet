@@ -425,4 +425,4 @@ Org doc + landing page при rc1.
 - [`contracts/plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) —
   lifecycle invariants
 - [`contracts/abi-evolution.en.md`](../contracts/abi-evolution.en.md) — ABI
-  правила pre-rc1 vs post-rc1
+  reshape window + `_reserved` slot evolution rules
