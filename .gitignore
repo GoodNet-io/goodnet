@@ -139,6 +139,18 @@ plugins/security/null/
 # submodule when something runs `git add -A` from the monorepo root.
 bridges/cpp/
 
+# bindings/rust — in-tree Rust crates (goodnet-sys + goodnet) built
+# in-tree with cargo; lockfile + Cargo.toml + .rs files all live in
+# the monorepo, no nested git.
+!bindings/rust/Cargo.toml
+!bindings/rust/Cargo.lock
+!bindings/rust/default.nix
+!bindings/rust/README.md
+!bindings/rust/.gitignore
+!bindings/rust/**/Cargo.toml
+!bindings/rust/**/*.rs
+!bindings/rust/**/*.h
+
 # bindings/python — in-tree Python wrapper over libgoodnet_kernel
 # through cffi. Pip-installable package, no compiled extensions, so
 # everything is plain-text and rides in the monorepo unlike the

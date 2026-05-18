@@ -1,0 +1,21 @@
+# GoodNet Rust bindings — two-crate Cargo workspace.
+#
+#   goodnet-sys  — raw FFI, bindgen-generated at build time from sdk/core.h.
+#   goodnet      — safe RAII wrapper around the kernel handle.
+#
+# A consumer pulls just `goodnet` and gets the lifecycle surface
+# (create / init / start / stop / wait, plus load_plugin and
+# register_protocol). Raw FFI is re-exported through `goodnet::sys::*`
+# for the long tail of entries that have not been hand-wrapped.
+#
+# Build-time prerequisites land in `bindings/rust/README.md`; the
+# short version is: `libgoodnet_kernel` must be locatable either
+# via pkg-config or through the `GOODNET_CORE_DIR` env var (with
+# `include/` + `lib/` subdirs under it).
+
+[workspace]
+resolver = "2"
+members  = [
+    "goodnet-sys",
+    "goodnet",
+]
