@@ -117,6 +117,60 @@ jobs:
       - name: Cross-build Windows via mingw
         run: nix build .#goodnet-windows --print-build-logs
 
+  bench-smoke:
+    # Builds the three primary perf binaries in Release mode and runs
+    # each for ~0.3 s with `--benchmark_format=json`. If a baseline
+    # JSON for the binary lives at `bench/baselines/<binary>.json`,
+    # `tools/bench_compare.py` compares the run against it and fails
+    # the job if any benchmark regresses by more than 15 % in cpu/real
+    # time. Without a baseline the job logs numbers but does not gate
+    # — useful as a smoke check that the bench harness itself still
+    # produces non-zero metering after a kernel change.
+    #
+    # Gated by the `bench` label OR push to main so PRs that don't
+    # touch perf-relevant code don't pay the Release-build tax.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: contains(github.event.pull_request.labels.*.name, 'bench') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build bench binaries (Release)
+        run: |
+          nix develop --command bash -c '
+            cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release \
+              -DGOODNET_BUILD_BENCH=ON >/dev/null
+            ninja -C build-release bench_real_e2e bench_tcp bench_udp
+          '
+      - name: Run + compare benches
+        run: |
+          mkdir -p bench/_ci
+          for b in bench_real_e2e bench_tcp bench_udp; do
+            ./build-release/bench/${b} \
+              --benchmark_min_time=0.3s \
+              --benchmark_format=json \
+              > bench/_ci/${b}.json
+            if [[ -f bench/baselines/${b}.json ]]; then
+              echo "── ${b}: compare vs baseline ────"
+              nix develop --command python3 tools/bench_compare.py \
+                bench/baselines/${b}.json bench/_ci/${b}.json \
+                --threshold-pct 15
+            else
+              echo "── ${b}: no baseline, smoke-only ────"
+              nix develop --command python3 tools/bench_summary.py \
+                bench/_ci/${b}.json
+            fi
+          done
+      - name: Upload bench JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-smoke-${{ github.sha }}
+          path: bench/_ci/
+
   ice-3node:
     # Docker-compose harness that exercises the four NAT scenarios
     # the link-ice plugin needs to survive (full_cone, symmetric_relay,
