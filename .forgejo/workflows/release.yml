@@ -6,21 +6,19 @@ on:
 
 permissions:
   contents: write
-  packages: write   # forgejo package registry push
+  packages: write
 
-# Forgejo Actions mirror of `.github/workflows/release.yml`. GitHub
-# releases stay the canonical download surface for now (README's
-# quickstart points at `github.com/GoodNet-io/goodnet`), so this
-# workflow runs in parallel as a build-only smoke until tag-push
-# artefact upload is wired against the Forgejo packages API.
+# Sole release pipeline. The self-hosted Forgejo runner builds the
+# tagged artefacts and publishes them to GitHub Releases at
+# `goodnet-io/goodnet` via the `gh` CLI. Requires the per-repo
+# secret `GH_TOKEN` (scopes: classic `repo`, or a fine-grained
+# token with `contents:write` on `goodnet-io/goodnet`). The token
+# is set in the Forgejo web UI under
+# `Repo Settings → Actions → Secrets → Add`.
 #
-# TODO: add aarch64 runner label — there is no aarch64 forgejo
-# runner registered today so the matrix is x86_64-only. The GitHub
-# release.yml keeps the aarch64 arm.
-# TODO: `softprops/action-gh-release@v2` resolves the GitHub API;
-# it won't publish onto Forgejo. The artefact upload step is a
-# placeholder until the runner's action mirror is verified or a
-# `forgejo-release`-style action lands here.
+# Matrix is x86_64-only — no aarch64 runner is registered on the
+# Forgejo instance. The mingw windows cross-build keeps its place
+# because it runs on the same linux runner via `pkgsCross.mingwW64`.
 
 jobs:
   build-linux:
@@ -126,7 +124,7 @@ jobs:
           cp -L result/bin/*.exe release-windows/
           cp -L result/bin/*.dll release-windows/
           cd release-windows
-          zip -r "../goodnet-${TAG}-windows-x86_64.zip" .
+          nix shell nixpkgs#zip --command zip -r "../goodnet-${TAG}-windows-x86_64.zip" .
       - name: Generate SHA-256
         run: |
           TAG="${GITHUB_REF_NAME}"
@@ -175,6 +173,13 @@ jobs:
   release:
     needs: [build-linux, build-windows, changelog]
     runs-on: nix-self-hosted
+    env:
+      # `GH_TOKEN` is the per-repo Forgejo secret carrying a GitHub
+      # token (classic `repo` scope, or fine-grained `contents:write`
+      # on goodnet-io/goodnet). `gh` reads it from this env var
+      # automatically — no `gh auth login` needed.
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      GH_REPO: goodnet-io/goodnet
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -185,16 +190,34 @@ jobs:
           pattern: windows-release-*
           merge-multiple: true
 
-      # TODO: needs validation on forgejo-runner — the action targets
-      # GitHub's release API. Until then this step is best-effort and
-      # the canonical release surface stays GitHub via
-      # `.github/workflows/release.yml`.
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            goodnet-*-linux-x86_64.tar.gz
-            goodnet-*-linux-x86_64.tar.gz.sha256
-            goodnet-*-windows-x86_64.zip
-            goodnet-*-windows-x86_64.zip.sha256
-          body: ${{ needs.changelog.outputs.notes }}
-          generate_release_notes: false
+      - name: Write changelog notes to file
+        run: |
+          cat > release-notes.md <<'NOTES_EOF'
+          ${{ needs.changelog.outputs.notes }}
+          NOTES_EOF
+
+      - name: Publish to GitHub Releases via gh CLI
+        # `gh` is fetched on demand from nixpkgs; the runner is Nix-
+        # native so the binary lives in the local store after the
+        # first tag. Create-vs-upload split keeps re-running the
+        # workflow on the same tag idempotent (uploads only overwrite
+        # via `--clobber`; the release row itself stays).
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          export TAG
+          nix shell nixpkgs#gh --command bash -euo pipefail -c '
+            assets=(
+              "goodnet-${TAG}-linux-x86_64.tar.gz"
+              "goodnet-${TAG}-linux-x86_64.tar.gz.sha256"
+              "goodnet-${TAG}-windows-x86_64.zip"
+              "goodnet-${TAG}-windows-x86_64.zip.sha256"
+            )
+            if gh release view "${TAG}" >/dev/null 2>&1; then
+              gh release upload "${TAG}" "${assets[@]}" --clobber
+            else
+              gh release create "${TAG}" "${assets[@]}" \
+                --title "${TAG}" \
+                --notes-file release-notes.md
+            fi
+          '
