@@ -11,7 +11,7 @@ This page enumerates the **kernel-emitted** and
 **static-plugin-emitted** names. Counters from loadable plugins
 (handler-{heartbeat,store,dns}, link-{tcp,udp,ws,ipc,tls,ice,quic},
 security-{noise,null}, strategy-float-send-rtt) live in each
-plugin's own repository — see §7.
+plugin's own repository — see §8.
 
 ## Contents
 
@@ -225,9 +225,14 @@ default plugin set loaded:
 | `link_ws.*` | `GoodNet-io/link-ws` | handshake, upgrade, disconnect reasons |
 | `link_ipc.*` | `GoodNet-io/link-ipc` | accept / connect outcomes for AF_UNIX peers |
 | `link_tls.*` | `GoodNet-io/link-tls` | TLS handshake outcomes, alert codes |
+| `link_ice.*` | `GoodNet-io/link-ice` | candidate gathering, STUN / TURN check outcomes, DPLPMTUD probe results, interface-watcher re-gathers |
+| `link_quic.*` | `GoodNet-io/link-quic` | QUIC handshake / stream / migration outcomes |
 | `security_noise.*` | `GoodNet-io/security-noise` | handshake state transitions, decrypt failures |
 | `security_null.*` | `GoodNet-io/security-null` | session lifecycle for the no-op provider |
 | `heartbeat.*` | `GoodNet-io/handler-heartbeat` | `heartbeat.ping`, `heartbeat.pong`, `heartbeat.miss` |
+| `store.*` | `GoodNet-io/handler-store` | KV put / get / sync outcomes, TTL-driven evictions |
+| `dns.*` | `GoodNet-io/handler-dns` | `dns.put / get / delete / subscribe / sync` envelope counts |
+| `float_send_rtt.*` | `GoodNet-io/strategy-float-send-rtt` | picker decisions, EWMA flips, fall-through to default carrier |
 
 The exact name set per plugin is the plugin owner's contract; the
 kernel-side guarantee is only that any name a plugin emits is

@@ -217,7 +217,7 @@ gn_result_t (*unsubscribe)(void* host_ctx,
 `subscribe_config_reload` is fire-only — there is no per-event
 payload; subscribers re-read configuration through
 `host_api->config_get` after each tick. The
-`gn_subscribe_channel_t` enum at `sdk/conn_events.h:61-62` exists
+`gn_subscribe_channel_t` enum at `sdk/conn_events.h:62-72` exists
 as an internal routing tag carried in the top bits of
 `gn_subscription_id_t`; plugins do not pass it explicitly.
 

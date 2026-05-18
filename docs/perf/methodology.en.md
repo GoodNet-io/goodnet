@@ -276,6 +276,6 @@ spreads across the report sections.
 - The bench harness: [`bench/bench_harness.hpp`](../../bench/bench_harness.hpp)
 - The aggregator: [`bench/comparison/reports/aggregate.py`](../../bench/comparison/reports/aggregate.py)
 - Stack analysis (long-form numbers + commentary):
-  [`docs/perf/analysis.md`](analysis.en.md)
+  [`docs/perf/analysis.en.md`](analysis.en.md)
 - Throughput baselines methodology (cross-impl runner shells):
   [`bench/comparison/README.md`](../../bench/comparison/README.md)
