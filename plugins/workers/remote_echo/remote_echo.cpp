@@ -5,8 +5,9 @@
 /// vtable's `send` slot routes payloads straight back to the
 /// kernel through `host_api.notify_inbound_bytes`, demonstrating
 /// the full kernel↔worker round trip without involving a real
-/// transport. Conformance test in
-/// `tests/integration/tests/test_remote_echo.cpp` (separate repo).
+/// transport. Conformance coverage lives in
+/// `tests/unit/plugin/test_remote_host.cpp` — the kernel-side
+/// `RemoteHost` test drives this worker as its target binary.
 
 #include <cstdint>
 
