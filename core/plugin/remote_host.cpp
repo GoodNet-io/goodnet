@@ -7,6 +7,7 @@
 
 #include <cerrno>
 #include <chrono>
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -47,6 +48,8 @@ void        RemoteHost::call_shutdown(std::uint64_t)       {}
 void        RemoteHost::terminate() noexcept               {}
 
 const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept { return nullptr; }
+const gn_security_provider_vtable_t* RemoteHost::security_vtable_proxy() noexcept { return nullptr; }
+const gn_handler_vtable_t* RemoteHost::handler_vtable_proxy() noexcept { return nullptr; }
 
 void RemoteHost::reader_loop_()                                                       {}
 bool RemoteHost::read_exact_(std::uint8_t*, std::size_t)                              { return false; }
@@ -817,9 +820,9 @@ void RemoteHost::handle_host_call_(std::uint32_t request_id,
             const void* vtable = nullptr;
             if (reg_kind == GN_REGISTER_LINK) {
                 vtable = link_vtable_proxy();
+            } else if (reg_kind == GN_REGISTER_HANDLER) {
+                vtable = handler_vtable_proxy();
             }
-            // HANDLER proxy synthesis lands with §A7; until then the
-            // kernel rejects HANDLER-kind worker registrations here.
             if (vtable != nullptr &&
                 kernel_host_api_.register_vtable != nullptr) {
                 std::string name_z(name);
@@ -855,6 +858,57 @@ void RemoteHost::handle_host_call_(std::uint32_t request_id,
             if (kernel_host_api_.unregister_vtable != nullptr) {
                 rc = kernel_host_api_.unregister_vtable(
                     kernel_host_api_.host_ctx, id);
+            }
+            wire::encode_array_header(reply_buf, 1);
+            wire::encode_i64(reply_buf, rc);
+            break;
+        }
+        case GN_WIRE_HOST_SLOT_REGISTER_SECURITY: {
+            // args: [provider_id(text)]
+            // Security vtable is synthesised on the kernel side from
+            // the worker's HELLO kind. The worker ships only the
+            // provider id string; the kernel routes the synthesised
+            // proxy through `host_api.register_security`.
+            std::string_view provider_id{};
+            if (wire::decode_text(r, provider_id) != GN_OK) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad register_security args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            const gn_security_provider_vtable_t* vtable = security_vtable_proxy();
+            if (vtable != nullptr &&
+                kernel_host_api_.register_security != nullptr) {
+                std::string pid_z(provider_id);
+                rc = kernel_host_api_.register_security(
+                    kernel_host_api_.host_ctx,
+                    pid_z.c_str(), vtable, this);
+                if (rc == GN_OK) {
+                    registered_security_id_ = std::move(pid_z);
+                }
+            }
+            wire::encode_array_header(reply_buf, 1);
+            wire::encode_i64(reply_buf, rc);
+            break;
+        }
+        case GN_WIRE_HOST_SLOT_UNREGISTER_SECURITY: {
+            // args: [provider_id(text)]
+            std::string_view provider_id{};
+            if (wire::decode_text(r, provider_id) != GN_OK) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad unregister_security args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (kernel_host_api_.unregister_security != nullptr) {
+                std::string pid_z(provider_id);
+                rc = kernel_host_api_.unregister_security(
+                    kernel_host_api_.host_ctx, pid_z.c_str());
+                if (rc == GN_OK && registered_security_id_ == provider_id) {
+                    registered_security_id_.clear();
+                }
             }
             wire::encode_array_header(reply_buf, 1);
             wire::encode_i64(reply_buf, rc);
@@ -1001,6 +1055,426 @@ void link_destroy_thunk(void* /*self*/) noexcept {
     // `call_shutdown` traverses the wire.
 }
 
+// ── Security vtable proxy thunks ────────────────────────────────────
+//
+// Each thunk echoes the worker's `self_handle` so the worker
+// dispatcher can locate the right `gn_security_provider_vtable_t`
+// without keeping a side-channel state map. `state` pointers from
+// `handshake_open` are u64-sized handles that the worker owns and
+// the kernel treats as opaque.
+
+[[nodiscard]] const char* security_provider_id_thunk(void* self) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    return host->descriptor()->name;
+}
+
+gn_result_t security_handshake_open_thunk(
+    void* self,
+    gn_conn_id_t conn,
+    gn_trust_class_t trust,
+    gn_handshake_role_t role,
+    const uint8_t local_static_sk[GN_PRIVATE_KEY_BYTES],
+    const uint8_t local_static_pk[GN_PUBLIC_KEY_BYTES],
+    const uint8_t* remote_static_pk,
+    void** out_state) noexcept {
+    if (out_state == nullptr ||
+        local_static_sk == nullptr || local_static_pk == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, conn);
+    wire::encode_u64(args, static_cast<std::uint64_t>(trust));
+    wire::encode_u64(args, static_cast<std::uint64_t>(role));
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(local_static_sk, GN_PRIVATE_KEY_BYTES));
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(local_static_pk, GN_PUBLIC_KEY_BYTES));
+    if (remote_static_pk != nullptr) {
+        wire::encode_bytes(args,
+            std::span<const std::uint8_t>(remote_static_pk, GN_PUBLIC_KEY_BYTES));
+    } else {
+        wire::encode_bytes(args, std::span<const std::uint8_t>{});
+    }
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_HANDSHAKE_OPEN, args, reply);
+        rc != GN_OK) return rc;
+    if (reply.flags & GN_WIRE_FLAG_ERROR) {
+        return decode_code_reply(reply.payload, reply.flags);
+    }
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::uint64_t state_handle = 0;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_u64(r, state_handle) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    const std::uintptr_t raw = static_cast<std::uintptr_t>(state_handle);
+    *out_state = reinterpret_cast<void*>(raw);  // NOLINT(performance-no-int-to-ptr)
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t security_handshake_step_thunk(
+    void* self,
+    void* state,
+    const uint8_t* incoming, size_t incoming_size,
+    gn_secure_buffer_t* out_message) noexcept {
+    if (out_message == nullptr) return GN_ERR_NULL_ARG;
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(incoming, incoming_size));
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_HANDSHAKE_STEP, args, reply);
+        rc != GN_OK) return rc;
+    if (reply.flags & GN_WIRE_FLAG_ERROR) {
+        return decode_code_reply(reply.payload, reply.flags);
+    }
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::span<const std::uint8_t> out_bytes;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_bytes(r, out_bytes) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    out_message->bytes = nullptr;
+    out_message->size = 0;
+    out_message->free_user_data = nullptr;
+    out_message->free_fn = nullptr;
+    if (!out_bytes.empty()) {
+        auto* buf = static_cast<std::uint8_t*>(std::malloc(out_bytes.size()));
+        if (buf == nullptr) return GN_ERR_OUT_OF_MEMORY;
+        std::memcpy(buf, out_bytes.data(), out_bytes.size());
+        out_message->bytes = buf;
+        out_message->size = out_bytes.size();
+        out_message->free_fn = [](void* /*ud*/, std::uint8_t* p) {
+            std::free(p);
+        };
+    }
+    return static_cast<gn_result_t>(code);
+}
+
+int security_handshake_complete_thunk(void* self, void* state) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    RemoteHost::ReplyResult reply;
+    if (host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_HANDSHAKE_COMPLETE, args, reply) != GN_OK) {
+        return 0;
+    }
+    if (reply.flags & GN_WIRE_FLAG_ERROR) return 0;
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) return 0;
+    std::int64_t v = 0;
+    if (wire::decode_i64(r, v) != GN_OK) return 0;
+    return static_cast<int>(v);
+}
+
+gn_result_t security_export_keys_thunk(
+    void* self,
+    void* state,
+    gn_handshake_keys_t* out_keys) noexcept {
+    if (out_keys == nullptr) return GN_ERR_NULL_ARG;
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_EXPORT_KEYS, args, reply);
+        rc != GN_OK) return rc;
+    if (reply.flags & GN_WIRE_FLAG_ERROR) {
+        return decode_code_reply(reply.payload, reply.flags);
+    }
+    // reply: [code(i64), send_key(bytes), recv_key(bytes),
+    //         initial_send_nonce(u64), initial_recv_nonce(u64),
+    //         handshake_hash(bytes), peer_static_pk(bytes)]
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 7) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::span<const std::uint8_t> sk, rk, hh, pk;
+    std::uint64_t sn = 0, rn = 0;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_bytes(r, sk) != GN_OK ||
+        wire::decode_bytes(r, rk) != GN_OK ||
+        wire::decode_u64(r, sn) != GN_OK ||
+        wire::decode_u64(r, rn) != GN_OK ||
+        wire::decode_bytes(r, hh) != GN_OK ||
+        wire::decode_bytes(r, pk) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    if (code != GN_OK) return static_cast<gn_result_t>(code);
+    if (sk.size() != GN_CIPHER_KEY_BYTES ||
+        rk.size() != GN_CIPHER_KEY_BYTES ||
+        hh.size() != GN_HASH_BYTES ||
+        pk.size() != GN_PUBLIC_KEY_BYTES) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    out_keys->api_size = sizeof(gn_handshake_keys_t);
+    std::memcpy(out_keys->send_cipher_key, sk.data(), GN_CIPHER_KEY_BYTES);
+    std::memcpy(out_keys->recv_cipher_key, rk.data(), GN_CIPHER_KEY_BYTES);
+    out_keys->initial_send_nonce = sn;
+    out_keys->initial_recv_nonce = rn;
+    std::memcpy(out_keys->handshake_hash, hh.data(), GN_HASH_BYTES);
+    std::memcpy(out_keys->peer_static_pk, pk.data(), GN_PUBLIC_KEY_BYTES);
+    return GN_OK;
+}
+
+[[nodiscard]] gn_result_t security_buffer_round_trip(
+    RemoteHost* host,
+    std::uint32_t slot_id,
+    void* state,
+    const uint8_t* in_bytes, size_t in_size,
+    gn_secure_buffer_t* out) noexcept {
+    if (out == nullptr) return GN_ERR_NULL_ARG;
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(in_bytes, in_size));
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(slot_id, args, reply);
+        rc != GN_OK) return rc;
+    if (reply.flags & GN_WIRE_FLAG_ERROR) {
+        return decode_code_reply(reply.payload, reply.flags);
+    }
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::span<const std::uint8_t> out_bytes;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_bytes(r, out_bytes) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    out->bytes = nullptr;
+    out->size = 0;
+    out->free_user_data = nullptr;
+    out->free_fn = nullptr;
+    if (!out_bytes.empty()) {
+        auto* buf = static_cast<std::uint8_t*>(std::malloc(out_bytes.size()));
+        if (buf == nullptr) return GN_ERR_OUT_OF_MEMORY;
+        std::memcpy(buf, out_bytes.data(), out_bytes.size());
+        out->bytes = buf;
+        out->size = out_bytes.size();
+        out->free_fn = [](void* /*ud*/, std::uint8_t* p) { std::free(p); };
+    }
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t security_encrypt_thunk(void* self, void* state,
+                                    const uint8_t* plaintext, size_t plaintext_size,
+                                    gn_secure_buffer_t* out) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    return security_buffer_round_trip(host,
+        GN_WIRE_SLOT_SECURITY_ENCRYPT, state,
+        plaintext, plaintext_size, out);
+}
+
+gn_result_t security_decrypt_thunk(void* self, void* state,
+                                    const uint8_t* ciphertext, size_t ciphertext_size,
+                                    gn_secure_buffer_t* out) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    return security_buffer_round_trip(host,
+        GN_WIRE_SLOT_SECURITY_DECRYPT, state,
+        ciphertext, ciphertext_size, out);
+}
+
+gn_result_t security_rekey_thunk(void* self, void* state) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    RemoteHost::ReplyResult reply;
+    if (auto rc = host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_REKEY, args, reply);
+        rc != GN_OK) return rc;
+    return decode_code_reply(reply.payload, reply.flags);
+}
+
+void security_handshake_close_thunk(void* self, void* state) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_u64(args, reinterpret_cast<std::uintptr_t>(state));
+    RemoteHost::ReplyResult reply;
+    (void)host->round_trip_for_proxy(
+        GN_WIRE_SLOT_SECURITY_HANDSHAKE_CLOSE, args, reply);
+}
+
+void security_destroy_thunk(void* /*self*/) noexcept {
+    // Lifetime is owned by the kernel-side RemoteHost; worker-side
+    // teardown rides on `PLUGIN_SHUTDOWN`.
+}
+
+std::uint32_t security_allowed_trust_mask_thunk(void* self) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    RemoteHost::ReplyResult reply;
+    if (host->round_trip_for_proxy(
+            GN_WIRE_SLOT_SECURITY_PROVIDER_ID, args, reply) != GN_OK) {
+        // PROVIDER_ID slot doubles as the trust-mask query — the
+        // worker dispatcher returns [code, mask] for this slot.
+        return 0u;
+    }
+    if (reply.flags & GN_WIRE_FLAG_ERROR) return 0u;
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) return 0u;
+    std::uint64_t v = 0;
+    if (wire::decode_u64(r, v) != GN_OK) return 0u;
+    return static_cast<std::uint32_t>(v);
+}
+
+// ── Handler vtable proxy thunks ─────────────────────────────────────
+
+[[nodiscard]] const char* handler_protocol_id_thunk(void* self) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    return host->descriptor()->name;
+}
+
+void handler_supported_msg_ids_thunk(void* self,
+                                      const uint32_t** out_ids,
+                                      size_t* out_count) noexcept {
+    if (out_ids == nullptr || out_count == nullptr) {
+        if (out_count != nullptr) *out_count = 0;
+        return;
+    }
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    RemoteHost::ReplyResult reply;
+    if (host->round_trip_for_proxy(
+            GN_WIRE_SLOT_HANDLER_SUPPORTED_MSG_IDS, args, reply) != GN_OK ||
+        (reply.flags & GN_WIRE_FLAG_ERROR) != 0) {
+        host->handler_msg_id_cache_for_proxy().clear();
+        *out_ids = nullptr;
+        *out_count = 0;
+        return;
+    }
+    // reply: [code(i64), msg_ids_array]
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        *out_ids = nullptr;
+        *out_count = 0;
+        return;
+    }
+    std::int64_t code = 0;
+    std::size_t count = 0;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_array_header(r, count) != GN_OK) {
+        *out_ids = nullptr;
+        *out_count = 0;
+        return;
+    }
+    auto& cache = host->handler_msg_id_cache_for_proxy();
+    cache.clear();
+    cache.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        std::uint64_t v = 0;
+        if (wire::decode_u64(r, v) != GN_OK) {
+            cache.clear();
+            *out_ids = nullptr;
+            *out_count = 0;
+            return;
+        }
+        cache.push_back(static_cast<std::uint32_t>(v));
+    }
+    *out_ids = cache.empty() ? nullptr : cache.data();
+    *out_count = cache.size();
+}
+
+gn_propagation_t handler_handle_message_thunk(
+    void* self,
+    const gn_message_t* envelope) noexcept {
+    if (envelope == nullptr) return GN_PROPAGATION_CONTINUE;
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(envelope->sender_pk, GN_PUBLIC_KEY_BYTES));
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(envelope->receiver_pk, GN_PUBLIC_KEY_BYTES));
+    wire::encode_u64(args, envelope->msg_id);
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(envelope->payload, envelope->payload_size));
+    wire::encode_u64(args, static_cast<std::uint64_t>(envelope->conn_id));
+    RemoteHost::ReplyResult reply;
+    if (host->round_trip_for_proxy(
+            GN_WIRE_SLOT_HANDLER_HANDLE_MESSAGE, args, reply) != GN_OK) {
+        return GN_PROPAGATION_CONTINUE;
+    }
+    if (reply.flags & GN_WIRE_FLAG_ERROR) {
+        return GN_PROPAGATION_CONTINUE;
+    }
+    wire::Reader r{reply.payload, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) {
+        return GN_PROPAGATION_CONTINUE;
+    }
+    std::uint64_t v = 0;
+    if (wire::decode_u64(r, v) != GN_OK) return GN_PROPAGATION_CONTINUE;
+    return static_cast<gn_propagation_t>(v);
+}
+
+void handler_on_result_thunk(void* self,
+                              const gn_message_t* envelope,
+                              gn_propagation_t result) noexcept {
+    if (envelope == nullptr) return;
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(envelope->sender_pk, GN_PUBLIC_KEY_BYTES));
+    wire::encode_u64(args, envelope->msg_id);
+    wire::encode_u64(args, static_cast<std::uint64_t>(envelope->conn_id));
+    wire::encode_u64(args, static_cast<std::uint64_t>(result));
+    RemoteHost::ReplyResult reply;
+    (void)host->round_trip_for_proxy(
+        GN_WIRE_SLOT_HANDLER_ON_RESULT, args, reply);
+}
+
+void handler_on_init_thunk(void* self) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    RemoteHost::ReplyResult reply;
+    (void)host->round_trip_for_proxy(
+        GN_WIRE_SLOT_HANDLER_ON_INIT, args, reply);
+}
+
+void handler_on_shutdown_thunk(void* self) noexcept {
+    auto* host = static_cast<RemoteHost*>(self);
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, host->worker_self_handle_for_proxy());
+    RemoteHost::ReplyResult reply;
+    (void)host->round_trip_for_proxy(
+        GN_WIRE_SLOT_HANDLER_ON_SHUTDOWN, args, reply);
+}
+
 }  // namespace
 
 const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept {
@@ -1021,6 +1495,49 @@ const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept {
     v.disconnect = &link_disconnect_thunk;
     v.destroy    = &link_destroy_thunk;
     return link_vtable_storage_.get();
+}
+
+const gn_security_provider_vtable_t* RemoteHost::security_vtable_proxy() noexcept {
+    if (worker_kind_ != GN_PLUGIN_KIND_SECURITY) {
+        return nullptr;
+    }
+    if (security_vtable_storage_) {
+        return security_vtable_storage_.get();
+    }
+    security_vtable_storage_ = std::make_unique<gn_security_provider_vtable_t>();
+    auto& v = *security_vtable_storage_;
+    v.api_size              = sizeof(gn_security_provider_vtable_t);
+    v.provider_id           = &security_provider_id_thunk;
+    v.handshake_open        = &security_handshake_open_thunk;
+    v.handshake_step        = &security_handshake_step_thunk;
+    v.handshake_complete    = &security_handshake_complete_thunk;
+    v.export_transport_keys = &security_export_keys_thunk;
+    v.encrypt               = &security_encrypt_thunk;
+    v.decrypt               = &security_decrypt_thunk;
+    v.rekey                 = &security_rekey_thunk;
+    v.handshake_close       = &security_handshake_close_thunk;
+    v.destroy               = &security_destroy_thunk;
+    v.allowed_trust_mask    = &security_allowed_trust_mask_thunk;
+    return security_vtable_storage_.get();
+}
+
+const gn_handler_vtable_t* RemoteHost::handler_vtable_proxy() noexcept {
+    if (worker_kind_ != GN_PLUGIN_KIND_HANDLER) {
+        return nullptr;
+    }
+    if (handler_vtable_storage_) {
+        return handler_vtable_storage_.get();
+    }
+    handler_vtable_storage_ = std::make_unique<gn_handler_vtable_t>();
+    auto& v = *handler_vtable_storage_;
+    v.api_size          = sizeof(gn_handler_vtable_t);
+    v.protocol_id       = &handler_protocol_id_thunk;
+    v.supported_msg_ids = &handler_supported_msg_ids_thunk;
+    v.handle_message    = &handler_handle_message_thunk;
+    v.on_result         = &handler_on_result_thunk;
+    v.on_init           = &handler_on_init_thunk;
+    v.on_shutdown       = &handler_on_shutdown_thunk;
+    return handler_vtable_storage_.get();
 }
 
 }  // namespace gn::core

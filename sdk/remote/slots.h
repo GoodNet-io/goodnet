@@ -54,16 +54,18 @@ typedef enum gn_wire_host_slot_e {
     GN_WIRE_HOST_SLOT_NOTIFY_CONNECT       = 0x13,
     GN_WIRE_HOST_SLOT_NOTIFY_DISCONNECT    = 0x14,
     GN_WIRE_HOST_SLOT_REGISTER_VTABLE      = 0x15,
-    GN_WIRE_HOST_SLOT_UNREGISTER_VTABLE    = 0x16
+    GN_WIRE_HOST_SLOT_UNREGISTER_VTABLE    = 0x16,
+    GN_WIRE_HOST_SLOT_REGISTER_SECURITY    = 0x17,
+    GN_WIRE_HOST_SLOT_UNREGISTER_SECURITY  = 0x18
 } gn_wire_host_slot_t;
 
-/** Security-provider vtable slots — kernel → worker. Contract
- *  pinned so a future RemoteHost::security_vtable_proxy can be
- *  added without renumbering. Implementation deferred until a
- *  real workload (Python Noise IK worker, sandboxed identity-only
- *  provider, etc.) asks for it. `gn_secure_buffer_t` slots
- *  zeroise the input bytes on both wire boundaries before/after
- *  encoding so memory hygiene mirrors the in-process path. */
+/** Security-provider vtable slots — kernel → worker. The kernel's
+ *  `RemoteHost::security_vtable_proxy` synthesises a vtable whose
+ *  thunks issue PLUGIN_CALL frames carrying these slot ids; the
+ *  worker dispatcher routes them into the worker-supplied real
+ *  `gn_security_provider_vtable_t`. `gn_secure_buffer_t` output
+ *  bytes ride as CBOR bytestrings; producers free their owned
+ *  buffers locally once the wire copy is taken. */
 typedef enum gn_wire_security_slot_e {
     GN_WIRE_SLOT_SECURITY_PROVIDER_ID       = 0x300,
     GN_WIRE_SLOT_SECURITY_HANDSHAKE_OPEN    = 0x301,
@@ -76,9 +78,11 @@ typedef enum gn_wire_security_slot_e {
     GN_WIRE_SLOT_SECURITY_HANDSHAKE_CLOSE   = 0x308
 } gn_wire_security_slot_t;
 
-/** Handler vtable slots — kernel → worker. Same defer rationale
- *  as the security family: contract pinned, implementation lands
- *  when a real workload appears. */
+/** Handler vtable slots — kernel → worker. The kernel's
+ *  `RemoteHost::handler_vtable_proxy` synthesises a
+ *  `gn_handler_vtable_t` whose thunks issue PLUGIN_CALL frames at
+ *  these slot ids; the worker dispatcher routes them into the
+ *  worker-supplied real handler vtable. */
 typedef enum gn_wire_handler_slot_e {
     GN_WIRE_SLOT_HANDLER_PROTOCOL_ID       = 0x400,
     GN_WIRE_SLOT_HANDLER_SUPPORTED_MSG_IDS = 0x401,

@@ -34,8 +34,10 @@
 
 #include <sys/types.h>
 
+#include <sdk/handler.h>
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
+#include <sdk/security.h>
 #include <sdk/types.h>
 
 namespace gn::core {
@@ -104,6 +106,16 @@ public:
     /// `self_handle` returned by `call_init`.
     [[nodiscard]] const gn_link_vtable_t* link_vtable_proxy() noexcept;
 
+    /// Synthetic security-provider vtable wired to the worker's
+    /// security plugin via PLUGIN_CALL slots 0x300-0x308. Returns
+    /// nullptr when the worker reported a non-SECURITY kind in HELLO.
+    [[nodiscard]] const gn_security_provider_vtable_t* security_vtable_proxy() noexcept;
+
+    /// Synthetic handler vtable wired to the worker's handler plugin
+    /// via PLUGIN_CALL slots 0x400-0x405. Returns nullptr when the
+    /// worker reported a non-HANDLER kind in HELLO.
+    [[nodiscard]] const gn_handler_vtable_t* handler_vtable_proxy() noexcept;
+
     /// Timeout for a single `PLUGIN_CALL` round trip. Default 5s.
     /// Tests override to enforce timeout coverage.
     void set_reply_timeout(std::chrono::milliseconds t) noexcept {
@@ -141,6 +153,14 @@ public:
     /// can echo it on every PLUGIN_CALL.
     [[nodiscard]] std::uint64_t worker_self_handle_for_proxy() const noexcept {
         return worker_self_handle_;
+    }
+
+    /// Storage the handler proxy's `supported_msg_ids` thunk fills
+    /// before handing the array pointer to the kernel. The cache
+    /// lives on the RemoteHost so its lifetime matches the
+    /// registered handler entry's vtable pointer.
+    [[nodiscard]] std::vector<std::uint32_t>& handler_msg_id_cache_for_proxy() noexcept {
+        return handler_msg_id_cache_;
     }
 
 private:
@@ -210,7 +230,10 @@ private:
     std::mutex                       pending_mu_;
     std::unordered_map<std::uint32_t, Pending> pending_;
 
-    std::unique_ptr<gn_link_vtable_t> link_vtable_storage_;
+    std::unique_ptr<gn_link_vtable_t>              link_vtable_storage_;
+    std::unique_ptr<gn_security_provider_vtable_t> security_vtable_storage_;
+    std::unique_ptr<gn_handler_vtable_t>           handler_vtable_storage_;
+    std::vector<std::uint32_t>                     handler_msg_id_cache_;
 
     /// Packed id returned by `host_api.register_vtable` when the
     /// kernel publishes the link proxy on behalf of a remote link
@@ -218,6 +241,16 @@ private:
     /// `unregister_vtable` during `call_unregister` so the link
     /// registry sees a tidy register/unregister pair.
     std::uint64_t registered_link_id_{0};
+
+    /// Id returned by `host_api.register_vtable` for the synthesised
+    /// HANDLER proxy. Same register/unregister pairing as the link
+    /// path. Zero when no handler is currently published.
+    std::uint64_t registered_handler_id_{0};
+
+    /// Stable provider_id string the kernel registered the security
+    /// proxy under; matches the worker's plugin name. Empty when no
+    /// security provider is currently published.
+    std::string   registered_security_id_;
 };
 
 }  // namespace gn::core
