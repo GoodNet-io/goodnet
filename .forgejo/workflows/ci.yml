@@ -287,6 +287,26 @@ jobs:
       - name: Run ctest under TSan
         run: nix run .#test -- tsan
 
+  coverage-smoke:
+    # Vanilla kernel build under `-fprofile-arcs -ftest-coverage`,
+    # then ctest over the whole suite, then `lcov --summary` to
+    # print line + function percent. Gated by the `coverage` label
+    # OR push to main, same shape as the sanitizer gates. Local box
+    # still gets `nix run .#test -- coverage` for tight loops.
+    runs-on: nixos
+    needs: build-and-test
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'coverage') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: ctest under coverage
+        run: nix run .#test -- coverage
+      - name: upload coverage.info as artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-info
+          path: build-coverage/coverage.filtered.info
+
 # CI gating policy:
 #
 #   * Every push to main + every PR to main: flake-check, livedoc-
@@ -294,12 +314,16 @@ jobs:
 #     windows-cross-build.
 #   * Push to main only (label-gated on PRs): bench-smoke (label
 #     `bench`), ice-3node (label `ice-test`), fuzz-smoke (label
-#     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`).
+#     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`),
+#     coverage-smoke (label `coverage`).
 #
 # ASan + TSan run on push to main (catch race / UAF that local dev
 # missed). Label-gated for PRs to keep PR CI time-bounded; tag the
 # PR with `sanitizer` if your change touches concurrency-sensitive
-# code. Local tight-loop still uses `nix run .#test -- asan|tsan`.
+# code. coverage-smoke is the third sanitizer-style pillar from audit
+# §sanitizer-and-coverage — same gating model, separate label so a
+# coverage refresh on main doesn't block the sanitizer re-run.
+# Local tight-loop still uses `nix run .#test -- asan|tsan|coverage`.
 # clang-tidy lives in `.githooks/pre-commit` and the cheap test gate
 # lives in `.githooks/pre-push` (both auto-wired by `nix run
 # .#setup`) so the fast-feedback diagnostic loop stays off the CI

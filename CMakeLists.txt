@@ -129,6 +129,22 @@ option(GOODNET_USE_LTO  "Link-time optimization (Release default ON)" ${_goodnet
 option(GOODNET_USE_PCH  "Precompile <asio.hpp> + spdlog + fmt umbrella" ON)
 option(GOODNET_USE_MOLD "Use mold linker if available"                  ON)
 
+# Line + function coverage. Third sanitiser-style pillar from audit
+# §sanitizer-and-coverage. ASan / TSan ride on CFLAGS / CXXFLAGS /
+# LDFLAGS env injected by `nix run .#test -- asan|tsan`; coverage
+# needs `-O0 -g` (sanitisers pick `-O1 -g`) so it lives behind its own
+# CMake option to avoid colliding with the sanitiser env path. The
+# `nix run .#test -- coverage` app passes `-DGOODNET_COVERAGE=ON` into
+# the configure of `build-coverage/`, then post-processes the .gcda /
+# .gcno files with `lcov --capture` + `--remove` to filter the nix
+# store, build trees, and the test sources themselves out of the
+# summary line + function percent.
+option(GOODNET_COVERAGE "Build with gcov line+function coverage" OFF)
+if(GOODNET_COVERAGE)
+    add_compile_options(-fprofile-arcs -ftest-coverage -O0 -g)
+    add_link_options(-fprofile-arcs -ftest-coverage)
+endif()
+
 # Release strips the implicit `-O2` GCC default for `-O3`. Sanitizer
 # builds set their own `-O1 -g` per `nix/sanitize.nix`; Debug stays
 # unoptimised so stack traces remain readable.
@@ -411,6 +427,7 @@ message(STATUS "  Tests             : ${GOODNET_BUILD_TESTS}")
 message(STATUS "  Fuzz harness      : ${GOODNET_BUILD_FUZZ}")
 message(STATUS "  Examples          : ${GOODNET_BUILD_EXAMPLES}")
 message(STATUS "  Bundled plugins   : ${GOODNET_BUILD_BUNDLED_PLUGINS}")
+message(STATUS "  Coverage (gcov)   : ${GOODNET_COVERAGE}")
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
     message(STATUS "  LTO               : ON (Release IPO)")
 elseif(GOODNET_USE_LTO)

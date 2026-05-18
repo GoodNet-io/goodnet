@@ -390,14 +390,21 @@
             ' _ "$@"
           '';
 
-          # `nix run .#test [-- asan|tsan|all]` — single test app
-          # with subarg-driven sanitizer select. Default vanilla
-          # debug (no instrumentation). \`asan\` and \`tsan\` build
-          # in dedicated \`build-asan\` / \`build-tsan\` trees with
-          # the appropriate flags + runtime env; \`all\` runs the
-          # vanilla, asan, and tsan suites in sequence and bails on
-          # the first failure. Trailing args after the variant are
-          # forwarded to ctest (e.g. \`test -- asan -R Noise\`).
+          # `nix run .#test [-- asan|tsan|coverage|all]` — single test
+          # app with subarg-driven sanitizer / coverage select. Default
+          # vanilla debug (no instrumentation). \`asan\` and \`tsan\`
+          # build in dedicated \`build-asan\` / \`build-tsan\` trees
+          # with the appropriate flags + runtime env; \`coverage\`
+          # builds in \`build-coverage\` under
+          # \`-fprofile-arcs -ftest-coverage\` + \`-O0 -g\` (the
+          # GOODNET_COVERAGE CMake option), runs ctest, then post-
+          # processes the .gcda / .gcno tree with lcov to print line +
+          # function coverage percent. \`all\` runs vanilla + asan +
+          # tsan in sequence and bails on the first failure — coverage
+          # is excluded because its lcov post-step is slow and would
+          # double the cost of a multi-pass run without adding pass /
+          # fail signal. Trailing args after the variant are forwarded
+          # to ctest (e.g. \`test -- asan -R Noise\`).
           gn-test = pkgs.writeShellScriptBin "gn-test" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-vanilla}"
@@ -405,6 +412,8 @@
               run_one() {
                 local v="$1"; shift
                 local build_dir flags runtime_env=""
+                local cmake_extra=""
+                local post_cmd=""
                 case "$v" in
                   vanilla)
                     build_dir=build flags=""
@@ -419,8 +428,19 @@
                     flags="-fsanitize=thread -O1 -g -fno-omit-frame-pointer"
                     runtime_env="TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:history_size=4"
                     ;;
+                  coverage)
+                    # Coverage is a CMake option (GOODNET_COVERAGE) rather
+                    # than a CFLAGS injection because the -O0 it needs
+                    # conflicts with the sanitiser -O1 path — keeping the
+                    # toggle inside CMake means the same configure cannot
+                    # accidentally combine coverage + sanitiser flags from
+                    # a stale env.
+                    build_dir=build-coverage
+                    cmake_extra="-DGOODNET_COVERAGE=ON"
+                    post_cmd="coverage_summary"
+                    ;;
                   *)
-                    echo "test: unknown variant $v (vanilla|asan|tsan|all)" >&2
+                    echo "test: unknown variant $v (vanilla|asan|tsan|coverage|all)" >&2
                     return 1
                     ;;
                 esac
@@ -434,7 +454,8 @@
                 if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                   cmake -B "$build_dir" -G Ninja \
                     -DCMAKE_BUILD_TYPE=Debug \
-                    -DGOODNET_BUILD_TESTS=ON
+                    -DGOODNET_BUILD_TESTS=ON \
+                    $cmake_extra
                 fi
                 cmake --build "$build_dir" -j"$(nproc)"
                 if [ -n "$runtime_env" ]; then
@@ -444,8 +465,57 @@
                 else
                   ctest --test-dir "$build_dir" --output-on-failure "$@"
                 fi
+                if [ "$post_cmd" = "coverage_summary" ]; then
+                  coverage_summary "$build_dir"
+                fi
+              }
+              # `lcov --capture` reads the `.gcno` / `.gcda` tree that
+              # the gcov compile + run pair leaves under `build-coverage/`.
+              # The filter strips `/nix/store/*` (toolchain headers),
+              # `*/build*/*` (generated config + protobuf-ish stubs), and
+              # `*/tests/*` (the tests themselves — coverage of the test
+              # harness is not what the gate measures) so the printed
+              # totals reflect kernel + plugin source only. `lcov` is not
+              # in the dev shell; `nix shell nixpkgs#lcov --command`
+              # stages it inline so the script works whether or not the
+              # operator pre-installed lcov.
+              #
+              # `--ignore-errors inconsistent,unused,mismatch,negative`
+              # bridges a gcc-15 / lcov-2.3.2 protocol gap: gcc-15
+              # emits gcov line records whose end-line metadata
+              # occasionally disagrees with the intermediate-format
+              # span lcov computes (typical case: gtest TestBody
+              # methods whose macro-expanded body spans more lines
+              # than lcov walks) and reports the odd -1 hit count on
+              # template-heavy STL headers. lcov upgrades both to
+              # ERROR by default and refuses to write the `.info`
+              # file; the listed categories are the toolchain mismatch
+              # — silencing them is the documented workaround, see
+              # lcov(1) under `--ignore-errors`.
+              coverage_summary() {
+                bd="$1"
+                if command -v lcov >/dev/null 2>&1; then
+                  LCOV_CMD=""
+                else
+                  LCOV_CMD="${pkgs.nix}/bin/nix shell nixpkgs#lcov --command"
+                fi
+                $LCOV_CMD lcov --capture --directory "$bd" \
+                  --ignore-errors inconsistent,unused,mismatch,negative \
+                  --output-file "$bd/coverage.info"
+                $LCOV_CMD lcov --remove "$bd/coverage.info" \
+                  "/nix/store/*" "*/build*/*" "*/tests/*" \
+                  "*/gtest/*" "*/gmock/*" \
+                  --ignore-errors unused,inconsistent \
+                  --output-file "$bd/coverage.filtered.info"
+                $LCOV_CMD lcov --summary "$bd/coverage.filtered.info" \
+                  --ignore-errors inconsistent
               }
               if [ "$variant" = "all" ]; then
+                # `all` deliberately skips coverage — the lcov post-
+                # processing roughly doubles the wall time and provides
+                # no pass / fail signal beyond what ctest itself already
+                # produces. Coverage stays a deliberate `-- coverage`
+                # invocation.
                 run_one vanilla "$@" && run_one asan "$@" && run_one tsan "$@"
               else
                 run_one "$variant" "$@"
@@ -751,7 +821,7 @@ GoodNet devShell  (gcc15, C++23)
   Build / test:
     nix run .# [-- release|debug]            default debug
     nix run .#build [-- release|debug]
-    nix run .#test  [-- asan|tsan|all]       default vanilla
+    nix run .#test  [-- asan|tsan|coverage|all]   default vanilla
 
   Run artefacts:
     nix run .#run -- <demo|node|goodnet> [args]
