@@ -1,0 +1,19 @@
+# Scenario: peer A is a normal full-ICE agent, peer B is an
+# ICE-lite responder. Lite agents never send connectivity
+# checks of their own; they sit on a single host candidate and
+# accept whatever nomination the full agent drives. Both peers
+# are otherwise behind plain full-cone NAT so the srflx pair is
+# straightforward. Assertion: peer B's STUN-check transmit
+# counter stays at zero through the run; peer B transitions to
+# Connected solely on the inbound USE-CANDIDATE from peer A.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+
+  peer_b:
+    environment:
+      ICE_LITE_MODE: "true"
