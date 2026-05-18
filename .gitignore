@@ -139,6 +139,16 @@ plugins/security/null/
 # submodule when something runs `git add -A` from the monorepo root.
 bridges/cpp/
 
+# bindings/python — in-tree Python wrapper over libgoodnet_kernel
+# through cffi. Pip-installable package, no compiled extensions, so
+# everything is plain-text and rides in the monorepo unlike the
+# nested-git plugin slots above.
+!bindings/python/**/*.py
+!bindings/python/**/*.toml
+!bindings/python/**/*.cfg
+!bindings/python/**/*.md
+!bindings/python/**/*.txt
+
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel
 # the same way as plugin slots so the nested .git stays invisible
@@ -206,3 +216,7 @@ tests/integration/
 # manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
 manifesto/
 plugins/strategies/
+
+# Sub-repos: app binaries vendored as standalone repos
+apps/gssh/
+apps/goodnetd/
