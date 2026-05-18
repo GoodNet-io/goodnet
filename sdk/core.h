@@ -285,6 +285,49 @@ GN_EXPORT gn_result_t gn_core_connect(gn_core_t* core,
                                        gn_conn_id_t* out_conn);
 
 /**
+ * @brief Bind a passive listener on @p uri.
+ *
+ * Mirrors `gn_core_connect` for inbound binds: the scheme component
+ * of the URI (e.g. `tcp://`, `udp://`, `ws://`) selects the
+ * registered link plugin, the kernel resolves it through the
+ * `LinkRegistry`, and the call forwards to the link's vtable
+ * `listen` slot. The bind itself is synchronous; the accept loop
+ * runs on the link's IO worker.
+ *
+ * Inbound accepted connections surface through the existing
+ * connection-state subscription path — register a callback via
+ * `gn_core_on_conn_state` before calling `gn_core_listen` and you
+ * will see `GN_CONN_EVENT_CONNECTED` events for every accepted
+ * peer (and `GN_CONN_EVENT_TRUST_UPGRADED` once the security
+ * provider lifts the trust class). No new callback shape is
+ * introduced; this is purely the missing inbound counterpart to
+ * `gn_core_connect`.
+ *
+ * Teardown: every listener bound through this entry is torn down
+ * by `gn_core_stop` / `gn_core_destroy` walking the
+ * `PreShutdown → Shutdown` FSM and tearing each link plugin's
+ * acceptor along with the rest of its state. No separate
+ * `gn_core_stop_listen` is required.
+ *
+ * @param core   Kernel handle returned by `gn_core_create`.
+ * @param uri    @borrowed Scheme+endpoint URI
+ *               (e.g. `"tcp://0.0.0.0:9001"`). NUL-terminated; the
+ *               kernel does not retain the pointer past return.
+ *
+ * @return `GN_OK` on a successful bind; `GN_ERR_NULL_ARG` on NULL
+ *         @p core / @p uri; `GN_ERR_NOT_FOUND` when no link is
+ *         registered for the resolved scheme or the URI has no
+ *         `://` separator; whatever the link plugin's `listen`
+ *         returns on transport-level failure (e.g.
+ *         `EADDRINUSE` → the plugin's chosen `gn_result_t`).
+ *
+ * @threading Safe from any thread once `gn_core_init` has returned
+ *            `GN_OK`. The accept loop runs on the link plugin's IO
+ *            worker; conn-state callbacks fire there.
+ */
+GN_EXPORT gn_result_t gn_core_listen(gn_core_t* core, const char* uri);
+
+/**
  * @brief Send a single application message on @p conn.
  *
  * Frames @p payload through the active protocol layer, encrypts

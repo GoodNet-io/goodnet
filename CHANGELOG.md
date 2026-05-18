@@ -6,6 +6,30 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### `gn_core_listen` — public C ABI bind entry mirrors `gn_core_connect`
+
+`sdk/core.h` now exposes `gn_core_listen(core, uri)` as the inbound
+counterpart of `gn_core_connect`. The scheme prefix of the URI
+selects the link plugin via `LinkRegistry::find_by_scheme`; the call
+forwards to the link's vtable `listen` slot (`plugins/links/tcp/tcp.cpp:481`
+for TCP). Inbound accepted connections surface through the existing
+`gn_core_on_conn_state` channel — no new callback shape was
+introduced. `core/kernel/core_c.cpp` implements the entry directly
+against the kernel link registry rather than through the
+`gn.link.<scheme>` extension's L2-composer `listen` slot (which
+returns `GN_ERR_NOT_IMPLEMENTED` on baseline links). Teardown rides on
+`gn_core_stop` / `gn_core_destroy`; no per-listener handle is
+exposed. The Python cffi binding and the bindings/rust surface
+inventory pick up the entry automatically.
+
+`tests/unit/integration/test_core_c.cpp::CoreListen.*` (5 tests)
+covers the NULL-arg defence, missing-scheme `NOT_FOUND`, no-link
+`NOT_FOUND`, lifecycle smoke with a stub link, and the inbound
+`CONNECTED` event surfacing through `gn_core_on_conn_state` after a
+real link's accept loop calls `notify_connect`. Closes the SDK gap
+that forced `apps/gssh/mode_listen.cpp` and `apps/ssh-modern`'s
+server mode to return `GN_ERR_NOT_IMPLEMENTED` stubs.
+
 ### CI migrated to Forgejo Actions; GitHub repo becomes release-only
 
 The full CI matrix (`build-and-test`, `plugin-verify`, `windows-cross`,

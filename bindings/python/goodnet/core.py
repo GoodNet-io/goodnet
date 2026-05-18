@@ -236,6 +236,18 @@ class Core:
         check(rc, "gn_core_connect")
         return int(out_conn[0])
 
+    def listen(self, uri: str) -> None:
+        """Bind a passive listener on ``uri``.
+
+        Mirrors :meth:`connect` for inbound binds. Inbound accepted
+        connections surface through the connection-state subscription
+        path — register a callback via the equivalent of
+        ``gn_core_on_conn_state`` before calling :meth:`listen` and
+        ``GN_CONN_EVENT_CONNECTED`` will fire for every accepted peer.
+        """
+        rc = lib().gn_core_listen(self.handle, uri.encode("utf-8"))
+        check(rc, "gn_core_listen")
+
     def send_to(self, conn: int, msg_id: int, payload: bytes) -> None:
         """Send a single application message on ``conn``."""
         buf = ffi.from_buffer("uint8_t[]", payload)

@@ -93,7 +93,7 @@ Everything else on the C ABI is reachable as raw FFI through
   `gn_core_register_link`, `gn_core_register_security`,
   `gn_core_register_extension`, `gn_core_unregister_extension`,
   `gn_core_query_extension_checked`
-- Network: `gn_core_connect`, `gn_core_send_to`,
+- Network: `gn_core_connect`, `gn_core_listen`, `gn_core_send_to`,
   `gn_core_broadcast`, `gn_core_disconnect`
 - Stats / introspection: `gn_core_get_stats`,
   `gn_core_connection_count`, `gn_core_handler_count`,

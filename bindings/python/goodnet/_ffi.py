@@ -72,6 +72,8 @@ gn_result_t gn_core_connect(gn_core_t* core,
                             const char* scheme,
                             gn_conn_id_t* out_conn);
 
+gn_result_t gn_core_listen(gn_core_t* core, const char* uri);
+
 gn_result_t gn_core_send_to(gn_core_t* core,
                             gn_conn_id_t conn,
                             uint32_t msg_id,
@@ -138,6 +140,7 @@ CDEF_FUNCTIONS: tuple[str, ...] = (
     "gn_core_reload_config_json",
     "gn_core_get_pubkey",
     "gn_core_connect",
+    "gn_core_listen",
     "gn_core_send_to",
     "gn_core_broadcast",
     "gn_core_disconnect",

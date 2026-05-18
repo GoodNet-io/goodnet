@@ -323,6 +323,41 @@ gn_result_t gn_core_connect(gn_core_t* core,
     return ext->connect(ext->ctx, uri, out_conn);
 }
 
+gn_result_t gn_core_listen(gn_core_t* core, const char* uri) {
+    if (core == nullptr || uri == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    /// Derive scheme from the URI prefix. The connect-side accepts
+    /// an explicit override; listen has no such parameter today —
+    /// every host call site passes a canonical `<scheme>://...`
+    /// URI, and adding a second parameter would diverge from
+    /// `gn_core_connect`'s NULL-derive-from-uri default without a
+    /// concrete need. If a future link uses a non-prefixed scheme
+    /// the signature can grow `gn_core_listen_ex(core, uri, scheme)`
+    /// alongside this entry without breaking the additive contract.
+    const std::string_view scheme_sv =
+        derive_scheme(std::string_view{uri});
+    if (scheme_sv.empty()) return GN_ERR_NOT_FOUND;
+
+    /// Resolve through the kernel link registry rather than the
+    /// `gn.link.<scheme>` extension's `listen` slot — the latter
+    /// is the L2 composer entry and returns `GN_ERR_NOT_IMPLEMENTED`
+    /// on baseline links (TCP, UDP). The registry's vtable
+    /// `listen` is the kernel-driven path the link plugin's
+    /// `Class::listen` implements; accepted conns surface through
+    /// the link's `notify_connect` calls, which the kernel forwards
+    /// onto the conn-event channel `gn_core_on_conn_state`
+    /// subscribers see.
+    auto entry = core->kernel.links().find_by_scheme(scheme_sv);
+    if (!entry.has_value() ||
+        entry->vtable == nullptr ||
+        entry->vtable->listen == nullptr) {
+        return GN_ERR_NOT_FOUND;
+    }
+    return entry->vtable->listen(entry->self, uri);
+}
+
 gn_result_t gn_core_send_to(gn_core_t* core,
                              gn_conn_id_t conn,
                              uint32_t msg_id,

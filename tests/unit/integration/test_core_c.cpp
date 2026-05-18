@@ -124,6 +124,7 @@ TEST(CoreC, NullHandleReturnsNullArg) {
     gn_conn_id_t out_conn = GN_INVALID_ID;
     EXPECT_EQ(gn_core_connect(nullptr, "tcp://1.2.3.4:9", "tcp", &out_conn),
               GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_listen(nullptr, "tcp://0.0.0.0:0"), GN_ERR_NULL_ARG);
     EXPECT_EQ(gn_core_send_to(nullptr, /*conn*/ 1, /*msg_id*/ 1, nullptr, 0),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(gn_core_disconnect(nullptr, /*conn*/ 1), GN_ERR_NULL_ARG);
@@ -310,6 +311,257 @@ TEST(CoreC, ConnectMissingSchemeReturnsNotFound) {
     EXPECT_EQ(gn_core_connect(core, "no-scheme-here", /*scheme*/ nullptr, &out),
               GN_ERR_NOT_FOUND);
 
+    gn_core_destroy(core);
+}
+
+// ── gn_core_listen — public C ABI listen path ───────────────────────────────
+//
+// `gn_core_listen` mirrors `gn_core_connect`: derives the scheme prefix from
+// the URI, resolves the link plugin via `LinkRegistry::find_by_scheme`, and
+// forwards to its vtable `listen` slot. The tests below pin the four
+// observable behaviours of that path: NULL arg defence, missing scheme,
+// no-link-registered, and the happy-path forward into a stub link's vtable.
+
+namespace listen_test {
+
+/// Minimal stub link that records the URIs passed to its `listen` slot.
+/// Mirrors the `Loopback` helper in `test_send_loopback.cpp` but exposes
+/// only the slots `gn_core_listen` actually drives — every other vtable
+/// entry returns `GN_ERR_NOT_IMPLEMENTED` so an accidental call from the
+/// wider kernel surface gets caught loud rather than hiding behind a
+/// no-op stub.
+struct StubLink {
+    std::mutex                                mu;
+    std::vector<std::string>                  listen_uris;
+    std::atomic<int>                          listen_calls{0};
+    /// Result the stub returns from `listen`. Tests flip it before
+    /// dispatching to assert the C ABI plumbs the link's verdict
+    /// back to the caller verbatim.
+    std::atomic<gn_result_t>                  listen_result{GN_OK};
+
+    static const char* do_scheme(void*) { return "stublisten"; }
+
+    static gn_result_t do_listen(void* self, const char* uri) {
+        auto* s = static_cast<StubLink*>(self);
+        s->listen_calls.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard lk(s->mu);
+            s->listen_uris.emplace_back(uri ? uri : "");
+        }
+        return s->listen_result.load(std::memory_order_acquire);
+    }
+    static gn_result_t do_connect(void*, const char*)                { return GN_ERR_NOT_IMPLEMENTED; }
+    static gn_result_t do_send(void*, gn_conn_id_t,
+                               const std::uint8_t*, std::size_t)    { return GN_ERR_NOT_IMPLEMENTED; }
+    static gn_result_t do_send_batch(void*, gn_conn_id_t,
+                                     const gn_byte_span_t*, std::size_t) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+    static gn_result_t do_disconnect(void*, gn_conn_id_t)            { return GN_ERR_NOT_IMPLEMENTED; }
+    static const char* do_extension_name(void*)                       { return ""; }
+    static const void* do_extension_vtable(void*)                     { return nullptr; }
+    static void        do_destroy(void*)                              {}
+
+    static gn_link_vtable_t make_vtable() {
+        gn_link_vtable_t v{};
+        v.api_size         = sizeof(gn_link_vtable_t);
+        v.scheme           = &do_scheme;
+        v.listen           = &do_listen;
+        v.connect          = &do_connect;
+        v.send             = &do_send;
+        v.send_batch       = &do_send_batch;
+        v.disconnect       = &do_disconnect;
+        v.extension_name   = &do_extension_name;
+        v.extension_vtable = &do_extension_vtable;
+        v.destroy          = &do_destroy;
+        return v;
+    }
+};
+
+inline gn_link_id_t register_stub_link(gn_core_t* core, StubLink& stub,
+                                       const gn_link_vtable_t& vt) {
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "stublisten";
+    return gn_core_register_link(core, &meta, &vt, &stub);
+}
+
+}  // namespace listen_test
+
+TEST(CoreListen, NullUriReturnsNullArg) {
+    /// Symmetric with the `gn_core_connect` NULL defence; non-NULL handle,
+    /// NULL URI must surface `GN_ERR_NULL_ARG` rather than dereference.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, /*uri*/ nullptr), GN_ERR_NULL_ARG);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, MissingSchemeReturnsNotFound) {
+    /// URI without a `://` separator — the derive-scheme helper returns
+    /// an empty view and the entry short-circuits with `NOT_FOUND` (same
+    /// shape as `gn_core_connect`'s NULL-scheme + URI-without-prefix).
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, "no-scheme-here"), GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, WithoutLinkReturnsNotFound) {
+    /// No link plugin registered for the resolved scheme → the registry
+    /// lookup misses and the entry surfaces `NOT_FOUND`. Mirrors
+    /// `ConnectWithoutLinkReturnsNotFound` for the inbound side.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, "tcp://0.0.0.0:0"), GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, LifecycleSmokeWithStubLink) {
+    /// End-to-end lifecycle: create → init → register stub link →
+    /// listen → stop → destroy. The stub captures the URI it was
+    /// asked to bind on, so the test asserts the C ABI forwarded
+    /// to the vtable slot intact and that teardown completes without
+    /// crashing even though no real acceptor exists.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    listen_test::StubLink stub;
+    const auto vt = listen_test::StubLink::make_vtable();
+    const gn_link_id_t link_id = listen_test::register_stub_link(core, stub, vt);
+    ASSERT_NE(link_id, GN_INVALID_LINK_ID);
+
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    /// Conn-state subscription pre-installed: the contract on
+    /// `gn_core_listen` says inbound accepted conns surface through
+    /// this channel without a new callback shape. The stub does not
+    /// actually accept anything, but we install the subscription so
+    /// the test pins the «register before listen» discipline the
+    /// docstring describes.
+    std::atomic<int> conn_events{0};
+    const auto conn_sub = gn_core_on_conn_state(
+        core,
+        +[](void* ud, const gn_conn_event_t* /*ev*/) {
+            static_cast<std::atomic<int>*>(ud)->fetch_add(1);
+        },
+        &conn_events);
+    ASSERT_NE(conn_sub, 0u);
+
+    EXPECT_EQ(gn_core_listen(core, "stublisten://1.2.3.4:0"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 1);
+    {
+        std::lock_guard lk(stub.mu);
+        ASSERT_EQ(stub.listen_uris.size(), 1u);
+        EXPECT_EQ(stub.listen_uris.front(), "stublisten://1.2.3.4:0");
+    }
+
+    /// A second listen on the same scheme forwards again — the entry
+    /// is stateless on the C ABI side and trusts the link plugin's
+    /// own duplicate-listen policy.
+    EXPECT_EQ(gn_core_listen(core, "stublisten://5.6.7.8:9"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 2);
+
+    /// Verdict from the link plugin propagates verbatim. Flip the
+    /// stub to a transport-style failure and assert the C ABI does
+    /// not mask or remap it.
+    stub.listen_result.store(GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_listen(core, "stublisten://busy:0"),
+              GN_ERR_LIMIT_REACHED);
+
+    gn_core_off_conn_state(core, conn_sub);
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, InboundConnEventSurfacesThroughConnState) {
+    /// Pin the «inbound accepted conns surface through the existing
+    /// conn-state subscription path» contract in `sdk/core.h`. We
+    /// drive the kernel's host_api `notify_connect` directly — that's
+    /// the slot a real link plugin would call from its accept loop —
+    /// and assert the host-side conn-state subscriber sees the event
+    /// without `gn_core_listen` having to introduce a new callback
+    /// shape. The actual `listen()` call exercises the same scheme
+    /// lookup the previous test pinned; this test focuses on the
+    /// event-surfacing half of the contract.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    listen_test::StubLink stub;
+    const auto vt = listen_test::StubLink::make_vtable();
+    const gn_link_id_t link_id = listen_test::register_stub_link(core, stub, vt);
+    ASSERT_NE(link_id, GN_INVALID_LINK_ID);
+
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    struct Captured {
+        std::atomic<int>          fires{0};
+        std::atomic<gn_conn_id_t> last_conn{GN_INVALID_ID};
+        std::atomic<int>          last_kind{0};
+    } captured;
+
+    const auto sub = gn_core_on_conn_state(
+        core,
+        +[](void* ud, const gn_conn_event_t* ev) {
+            auto* c = static_cast<Captured*>(ud);
+            if (ev == nullptr) return;
+            c->fires.fetch_add(1);
+            c->last_conn.store(ev->conn);
+            c->last_kind.store(static_cast<int>(ev->kind));
+        },
+        &captured);
+    ASSERT_NE(sub, 0u);
+
+    /// Bind through the C ABI. The stub's `listen` records the URI but
+    /// does not run a real accept loop — the simulated accept below
+    /// drives `notify_connect` directly, the same slot a real link's
+    /// accept handler would call.
+    ASSERT_EQ(gn_core_listen(core, "stublisten://127.0.0.1:0"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 1);
+    (void)link_id;  // touched only to assert non-zero registration above
+
+    /// Simulated inbound accept: a real link plugin calls
+    /// `host_api->notify_connect` from its acceptor when it admits a
+    /// peer. We do the same here so the test pins the «host-side
+    /// `gn_core_on_conn_state` subscriber sees accepted conns» half of
+    /// the contract without depending on the TCP plugin being part of
+    /// the unit-test target.
+    const host_api_t* api = gn_core_host_api(core);
+    ASSERT_NE(api, nullptr);
+    ASSERT_NE(api->notify_connect, nullptr);
+
+    gn_conn_id_t inbound_conn = GN_INVALID_ID;
+    std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES] = {};
+    const auto rc = api->notify_connect(
+        api->host_ctx,
+        peer_pk,
+        /*uri=*/"stublisten://127.0.0.1:54321",
+        GN_TRUST_LOOPBACK,
+        GN_ROLE_RESPONDER,
+        &inbound_conn);
+    ASSERT_EQ(rc, GN_OK);
+    ASSERT_NE(inbound_conn, GN_INVALID_ID);
+
+    /// `notify_connect` publishes `CONNECTED` synchronously before
+    /// returning, so by the time we look the subscriber has already
+    /// fired. No polling needed.
+    EXPECT_GE(captured.fires.load(), 1);
+    EXPECT_EQ(captured.last_conn.load(), inbound_conn);
+    EXPECT_EQ(captured.last_kind.load(),
+              static_cast<int>(GN_CONN_EVENT_CONNECTED));
+
+    gn_core_off_conn_state(core, sub);
     gn_core_destroy(core);
 }
 
