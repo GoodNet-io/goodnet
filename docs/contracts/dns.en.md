@@ -3,9 +3,10 @@
 **Status:** active · v1
 **Owner:** `plugins/handlers/dns/`
 **Last verified:** 2026-05-13
-**Stability:** v1.x; wire layout below is locked, the `IDnsBackend`
-              backend interface may grow new methods through
-              size-prefix evolution.
+**Stability:** v1.x; wire layout below is locked. The handler
+              rides the `gn.store` extension for storage today; if
+              an operator-facing `IDnsBackend` split lands later
+              (see §4), it will grow through size-prefix evolution.
 
 > Not to be confused with [`hostname-resolver.en.md`](hostname-resolver.en.md),
 > the SDK helper that rewrites `tcp://example.com:443` into an IP
