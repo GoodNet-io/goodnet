@@ -55,7 +55,7 @@ _Plugin dlopen pipeline: discover → load → init → register._
 | Что добавляется | Куда |
 |---|---|
 | Новый wire-протокол (gnet / raw альтернатива) | static plugin в kernel git, `plugins/protocols/<name>/` |
-| Новый transport (TCP / UDP / WS / IPC / TLS / ICE альтернатива) | loadable plugin, kind=link, репо `GoodNet-io/link-<name>/` |
+| Новый transport (TCP / UDP / WS / IPC / TLS / ICE / QUIC альтернатива) | loadable plugin, kind=link, репо `GoodNet-io/link-<name>/` |
 | Новый security provider (Noise альтернатива) | loadable plugin, kind=security, репо `GoodNet-io/security-<name>/` |
 | Новый message handler (heartbeat / discovery / DHT-style) | loadable plugin, kind=handler, репо `GoodNet-io/handler-<name>/` |
 | Plugin-to-plugin coordination API (peer-info, autonat, relay-control) | extension в существующем плагине либо standalone handler-плагин с extension surface |
