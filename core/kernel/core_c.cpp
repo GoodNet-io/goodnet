@@ -612,14 +612,15 @@ gn_result_t gn_core_load_plugins_batch(gn_core_t* core,
 
 gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name) {
     if (core == nullptr || name == nullptr) return GN_ERR_NULL_ARG;
-    /// PluginManager only exposes `shutdown()` (full teardown), not
-    /// per-name unload — returns `NOT_IMPLEMENTED`. Hosts that need
-    /// full-teardown go through `gn_core_destroy` + new
-    /// `gn_core_create`. Per-name reload is sketched in
-    /// `host-api.en.md` §10.
-    (void)name;
-    (void)core;
-    return GN_ERR_NOT_IMPLEMENTED;
+    /// Per-name unload walks the same `unregister → drain → shutdown
+    /// → close` chain `gn_core_destroy` runs, but limited to the one
+    /// matching instance. Quiescence semantics match the full-
+    /// teardown path: the kernel waits up to
+    /// `PluginManager::quiescence_timeout()` for outstanding dispatch
+    /// snapshots to drop their `lifetime_anchor` copies before
+    /// closing the `.so`. Unknown names report `GN_ERR_NOT_FOUND`;
+    /// the call is idempotent past that point.
+    return core->plugins.unload(std::string_view{name});
 }
 
 /* ── Provider registration ───────────────────────────────────────────────── */

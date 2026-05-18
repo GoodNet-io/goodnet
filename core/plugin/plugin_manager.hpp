@@ -236,6 +236,15 @@ private:
     [[nodiscard]] bool drain_anchor(PluginInstance& inst,
                                     const std::weak_ptr<PluginAnchor>& watch);
 
+    /// Walk `unregister → cancel-timers → drain → shutdown → close`
+    /// on @p inst, dropping its `ctx` at the end. Shared by `rollback`
+    /// and `unload(name)` — the two callers differ only in which
+    /// instances they pass through and whether they also clear
+    /// `instances_` afterwards. Pre-condition: @p inst was activated
+    /// past `init_one`; failed-init instances do not reach this
+    /// helper because `rollback` only walks the populated vector.
+    void teardown_one(PluginInstance& inst);
+
     /// Per-instance lifecycle dispatchers. Each branches on the
     /// instance's linkage state (`remote != nullptr` → subprocess,
     /// `static_entry != nullptr` → static-registry, otherwise →

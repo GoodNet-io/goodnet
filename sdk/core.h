@@ -488,11 +488,18 @@ GN_EXPORT gn_result_t gn_core_load_plugins_batch(
  *
  * Walks the shutdown sequence per `plugin-lifetime.en.md` §4 (publish
  * `shutdown_requested`, `gn_plugin_unregister`, drain anchor,
- * `gn_plugin_shutdown`, `dlclose`).
+ * `gn_plugin_shutdown`, `dlclose`). Other loaded plugins keep
+ * running — only the matching instance is torn down.
  *
  * @param core Kernel handle returned by gn_core_create().
  * @param name @borrowed plugin name as registered in its
  *             descriptor.
+ *
+ * @return
+ *   `GN_OK` on a successful per-name teardown.
+ *   `GN_ERR_NULL_ARG` if @p core or @p name is NULL.
+ *   `GN_ERR_NOT_FOUND` when no loaded plugin advertises the
+ *   requested name; the call is idempotent past that point.
  */
 GN_EXPORT gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name);
 

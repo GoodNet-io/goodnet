@@ -260,6 +260,38 @@ Hot-reload is supported but constrained:
 The race between `dlclose` and pending dispatch is closed by this
 generation-quiescence wait.
 
+### 6.1. `gn_core_unload_plugin` — host-driven per-name unload
+
+`sdk/core.h::gn_core_unload_plugin(core, name)` is the host-side
+entry into the unload half of the reload sequence. It runs
+`unregister → quiescence wait → shutdown → close` on the single
+instance whose `gn_plugin_descriptor->plugin_name` matches @p name
+and returns `GN_OK`. Other loaded plugins keep running.
+
+- Lookup is by descriptor name, not by `.so` path. A plugin loaded
+  from `/opt/g/foo.so` and another loaded from `/opt/g/foo_v2.so`
+  collide if their descriptors return the same `plugin_name`;
+  loaders that admit both names must distinguish at the descriptor
+  surface.
+- The quiescence ceiling is the same `PluginManager::quiescence_timeout`
+  the full-teardown path uses, optionally overridden per-entry by the
+  manifest's `quiescence_timeout_s` field (`plugin-manifest.en.md`).
+  An anchor that does not drain inside the ceiling skips its
+  `dlclose` and bumps `plugin.leak.dlclose_skipped` so async
+  callbacks keep their .text mapped.
+- The call is idempotent: unloading an already-unloaded name
+  returns `GN_ERR_NOT_FOUND` without side-effects. The host can
+  call `gn_core_unload_plugin(core, name)` then
+  `gn_core_load_plugin(core, new_path, sha)` to complete the
+  reload; the second call lands an instance under the same name
+  as long as the new `.so` advertises the same descriptor.
+- Dependency-graph constraints are not enforced at the unload site
+  yet — a plugin whose extension other plugins still consume can
+  be unloaded; the consumers will observe `query_extension_checked`
+  miss on the next lookup. The resolver-aware "refuse if any active
+  consumer depends on @p name" gate is a contract-additive future
+  refinement (`extension-model.en.md` cross-reference).
+
 ---
 
 ## 7. Ownership annotation at the C ABI
