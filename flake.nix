@@ -137,10 +137,11 @@
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
             # External bench baselines — iperf3 for raw TCP/UDP
-            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
-            # All three stage cleanly in the dev shell so
-            # bench/comparison/runners/run_all.sh works out of the
-            # box; libwebrtc / nginx-quic remain Docker-only.
+            # throughput, socat for AF_UNIX echo. Both stage cleanly
+            # in the dev shell so bench/comparison/runners/run_all.sh
+            # works out of the box. libp2p / iroh Rust baselines come
+            # in through their own `cargo build` under
+            # bench/comparison/setup/{06_libp2p_rs,07_iroh}.sh.
             iperf3 socat
             # SQLite for handler-store's optional SqliteStore
             # backend. Kernel itself never links sqlite; propagated
@@ -524,10 +525,11 @@
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
             # External bench baselines — iperf3 for raw TCP/UDP
-            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
-            # All three stage cleanly in the dev shell so
-            # bench/comparison/runners/run_all.sh works out of the
-            # box; libwebrtc / nginx-quic remain Docker-only.
+            # throughput, socat for AF_UNIX echo. Both stage cleanly
+            # in the dev shell so bench/comparison/runners/run_all.sh
+            # works out of the box. libp2p / iroh Rust baselines come
+            # in through their own `cargo build` under
+            # bench/comparison/setup/{06_libp2p_rs,07_iroh}.sh.
             iperf3 socat
             # SQLite for handler-store's optional SqliteStore
             # backend. Kernel itself never links sqlite; propagated
