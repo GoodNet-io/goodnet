@@ -74,7 +74,7 @@ def base_attrs():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 1. Architecture overview — kernel ABI table + 4 vtable kinds + 8 plugin gits
+# 1. Architecture overview — kernel ABI table + 4 vtable kinds + 13 plugin gits
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_architecture():
@@ -150,16 +150,21 @@ def gen_architecture():
             k.edge("host_api", n, color=BORDER, arrowhead="none",
                    style="dashed")
 
-    # ── 8 loadable plugin gits around the kernel ─────────────────────────
+    # ── 13 loadable plugin gits around the kernel ────────────────────────
     plugins = [
         ("p_heartbeat", "handler-heartbeat",      PEACH),
+        ("p_store",     "handler-store",          PEACH),
+        ("p_dns",       "handler-dns",            PEACH),
         ("p_tcp",       "link-tcp",               PEACH),
         ("p_udp",       "link-udp",               PEACH),
         ("p_ws",        "link-ws",                PEACH),
         ("p_ipc",       "link-ipc",               PEACH),
         ("p_tls",       "link-tls",               PEACH),
+        ("p_ice",       "link-ice",               PEACH),
+        ("p_quic",      "link-quic",              PEACH),
         ("p_noise",     "security-noise",         PEACH),
         ("p_null",      "security-null",          PEACH),
+        ("p_fsr",       "strategy-float_send_rtt",PEACH),
     ]
     for nid, label, clr in plugins:
         g.node(nid, f"{label}\n.so  ·  own .git",
@@ -1334,7 +1339,7 @@ def gen_extension_query():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 16. Plugin separation — kernel + 8 plugins + integration-tests, each own git
+# 16. Plugin separation — kernel + 13 plugins + integration-tests + bridges-cpp
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_plugin_separation():
@@ -1368,21 +1373,27 @@ def gen_plugin_separation():
            lhead="cluster_kernel_git",
            color=YELLOW, arrowhead="none")
 
-    # 8 plugin gits + integration-tests git
+    # 13 plugin gits + integration-tests git + bridges-cpp git
     plugins = [
         ("git_heartbeat", "handler-heartbeat",      PEACH),
+        ("git_store",     "handler-store",          PEACH),
+        ("git_dns",       "handler-dns",            PEACH),
         ("git_tcp",       "link-tcp",               PEACH),
         ("git_udp",       "link-udp",               PEACH),
         ("git_ws",        "link-ws",                PEACH),
         ("git_ipc",       "link-ipc",               PEACH),
         ("git_tls",       "link-tls",               PEACH),
+        ("git_ice",       "link-ice",               PEACH),
+        ("git_quic",      "link-quic",              PEACH),
         ("git_noise",     "security-noise",         PEACH),
         ("git_null",      "security-null",          PEACH),
+        ("git_fsr",       "strategy-float_send_rtt",PEACH),
         ("git_intg",      "integration-tests",      MAUVE),
+        ("git_bridges",   "bridges-cpp",            MAUVE),
     ]
 
     with g.subgraph(name="cluster_plugins") as p:
-        p.attr(label="9 sibling repos — each own .git, own flake (kernel-only subflake), own bare mirror",
+        p.attr(label="15 sibling repos — each own .git, own flake (kernel-only subflake), own bare mirror",
                labelloc="t", fontsize="11", fontcolor=GREEN,
                style="rounded,filled", fillcolor=BG,
                color=GREEN, penwidth="1.2")
@@ -1413,13 +1424,14 @@ def gen_plugin_separation():
     # Workflow note
     g.node("workflow",
            "Workflow:\n"
-           "  · kernel .gitignore blocks plugins/handlers,\n"
-           "    plugins/links, plugins/security/{noise,null}\n"
-           "    so nested plugin .git/ are not auto-submodules.\n"
+           "  · kernel .gitignore blocks each plugin slot leaf\n"
+           "    (plugins/handlers/{heartbeat,store,dns},\n"
+           "    plugins/links/{tcp,udp,ws,ipc,tls,ice,quic},\n"
+           "    plugins/security/{noise,null}, plugins/strategies/,\n"
+           "    bridges/cpp/, tests/integration/) so nested\n"
+           "    plugin .git/ are not auto-submodules.\n"
            "  · `nix run .#setup` clones every plugin from its mirror\n"
-           "    into the slot; `nix run .#plugin -- pull` updates.\n"
-           "  · post-rc1: each plugin pushed to org repo;\n"
-           "    plugin's flake URL switches local-mirror → github.",
+           "    into the slot; `nix run .#plugin -- pull` updates.",
            shape="note", color=SURFACE2, fontcolor=BORDER,
            style="filled", fillcolor="#181825", fontsize="9")
     g.edge("git_intg", "workflow", style="invis")
