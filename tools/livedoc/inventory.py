@@ -1,5 +1,6 @@
 """Plugin tree walker — discovers link / handler / security /
-extension plugins, returns inventories the renderers can consume.
+strategy / extension plugins, returns inventories the renderers can
+consume.
 
 Each plugin lives in its own standalone git checkout under
 `plugins/<kind>/<name>/`. The walker reads each plugin's
@@ -106,10 +107,15 @@ def discover_extensions() -> list[dict]:
     return discover_kind("extensions")
 
 
+def discover_strategies() -> list[dict]:
+    return discover_kind("strategies")
+
+
 def discover_all() -> dict[str, list[dict]]:
     return {
         "links":      discover_links(),
         "handlers":   discover_handlers(),
         "security":   discover_security(),
+        "strategies": discover_strategies(),
         "extensions": discover_extensions(),
     }
