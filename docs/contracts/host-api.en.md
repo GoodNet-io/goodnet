@@ -639,10 +639,11 @@ convenience wrappers `gn_inject_external_message` and
 `gn_inject_frame` in `sdk/convenience.h` expand to the corresponding
 `inject(LAYER, …)` call.
 
-### 8.1 Shippable bridge shape in v1
+### 8.1 Shippable bridge shape
 
 A bridge plugin connects an external system (MQTT, HTTP, OPC-UA,
-foreign mesh) to the GoodNet mesh. v1 admits one canonical shape:
+foreign mesh) to the GoodNet mesh. The contract admits one
+canonical shape:
 
 1. The foreign-protocol logic runs **out-of-process**. The bridge
    plugin owns an IPC connection to the goodnet kernel — same shape

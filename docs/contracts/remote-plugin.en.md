@@ -51,10 +51,11 @@ payload. No streaming codec.
 
 ## §3 — Fragmentation
 
-Not supported in v1. A worker that needs to ship more than 1 MiB in
-a single host_api call breaks the payload into multiple
-`HOST_CALL`s with the application-level continuation flag carried
-inside the CBOR. The wire codec stays trivial in every binding.
+Not part of this wire contract. A worker that needs to ship more
+than 1 MiB in a single host_api call breaks the payload into
+multiple `HOST_CALL`s with the application-level continuation flag
+carried inside the CBOR. The wire codec stays trivial in every
+binding.
 
 ## §4 — Opcodes & state machine
 

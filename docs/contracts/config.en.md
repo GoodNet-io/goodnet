@@ -224,7 +224,7 @@ plugins will register `relay.*` / `dht.*` / `sync.*` similarly.
 The embedding application is free to seed any plugin namespace
 before that plugin is loaded; the kernel ignores unrecognised
 top-level keys. A `version` field is conventionally `1` — the
-kernel does not enforce it in v1, but operators include it so a
+kernel does not enforce it today, but operators include it so a
 future v2 binary can detect the legacy shape.
 
 ### 3a. Profile re-evaluation under `merge_json`
@@ -341,11 +341,12 @@ kernel into a path-handling argument.
   so the kernel logs unknown-key warnings at load time and gates
   per-section reads against the plugin's declared scope.
 - **Capability gate for sensitive values.** Any loaded plugin
-  can read every config-tree node; nothing in v1 prevents a
-  malicious plugin from reading `links.tls.key_path`. The
-  same planned `reads_config` mechanism above carries the fix.
-  v1 assumes the plugins directory is operator-controlled and
-  every loaded plugin is trusted (see `plugin-manifest.en.md` §3).
+  can read every config-tree node; nothing in this contract
+  prevents a malicious plugin from reading `links.tls.key_path`.
+  The same planned `reads_config` mechanism above carries the
+  fix. The current surface assumes the plugins directory is
+  operator-controlled and every loaded plugin is trusted (see
+  `plugin-manifest.en.md` §3).
 - **Adding new value types.** The current `config_get` covers
   `INT64`, `BOOL`, `DOUBLE`, `STRING`, `ARRAY_SIZE` and indexed
   `INT64` / `STRING` array elements. Future minor releases add
