@@ -301,7 +301,7 @@ chain.
 Плагин живёт в собственном git'е c flake'ом. Полный test cycle:
 
 ```sh
-nix run .#test            # vanilla — 7-13 unit тестов
+nix run .#test            # vanilla — per-plugin suite (links сейчас 8–79 cases)
 nix run .#test -- asan    # AddressSanitizer
 nix run .#test -- tsan    # ThreadSanitizer
 nix run .#test -- all     # все три варианта по очереди
