@@ -44,6 +44,7 @@
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
 | [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446) | TLS 1.3 | ✓ full | [`plugins/links/tls`](../../plugins/links/tls) |
+| [RFC 9147](https://datatracker.ietf.org/doc/html/rfc9147) | DTLS 1.3 | ✓ full | [`plugins/links/tls`](../../plugins/links/tls) |
 
 ### WebSocket
 
