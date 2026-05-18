@@ -31,7 +31,20 @@ typedef enum gn_trust_class_e {
     GN_TRUST_LOOPBACK   = 2,
 
     /** Between plugins of the same kernel; in-process. */
-    GN_TRUST_INTRA_NODE = 3
+    GN_TRUST_INTRA_NODE = 3,
+
+    /**
+     * Anonymous loopback ingress — local-only, no peer identity.
+     *
+     * Used by bridge plugins that accept anonymous traffic on a
+     * loopback-scope carrier (`tcp://127.0.0.1`, `ipc://`) and
+     * inject the bytes into the kernel as MESSAGE envelopes
+     * without an authenticated `sender_pk`. The kernel router
+     * accepts an all-zero `sender_pk` on this trust class iff
+     * the connection's URI scope is loopback (see
+     * `core/kernel/router.cpp::is_loopback_scope`).
+     */
+    GN_TRUST_ANONYMOUS_LOOPBACK = 4
 } gn_trust_class_t;
 
 /**
