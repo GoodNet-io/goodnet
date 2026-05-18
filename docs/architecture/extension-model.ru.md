@@ -76,7 +76,7 @@ gn_result_t (*unregister_extension)(void* host_ctx,
 
 ## Major-version compat
 
-Версия — одно `uint32_t` поле в обоих slot'ах. Convention: верхние 16 бит — major, младшие 16 бит — minor. `GN_EXT_HEARTBEAT_VERSION = 0x00010000u` читается как «v1.0». Patch уровень в этой схеме не отдельно — он растворён в minor'е и не участвует в compat-проверке.
+Версия — одно `uint32_t` поле в обоих slot'ах. Layout — канонический `gn_version_pack` (`sdk/abi.h`): `major:8 << 24 | minor:8 << 16 | patch:16`. Compat-проверка читает major из верхних 8 бит и minor из следующих 8 бит; patch на compat не влияет. Текущие extensions ship с `0x00010000u` — major=0, minor=1, patch=0 — т.е. v0.1.0 в этой схеме. Следующий bump на v1.0.0 = `gn_version_pack(1, 0, 0) = 0x01000000u`.
 
 Сверка делает `gn_version_compatible` из `sdk/abi.h`:
 
