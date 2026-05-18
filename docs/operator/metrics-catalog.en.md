@@ -205,9 +205,10 @@ rules.
 
 ## 8. Loadable-plugin counters
 
-Each loadable plugin (handler-heartbeat, link-tcp, link-udp,
-link-ws, link-ipc, link-tls, security-noise, security-null) owns
-a `<plugin>.*` namespace and emits its own counters through
+Each loadable plugin (handler-heartbeat, handler-store, handler-dns,
+link-tcp, link-udp, link-ws, link-ipc, link-tls, link-ice, link-quic,
+security-noise, security-null, strategy-float-send-rtt) owns a
+`<plugin>.*` namespace and emits its own counters through
 `host_api->emit_counter`. The catalogue for those names lives in
 each plugin's own repository under `docs/metrics.en.md` (or its
 README's metrics section). The kernel does not enumerate them —
