@@ -549,6 +549,83 @@ right shape is to narrow to <20 commits first using the
 `bench/reports/` directory (every commit that ran the bench
 left a report; binary-search them for the first regression).
 
+### 4.10 Common anti-patterns observed in audit reports
+
+Stale or mis-read bench rows surface the same handful of mistakes
+across audits. Each row in this section is a concrete artefact
+that has appeared in a real `bench/reports/<sha>.md` file — kept
+here so future operators read a row in context instead of quoting
+the literal number.
+
+**1. TCP loopback handshake reading 5.1 ms (poll-tick artefact).**
+The `gn::sdk::test::wait_for` helper polls a predicate with a 5 ms
+sleep between evaluations. A latency-critical fixture like
+`TcpFixture/HandshakeTime` or `TcpFixture/LatencyRoundtrip` whose
+true wait is sub-millisecond reads `5.1 ms` because the first poll
+fires after the 5 ms tick — the number is the poll resolution, NOT
+the round-trip time. Sibling helper `wait_for_fast` yields between
+evaluations and resolves at the OS scheduler quantum (~1-50 μs).
+Verify before quoting any handshake row under ~10 ms: the fixture
+should use `wait_for_fast`, not `wait_for`. Every
+`TcpFixture/HandshakeTime` row in reports prior to 9700a9c quotes
+the 5.1 ms artefact.
+
+**2. RTT-dominated small-payload reading (UDP/WS EchoRoundtrip
+@ 64 B).** A round-trip echo row at 64 B looks slow relative to the
+8 KiB row — `UdpFixture/EchoRoundtrip/64` at ~25 MiB/s vs
+`UdpFixture/EchoRoundtrip/8192` at ~1.2 GiB/s. The bottleneck on
+small payloads is the round-trip wall time, not the per-byte cost:
+1 RTT × small-payload = throughput is dominated by RTT. A row
+reading "WS echo 25 MiB/s @ 64 B" is NOT a WS throughput limit —
+it is the RTT cost amortised over 64 bytes. Compare the latency
+column (P50 RTT), not the throughput column, when reasoning about
+small-payload echo behaviour. The `## Latency tail` section is
+where the small-payload signal lives.
+
+**3. `—` cell vs. structural zero (broken fixture vs. real zero).**
+The aggregator renders `—` when a fixture produced no value (parse
+failure, fixture crash, manual-time row without throughput) and
+`0` when the fixture ran but the metric is structurally zero
+(steady-state `RSS Δ` after warmup, ctx switches on a CPU-bound
+loop, etc.). `—` is NOT zero — it is missing data. A row whose
+throughput column reads `—` while sibling rows at neighbouring
+payloads carry valid numbers indicates a fixture bug or a missing
+runner, NOT that the plugin has zero throughput at that payload.
+The `## Known crashes` section names the binaries whose `—` rows
+came from crashes; everything else is fixture-level.
+
+**4. Sanitizer-build numbers compared to vanilla baseline.**
+A `bench/reports/sanitizer/<sha>-asan.md` row at "+250% latency
+vs vanilla baseline" is the instrumentation tax (see §4.6), NOT a
+regression. The aggregator's `--baseline=` flag does not currently
+tag rows with their sanitizer build, so the operator is responsible
+for never pointing a sanitizer report at a vanilla baseline (and
+vice versa). A sanitizer-build that crashed where vanilla did not
+IS a real signal — runtime correctness gates trip even when
+absolute numbers do not.
+
+**5. Single-run regression detection.**
+A row that crossed the 15% latency / 10% throughput Δ threshold in
+ONE report is the start of an investigation, not the conclusion of
+one. The `bench/reports/<sha>.md` regression flag exists for fast
+iteration; release-grade signals require three consecutive runs
+showing the same direction (§4.7) and/or a Welch t-test under
+`tools/bench_multipass.py`. A single 17% latency Δ from a sample
+size of 50 iterations can be pure environmental noise — schedutil
+governor, antivirus scan, kernel TLB flush from a neighbour
+process. Acting on a single-run flag risks bisecting noise.
+
+**6. Mixing parody and real-mode rows in one mental comparison.**
+`UdpFixture/Throughput/1200 @ 1.57 GiB/s` (parody — raw transport,
+no security, no protocol) and `libp2p-echo @ 1024 B` (real — Noise
+XX + Yamux + libp2p-stream) on the same axis is the apples-to-
+oranges shape §4.8 forbids. The shapes pay different per-byte
+costs. Parody rows pair against `iperf3` / `socat`; real rows pair
+against `libp2p` / `iroh`. The aggregator raises
+`ModeMismatchError` on a pivot that mixes shapes — the manual
+discipline is to never quote two shapes side-by-side in prose
+either.
+
 ---
 
 ## 5. Cross-references
