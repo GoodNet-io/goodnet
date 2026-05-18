@@ -1,0 +1,53 @@
+# Scenario: two peers behind full-cone NAT, two TURN servers in
+# the topology. The primary `turn` is the existing coturn; the
+# secondary `coturn_backup` is a stripped coturn fronted by a
+# small UDP shim that replies with STUN error-code 500 for the
+# first 5 incoming requests, then passes traffic through. The
+# peers list BOTH TURN URIs; the rc5 multi-TURN fallback chain
+# is expected to switch to the secondary inside
+# `turn_backup_interval_s` once the primary's allocations start
+# erroring out (driven externally by killing primary mid-run).
+# Assertion: peers' nominated relay candidate is allocated on
+# 10.10.0.21 (the backup), visible in the peer logs.
+services:
+  coturn_backup:
+    build: ./turn-backup
+    container_name: ice3_turn_backup
+    networks:
+      net: { ipv4_address: 10.10.0.21 }
+    environment:
+      TURN_USER:   goodnet
+      TURN_PASS:   bench-only-credentials
+      TURN_REALM:  ice3.local
+      TURN_FAIL_COUNT: "5"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -uz 127.0.0.1 3478"]
+      interval: 2s
+      retries: 10
+
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+
+  peer_a:
+    environment:
+      TURN_URI_EXTRA: turn://goodnet:bench-only-credentials@10.10.0.21:3478
+      TURN_BACKUP_INTERVAL_S: "5"
+    depends_on:
+      stun:           { condition: service_healthy }
+      turn:           { condition: service_healthy }
+      coturn_backup:  { condition: service_healthy }
+      coordinator:    { condition: service_started }
+
+  peer_b:
+    environment:
+      TURN_URI_EXTRA: turn://goodnet:bench-only-credentials@10.10.0.21:3478
+      TURN_BACKUP_INTERVAL_S: "5"
+    depends_on:
+      stun:           { condition: service_healthy }
+      turn:           { condition: service_healthy }
+      coturn_backup:  { condition: service_healthy }
+      coordinator:    { condition: service_started }

@@ -5,7 +5,7 @@
 #
 # 1. Template the kernel config out of environment vars handed in
 #    by docker-compose (PEER_NAME, STUN_URI, TURN_URI, WAIT_FOR_PEER,
-#    SIGNAL_DIR).
+#    SIGNAL_DIR, plus optional knobs for rc5 scenarios).
 # 2. Boot the goodnetd daemon with ICE + heartbeat + noise loaded.
 # 3. Run the harness:
 #    * publish our pubkey to the shared signal dir
@@ -30,17 +30,65 @@ set -eu
 : "${TURN_URI:=turn://goodnet:bench-only-credentials@10.10.0.11:3478}"
 : "${WAIT_FOR_PEER:=B}"
 
+# Optional secondary STUN / TURN — empty unless the scenario sets
+# them. Comma-separated lists are accepted for either knob; the
+# loop below splits and emits each as a JSON string literal.
+: "${STUN_URI_EXTRA:=}"
+: "${TURN_URI_EXTRA:=}"
+
+# rc5 ICE knobs — every scenario picks safe defaults so the
+# existing fixtures don't have to know about them. The schema
+# treats missing keys as defaults too, but emitting them with
+# explicit values keeps the rendered config diffable.
+: "${TURN_BACKUP_INTERVAL_S:=5}"
+: "${ICE_LITE_MODE:=false}"
+: "${ICE_MDNS_OBFUSCATE:=false}"
+: "${ICE_ENABLE_IPV6:=false}"
+: "${ICE_PMTU_ACTIVE_PROBING:=false}"
+: "${ICE_PORT_PREDICTION_STRIDE_MAX:=0}"
+: "${ICE_TCP_TLS_ONLY:=false}"
+
 mkdir -p "${SIGNAL_DIR}" /etc/goodnet /var/lib/goodnet
+
+# Build a JSON-array body for the stun/turn server lists by
+# concatenating the primary URI with anything in STUN_URI_EXTRA /
+# TURN_URI_EXTRA (comma separated). Quoting is plain "..." since
+# every URI in the harness is ASCII.
+join_uris() {
+    primary="$1"
+    extras="$2"
+    out="\"${primary}\""
+    if [ -n "${extras}" ]; then
+        IFS=','
+        for u in ${extras}; do
+            u=$(echo "${u}" | sed 's/^ *//;s/ *$//')
+            [ -z "${u}" ] && continue
+            out="${out}, \"${u}\""
+        done
+        unset IFS
+    fi
+    printf '%s' "${out}"
+}
+
+STUN_SERVERS_JSON="$(join_uris "${STUN_URI}" "${STUN_URI_EXTRA}")"
+TURN_SERVERS_JSON="$(join_uris "${TURN_URI}" "${TURN_URI_EXTRA}")"
 
 # Materialise the per-peer config out of the template.
 sed \
     -e "s|@PEER_NAME@|${PEER_NAME}|g" \
-    -e "s|@STUN_URI@|${STUN_URI}|g" \
-    -e "s|@TURN_URI@|${TURN_URI}|g" \
+    -e "s|@STUN_SERVERS_JSON@|${STUN_SERVERS_JSON}|g" \
+    -e "s|@TURN_SERVERS_JSON@|${TURN_SERVERS_JSON}|g" \
     -e "s|@TURN_USER@|${TURN_USER:-goodnet}|g" \
     -e "s|@TURN_PASS@|${TURN_PASS:-bench-only-credentials}|g" \
     -e "s|@WAIT_FOR_PEER@|${WAIT_FOR_PEER}|g" \
     -e "s|@SIGNAL_DIR@|${SIGNAL_DIR}|g" \
+    -e "s|@TURN_BACKUP_INTERVAL_S@|${TURN_BACKUP_INTERVAL_S}|g" \
+    -e "s|@ICE_LITE_MODE@|${ICE_LITE_MODE}|g" \
+    -e "s|@ICE_MDNS_OBFUSCATE@|${ICE_MDNS_OBFUSCATE}|g" \
+    -e "s|@ICE_ENABLE_IPV6@|${ICE_ENABLE_IPV6}|g" \
+    -e "s|@ICE_PMTU_ACTIVE_PROBING@|${ICE_PMTU_ACTIVE_PROBING}|g" \
+    -e "s|@ICE_PORT_PREDICTION_STRIDE_MAX@|${ICE_PORT_PREDICTION_STRIDE_MAX}|g" \
+    -e "s|@ICE_TCP_TLS_ONLY@|${ICE_TCP_TLS_ONLY}|g" \
     /etc/goodnet/peer.json.tmpl > /etc/goodnet/peer.json
 
 echo "[peer-${PEER_NAME}] config:"

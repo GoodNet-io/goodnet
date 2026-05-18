@@ -12,14 +12,21 @@
     { "name": "goodnet_handler_heartbeat", "path": "/plugins/libgoodnet_handler_heartbeat.so" }
   ],
   "ice": {
-    "stun_servers": [ "@STUN_URI@" ],
-    "turn_servers": [ "@TURN_URI@" ],
+    "stun_servers": [ @STUN_SERVERS_JSON@ ],
+    "turn_servers": [ @TURN_SERVERS_JSON@ ],
     "turn_username": "@TURN_USER@",
     "turn_password": "@TURN_PASS@",
     "session_timeout_s": 30,
     "keepalive_interval_s": 10,
     "consent_max_failures": 3,
-    "consent_max_recovery": 3
+    "consent_max_recovery": 3,
+    "turn_backup_interval_s": @TURN_BACKUP_INTERVAL_S@,
+    "lite_mode": @ICE_LITE_MODE@,
+    "mdns_obfuscate_host_candidates": @ICE_MDNS_OBFUSCATE@,
+    "enable_ipv6": @ICE_ENABLE_IPV6@,
+    "pmtud_active_probing": @ICE_PMTU_ACTIVE_PROBING@,
+    "port_prediction_stride_max": @ICE_PORT_PREDICTION_STRIDE_MAX@,
+    "tcp_tls_only": @ICE_TCP_TLS_ONLY@
   },
   "signal": {
     "shared_dir": "@SIGNAL_DIR@",
