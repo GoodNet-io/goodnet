@@ -196,22 +196,23 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 
 ---
 
-## 7. Out of scope for v1
+## 7. Out of scope for this contract
 
-- **Signed manifests.** The v1 manifest is unsigned. An operator
-  who wants tamper-evidence at rest signs the manifest file with
-  Ed25519 outside the kernel and verifies the signature before
-  calling `parse`. An in-kernel verifier for the signed-manifest
-  path is planned.
+- **Signed manifests.** The manifest defined here is unsigned. An
+  operator who wants tamper-evidence at rest signs the manifest
+  file with Ed25519 outside the kernel and verifies the signature
+  before calling `parse`. An in-kernel verifier for the
+  signed-manifest path is planned.
 - **Live re-verification.** The manifest is consulted at load
   time; the kernel does not re-hash already-mapped plugins on a
   schedule. Tampering with a `.so` after `dlopen` does not change
   the running kernel — it changes what would happen at the next
   load.
-- **Manifest reload.** v1 has no `update_manifest` API. An
-  operator who needs to permit a new plugin restarts the kernel
-  with the extended manifest. Hot manifest reload may surface as
-  a planned extension if a deployment drives it.
+- **Manifest reload.** This contract surface defines no
+  `update_manifest` API. An operator who needs to permit a new
+  plugin restarts the kernel with the extended manifest. Hot
+  manifest reload may surface as a planned extension if a
+  deployment drives it.
 - **Capability manifest.** This contract surface covers only the
   integrity manifest. A separate manifest pinning per-plugin
   capabilities (filesystem, network, syscall) may land once the
@@ -228,8 +229,8 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
   are both bootstrap-only — the host calls
   `set_manifest_required` and `set_manifest` from the bootstrap
   thread before `load`. A config-key reader that wires the flag
-  from a kernel-managed config sits outside the v1 surface; the
-  embedding host maps the config to the setter call directly.
+  from a kernel-managed config is out of scope for this contract;
+  the embedding host maps the config to the setter call directly.
 
 ---
 
