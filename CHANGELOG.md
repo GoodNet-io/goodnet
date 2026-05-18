@@ -424,7 +424,7 @@ changed files touch livedoc inputs, complementing the
 ### Sub-repo work referenced
 
 `plugins/links/ice` is a separate git that ships its own
-CHANGELOG. Three substantive landings in this cycle that
+CHANGELOG. Six substantive landings in this cycle that
 operators reading the kernel CHANGELOG should be aware of:
 
 - **Multi-TURN fallback** — sequential walk through
@@ -448,6 +448,31 @@ operators reading the kernel CHANGELOG should be aware of:
   Replaces the static `ice.path_mtu` floor with a live
   `effective_path_mtu()` queryable through the new
   `gn.link.ice.path_mtu` extension slot.
+- **ICE-lite mode (RFC 8445 §2.7)** — `ice.lite_mode = true` on
+  one side pins controlling=false, makes `begin_checks` a no-op,
+  and accepts whatever the controlling peer nominates. Triggered
+  checks still respond per §7.3.1.4. Wire flag
+  `ICE_SIGNAL_FLAG_LITE` advertises the mode on the offer;
+  lite-vs-lite is rejected because no one would drive checks.
+  Use case: media gateways, IoT responders, minimal-state
+  endpoints.
+- **RTM_NEWLINK network-mobility hook (Linux)** — netlink
+  `RTM_LINK / RTM_IPV4_IFADDR / RTM_IPV6_IFADDR` subscription
+  re-gathers host candidates when interfaces come up/down
+  (cable unplug, wifi switch, suspend→wake). Trickle path emits
+  candidate updates; non-trickle falls back to
+  `restart_session()`. Config knob
+  `ice.reactive_interface_change` (default on); no-op on non-
+  Linux.
+- **Symmetric-NAT port prediction** — when ICE gather observes
+  a symmetric NAT (different external ports per destination
+  from the same local port), connectivity checks fire an EXTRA
+  salvo at `(peer.ip, peer.port + step * k)` for k in 1..N. Wire
+  flag `ICE_SIGNAL_FLAG_SYMMETRIC` advertises the detected
+  stride to the peer. Cooperative-ISP symmetric NATs typically
+  allocate sequential ports — prediction increases connect-rate
+  ~30–50% on those paths. WebRTC doesn't do this by default;
+  this is the "more than WebRTC" item.
 
 See `plugins/links/ice/CHANGELOG.md` for the full ICE entry.
 
