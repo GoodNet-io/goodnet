@@ -6,6 +6,8 @@
 
 #include "../host_api_internal.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -80,17 +82,30 @@ constexpr std::uint64_t kRegisterTokenMask    =
     return id & kRegisterTokenMask;
 }
 
+/// Translation table from the SDK log-level enum to spdlog's. Indexed
+/// by the C enum's underlying value (`GN_LOG_TRACE == 0` ...
+/// `GN_LOG_FATAL == 5`); the `static_assert` keeps the table aligned
+/// with the SDK enum so a new level is a single new array entry.
+constexpr std::array<::spdlog::level::level_enum, 6> kSpdlogLevelByGnLevel = {
+    ::spdlog::level::trace,
+    ::spdlog::level::debug,
+    ::spdlog::level::info,
+    ::spdlog::level::warn,
+    ::spdlog::level::err,
+    ::spdlog::level::critical,
+};
+
+static_assert(static_cast<std::size_t>(GN_LOG_FATAL) + 1
+                  == kSpdlogLevelByGnLevel.size(),
+              "kSpdlogLevelByGnLevel must stay aligned with the "
+              "gn_log_level_t enum.");
+
 [[nodiscard]] ::spdlog::level::level_enum
 map_log_level(gn_log_level_t level) noexcept {
-    switch (level) {
-        case GN_LOG_TRACE: return ::spdlog::level::trace;
-        case GN_LOG_DEBUG: return ::spdlog::level::debug;
-        case GN_LOG_INFO:  return ::spdlog::level::info;
-        case GN_LOG_WARN:  return ::spdlog::level::warn;
-        case GN_LOG_ERROR: return ::spdlog::level::err;
-        case GN_LOG_FATAL: return ::spdlog::level::critical;
-    }
-    return ::spdlog::level::off;
+    const auto idx = static_cast<std::size_t>(level);
+    return idx < kSpdlogLevelByGnLevel.size()
+               ? kSpdlogLevelByGnLevel[idx]
+               : ::spdlog::level::off;
 }
 
 }  // namespace

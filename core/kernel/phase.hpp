@@ -7,6 +7,8 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
 #include <string_view>
 
 namespace gn::core {
@@ -29,18 +31,23 @@ enum class Phase {
     return static_cast<int>(next) == static_cast<int>(prev) + 1;
 }
 
+namespace detail {
+
+inline constexpr std::size_t kPhaseCount = 8;
+
+inline constexpr std::array<std::string_view, kPhaseCount> kPhaseNames = {
+    "Load", "Wire", "Resolve", "Ready",
+    "Running", "PreShutdown", "Shutdown", "Unload",
+};
+
+static_assert(static_cast<std::size_t>(Phase::Unload) + 1 == kPhaseCount,
+              "kPhaseNames must stay aligned with the Phase enum.");
+
+}  // namespace detail
+
 [[nodiscard]] constexpr std::string_view phase_name(Phase p) noexcept {
-    switch (p) {
-        case Phase::Load:        return "Load";
-        case Phase::Wire:        return "Wire";
-        case Phase::Resolve:     return "Resolve";
-        case Phase::Ready:       return "Ready";
-        case Phase::Running:     return "Running";
-        case Phase::PreShutdown: return "PreShutdown";
-        case Phase::Shutdown:    return "Shutdown";
-        case Phase::Unload:      return "Unload";
-    }
-    return "?";
+    const auto idx = static_cast<std::size_t>(p);
+    return idx < detail::kPhaseNames.size() ? detail::kPhaseNames[idx] : "?";
 }
 
 } // namespace gn::core
