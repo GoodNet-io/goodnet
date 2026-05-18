@@ -32,6 +32,37 @@ envelope is a packed struct, the payload is CBOR. Python `cbor2`,
 Rust `ciborium`, Zig `std.cbor`, Go `fxamacker/cbor` all decode the
 subset documented in §5.
 
+## §1a — Subprocess trust model
+
+Remote linkage runs the plugin as an OS-level subprocess but the
+trust model is the same as in-process plugins: **operator-vetted
+manifest plus SHA-256 of the worker binary**. There is no runtime
+isolation — `RemoteHost::spawn` (`core/plugin/remote_host.cpp`
+around the `fork` + `execve` block) performs a plain `fork` +
+`execve` with no Linux user-namespace, seccomp filter, or cgroup
+applied. A worker the kernel spawned runs with the kernel's own
+uid, fd table (minus the IPC socket end the parent closes), and
+filesystem view. The kernel trusts the worker binary the same way
+it trusts an in-process plugin: the manifest pin and the
+build-time vetting of the source it came from.
+
+The asymmetry with in-process plugins is purely about address
+space — a crashing remote worker does not pull the kernel down,
+whereas a crashing in-process plugin does. It is **not** about
+defending the kernel against a malicious worker. A worker that
+has been substituted between manifest pinning and `execve` can do
+everything an in-process plugin can do, plus a few subprocess-
+specific tricks (signal storms, fd-table exhaustion through the
+inherited table, etc.).
+
+Sandboxing — Linux user namespaces, seccomp-bpf syscall filter,
+cgroup-based resource ceilings — is a planned extension when
+third-party untrusted workers become a use case (a marketplace
+where the operator's vetting cannot extend to every published
+worker). The wire protocol itself does not change; isolation
+primitives wrap the `spawn` call, the running worker continues
+to talk to the kernel over the same `gn_wire_frame_t` codec.
+
 ## §2 — Frame header
 
 Every frame is a 16-byte header followed by a CBOR payload. The
@@ -245,3 +276,31 @@ threaded workers would add a response demultiplexer keyed by
 - **Tests**: `tests/unit/plugin/test_wire_codec.cpp` (codec
   round-trip), `tests/unit/plugin/test_remote_host.cpp` (kernel
   side against the real `remote_echo` worker; 5 cases).
+
+## §11 — Kernel-side descriptor storage
+
+The plugin descriptor `gn_plugin_descriptor_t` exposes a
+`const char* name` field; `PluginManager` reads it through the
+runtime registry and keeps the pointer for the duration of the
+plugin's lifetime. With static linkage the pointer addresses a
+compile-time string literal (the plugin's own `.rodata`); with
+dynamic linkage it addresses a `dlsym`-resolved string baked into
+the loaded `.so`. Either way the lifetime of the storage is
+covered by the binary that supplied the symbol.
+
+Remote linkage is asymmetric here. The worker's HELLO payload
+carries the descriptor name as a CBOR text string — a transient
+slice of the read buffer, not a stable address. `RemoteHost`
+mirrors the name into a `std::string descriptor_name_storage_`
+member and points `descriptor_.name` at `descriptor_name_storage_
+.c_str()`. The buffer lives as long as the `RemoteHost` itself,
+which spans the worker's entire lifetime, so `PluginManager`'s
+descriptor pointer stays valid until unload.
+
+This is the price of accepting HELLO-payload names: a remote
+runtime cannot inherit a literal from the worker's address space
+the way the in-process runtimes do, so the kernel-side runtime
+allocates the storage instead. The asymmetry is intentional —
+without it, remote workers could not supply a name at all without
+re-introducing a wire-protocol mechanism for shared-string
+interning, which would buy nothing of value.
