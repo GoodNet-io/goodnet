@@ -71,10 +71,14 @@ void on_conn_state_change(void* ud, const gn_conn_event_t* ev) {
     /* (или другой scheme); link-плагин сам вернёт свежий conn_id   */
     /* через `notify_connect` после установления сокета.            */
     gn_conn_id_t new_conn = GN_INVALID_CONN_ID;
-    auto link_ext = (gn_link_tcp_api_t*)
-        host_api->query_extension_checked(
-            host_ctx, "gn.link.tcp", GN_EXT_LINK_TCP_VERSION, NULL);
-    if (!link_ext || link_ext->dial(link_ext->ctx, direct_uri) != GN_OK)
+    const void* link_vt = NULL;
+    if (host_api->query_extension_checked(
+            host_ctx, "gn.link.tcp", GN_EXT_LINK_VERSION,
+            &link_vt) != GN_OK)
+        return;
+    const auto* link_ext = (const gn_link_api_t*)link_vt;
+    if (link_ext->connect(link_ext->ctx, direct_uri,
+                           &new_conn) != GN_OK)
         return;
     /* `new_conn` приедет в callback `subscribe_conn_state` на      */
     /* событие `CONNECTED` от только что открытой conn'и.           */
