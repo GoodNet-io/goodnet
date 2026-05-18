@@ -1,5 +1,12 @@
 # GoodNet
 
+[![CI (Forgejo)](http://localhost/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost/goodnet-io/goodnet/actions)
+[![CI (GitHub smoke)](https://github.com/GoodNet-io/goodnet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GoodNet-io/goodnet/actions/workflows/ci.yml)
+
+<!-- TODO: confirm forgejo web URL — the badge href above is a placeholder.
+     The instance exposes SSH on :222 but the web port is not pinned in
+     this tree yet. See docs/operator/ci-forgejo-setup.en.md. -->
+
 A small networking kernel with pluggable transports, security
 providers, protocol layers, and handlers. Applications embed it
 as a library or run the standalone daemon. The C ABI between
@@ -57,20 +64,27 @@ git commit --no-verify   # skip pre-commit for one commit
 git push   --no-verify   # skip pre-push for one push
 ```
 
-The full CI matrix lives in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+CI is split between two runners. The full matrix runs on the
+project's self-hosted Forgejo Actions instance
+([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml); runner
+setup in [`docs/operator/ci-forgejo-setup.en.md`](docs/operator/ci-forgejo-setup.en.md));
+GitHub Actions carries only `flake-check` + `livedoc-check` as a
+public-facing smoke ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+Release artefacts continue to publish through GitHub on tag push
+([`.github/workflows/release.yml`](.github/workflows/release.yml)).
 
-| Gate                | When                                |
-|---------------------|-------------------------------------|
-| `flake-check`       | every PR + push to main             |
-| `livedoc-check`     | every PR + push to main             |
-| `build-and-test`    | every PR + push to main             |
-| `plugin-verify`     | every PR + push to main             |
-| `windows-cross-build` | every PR + push to main           |
-| `bench-smoke`       | push to main OR PR label `bench`    |
-| `ice-3node`         | push to main OR PR label `ice-test` |
-| `fuzz-smoke`        | push to main OR PR label `fuzz`     |
-| `asan-smoke`        | push to main OR PR label `sanitizer` |
-| `tsan-smoke`        | push to main OR PR label `sanitizer` |
+| Gate                | When                                | Where             |
+|---------------------|-------------------------------------|-------------------|
+| `flake-check`       | every PR + push to main             | Forgejo + GitHub  |
+| `livedoc-check`     | every PR + push to main             | Forgejo + GitHub  |
+| `build-and-test`    | every PR + push to main             | Forgejo           |
+| `plugin-verify`     | every PR + push to main             | Forgejo           |
+| `windows-cross-build` | every PR + push to main           | Forgejo           |
+| `bench-smoke`       | push to main OR PR label `bench`    | Forgejo           |
+| `ice-3node`         | push to main OR PR label `ice-test` | Forgejo           |
+| `fuzz-smoke`        | push to main OR PR label `fuzz`     | Forgejo           |
+| `asan-smoke`        | push to main OR PR label `sanitizer` | Forgejo          |
+| `tsan-smoke`        | push to main OR PR label `sanitizer` | Forgejo          |
 
 `asan-smoke` + `tsan-smoke` previously stayed local-only; they now
 run on every push to main so a race or UAF that slipped past local
