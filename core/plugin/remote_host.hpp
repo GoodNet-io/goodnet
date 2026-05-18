@@ -141,6 +141,11 @@ public:
         return round_trips_.load(std::memory_order_relaxed);
     }
 
+    /// PID of the worker subprocess. `-1` before `spawn` succeeds and
+    /// after `terminate` reaps the child. Tests assert subprocess-
+    /// hardening sysctls via `/proc/$pid/{status,limits,fd}`.
+    [[nodiscard]] ::pid_t worker_pid() const noexcept { return pid_; }
+
     using PayloadVec = std::vector<std::uint8_t>;
 
     /// Result of a single PLUGIN_CALL: flags from the reply header
