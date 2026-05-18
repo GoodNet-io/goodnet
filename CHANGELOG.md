@@ -6,6 +6,27 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### RemoteHost — per-slot reply-timeout override
+
+`RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
+the host caller dial different reply deadlines per wire slot. A
+fast slot (`PLUGIN_REGISTER`, `LINK_DISCONNECT`) typically runs
+in milliseconds; a custom handler-call slot may legitimately need
+seconds. The single global `set_reply_timeout` value remains the
+fallback for any slot without an explicit override.
+`clear_reply_timeout_overrides()` drops the map back to the
+unscoped default. The `round_trip_` dispatcher consults the
+override map before falling back to `reply_timeout_`. The
+override mechanism is documented in
+`docs/contracts/remote-plugin.en.md` after the §6 slot tables.
+
+`plugins/workers/remote_slow_stub` is a pathological worker that
+sleeps in `on_init` / `on_register` per `GOODNET_SLOW_STUB_*_MS`
+env vars so the per-slot timeout regression can fire
+deterministically. Three new tests under `RemoteHostTimeoutOverride`
+(`OverrideAppliedToSlot`, `OverrideDoesNotAffectOtherSlots`,
+`ClearRemovesOverride`) drive the surface end-to-end.
+
 ### Recv-side parallel decrypt — symmetric crypto fan-out
 
 The send path has fanned encrypt jobs through `CryptoWorkerPool`
