@@ -269,14 +269,53 @@
             # at the propagated kernel build so `pytest` can drive
             # the lifecycle round-trip during `nix build`.
             checkInputs = [ pkgs.python3Packages.pytest ];
-            preCheck = '''
+            preCheck = ''
               export GOODNET_CORE_LIB=${goodnet-core}/lib/libgoodnet_kernel.so
-            ''';
+            '';
             pythonImportsCheck = [ "goodnet" "goodnet._ffi" "goodnet.errors" ];
             meta = {
               description = "Python bindings for the GoodNet network kernel (cffi ABI mode).";
               license     = pkgs.lib.licenses.mit;
               platforms   = pkgs.lib.platforms.linux ++ pkgs.lib.platforms.darwin;
+            };
+          };
+
+          # Rust bindings — two-crate Cargo workspace under
+          # `bindings/rust/`. `goodnet-sys` runs `bindgen` over
+          # `sdk/core.h` at build time; `goodnet` is the safe RAII
+          # wrapper around the kernel handle. The derivation points the
+          # crate at the already-built `goodnet-core` output through
+          # `GOODNET_CORE_DIR` so bindgen reads the canonical installed
+          # headers + the linker picks up `libgoodnet_kernel.so` from
+          # the same closure.
+          goodnet-rust = pkgs.rustPlatform.buildRustPackage {
+            pname   = "goodnet-rust";
+            version = "0.1.0";
+            src     = pkgs.lib.cleanSourceWith {
+              src    = ./bindings/rust;
+              filter = path: type:
+                let b = builtins.baseNameOf path; in
+                !(b == "target" || b == "result");
+            };
+            cargoLock = {
+              lockFile = ./bindings/rust/Cargo.lock;
+            };
+            nativeBuildInputs = with pkgs; [
+              pkg-config
+              llvmPackages.libclang
+              rustPlatform.bindgenHook
+            ];
+            buildInputs = [
+              goodnet-core
+            ] ++ (with pkgs; [
+              libsodium openssl spdlog fmt nlohmann_json
+            ]);
+            GOODNET_CORE_DIR = "${goodnet-core}";
+            doCheck = true;
+            meta = {
+              description = "GoodNet kernel — Rust bindings (raw FFI + safe RAII wrapper).";
+              license     = pkgs.lib.licenses.mit;
+              platforms   = goodnet-core.meta.platforms or pkgs.lib.platforms.unix;
             };
           };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
@@ -307,6 +346,28 @@
           # is wired yet.
           goodnet-windows = import ./nix/goodnet-windows.nix {
             inherit pkgs;
+          };
+
+          # Darwin cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-
+          # darwin`. Kernel-only first cut (plugins each own their
+          # own darwin port story per `docs/architecture/cross-
+          # platform.ru.md`). Linux-host-only — same shape as the
+          # mingw cross above; native Apple operators use
+          # `nix build .#packages.{x86_64,aarch64}-darwin.goodnet-
+          # core` from the non-cross attr set above. The
+          # `passthru.skip_reason` attribute lets the CI job short-
+          # circuit gracefully when the Apple SDK is absent in pure
+          # Nix cross (Xcode license — nixpkgs cannot redistribute);
+          # the `darwin-cross-build` workflow runs with
+          # `continue-on-error: true` so an SDK-gap regression does
+          # not break main.
+          goodnet-darwin-x86_64 = import ./nix/goodnet-darwin.nix {
+            inherit pkgs;
+            arch = "x86_64";
+          };
+          goodnet-darwin-aarch64 = import ./nix/goodnet-darwin.nix {
+            inherit pkgs;
+            arch = "aarch64";
           };
         });
 

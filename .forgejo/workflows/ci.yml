@@ -105,6 +105,52 @@ jobs:
       - name: Cross-build Windows via mingw
         run: nix build .#goodnet-windows --print-build-logs
 
+  darwin-cross-build:
+    # Cross-build of the kernel for Apple x86_64 + aarch64 via
+    # `pkgs.pkgsCross.*-darwin` from the Linux build host. Mirrors
+    # the windows-cross-build shape but runs with
+    # `continue-on-error: true` because the Apple SDK is not freely
+    # redistributable through nixpkgs; pure Nix cross from Linux
+    # without an operator-staged `apple-sdk_*` derivation eventually
+    # surfaces a missing-SDK link error from the Apple `cctools`
+    # derivation. The job first prints each target's
+    # `passthru.skip_reason` attribute (informational) so the
+    # surface is visible in the CI log even if the subsequent build
+    # itself fails. The job stays advisory until either nixpkgs
+    # ships a vendored Apple SDK channel or the operator wires
+    # `requireFile` for `apple-sdk_15+`. Gated by the `cross-build`
+    # PR label OR push to main so PRs that don't touch
+    # cross-platform-relevant code don't pay the cross-stdenv
+    # evaluation tax.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - goodnet-darwin-x86_64
+          - goodnet-darwin-aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # `nix eval --raw` on a `passthru.skip_reason` string. The
+        # `|| true` keeps the step green even if the attribute is
+        # absent (older flake revision) — the next step is the
+        # real signal. `NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1` lets
+        # the cross-stdenv's Apple-platform-restricted helpers
+        # (cctools, libresolv) evaluate from the Linux host.
+        env:
+          NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM: "1"
+        run: |
+          nix eval ".#${{ matrix.target }}.skip_reason" --raw --impure 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build ${{ matrix.target }}
+        env:
+          NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM: "1"
+        run: nix build .#${{ matrix.target }} --print-build-logs --keep-going --impure
+
   bench-smoke:
     # Builds the three primary perf binaries in Release mode and runs
     # each for ~0.3 s with `--benchmark_format=json`. If a baseline
@@ -315,7 +361,9 @@ jobs:
 #   * Push to main only (label-gated on PRs): bench-smoke (label
 #     `bench`), ice-3node (label `ice-test`), fuzz-smoke (label
 #     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`),
-#     coverage-smoke (label `coverage`).
+#     coverage-smoke (label `coverage`), darwin-cross-build (label
+#     `cross-build`, advisory via `continue-on-error` because the
+#     Apple SDK is not in nixpkgs).
 #
 # ASan + TSan run on push to main (catch race / UAF that local dev
 # missed). Label-gated for PRs to keep PR CI time-bounded; tag the

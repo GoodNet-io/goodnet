@@ -56,7 +56,7 @@ to refresh the table.
 | Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
-| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
+| Rust | ✓ done | bindings/rust/ — two-crate workspace (goodnet-sys + goodnet); bindgen at build time, safe RAII Core wrapper, flake output `goodnet-rust` |
 | Python | ✗ missing | bridges/goodnet-py/setup.py absent |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
@@ -321,6 +321,25 @@ different sandboxing and performance trade-offs.
   `nix build .#packages.aarch64-linux.goodnet-core` from the
   non-cross attr set instead. The native-runner test gate is the
   remaining piece.
+- **macOS x86_64 / aarch64 (cross from Linux)** — kernel-only
+  cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-darwin` lands
+  as `goodnet-darwin-x86_64` / `goodnet-darwin-aarch64` flake
+  outputs. CI runs `darwin-cross-build` with
+  `continue-on-error: true` because the Apple SDK is not freely
+  redistributable through nixpkgs; pure Nix cross from Linux
+  without an operator-staged `apple-sdk_*` derivation surfaces
+  a missing-SDK link error from the Apple `cctools` derivation.
+  The flake's `passthru.skip_reason` attribute lets CI short-
+  circuit gracefully on the SDK gap. Native Apple operators
+  consume `nix build .#packages.{x86_64,aarch64}-darwin.goodnet-
+  core` from the non-cross attr set instead — the Linux-only API
+  uses in `core/plugin/remote_host.cpp` (`prctl`, `closefrom`,
+  `PR_SET_*`) and `core/plugin/runtimes/dynamic.cpp` (`openat2`)
+  are already gated behind `__linux__` so darwin compiles parse
+  clean and degrade to the portable `O_NOFOLLOW` integrity path.
+  Bundled plugins each own their own darwin port story per the
+  per-plugin `flake.nix` matrix in
+  `docs/architecture/cross-platform.ru.md`.
 - **Android build** — Android NDK toolchain target for the kernel
   and the static-plugin bundle. Reuses the same `nix run .#build
   -- static` shape with a cross-compile profile. Use case:
