@@ -79,8 +79,18 @@ typedef struct gn_secure_buffer_s {
      * @ref free_user_data so non-C language bindings can recover
      * captured destruction state without the C-level
      * `void(*)(uint8_t*)` form leaking. The second argument is
-     * @ref bytes verbatim. NULL when the buffer needs no
-     * destruction (e.g. zero-length).
+     * @ref bytes verbatim.
+     *
+     * Contract: when @ref bytes is non-NULL, `free_fn` MUST be
+     * non-NULL — the consumer is required to release the bytes
+     * exactly once through the producer's free, and a non-NULL
+     * payload without a free function leaks. NULL `free_fn` is
+     * legitimate only when @ref bytes is NULL (zero-length output
+     * has no allocation to release). Kernel-side consumers in
+     * `core/security/session.cpp` guard on `free_fn && bytes` and
+     * skip the free when the producer violates the contract; that
+     * is defensive — leak over crash — not an admission that NULL
+     * `free_fn` with non-NULL `bytes` is valid.
      */
     void  (*free_fn)(void* user_data, uint8_t* bytes);
 } gn_secure_buffer_t;
