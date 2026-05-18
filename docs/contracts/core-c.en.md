@@ -491,7 +491,7 @@ never bumps this surface's ABI.
 |---|---|
 | Producer | kernel |
 | Effect | none observable. |
-| Returns | `(GN_SDK_VERSION_MAJOR << 16) | (GN_SDK_VERSION_MINOR << 8) | GN_SDK_VERSION_PATCH` — the same triple `gn_plugin_sdk_version` exports, packed for cheap comparison. |
+| Returns | `gn_version_pack(GN_SDK_VERSION_MAJOR, GN_SDK_VERSION_MINOR, GN_SDK_VERSION_PATCH)` — layout `major:8 << 24 \| minor:8 << 16 \| patch:16` per `sdk/abi.h`. The same triple `gn_plugin_sdk_version` exports, packed for ordered comparison. |
 | Concurrency | safe from any thread. |
 
 See §6 for the compatibility rule the host applies to the result.
@@ -634,8 +634,8 @@ The kernel exposes its version twice: a human-readable string and a
 packed integer.
 
 ```c
-const char* gn_version(void);          /* "1.0.0-dev", "1.0.0-rc1", … */
-uint32_t    gn_version_packed(void);   /* (MAJOR << 16) | (MINOR << 8) | PATCH */
+const char* gn_version(void);          /* NUL-terminated semver string */
+uint32_t    gn_version_packed(void);   /* gn_version_pack layout: major:8 << 24 | minor:8 << 16 | patch:16 */
 ```
 
 The packed form is the comparable representation. The host computes
