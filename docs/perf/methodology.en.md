@@ -360,6 +360,195 @@ aggregator. The runner reports those by their absence; the
 report's `## Known crashes` section, when present, lists them
 with the diagnostic the operator should reproduce locally.
 
+### 4.4 Latency-tail interpretation
+
+The `## Latency tail` section ladders P50 → P95 → P99 → P99.9
+→ P99.99. The two ends of the ladder answer different questions
+and the per-fixture interpretation differs:
+
+| Fixture | Tail-sensitive? | Why |
+|---|---|---|
+| `TcpFixture/LatencyRoundtrip` | yes | round-trip RTT is the operator-visible latency; P99.9 is what the slowest 0.1% of RPCs paid |
+| `TcpFixture/Throughput` | no | throughput is steady-state; tail is the noise floor of the loopback socket buffer |
+| `IpcFixture/Throughput` | no | same |
+| `WsFixture/EchoRoundtrip` | yes | echo round-trip carries an extra strand-hop; tail surfaces strand jitter |
+| `*Fixture/HandshakeTime` | no (sample size too small) | handshake fixtures run one-shot; P99.9 collapses to the same number as P50 by linear interpolation |
+| `IceFixture/NominationMetricsLookup` | yes | strategy plugins poll this on the hot path; tail = lock contention |
+| `SubprocessLinkFixture/HostCallRoundtrip` | yes | wire-proxy round trip carries scheduler hops; tail surfaces scheduler-class jitter |
+
+P99.99 (1-in-10k sample) is meaningful only when `lat_samples`
+column reads ≥ 10 000. Below that count, linear interpolation
+between the last two recorded samples collapses P99.99 onto
+P99.9; reporting P99.99 with N=200 is mathematically the same as
+P99.9 (the interpolation reaches into the same neighbouring
+points) and operators should read the two columns as equal.
+The aggregator emits both columns regardless so the reader
+can verify the convergence from the `Samples` column.
+
+A widening P99.9 / P99 ratio across rows is the long-tail
+signal: row whose P99 is 10× the median has a fundamentally
+different behaviour than one whose P99 is 1.2× the median.
+P99.9 / P99 amplifies this — a row reading `P99: 20μs, P99.9:
+50μs` (ratio 2.5×) has GC / strand-hop / allocator-slow-path
+pauses; a row reading `20μs / 25μs` (ratio 1.25×) is uniformly
+fast. Operators picking a stack for latency-sensitive RPC
+weight P99.9 over throughput.
+
+### 4.5 Expected-range table per host class
+
+The bench's absolute numbers depend on the host class. A row
+reading "WAN GoodNet TCP @ 1024B = 1.68 GiB/s" is a SIGNAL
+mismatch — production WAN deployments cannot reach that. The
+table below documents the bench's expected ranges so an
+operator can tell whether their environment matches the
+methodology's assumptions:
+
+| Metric @ 1024 B payload | Loopback dev box | 1 GbE LAN | Typical WAN | Mobile cellular |
+|---|---|---|---|---|
+| TCP parody throughput | 1.5-2.5 GiB/s | 110-118 MiB/s | 5-30 MiB/s | 1-5 MiB/s |
+| TCP real-mode throughput | 200-400 MiB/s | 80-100 MiB/s | 5-25 MiB/s | 1-3 MiB/s |
+| UDP echo RTT (P50) | 30-80 μs | 200-500 μs | 20-80 ms | 50-200 ms |
+| ICE establishment (P50) | <50 ms | 100-500 ms | 1-3 s | 2-10 s |
+| Noise XX handshake | 250-500 μs | 1-2 ms | 30-100 ms | 100-300 ms |
+
+The bench harness assumes loopback; `bench/comparison/runners/`
+emits a `Note` row in the report when the runner detects a
+non-loopback test. Numbers outside these ranges by >2× are
+likely an environmental misconfiguration (governor on
+schedutil, NUMA-cross traffic, antivirus scan) rather than a
+kernel regression. Bisecting a kernel-level regression on a
+box matching its host class's expected range is straightforward;
+bisecting on a misconfigured box wastes everyone's time.
+
+### 4.6 Sanitizer-build bench expectations
+
+ASan + TSan instrumentation imposes a per-instruction tax. A
+sanitizer-build bench is a correctness gate, NOT a perf gate.
+The methodology forbids comparing sanitizer numbers to vanilla
+baseline.
+
+Expected slowdown per sanitizer:
+
+| Sanitizer | Throughput | Latency | Why |
+|---|---|---|---|
+| ASan | 2-4× slower | 2-5× higher | shadow-memory load on every heap access |
+| TSan | 5-15× slower | 5-15× higher | happens-before tracking per memory op |
+| UBSan | 1.1-1.3× slower | similar | mostly cheap integer-overflow / shift-bounds checks |
+| MSan | 3-5× slower | similar | uninitialised-memory shadow propagation |
+
+The aggregator does not currently tag rows with their sanitizer
+build (the bench JSON output does not carry it). Convention:
+sanitizer-build report files go in
+`bench/reports/sanitizer/<sha>-<sanitizer>.md` rather than the
+top-level `bench/reports/<sha>.md` so the baseline-delta column
+NEVER auto-pairs a sanitizer row against a vanilla one. A
+sanitizer-build that crashed where vanilla didn't IS a real
+signal; sanitizer-build "+250% latency vs vanilla" is just the
+instrumentation tax.
+
+### 4.7 Multi-run statistical significance
+
+A single bench run is unreliable for regression detection. The
+day-to-day `run_all.sh` flow is for fast iteration; a
+release-gate signal requires a stronger statistical argument:
+
+  * Per-row Δ flagged at >15% latency / >10% throughput is the
+    `aggregate.py --baseline=` default. A single noisy run can
+    cross this threshold without being a real regression.
+  * **Three consecutive runs showing the same delta** is the
+    operational "is this a regression" signal. The Δ-vs-baseline
+    column persists across `bench/reports/<sha>.md` files; if
+    three consecutive commits show the same row flag, the
+    regression is real.
+  * **Welch's two-sample t-test** is the release-gate gate.
+    `tools/bench_multipass.py --passes=N --baseline=<ref>.json`
+    runs the binary N times, computes the t-statistic + p-value
+    against the baseline, and exits non-zero when both p < 0.05
+    AND |Δ| > 5% hold. Suitable for a CI release gate; the
+    n-fold cost is N× longer bench wall time but the gate
+    answers a question single-run benches cannot.
+  * **Median + IQR** is the noise-floor signal. A row whose IQR
+    is wider than the mean delta is inherently noisy
+    (ICE `NominationMetricsLookup` is a representative example —
+    the lock-acquire jitter is the IQR-wide signal, not a
+    regression). The multipass tool surfaces median and IQR
+    columns so the reader can rule out IQR-wide rows.
+
+### 4.8 Shape-mismatch explicit forbid
+
+A row claiming "GoodNet TCP is 2.03 GiB/s" without saying the
+shape is meaningless. The bench runs two shapes — parody and
+real — and the aggregator enforces the separation by raising
+`ModeMismatchError` when a pivot table mixes the two. The
+methodology states it explicitly:
+
+  * Reporting `GoodNet parody 2 GiB/s` next to `libp2p 200 MiB/s`
+    on the same axis is **lying with statistics**. The shapes
+    pay different costs — parody is a raw socket, libp2p carries
+    Noise + Yamux. A reader compares the numbers as if they
+    answered the same question; they do not.
+  * The aggregator's `ModeMismatchError` is the enforcement
+    mechanism. A future runner that emits an untagged metric
+    (`stack: "GoodNet"` without `mode`) lands in the
+    `_classify_metric_mode` fallback; an unclassifiable metric
+    keeps the row out of the pivot table rather than letting
+    it land somewhere wrong.
+  * The methodology lives at the top of this document
+    (§1.1-1.3). The shape distinction belongs in the rationale
+    of every chart that touches GoodNet numbers — the report
+    layout, the slide deck, the README, every screenshot of a
+    bench row.
+
+The single-section rule:
+
+> Within ONE pivot column, the shapes match. Across columns,
+> the document calls out the shape via prose. NEVER mix
+> shapes silently.
+
+### 4.9 Ratchet workflow
+
+`bench/baselines/` holds CI-pinned baseline JSONs. The ratchet
+question is "when does the baseline move forward?" Two cases:
+
+**When to ratchet (move baseline to current numbers):**
+
+  * A legitimate perf improvement landed.
+  * **AND** three consecutive runs show the same improvement
+    (filters out a single noisy run that happened to be
+    fast).
+  * **AND** Welch p < 0.05 against the previous baseline
+    (`tools/bench_multipass.py --baseline=<prev>.json`).
+  * **AND** sign-off from the perf reviewer.
+
+**When NOT to ratchet:**
+
+  * A single fast run.
+  * A run on a different host class (the baseline lives in a
+    host-class-specific directory; cross-class moves are
+    NEVER auto-ratcheted).
+  * A run with non-default environment knobs (`schedutil`
+    governor, ASLR off, debug build).
+  * Sanitizer-build numbers are NEVER ratcheted against
+    vanilla baselines.
+
+**Bisecting a regression to a commit:**
+
+  1. `git bisect start <bad-sha> <good-sha>`
+  2. Per bisect step: `nix develop --command bash -c 'cd
+     build-release && ninja bench_<plugin>'`
+  3. Run the candidate against the baseline:
+     `python3 tools/bench_compare.py
+     bench/baselines/<host>/<plugin>.json
+     build-release/bench/bench_<plugin>_json`
+  4. `git bisect good` / `git bisect bad` on the exit code.
+  5. The `git bisect run` driver script lives in
+     `tools/bench_bisect.sh` (planned).
+
+A bisect spanning >100 commits is the wrong direction; the
+right shape is to narrow to <20 commits first using the
+`bench/reports/` directory (every commit that ran the bench
+left a report; binary-search them for the first regression).
+
 ---
 
 ## 5. Cross-references
