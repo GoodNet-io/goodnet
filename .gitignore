@@ -105,6 +105,16 @@ __pycache__/
 !plugins/workers/**/*.cpp
 !plugins/workers/**/*.hpp
 !plugins/workers/**/CMakeLists.txt
+# raw_inject is the SOCKS5-style bridge plugin — small enough to
+# ride in-tree as a proof for the inject API. Whitelisted explicitly
+# so the kernel monorepo tracks it alongside the other in-tree
+# fixtures.
+!plugins/links/raw_inject/**/*.cpp
+!plugins/links/raw_inject/**/*.hpp
+!plugins/links/raw_inject/**/*.c
+!plugins/links/raw_inject/**/CMakeLists.txt
+!plugins/links/raw_inject/LICENSE
+!plugins/links/raw_inject/README.md
 plugins/handlers/heartbeat/
 plugins/handlers/store/
 plugins/handlers/dns/
