@@ -358,6 +358,114 @@ TEST(Router_Chain, ConsumedStopsLowerPriority) {
     EXPECT_EQ(low_rec->on_result_calls.load(),  0);
 }
 
+// ── Anonymous loopback zero-sender relaxation ────────────────────────────
+
+TEST(Router_AnonymousLoopback, AcceptsZeroSenderForAnonymousLoopbackConn) {
+    RouterFixture f;
+    const auto local = pk_from_byte(0x11);
+    f.identities.add(local);
+    auto* rec = f.register_handler(0x42, 128, "anon");
+
+    constexpr gn_conn_id_t kConn = 0xA001;
+    f.router.set_conn_lookup(
+        [](gn_conn_id_t id, Router::ConnInfo& out) {
+            if (id != kConn) return false;
+            out.trust       = GN_TRUST_ANONYMOUS_LOOPBACK;
+            out.is_loopback = true;
+            return true;
+        });
+
+    gn_message_t env{};
+    fill_envelope(env, kBroadcastPk /* sender = ZERO */, local, 0x42);
+    env.conn_id = kConn;
+    EXPECT_EQ(f.router.route_inbound(kProtocol, env),
+              RouteOutcome::DispatchedLocal);
+    EXPECT_EQ(rec->handle_calls.load(),    1);
+    EXPECT_EQ(rec->on_result_calls.load(), 1);
+}
+
+TEST(Router_AnonymousLoopback, RejectsZeroSenderForNonLoopbackScope) {
+    RouterFixture f;
+    const auto local = pk_from_byte(0x11);
+    f.identities.add(local);
+    auto* rec = f.register_handler(0x42, 128, "anon-external");
+
+    constexpr gn_conn_id_t kConn = 0xA002;
+    f.router.set_conn_lookup(
+        [](gn_conn_id_t id, Router::ConnInfo& out) {
+            if (id != kConn) return false;
+            /// Bridge declared ANONYMOUS_LOOPBACK but the carrier
+            /// resolved to a public address — the loopback-scope
+            /// gate must still reject.
+            out.trust       = GN_TRUST_ANONYMOUS_LOOPBACK;
+            out.is_loopback = false;
+            return true;
+        });
+
+    gn_message_t env{};
+    fill_envelope(env, kBroadcastPk /* sender = ZERO */, local, 0x42);
+    env.conn_id = kConn;
+    EXPECT_EQ(f.router.route_inbound(kProtocol, env),
+              RouteOutcome::DroppedZeroSender);
+    EXPECT_EQ(rec->handle_calls.load(), 0);
+}
+
+TEST(Router_AnonymousLoopback, RejectsZeroSenderWithoutAnonymousTrust) {
+    RouterFixture f;
+    const auto local = pk_from_byte(0x11);
+    f.identities.add(local);
+    auto* rec = f.register_handler(0x42, 128, "loopback-not-anon");
+
+    constexpr gn_conn_id_t kConn = 0xA003;
+    f.router.set_conn_lookup(
+        [](gn_conn_id_t id, Router::ConnInfo& out) {
+            if (id != kConn) return false;
+            /// Loopback conn but trust class is UNTRUSTED — the
+            /// router must keep the legacy reject behaviour for
+            /// every non-anonymous-bridge zero-sender envelope.
+            out.trust       = GN_TRUST_UNTRUSTED;
+            out.is_loopback = true;
+            return true;
+        });
+
+    gn_message_t env{};
+    fill_envelope(env, kBroadcastPk /* sender = ZERO */, local, 0x42);
+    env.conn_id = kConn;
+    EXPECT_EQ(f.router.route_inbound(kProtocol, env),
+              RouteOutcome::DroppedZeroSender);
+    EXPECT_EQ(rec->handle_calls.load(), 0);
+}
+
+TEST(Router_AnonymousLoopback, RejectsZeroSenderUnknownConn) {
+    RouterFixture f;
+    const auto local = pk_from_byte(0x11);
+    f.identities.add(local);
+    auto* rec = f.register_handler(0x42, 128, "unknown-conn");
+
+    f.router.set_conn_lookup(
+        [](gn_conn_id_t, Router::ConnInfo&) { return false; });
+
+    gn_message_t env{};
+    fill_envelope(env, kBroadcastPk /* sender = ZERO */, local, 0x42);
+    env.conn_id = 0x9999;
+    EXPECT_EQ(f.router.route_inbound(kProtocol, env),
+              RouteOutcome::DroppedZeroSender);
+    EXPECT_EQ(rec->handle_calls.load(), 0);
+}
+
+TEST(Router_AnonymousLoopback, IsLoopbackScopeClassifier) {
+    EXPECT_TRUE(is_loopback_scope("ipc", "ipc:///tmp/sock"));
+    EXPECT_TRUE(is_loopback_scope("tcp", "tcp://127.0.0.1:9999"));
+    EXPECT_TRUE(is_loopback_scope("tcp", "tcp://127.5.6.7:9999"));
+    EXPECT_TRUE(is_loopback_scope("tcp", "tcp://[::1]:9999"));
+    EXPECT_TRUE(is_loopback_scope("tcp", "tcp://localhost:9999"));
+    EXPECT_TRUE(is_loopback_scope("raw-inject",
+                                  "raw-inject://127.0.0.1:9999"));
+    EXPECT_FALSE(is_loopback_scope("tcp", "tcp://10.0.0.5:9999"));
+    EXPECT_FALSE(is_loopback_scope("tcp", "tcp://192.168.1.1:9999"));
+    EXPECT_FALSE(is_loopback_scope("tcp", "tcp://[2001:db8::1]:9999"));
+}
+
 TEST(Router_Chain, ContinueLetsAllHandlersSeeEnvelope) {
     RouterFixture f;
     const auto local  = pk_from_byte(0x11);
