@@ -464,7 +464,7 @@ NODES: dict[str, tuple[str, str]] = {
         "link-tcp",
         "# link-tcp\n`plugins/links/tcp/`\n\n"
         "Independent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n"
-        "`scheme = \"tcp\"`. Boost.Asio:\n"
+        "`scheme = \"tcp\"`. Standalone Asio:\n"
         "- async accept / connect / read / write\n"
         "- per-connection strand + send queue\n"
         "- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\n"
@@ -481,7 +481,8 @@ NODES: dict[str, tuple[str, str]] = {
         "link-ws",
         "# link-ws\n`plugins/links/ws/`\n\n"
         "Independent git unit. GPL-2 + lex.\n\n"
-        "`scheme = \"ws\"` / `\"wss\"`. Boost.Beast — binary frames только.\n"
+        "`scheme = \"ws\"` / `\"wss\"`. In-house RFC 6455 framing\n"
+        "(plugins/links/ws/wire.hpp) — binary frames только.\n"
         "Browser-friendly путь к ядру."
     ),
     "n_ipc_plugin": (
