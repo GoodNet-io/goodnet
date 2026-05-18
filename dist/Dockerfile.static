@@ -14,12 +14,12 @@
 # against musl across every plugin's dependency closure (libsodium,
 # OpenSSL, …) — a separate plan.
 #
-# Build context: this Dockerfile expects `goodnet` (the binary)
-# in the build root. `bench/comparison/runners/binary_sizes.sh`
-# copies it from `build-static/bin/goodnet` into a tmp context.
+# Build context: this Dockerfile expects `goodnetd` (the daemon
+# binary) in the build root. `bench/comparison/runners/binary_sizes.sh`
+# copies it from `build-static/bin/goodnetd` into a tmp context.
 FROM debian:bookworm-slim
 
-COPY goodnet /usr/local/bin/goodnet
+COPY goodnetd /usr/local/bin/goodnetd
 
-ENTRYPOINT ["/usr/local/bin/goodnet"]
+ENTRYPOINT ["/usr/local/bin/goodnetd"]
 CMD ["version"]

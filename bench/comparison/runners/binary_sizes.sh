@@ -67,7 +67,7 @@ if command -v docker >/dev/null 2>&1 && \
    [[ -f build-static/bin/goodnetd ]] && \
    [[ -f dist/Dockerfile.static ]]; then
     tmpctx=$(mktemp -d)
-    cp build-static/bin/goodnetd "$tmpctx/goodnet"
+    cp build-static/bin/goodnetd "$tmpctx/goodnetd"
     cp dist/Dockerfile.static "$tmpctx/Dockerfile"
     if docker build -q -t goodnet:bench-static "$tmpctx" >/dev/null 2>&1; then
         # docker image inspect's `Size` is the layer-summed bytes,
