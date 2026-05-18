@@ -61,6 +61,42 @@ cmake -B build-release -S . \
 cmake --build build-release -j
 ```
 
+### 2.1 Truly-static variant
+
+```sh
+nix run .#build -- static    # populates build-static/{bin,lib}/
+```
+
+Routes through `nix build .#goodnet-core-static`, a `pkgsStatic`
+derivation that rebuilds the kernel + bundled plugin set under
+musl + statically-archived OpenSSL, libsodium, spdlog, fmt,
+libstdc++, libgcc. The resulting binaries under `build-static/bin/`
+have **no dynamic dependencies**:
+
+```sh
+$ file build-static/bin/remote_echo
+build-static/bin/remote_echo: ELF 64-bit LSB executable, x86-64,
+  version 1 (SYSV), statically linked, not stripped
+$ ldd build-static/bin/remote_echo
+        not a dynamic executable
+```
+
+Use the static variant when:
+
+- Shipping inside a `scratch` / `distroless` Docker base layer
+  (no glibc closure, image size in the single-MiB range).
+- Deploying onto a stripped embedded rootfs with no `/nix/store`
+  or distro libc.
+- Building a chroot-portable bundle for incident-response /
+  air-gapped sites where the runtime libc cannot be relied upon.
+
+The static cut bundles every plugin into the kernel archive
+(`-DGOODNET_STATIC_PLUGINS=ON`), so there are no neighbouring
+`.so` files — the entire artefact is one ELF. Plugins that need
+POSIX-only subsystems (`handler-store/sqlite`, `handler-dns/c-ares`)
+are dropped from the bundle automatically; deploy those through
+the regular dynamic build.
+
 ---
 
 ## 3. Configuring the node

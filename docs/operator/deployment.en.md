@@ -479,6 +479,36 @@ need `Requires=`; apps running their own kernel in-process do not.
 Hardening flags from §3 are good defaults to copy; drop them
 per-flag in a unit override when an app needs an exception.
 
+### 7.4 Container and embedded deployments
+
+The default `release` build (§2.1 of [install](../install.en.md))
+produces a dynamically-linked binary that depends on the host
+glibc + nixpkgs-resolved OpenSSL / libsodium / spdlog closures.
+Two cases call for a different shape:
+
+- **Container base layer.** Shipping the dynamic build means the
+  container image must carry the full glibc + dependency closure
+  (~80-150 MiB even with `dockerTools.buildLayeredImage` dedup).
+  The `static` variant — `nix run .#build -- static`, routed
+  through `nix build .#goodnet-core-static` — emits a musl-static
+  binary with no runtime dependencies (`ldd` reports "not a
+  dynamic executable"). Drop it straight into a `scratch` or
+  `distroless` image; resulting layer hits the single-MiB range.
+  `nix build .#docker-static` packages the same artefact into a
+  ready-to-load OCI tarball.
+- **Embedded / stripped rootfs.** Targets without a `/nix/store`,
+  without a host libc, or with a libc version older than what the
+  release build was linked against. The static variant runs
+  unchanged on any kernel that supports the ELF interpreter (none,
+  in this case) — useful for incident-response USB sticks, factory
+  recovery images, or air-gapped deployment rigs.
+
+The static variant bundles every plugin into the kernel binary
+(`-DGOODNET_STATIC_PLUGINS=ON` is implied), so there is no
+neighbouring `lib/goodnet/plugins/*.so` directory to ship. The
+plugin set is fixed at build time; deployments that need to swap
+plugins per-host stay on the dynamic build.
+
 ---
 
 ## 8. Logging
