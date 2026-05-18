@@ -143,9 +143,10 @@ typedef struct gn_handler_vtable_s {
 | `on_shutdown` | no | called once during teardown after every in-flight dispatch returns |
 | `_reserved[4]` | — | NULL on init; size-prefix evolution per `abi-evolution.en.md` §3a |
 
-The struct does **not** carry an `api_size` first field (§3a marks
-this vtable as fixed-shape at v1; growth happens through
-`_reserved` slot promotion).
+Growth happens through `_reserved` slot promotion at MINOR
+boundaries per `abi-evolution.en.md` §3a — every new slot lands
+at the tail and bumps `sizeof(gn_handler_vtable_t)`; the existing
+`_reserved[4]` bytes are not reused.
 
 ---
 
