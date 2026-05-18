@@ -18,10 +18,12 @@ probably belongs here — open an issue.
 
 Header: `<sdk/cpp/link_plugin.hpp>`
 
-Expands to the six `gn_plugin_*` extern "C" entry points + the
-optional `gn_plugin_descriptor`. The plugin name in the descriptor
-is derived as `"goodnet_link_" + scheme` automatically; the macro
-takes only the scheme literal, not a separate name / version pair.
+Expands to the five `gn_plugin_*` extern "C" entry points
+(`sdk_version`, `init`, `register`, `unregister`, `shutdown`) plus
+the optional `gn_plugin_descriptor` symbol. The plugin name in the
+descriptor is derived as `"goodnet_link_" + scheme` automatically;
+the macro takes only the scheme literal, not a separate name /
+version pair.
 Class needs `set_host_api(api)` and the usual link-plugin methods
 (`listen`, `connect`, `send`, …). See
 `plugins/links/tcp/plugin_entry.cpp` for a 1-line example.
