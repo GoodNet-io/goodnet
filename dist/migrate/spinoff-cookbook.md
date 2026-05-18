@@ -22,7 +22,7 @@ Every loadable plugin lives in its own `GoodNet-io/<repo>`
 repository — `link-tcp`, `link-udp`, `link-ws`, `link-ipc`,
 `link-tls`, `link-ice`, `link-quic`, `security-noise`,
 `security-null`, `handler-heartbeat`, `handler-store`,
-`handler-dns`, `strategy-float-send-rtt`. Pull them into the
+`handler-dns`, `strategy-float_send_rtt`. Pull them into the
 local checkout with `nix run .#plugin -- install`; each repo
 ships its own `flake.nix`, `default.nix`, `LICENSE`, and
 release cadence.
