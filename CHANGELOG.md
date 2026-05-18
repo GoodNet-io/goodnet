@@ -6,6 +6,49 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Subprocess SECURITY + HANDLER vtable proxy synthesis
+
+`RemoteHost::security_vtable_proxy()` returns a synthesised
+`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
+frames at the pinned ids 0x300..0x308 (handshake_open, step,
+complete, export_transport_keys, encrypt, decrypt, rekey,
+handshake_close). `allowed_trust_mask` rides on slot 0x300 — the
+provider_id itself comes from the HELLO descriptor and needs no
+wire round trip. `RemoteHost::handler_vtable_proxy()` is the
+analogue for HANDLER plugins at 0x400..0x405 (protocol_id,
+supported_msg_ids, handle_message, on_result, on_init,
+on_shutdown). The `supported_msg_ids` thunk caches the worker's
+reply per-RemoteHost so the borrowed pointer stays valid for the
+lifetime of the registration.
+
+`handle_host_call_` gains two new opcodes: 0x17
+(`register_security`) and 0x18 (`unregister_security`). SECURITY
+workers publish their synthesised proxy through
+`host_api->register_security`. The existing 0x15
+(`register_vtable`) slot now also accepts `GN_REGISTER_HANDLER`
+and routes through the handler proxy.
+
+Worker-side stub library: `WorkerConfig` carries
+`security_vtable`/`security_self` and `handler_vtable`/
+`handler_self` so the worker declares its real vtables once.
+The PLUGIN_CALL dispatcher routes 0x300..0x308 into the worker's
+`gn_security_provider_vtable_t` and 0x400..0x405 into its
+`gn_handler_vtable_t`. Per-handshake `void*` state pointers are
+stashed in a worker-side handle map so the wire only sees u64
+tokens. Synthetic `host_api_t` gains `register_security` and
+`unregister_security` thunks for the 0x17 / 0x18 round trips.
+
+Two new in-tree workers cover regression:
+`plugins/workers/remote_noise_stub` exposes a deterministic
+3-step XX-shaped security script and an encrypt/decrypt
+round-trip; `plugins/workers/remote_handler_stub` exposes a
+deterministic envelope-dispatch handler. Integration suites
+`test_remote_host_security.cpp` (4 tests) and
+`test_remote_host_handler.cpp` (5 tests) drive the proxies
+end-to-end. `docs/contracts/remote-plugin.en.md` §6 marks every
+SECURITY + HANDLER slot as implemented and lists 0x17 / 0x18
+host slots.
+
 ### Subprocess LINK runtime — host-call slot completion
 
 `RemoteHost::handle_host_call_` now decodes the four LINK

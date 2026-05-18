@@ -164,34 +164,34 @@ Plugin slots (carried by `PLUGIN_CALL`):
 |   0x202 | `LINK_SEND`                | implemented   |
 |   0x203 | `LINK_DISCONNECT`          | implemented   |
 |   0x204 | `LINK_DESTROY`             | implemented   |
-|   0x300 | `SECURITY_PROVIDER_ID`     | contract only |
-|   0x301 | `SECURITY_HANDSHAKE_OPEN`  | contract only |
-|   0x302 | `SECURITY_HANDSHAKE_STEP`  | contract only |
-|   0x303 | `SECURITY_HANDSHAKE_COMPLETE` | contract only |
-|   0x304 | `SECURITY_EXPORT_KEYS`     | contract only |
-|   0x305 | `SECURITY_ENCRYPT`         | contract only |
-|   0x306 | `SECURITY_DECRYPT`         | contract only |
-|   0x307 | `SECURITY_REKEY`           | contract only |
-|   0x308 | `SECURITY_HANDSHAKE_CLOSE` | contract only |
-|   0x400 | `HANDLER_PROTOCOL_ID`      | contract only |
-|   0x401 | `HANDLER_SUPPORTED_MSG_IDS`| contract only |
-|   0x402 | `HANDLER_HANDLE_MESSAGE`   | contract only |
-|   0x403 | `HANDLER_ON_RESULT`        | contract only |
-|   0x404 | `HANDLER_ON_INIT`          | contract only |
-|   0x405 | `HANDLER_ON_SHUTDOWN`      | contract only |
+|   0x300 | `SECURITY_PROVIDER_ID`     | implemented   |
+|   0x301 | `SECURITY_HANDSHAKE_OPEN`  | implemented   |
+|   0x302 | `SECURITY_HANDSHAKE_STEP`  | implemented   |
+|   0x303 | `SECURITY_HANDSHAKE_COMPLETE` | implemented |
+|   0x304 | `SECURITY_EXPORT_KEYS`     | implemented   |
+|   0x305 | `SECURITY_ENCRYPT`         | implemented   |
+|   0x306 | `SECURITY_DECRYPT`         | implemented   |
+|   0x307 | `SECURITY_REKEY`           | implemented   |
+|   0x308 | `SECURITY_HANDSHAKE_CLOSE` | implemented   |
+|   0x400 | `HANDLER_PROTOCOL_ID`      | implemented   |
+|   0x401 | `HANDLER_SUPPORTED_MSG_IDS`| implemented   |
+|   0x402 | `HANDLER_HANDLE_MESSAGE`   | implemented   |
+|   0x403 | `HANDLER_ON_RESULT`        | implemented   |
+|   0x404 | `HANDLER_ON_INIT`          | implemented   |
+|   0x405 | `HANDLER_ON_SHUTDOWN`      | implemented   |
 
-"contract only" means the slot id is pinned in `sdk/remote/slots.h`
-but neither `RemoteHost` (kernel) nor `goodnet_remote_plugin_stub`
-(worker) currently dispatch it. A future revision can wire the
-proxy on either side without renumbering; bindings in other
-languages can lock against the IDs today.
-
-Security-vtable wiring in particular needs careful `gn_secure_buffer_t`
-zero-on-drop handling at every wire boundary — encode the bytes,
-zeroise the source slice; decode the bytes, hand to the worker /
-kernel, zeroise the receive buffer. The contract is stable; the
-implementation lands when a real workload (Python Noise IK worker,
-sandboxed identity-only provider) asks for it.
+The 0x300 slot doubles as `allowed_trust_mask` since the
+provider_id itself is published in the HELLO descriptor and does
+not need a wire round trip. Security-vtable wiring honours
+`gn_secure_buffer_t` zero-on-drop semantics at every boundary —
+the kernel zeroises the source slice after encoding and the
+receive buffer after handing the plaintext to the worker /
+kernel. Encrypt/decrypt and handshake-step payloads ride opaque
+byte spans; per-handshake `void*` state pointers stash in a
+worker-side handle map so the wire only ever carries u64 tokens.
+The handler's `supported_msg_ids` reply is cached per-RemoteHost
+so the borrowed pointer stays valid for the lifetime of the
+registration.
 
 Host slots (carried by `HOST_CALL`) — kernel exposes the minimum
 useful subset for the v1 proof:
@@ -205,8 +205,16 @@ useful subset for the v1 proof:
 |    0x14 | `NOTIFY_DISCONNECT`           |
 |    0x15 | `REGISTER_VTABLE`             |
 |    0x16 | `UNREGISTER_VTABLE`           |
+|    0x17 | `REGISTER_SECURITY`           |
+|    0x18 | `UNREGISTER_SECURITY`         |
 
-Adding a new slot uses a fresh integer; existing values never shift.
+`REGISTER_VTABLE` accepts both `GN_REGISTER_LINK` and
+`GN_REGISTER_HANDLER` kinds and routes through the matching
+proxy synthesis. `REGISTER_SECURITY` is the dedicated entry for
+SECURITY providers — the kernel synthesises a
+`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
+frames at 0x300..0x308. Adding a new slot uses a fresh integer;
+existing values never shift.
 
 ## §7 — Handle translation
 
