@@ -390,4 +390,6 @@ is about to disappear.
 - TrustClass policy: `security-trust.en.md`.
 - Connection registration semantics: `registry.en.md`.
 - Host API entries used: `host-api.en.md` §2.
+- ICE link config recipes (per-deployment-shape knob tuning):
+  [`../operator/ice-recipes.en.md`](../operator/ice-recipes.en.md).
 - Extension query semantics: `host-api.en.md` §2 (`query_extension_checked`).

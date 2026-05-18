@@ -258,6 +258,12 @@ form; ICE rendez-vous still requires an exchange path for the
 candidate set (heartbeat extension, a signaling handler, or a
 bridge) per `plugins/links/ice/README.md`.
 
+Per-deployment-shape recipes for the `ice.*` namespace (home
+network, enterprise UDP-blocked, multi-TURN HA, mDNS-only LAN,
+ICE-lite gateway, symmetric NAT, PMTU, mobile reconnect) are in
+[ice-recipes](./ice-recipes.en.md). The recipes doc carries the
+full default + range matrix for every `ice.*` key.
+
 ---
 
 ## 5. Plugin lifecycle in production
@@ -618,3 +624,4 @@ sandboxing is a planned extension.
 - [security-trust](../contracts/security-trust.en.md) — trust class policy for limit application
 - [metrics](../contracts/metrics.en.md) — drop-reason metrics surface and cardinality cap
 - [gssh](./gssh.ru.md) — SSH-over-GoodNet sibling guide (modes, peers.json, listen unit)
+- [ice-recipes](./ice-recipes.en.md) — `plugins/links/ice` config recipes by deployment shape; full `ice.*` key matrix
