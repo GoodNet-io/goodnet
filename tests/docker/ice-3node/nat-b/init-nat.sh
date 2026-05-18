@@ -76,6 +76,17 @@ esac
 echo "[init-nat] iptables -t nat -L -nv:"
 iptables -t nat -L -nv
 
+# Optional: drop ALL UDP between the LAN and a target subnet
+# (typically the peer's LAN reachable via the WAN bridge). Used
+# by the no-UDP-fallback scenario to force the stack onto the
+# TURN-over-TLS-TCP path. BLOCK_UDP_TO empty = no drop.
+BLOCK_UDP_TO="${BLOCK_UDP_TO:-}"
+if [ -n "${BLOCK_UDP_TO}" ]; then
+    echo "[init-nat] dropping UDP forward to ${BLOCK_UDP_TO}"
+    iptables -A FORWARD -p udp -d "${BLOCK_UDP_TO}" -j DROP
+    iptables -A FORWARD -p udp -s "${BLOCK_UDP_TO}" -j DROP
+fi
+
 # Optional: clip the WAN-side egress MTU via netem so DPLPMTUD
 # probing has something to discover. PATH_MTU=0 (default) leaves
 # the link untouched.

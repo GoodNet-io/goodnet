@@ -1,0 +1,56 @@
+# Scenario: both peers behind full-cone NAT, but every UDP flow
+# between the two LAN subnets is DROPPED by FORWARD-table rules
+# on both NAT containers. A TLS-enabled TURN service joins the
+# topology on 10.10.0.22:5349; the peers' turn URI list points
+# at `turns://…` only. The rc5 link.capability probe detects
+# UDP-unavailable, the strategy chain skips UDP candidates, and
+# the allocation rides TURN-over-TLS-TCP. Assertion: nomination
+# pair is relay/relay and the relay's allocation type is TCP
+# (visible in coturn logs as `Allocation type: TCP`).
+#
+# Spec called for a `nat-c/` container holding the UDP drop;
+# the topology only has nat_a / nat_b in the inter-peer path,
+# so the drop lives on both — the FORWARD chain on either side
+# is sufficient to make the route unusable. Functionally
+# identical.
+services:
+  coturn_tls:
+    build: ./turn-tls
+    container_name: ice3_turn_tls
+    networks:
+      net: { ipv4_address: 10.10.0.22 }
+    environment:
+      TURN_USER:   goodnet
+      TURN_PASS:   bench-only-credentials
+      TURN_REALM:  ice3.local
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 5349"]
+      interval: 2s
+      retries: 10
+
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+      BLOCK_UDP_TO: 10.30.0.0/24
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+      BLOCK_UDP_TO: 10.20.0.0/24
+
+  peer_a:
+    environment:
+      TURN_URI: turns://goodnet:bench-only-credentials@10.10.0.22:5349
+      ICE_TCP_TLS_ONLY: "true"
+    depends_on:
+      stun:        { condition: service_healthy }
+      coturn_tls:  { condition: service_healthy }
+      coordinator: { condition: service_started }
+
+  peer_b:
+    environment:
+      TURN_URI: turns://goodnet:bench-only-credentials@10.10.0.22:5349
+      ICE_TCP_TLS_ONLY: "true"
+    depends_on:
+      stun:        { condition: service_healthy }
+      coturn_tls:  { condition: service_healthy }
+      coordinator: { condition: service_started }
