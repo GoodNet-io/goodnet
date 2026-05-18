@@ -72,6 +72,28 @@ rfcs:
     notes: "Pacing + consent-freshness compliant; verified in unit
             tests."
 
+  - rfc: 6762
+    title: Multicast DNS
+    area: ICE / NAT traversal
+    status: partial
+    implementation: plugins/links/ice
+    notes: "Minimal responder + resolver in mdns.{hpp,cpp} for ICE
+            host-candidate obfuscation. A/AAAA query/response over
+            224.0.0.251:5353; probe-then-announce omitted; system
+            mDNS daemon coexistence relies on SO_REUSEPORT."
+
+  - rfc: draft-ietf-mmusic-mdns-ice-candidates
+    title: Using Multicast DNS to Protect Privacy When Exposing ICE Candidates
+    area: ICE / NAT traversal
+    status: partial
+    implementation: plugins/links/ice
+    notes: "CandidateType::HostMdns wire variant emits `<uuid>.local`
+            when `ice.mdns_obfuscate_host_candidates` is true. Remote
+            HostMdns candidates resolve asynchronously through the
+            shared MdnsManager (default timeout 5 s). Linux-only host-
+            IP enumeration today; macOS / Windows responder is mute
+            without enumeration."
+
   - rfc: 7748
     title: Elliptic Curves for Security (Curve25519, Curve448)
     area: Noise / cryptography
