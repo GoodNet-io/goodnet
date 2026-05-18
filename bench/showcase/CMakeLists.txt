@@ -11,6 +11,14 @@
 # sub-checkout is present (mirrors `bench/CMakeLists.txt`
 # treatment of `bench_float_send_rtt`).
 
+if(NOT GOODNET_BENCH_SHOWCASE)
+    message(STATUS
+        "bench_showcase: skipped (GOODNET_BENCH_SHOWCASE not set; "
+        "set -DGOODNET_BENCH_SHOWCASE=ON to compile the inline-crypto "
+        "downgrade seam the showcase needs)")
+    return()
+endif()
+
 if(NOT GOODNET_BENCH_STRATEGIES)
     message(STATUS
         "bench_showcase: skipped (GOODNET_BENCH_STRATEGIES not set; "
