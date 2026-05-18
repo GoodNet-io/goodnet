@@ -63,11 +63,20 @@ enum class ManifestKind : std::uint8_t {
 /// path paired with the SHA-256 the operator approved. The
 /// `kind`/`args` fields are only meaningful for remote entries and
 /// are quietly ignored by the dlopen path.
+///
+/// `quiescence_timeout_s` overrides the kernel-wide quiescence wait
+/// (`PluginManager::set_quiescence_timeout`) for this single entry:
+/// a plugin that legitimately runs long-tail async work (slow disk
+/// flush, large key derivation) declares its own ceiling here so
+/// `rollback()` does not leak its dlclose handle just because the
+/// global default is tuned for fast-quiescing protocol plugins.
+/// Zero (the default) selects the global value. Units: seconds.
 struct ManifestEntry {
     std::string  path;
     PluginHash   sha256{};
     ManifestKind kind{ManifestKind::Dynamic};
     std::vector<std::string> args;  ///< argv tail handed to a remote worker
+    std::uint32_t quiescence_timeout_s{0};  ///< 0 ⇒ use global default
 };
 
 /// Operator-supplied integrity allowlist.

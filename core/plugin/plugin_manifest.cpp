@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <filesystem>
+#include <limits>
 #include <memory>
 #include <system_error>
 #include <unordered_set>
@@ -295,6 +296,27 @@ gn_result_t PluginManifest::parse(std::string_view  json,
                 }
                 me.args.emplace_back(a.get<std::string>());
             }
+        }
+
+        // Optional `quiescence_timeout_s`: per-plugin override for
+        // the kernel's quiescence wait. Must fit in uint32_t; the
+        // type is unsigned-integer-only — negative or fractional
+        // values fail parse so an operator typo does not silently
+        // collapse to zero (the "use global default" sentinel).
+        if (entry.contains("quiescence_timeout_s")) {
+            const auto& qv = entry["quiescence_timeout_s"];
+            if (!qv.is_number_unsigned()) {
+                diagnostic = "manifest entry `quiescence_timeout_s` must "
+                             "be a non-negative integer";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            const auto raw = qv.get<std::uint64_t>();
+            if (raw > std::numeric_limits<std::uint32_t>::max()) {
+                diagnostic = "manifest entry `quiescence_timeout_s` "
+                             "overflows uint32_t";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            me.quiescence_timeout_s = static_cast<std::uint32_t>(raw);
         }
 
         out.entries_.push_back(std::move(me));

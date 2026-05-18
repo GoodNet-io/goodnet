@@ -86,6 +86,15 @@ struct PluginInstance {
     /// is loaded and remains valid until the instance is destroyed
     /// during rollback.
     IPluginRuntime*                   runtime{nullptr};
+
+    /// Per-plugin quiescence-wait override copied from the manifest
+    /// entry at load time. Zero means "use the manager-wide
+    /// default" — the manifest field is optional and most plugins
+    /// quiesce well within the global ceiling. Resolved once at
+    /// load time because `path` is cleared during the post-resolve
+    /// reorder, so the rollback path cannot re-key the manifest
+    /// lookup by path. Seconds.
+    std::uint32_t                     quiescence_timeout_s{0};
 };
 
 class PluginManager {
@@ -123,6 +132,18 @@ public:
     /// Reverse the activation: unregister every plugin, then
     /// shutdown, then dlclose. Idempotent — second call no-ops.
     void shutdown();
+
+    /// Unload a single plugin identified by its descriptor name
+    /// (`gn_plugin_descriptor->plugin_name`). Walks the same
+    /// `unregister → quiescence-wait → shutdown → close` chain
+    /// `rollback()` uses, but limited to the one matching
+    /// instance — the rest stay live so the kernel does not pay
+    /// a full teardown to drop one .so. Returns `GN_ERR_NOT_FOUND`
+    /// when no instance matches @p name; the call is idempotent
+    /// past that point (calling again with the same name returns
+    /// the same code). `plugin-lifetime.en.md` §6 covers the
+    /// hot-reload contract this entry implements.
+    [[nodiscard]] gn_result_t unload(std::string_view name);
 
     /// Number of currently-active plugins (post-init, pre-shutdown).
     [[nodiscard]] std::size_t size() const noexcept { return instances_.size(); }

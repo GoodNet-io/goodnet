@@ -60,11 +60,12 @@ gn_result_t PluginManager::open_one(const std::string& path,
     /// commit will admit a `kind` field on every manifest entry so
     /// path-shape inspection becomes optional.
     std::string_view kind = "dynamic";
+    const ManifestEntry* me = nullptr;
     if (path.compare(0, 9, "static://") == 0) {
         kind = "static";
     } else if (!manifest_.empty()) {
-        if (const auto* me = manifest_.find(path);
-            me != nullptr && me->kind == ManifestKind::Remote) {
+        me = manifest_.find(path);
+        if (me != nullptr && me->kind == ManifestKind::Remote) {
             kind = "remote";
         }
     }
@@ -82,7 +83,18 @@ gn_result_t PluginManager::open_one(const std::string& path,
         .manifest = &manifest_,
         .manifest_required = manifest_required_,
     };
-    return runtime->load(path, ctx, out, diag);
+    if (auto rc = runtime->load(path, ctx, out, diag); rc != GN_OK) {
+        return rc;
+    }
+    /// Lift the per-plugin quiescence override out of the manifest
+    /// entry so `drain_anchor` can consult it during rollback after
+    /// `inst.path` has been cleared by the post-resolve reorder.
+    /// Zero (the manifest default and the static-path default)
+    /// keeps the global manager-wide value.
+    if (me != nullptr) {
+        out.quiescence_timeout_s = me->quiescence_timeout_s;
+    }
+    return GN_OK;
 }
 
 gn_result_t PluginManager::load(std::span<const std::string> paths,
@@ -223,8 +235,20 @@ bool PluginManager::drain_anchor(PluginInstance& inst,
     /// workers that the plugin never told us about (a §9 violation).
     /// The interval grows from 100µs to 1ms so a fast quiescence
     /// pays no perceptible cost while a slow one yields the CPU.
+    ///
+    /// The effective timeout is the manifest's per-plugin override
+    /// when non-zero, else the manager-wide default. A long-running
+    /// handler (large key derivation, slow disk flush) declares a
+    /// higher value in its manifest entry so rollback waits long
+    /// enough to drain its in-flight work rather than leaking the
+    /// dlclose handle.
     using clock = std::chrono::steady_clock;
-    const auto deadline = clock::now() + quiescence_timeout_;
+    const auto effective_timeout =
+        inst.quiescence_timeout_s > 0
+            ? std::chrono::milliseconds{
+                  std::chrono::seconds{inst.quiescence_timeout_s}}
+            : quiescence_timeout_;
+    const auto deadline = clock::now() + effective_timeout;
     auto interval = std::chrono::microseconds{100};
     while (true) {
         /// Lock the weak observer once per iteration. A null lock
@@ -246,7 +270,7 @@ bool PluginManager::drain_anchor(PluginInstance& inst,
                 "(in_flight={}); leaking dlclose handle to keep "
                 "async callbacks safe",
                 inst.descriptor.plugin_name,
-                quiescence_timeout_.count(),
+                effective_timeout.count(),
                 in_flight);
             ++leaked_handles_;
             /// Persistent counter on the kernel's metrics surface

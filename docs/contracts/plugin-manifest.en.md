@@ -54,6 +54,9 @@ A schema-compatible reading:
 | `plugins` | array of objects | yes | one entry per plugin path |
 | `plugins[].path` | string | yes | absolute or relative to the kernel's working directory |
 | `plugins[].sha256` | 64-character lowercase hex | yes | SHA-256 of the file at `path` at distribution time |
+| `plugins[].kind` | `"dynamic"` or `"remote"` | no | linkage mode; defaults to `"dynamic"` |
+| `plugins[].args` | array of strings | no | argv tail handed to a `remote` worker; ignored for `dynamic` |
+| `plugins[].quiescence_timeout_s` | non-negative integer | no | per-plugin override of `PluginManager::set_quiescence_timeout`; zero (the default) selects the manager-wide value. Units: seconds. Useful for handlers that legitimately run long-tail async work (slow disk flush, large key derivation) and would otherwise leak their dlclose handle under the fast-quiescing default. |
 
 Parse rules:
 
@@ -62,6 +65,11 @@ Parse rules:
 - Every entry must be an object with `path` (non-empty string) and
   `sha256` (64 lowercase hex characters). Any deviation fails
   parse.
+- `kind`, `args`, and `quiescence_timeout_s` are optional; when
+  present they must match the type column above. A negative,
+  fractional, or `uint32`-overflowing `quiescence_timeout_s` fails
+  parse rather than collapsing to zero so an operator typo does
+  not silently degrade to the global default.
 - Duplicate `path` entries fail parse — the manifest is the trust
   root, so an ambiguous binding is worse than no binding.
 - Empty `plugins` array parses successfully and yields an empty
