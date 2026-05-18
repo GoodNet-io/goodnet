@@ -53,6 +53,29 @@ void chacha20poly1305_encrypt_job(CryptoWorkerPool::Job& job) noexcept {
     job.result_len = static_cast<std::size_t>(clen);
 }
 
+/// `CryptoWorkerPool::JobFn` for ChaCha20-Poly1305 IETF AEAD
+/// decrypt. Reads `key`, `nonce`, `plain` (ciphertext span),
+/// writes plaintext into `out`. Stores the plaintext length into
+/// `result_len`; AEAD authentication failure is reported as
+/// `static_cast<std::size_t>(-1)` because a successful decrypt of
+/// a tag-only ciphertext legitimately produces zero-byte plaintext.
+void chacha20poly1305_decrypt_job(CryptoWorkerPool::Job& job) noexcept {
+    std::uint8_t nonce_buf[InlineCrypto::kNonceBytes];
+    build_nonce(job.nonce, nonce_buf);
+    unsigned long long mlen = 0;
+    const int rc = crypto_aead_chacha20poly1305_ietf_decrypt(
+        job.out.data(), &mlen,
+        /*nsec*/ nullptr,
+        job.plain.data(), job.plain.size(),
+        /*ad*/   nullptr, 0,
+        nonce_buf, job.key);
+    if (rc != 0) {
+        job.result_len = static_cast<std::size_t>(-1);
+        return;
+    }
+    job.result_len = static_cast<std::size_t>(mlen);
+}
+
 } // namespace
 
 InlineCrypto::~InlineCrypto() {
@@ -132,6 +155,27 @@ CryptoWorkerPool::Job InlineCrypto::make_encrypt_job(
     job.nonce = nonce;
     job.plain = plaintext;
     job.out   = out_cipher;
+    return job;
+}
+
+std::uint64_t InlineCrypto::reserve_recv_nonces(std::size_t k) noexcept {
+    /// Symmetric to `reserve_send_nonces`. Per-conn `SecuritySession`
+    /// is single-writer on the inbound strand, so the reservation
+    /// races only against itself across concurrent connections —
+    /// each has its own `InlineCrypto` instance.
+    return recv_nonce_.fetch_add(k, std::memory_order_relaxed);
+}
+
+CryptoWorkerPool::Job InlineCrypto::make_decrypt_job(
+    std::span<const std::uint8_t> ciphertext,
+    std::uint64_t                 nonce,
+    std::span<std::uint8_t>       out_plain) const noexcept {
+    CryptoWorkerPool::Job job{};
+    job.fn    = &chacha20poly1305_decrypt_job;
+    job.key   = recv_key_;
+    job.nonce = nonce;
+    job.plain = ciphertext;
+    job.out   = out_plain;
     return job;
 }
 

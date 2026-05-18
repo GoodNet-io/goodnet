@@ -149,6 +149,56 @@ TEST(InlineCrypto, ConcurrentEncryptsGetUniqueNonces) {
     EXPECT_EQ(back, plain);
 }
 
+TEST(InlineCrypto, ReserveRecvNoncesAdvancesAtomically) {
+    InlineCrypto crypto;
+    ASSERT_TRUE(crypto.seed(make_keys(0x11, 0x22, /*initial_send*/ 0,
+                                       /*initial_recv*/ 10)));
+    EXPECT_EQ(crypto.recv_nonce(), 10u);
+    const std::uint64_t base = crypto.reserve_recv_nonces(4);
+    EXPECT_EQ(base, 10u);
+    EXPECT_EQ(crypto.recv_nonce(), 14u);
+}
+
+TEST(InlineCrypto, MakeDecryptJobAuthenticatesMatchingCipher) {
+    InlineCrypto alice;
+    InlineCrypto bob;
+    ASSERT_TRUE(alice.seed(make_keys(0x55, 0xAA)));
+    ASSERT_TRUE(bob.seed(make_keys(0xAA, 0x55)));
+
+    /// Pre-position alice send / bob recv at the same nonce so the
+    /// job-stamped decrypt lines up with alice's encrypt.
+    const std::vector<std::uint8_t> plain(64, 0x42);
+    std::vector<std::uint8_t> cipher;
+    ASSERT_EQ(alice.encrypt(plain, cipher), GN_OK);
+
+    std::vector<std::uint8_t> out(cipher.size() - InlineCrypto::kTagBytes);
+    auto job = bob.make_decrypt_job(cipher, /*nonce*/ 0,
+                                     std::span<std::uint8_t>(out));
+    ASSERT_NE(job.fn, nullptr);
+    job.fn(job);
+    EXPECT_EQ(job.result_len, plain.size());
+    out.resize(job.result_len);
+    EXPECT_EQ(out, plain);
+}
+
+TEST(InlineCrypto, MakeDecryptJobReportsAeadFailure) {
+    InlineCrypto alice;
+    InlineCrypto bob;
+    ASSERT_TRUE(alice.seed(make_keys(0x55, 0xAA)));
+    ASSERT_TRUE(bob.seed(make_keys(0xAA, 0x55)));
+
+    const std::vector<std::uint8_t> plain(32, 0x33);
+    std::vector<std::uint8_t> cipher;
+    ASSERT_EQ(alice.encrypt(plain, cipher), GN_OK);
+    cipher[0] ^= 0x01;
+
+    std::vector<std::uint8_t> out(cipher.size() - InlineCrypto::kTagBytes);
+    auto job = bob.make_decrypt_job(cipher, /*nonce*/ 0,
+                                     std::span<std::uint8_t>(out));
+    job.fn(job);
+    EXPECT_EQ(job.result_len, static_cast<std::size_t>(-1));
+}
+
 TEST(InlineCrypto, InitialNonceFromKeysHonored) {
     /// The session post-rekey or post-Split with an explicit
     /// initial nonce must seed both counters from the keys struct.

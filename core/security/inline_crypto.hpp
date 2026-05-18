@@ -92,6 +92,25 @@ public:
         std::span<const std::uint8_t> ciphertext,
         std::vector<std::uint8_t>& out_plaintext);
 
+    /// Reserve K recv nonces atomically. Returns the base nonce;
+    /// jobs[i] uses `base + i`. Mirrors `reserve_send_nonces`. The
+    /// single-writer per-conn invariant (only one inbound drain runs
+    /// per `SecuritySession` at a time, serialised by the connection's
+    /// strand) keeps the reservation race-free against concurrent
+    /// receive paths on the same session.
+    [[nodiscard]] std::uint64_t reserve_recv_nonces(std::size_t k) noexcept;
+
+    /// Build a `CryptoWorkerPool::Job` that decrypts @p ciphertext
+    /// at @p nonce into @p out_plain. The Job stores the AEAD
+    /// success/failure flag into `result_len` — `0` means
+    /// authentication failure, otherwise the plaintext length.
+    /// `out_plain` MUST already be sized to
+    /// `ciphertext.size() - kTagBytes`.
+    [[nodiscard]] CryptoWorkerPool::Job make_decrypt_job(
+        std::span<const std::uint8_t> ciphertext,
+        std::uint64_t                 nonce,
+        std::span<std::uint8_t>       out_plain) const noexcept;
+
     [[nodiscard]] std::uint64_t send_nonce() const noexcept {
         return send_nonce_.load(std::memory_order_relaxed);
     }
