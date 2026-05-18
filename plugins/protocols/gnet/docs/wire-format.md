@@ -151,7 +151,8 @@ state DECLARED:
     accumulate bytes until 14 received
     if magic != 'GNET' → kErrDeframeCorrupt
     if ver  != 0x01    → kErrDeframeCorrupt (peer ahead of us)
-    if reserved bits set → drop frame, advance, log
+    mask reserved bits off the flags byte (silent forward-compat
+        per §3.1 — keeps frames from newer senders parseable)
     compute cond_pk_size from flags
     require: BROADCAST → EXPLICIT_SENDER && !EXPLICIT_RECEIVER
     transition → READING_BODY
