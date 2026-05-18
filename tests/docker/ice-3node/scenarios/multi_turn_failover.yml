@@ -11,7 +11,9 @@
 # 10.10.0.21 (the backup), visible in the peer logs.
 services:
   coturn_backup:
-    build: ./turn-backup
+    build:
+      context: ./turn-backup
+      network: host
     container_name: ice3_turn_backup
     networks:
       net: { ipv4_address: 10.10.0.21 }

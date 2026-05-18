@@ -40,8 +40,13 @@ NAT_MODE="${NAT_MODE:-full_cone}"
 
 echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFACE}"
 
-# Enable IP forwarding regardless of mode.
-sysctl -w net.ipv4.ip_forward=1 >/dev/null
+# Enable IP forwarding regardless of mode. compose `sysctls:` block
+# already toggles `net.ipv4.ip_forward=1` per namespace, but write
+# directly to /proc/sys for belt-and-braces (and to keep the
+# container layer independent of the `procps` package being
+# installed — debian-slim ships `iptables` / `iproute2` but not
+# `sysctl(8)`).
+echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 
 # Wipe any rules from a previous run.
 iptables -t nat -F

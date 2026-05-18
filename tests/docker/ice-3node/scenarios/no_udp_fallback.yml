@@ -15,7 +15,9 @@
 # identical.
 services:
   coturn_tls:
-    build: ./turn-tls
+    build:
+      context: ./turn-tls
+      network: host
     container_name: ice3_turn_tls
     networks:
       net: { ipv4_address: 10.10.0.22 }

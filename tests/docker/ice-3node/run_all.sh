@@ -31,12 +31,11 @@
 #   0  — every scenario produced both .done files
 #   1  — at least one scenario timed out / failed
 #
-# The loop machinery + per-scenario teardown is in place; the
-# actual connect-and-write-done logic depends on the peer harness
-# binary (`peer/run.sh` placeholder), which is not yet in tree.
-# Running this script today brings up the topology cleanly and
-# always reports timeout — useful for shape-checking the compose
-# wiring before the harness binary exists.
+# The peer harness binary is built on the host from the dev shell
+# (`peer/build-harness.sh`) and copied into `peer/` alongside the
+# required plugin .so set before the first `compose up --build`.
+# Docker caches the resulting image so subsequent scenarios reuse
+# the layer.
 
 set -uo pipefail
 
@@ -47,6 +46,57 @@ SCENARIOS_DIR="scenarios"
 SIGNAL_VOL="ice3node_signal"
 PASS=0
 FAIL=0
+
+# Build the peer harness on the host and stage the binary + plugin
+# .so set into `peer/` next to the Dockerfile so `COPY harness` and
+# `COPY plugins/` resolve at image-build time. Skipping this on
+# `SKIP_HARNESS_BUILD=1` is a developer convenience for iterating on
+# the orchestrator without rebuilding C++.
+if [ "${SKIP_HARNESS_BUILD:-0}" != "1" ]; then
+    echo "=== building peer harness ==="
+    bash peer/build-harness.sh
+
+    repo_root="$(cd ../../.. && pwd)"
+    build_dir="${BUILD_DIR:-${repo_root}/build-release}"
+
+    # Stage the plugin .so set the harness manifest expects.
+    # Plugin set kept narrow: security (null + noise), link (udp +
+    # tcp + ice + optional quic), handler-heartbeat. Anything else
+    # the dev shell built is dropped — small image layer + the
+    # harness mints SHA-256 per-file at start-up so spurious .so
+    # bytes are pure overhead.
+    mkdir -p peer/plugins
+    rm -f peer/plugins/*.so
+    for plugin in libgoodnet_security_null.so \
+                  libgoodnet_security_noise.so \
+                  libgoodnet_link_udp.so \
+                  libgoodnet_link_tcp.so \
+                  libgoodnet_link_ice.so \
+                  libgoodnet_link_quic.so \
+                  libgoodnet_handler_heartbeat.so ; do
+        if [ -f "${build_dir}/plugins/${plugin}" ]; then
+            cp -f "${build_dir}/plugins/${plugin}" "peer/plugins/${plugin}"
+        else
+            echo "  WARN: missing ${plugin} in ${build_dir}/plugins/" >&2
+        fi
+    done
+
+    # Stage a statically-linked busybox for the peer image's `ip`
+    # / `route` applets. `goodnet:nix-static` ships only coreutils;
+    # the peer entrypoint uses `ip route add default via …` to
+    # swing the default route through the per-LAN NAT container
+    # before invoking the harness. nix's `pkgsStatic.busybox` is
+    # the musl + scratch variant; canonical `busybox:latest` is
+    # dynamically-linked debian and fails to exec against the
+    # nix-store interpreter the base image embeds.
+    if [ ! -x peer/busybox-static ]; then
+        nix develop --command bash -c \
+            'cp -f "$(nix-build --no-link --expr "with import <nixpkgs> {}; pkgsStatic.busybox")/bin/busybox" peer/busybox-static'
+        chmod +x peer/busybox-static
+    fi
+
+    echo "=== staged $(ls peer/plugins | wc -l) plugin(s) + harness + busybox ==="
+fi
 
 # Discover every override; alphabetical so the order is stable.
 mapfile -t SCENARIOS < <(find "${SCENARIOS_DIR}" -maxdepth 1 -name "*.yml" | sort)
