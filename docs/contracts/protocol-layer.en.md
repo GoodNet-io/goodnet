@@ -159,7 +159,7 @@ Slot ownership and lifetime:
 
 Per-connection state is passed to every `deframe` / `frame` call as
 `gn_connection_context_t`, declared in `sdk/connection.h`. The
-struct is opaque; plugins read it through five accessors:
+struct is opaque; plugins read it through six accessors:
 
 | Accessor | Returns |
 |---|---|
@@ -167,6 +167,7 @@ struct is opaque; plugins read it through five accessors:
 | `gn_ctx_remote_pk(ctx)` | borrowed pointer to the 32-byte peer key; all-zero before the handshake completes |
 | `gn_ctx_conn_id(ctx)` | `gn_conn_id_t` allocated by the kernel |
 | `gn_ctx_trust(ctx)` | `gn_trust_class_t` per `security-trust.en.md` |
+| `gn_ctx_allows_relay(ctx)` | `int` — non-zero when the kernel admits the conn as a relay edge (`link.en.md` §3a) |
 | `gn_ctx_plugin_state(ctx)` / `gn_ctx_set_plugin_state(ctx, p)` | plugin-private scratch slot; kernel never inspects |
 
 For mesh-native direct connections the plugin reads
