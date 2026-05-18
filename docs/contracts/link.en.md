@@ -211,6 +211,7 @@ functions declared in `sdk/connection.h`. The C ABI surface:
 | `gn_ctx_remote_pk(ctx)` | borrowed pointer to peer pk (32 bytes) |
 | `gn_ctx_conn_id(ctx)` | `gn_conn_id_t` |
 | `gn_ctx_trust(ctx)` | `gn_trust_class_t` |
+| `gn_ctx_allows_relay(ctx)` | `int` — non-zero when the kernel admits the conn as a relay edge (§3a) |
 | `gn_ctx_plugin_state(ctx)` | opaque per-plugin scratch slot |
 | `gn_ctx_set_plugin_state(ctx, ptr)` | set scratch slot |
 
