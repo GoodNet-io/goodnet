@@ -189,13 +189,14 @@ English: see [`README.md`](README.md).
 
 ## Лицензия
 
-GPL-2.0 с linking exception для strategic-базы: ядро,
-bundled-плагины TCP / UDP / WS / Noise / Heartbeat. Linking
+GPL-2.0 с linking exception для strategic-базы: ядро, gnet
+protocol layer, bundled-плагины TCP / UDP / WS / ICE links,
+Noise security, Heartbeat / Store / DNS handlers. Linking
 exception разрешает out-of-tree плагинам жить под любой
 лицензией — граница это C ABI, не лицензия. Periphery-плагины
 (raw protocol, null security, IPC link) — MIT для широты
-экосистемы. TLS-плагин — Apache-2.0 ради совместимости с
-OpenSSL.
+экосистемы. OpenSSL-tied plugins (TLS link, QUIC link) и
+reference-strategy (float-send-rtt) — Apache-2.0.
 
 Стратегический rationale тот же что Linux в 1991: GPL на ядре
 держит субстрат открытым, linking exception оставляет
