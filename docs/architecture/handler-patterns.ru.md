@@ -198,14 +198,15 @@ struct PeerInfoPlugin {
 host_api->register_vtable(host_ctx, GN_REGISTER_HANDLER,
                           &handler_meta, &handler_vtable, self, &h_id);
 host_api->register_extension(host_ctx, "gn.peer-info", 0x10000,
-                             &extension_vtable, self, &e_id);
+                             &extension_vtable);
 ```
 
 Other plugins — например relay-direct-upgrade handler — вызывают
-`query_extension_checked("gn.peer-info", 1, &vt, &vt_self)` чтобы
-получить `vt->get_uris(...)`. Per
-[`extension-model`](extension-model.ru.md), kernel agnostic — только
-registry.
+`query_extension_checked(host_ctx, "gn.peer-info", 0x10000, &vt)`,
+проверяют `r == GN_OK`, кастуют `vt` в `const gn_peer_info_api_t*`
+и зовут `vt->get_uris(vt->ctx, ...)` (ctx-pointer держит provider
+plugin's `self`). Per [`extension-model`](extension-model.ru.md),
+kernel agnostic — только registry.
 
 ### Handler chain — middleware
 
