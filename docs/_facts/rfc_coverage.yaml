@@ -89,7 +89,13 @@ rfcs:
   area: WebSocket
   status: full
   implementation: plugins/links/ws
-  notes: Server + client framing including masking, control frames, close codes.
+  notes: "Server + client framing including masking (64-bit-word unmask hot loop in wire.hpp::apply_mask), control frames, close codes, §5.4 fragmentation reassembly (max 16 MiB merged, single-frame cap 64 KiB)."
+- rfc: 7692
+  title: Compression Extensions for WebSocket (permessage-deflate)
+  area: WebSocket
+  status: not-implemented
+  implementation: plugins/links/ws
+  notes: "A client offering `Sec-WebSocket-Extensions: permessage-deflate` in handshake gets a response with no `Sec-WebSocket-Extensions` echo — per RFC 7692 §5.1 the extension never activates and the conn falls back to uncompressed frames."
 - rfc: 5389
   title: STUN — Short-Term Credential (alias)
   area: WebSocket
