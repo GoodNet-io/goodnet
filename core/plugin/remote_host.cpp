@@ -728,6 +728,138 @@ void RemoteHost::handle_host_call_(std::uint32_t request_id,
             wire::encode_i64(reply_buf, rc);
             break;
         }
+        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {
+            // args: [remote_pk(bytes), uri(text), trust(u64), role(u64)]
+            // reply on success: [code(i64), conn(u64)]
+            std::span<const std::uint8_t> pk_bytes;
+            std::string_view uri{};
+            std::uint64_t trust = 0;
+            std::uint64_t role  = 0;
+            if (wire::decode_bytes(r, pk_bytes) != GN_OK ||
+                wire::decode_text(r, uri) != GN_OK ||
+                wire::decode_u64(r, trust) != GN_OK ||
+                wire::decode_u64(r, role) != GN_OK ||
+                pk_bytes.size() != GN_PUBLIC_KEY_BYTES) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad notify_connect args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            gn_conn_id_t out_conn = 0;
+            if (kernel_host_api_.notify_connect != nullptr) {
+                std::string uri_z(uri);
+                std::uint8_t pk_buf[GN_PUBLIC_KEY_BYTES];
+                std::memcpy(pk_buf, pk_bytes.data(), GN_PUBLIC_KEY_BYTES);
+                rc = kernel_host_api_.notify_connect(
+                    kernel_host_api_.host_ctx,
+                    pk_buf,
+                    uri_z.c_str(),
+                    static_cast<gn_trust_class_t>(trust),
+                    static_cast<gn_handshake_role_t>(role),
+                    &out_conn);
+            }
+            wire::encode_array_header(reply_buf, 2);
+            wire::encode_i64(reply_buf, rc);
+            wire::encode_u64(reply_buf, static_cast<std::uint64_t>(out_conn));
+            break;
+        }
+        case GN_WIRE_HOST_SLOT_NOTIFY_DISCONNECT: {
+            // args: [conn(u64), reason(i64)]
+            std::uint64_t conn = 0;
+            std::int64_t  reason = 0;
+            if (wire::decode_u64(r, conn) != GN_OK ||
+                wire::decode_i64(r, reason) != GN_OK) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad notify_disconnect args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (kernel_host_api_.notify_disconnect != nullptr) {
+                rc = kernel_host_api_.notify_disconnect(
+                    kernel_host_api_.host_ctx,
+                    static_cast<gn_conn_id_t>(conn),
+                    static_cast<gn_result_t>(reason));
+            }
+            wire::encode_array_header(reply_buf, 1);
+            wire::encode_i64(reply_buf, rc);
+            break;
+        }
+        case GN_WIRE_HOST_SLOT_REGISTER_VTABLE: {
+            // args: [kind(u64), name(text), msg_id(u64), priority(u64),
+            //        protocol_id(text), namespace_id(text)]
+            // reply on success: [code(i64), id(u64)]
+            //
+            // The worker ships only the metadata — the vtable itself
+            // is synthesised on the kernel side. LINK kind uses the
+            // existing `link_vtable_proxy()`; HANDLER kind is deferred
+            // until the handler proxy lands and returns
+            // GN_ERR_NOT_IMPLEMENTED at this slot.
+            std::uint64_t kind = 0;
+            std::string_view name{}, proto{}, nsid{};
+            std::uint64_t msg_id   = 0;
+            std::uint64_t priority = 0;
+            if (wire::decode_u64(r, kind) != GN_OK ||
+                wire::decode_text(r, name) != GN_OK ||
+                wire::decode_u64(r, msg_id) != GN_OK ||
+                wire::decode_u64(r, priority) != GN_OK ||
+                wire::decode_text(r, proto) != GN_OK ||
+                wire::decode_text(r, nsid) != GN_OK) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad register_vtable args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            std::uint64_t out_id = 0;
+            const auto reg_kind = static_cast<gn_register_kind_t>(kind);
+            const void* vtable = nullptr;
+            if (reg_kind == GN_REGISTER_LINK) {
+                vtable = link_vtable_proxy();
+            }
+            // HANDLER proxy synthesis lands with §A7; until then the
+            // kernel rejects HANDLER-kind worker registrations here.
+            if (vtable != nullptr &&
+                kernel_host_api_.register_vtable != nullptr) {
+                std::string name_z(name);
+                std::string proto_z(proto);
+                std::string nsid_z(nsid);
+                gn_register_meta_t meta{};
+                meta.api_size     = sizeof(gn_register_meta_t);
+                meta.name         = name_z.c_str();
+                meta.msg_id       = static_cast<std::uint32_t>(msg_id);
+                meta.priority     = static_cast<std::uint8_t>(priority);
+                meta.protocol_id  = proto.empty() ? nullptr : proto_z.c_str();
+                meta.namespace_id = nsid.empty()  ? nullptr : nsid_z.c_str();
+                rc = kernel_host_api_.register_vtable(
+                    kernel_host_api_.host_ctx,
+                    reg_kind,
+                    &meta, vtable, this, &out_id);
+            }
+            wire::encode_array_header(reply_buf, 2);
+            wire::encode_i64(reply_buf, rc);
+            wire::encode_u64(reply_buf, out_id);
+            break;
+        }
+        case GN_WIRE_HOST_SLOT_UNREGISTER_VTABLE: {
+            // args: [id(u64)]
+            std::uint64_t id = 0;
+            if (wire::decode_u64(r, id) != GN_OK) {
+                reply_flags = GN_WIRE_FLAG_ERROR;
+                encode_error_(reply_buf, GN_ERR_OUT_OF_RANGE,
+                              "bad unregister_vtable args");
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (kernel_host_api_.unregister_vtable != nullptr) {
+                rc = kernel_host_api_.unregister_vtable(
+                    kernel_host_api_.host_ctx, id);
+            }
+            wire::encode_array_header(reply_buf, 1);
+            wire::encode_i64(reply_buf, rc);
+            break;
+        }
         default:
             reply_flags = GN_WIRE_FLAG_ERROR;
             encode_error_(reply_buf, GN_ERR_NOT_IMPLEMENTED,
