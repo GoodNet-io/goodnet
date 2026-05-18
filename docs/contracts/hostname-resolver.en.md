@@ -124,10 +124,11 @@ disable IPv6 in `/etc/gai.conf`) rather than carry a v1 SDK flag.
 ## 3. Caching is not the helper's concern
 
 A naive `connect()` call resolves on every retry; that is fine
-for v1 because hostname-bearing connects are sparse. A future
-caching layer attaches in front of the helper through a transport
-extension or a kernel service; the helper itself remains
-stateless so the contract is observable as a pure function.
+in deployments where hostname-bearing connects are sparse. A
+future caching layer attaches in front of the helper through a
+transport extension or a kernel service; the helper itself
+remains stateless so the contract is observable as a pure
+function.
 
 ---
 

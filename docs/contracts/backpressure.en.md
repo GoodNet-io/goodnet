@@ -198,8 +198,8 @@ transport copies them to its session state on accept / connect.
 Reload requires kernel restart; transports do not re-read mid-life.
 
 Per-process aggregate caps (e.g. summed `bytes_buffered` across
-every connection) are not part of v1.0. A transport that needs a
-process-level governor adds it in its own
+every connection) are not part of this contract. A transport that
+needs a process-level governor adds it in its own
 `gn.link.<scheme>` extension surface.
 
 ---

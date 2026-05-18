@@ -88,10 +88,11 @@ Semantics:
   Subscribers must not retain the pointers past the callback
   return. Other event kinds leave the `_reserved` slot zero.
 
-The `BACKPRESSURE_*` event kinds are reserved at v1.0 but the
-producer ships in `backpressure.en.md`. Subscribers register a single
-callback that demultiplexes on `event->kind`; until the producer
-fires those kinds, subscribers simply never see them.
+The `BACKPRESSURE_*` event kinds are declared in this enum; the
+producer-side fire path lives in `backpressure.en.md`. Subscribers
+register a single callback that demultiplexes on `event->kind`;
+until the producer fires those kinds, subscribers simply never
+see them.
 
 `pending_bytes` carries the current queued byte count for the
 backpressure events; ignored (zero) for the lifecycle kinds.

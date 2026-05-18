@@ -139,9 +139,9 @@ plugins call them from any thread.
 
 ## 4. Empty blob is legal
 
-A v1.0 baseline build that registers no optimiser plugins emits
-an empty blob. The peer parses it as zero records and sees the
-peer as supporting only the implicit baseline (every transport /
+A baseline build that registers no optimiser plugins emits an
+empty blob. The peer parses it as zero records and sees the peer
+as supporting only the implicit baseline (every transport /
 protocol / security combination both sides speak natively).
 
 ---
