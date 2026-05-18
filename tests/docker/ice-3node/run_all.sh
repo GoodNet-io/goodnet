@@ -2,7 +2,22 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Iterate every scenario override under scenarios/*.yml against the
-# base docker-compose.yml. For each one:
+# base docker-compose.yml. The list is glob-driven and sorted
+# alphabetically, so new scenarios get picked up automatically by
+# dropping a fresh `<name>.yml` under `scenarios/`. The current set:
+#
+#   all_relay              both peers symmetric  → relay ↔ relay
+#   full_cone              both peers full-cone  → srflx ↔ srflx
+#   hairpin                shared NAT            → host ↔ host (hairpin)
+#   ice_lite_gateway       B is ICE-lite         → A drives nomination
+#   ipv6_mdns              dual-stack v4+v6      → mDNS-hidden host pair
+#   multi_turn_failover    primary TURN flaky    → secondary takes over
+#   no_udp_fallback        UDP blocked end-to-end→ relay-TCP+TLS
+#   port_prediction        symmetric-stride NAT  → predicted port pair
+#   restricted_mtu         path MTU 900          → DPLPMTUD discovery
+#   symmetric_relay        A symmetric / B cone  → relay ↔ srflx
+#
+# For each scenario:
 #
 #   1. tear down any leftover stack
 #   2. `up -d --build` with the scenario override layered in
