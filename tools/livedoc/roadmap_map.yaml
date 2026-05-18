@@ -154,3 +154,143 @@ features:
   "Port mapping (UPnP / PCP / NAT-PMP)":
     rule:
       plugin_exists: plugins/links/portmap
+
+  "WASM plugin runtime (sandbox for untrusted plugins)":
+    rule:
+      any:
+        - file_exists: core/plugin/runtimes/wasm.cpp
+        - kernel_feature: wasmtime
+        - kernel_feature: wasmer
+
+  "Full WASM kernel build":
+    rule:
+      any:
+        - file_exists: nix/goodnet-wasm.nix
+        - kernel_feature: EMSCRIPTEN
+
+  "JS SDK + WebSocket bridge":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/web_api_proxy
+        - plugin_exists: bridges/goodnet-js
+        - extension_registered: gn.handler.web-api-proxy
+
+  "C ABI version of `IPluginRuntime`":
+    rule:
+      file_exists: sdk/plugin_runtime.h
+
+  "Subprocess sandbox":
+    rule:
+      any:
+        - kernel_feature: seccomp_load
+        - kernel_feature: setns
+        - kernel_feature: unshare
+
+  "BRIDGE kind first-class plugin taxonomy":
+    rule:
+      any:
+        - kernel_feature: GN_PLUGIN_KIND_BRIDGE
+        - file_exists: core/registry/bridge_registry.hpp
+
+  "io_uring runtime":
+    rule:
+      any:
+        - kernel_feature: io_uring_setup
+        - file_exists: core/plugin/runtimes/io_uring.cpp
+
+  "aarch64 Linux":
+    rule:
+      kernel_feature: aarch64-linux-ci
+
+  "Android build":
+    rule:
+      any:
+        - file_exists: nix/goodnet-android.nix
+        - kernel_feature: ANDROID_NDK
+
+  "MCU port":
+    rule:
+      any:
+        - file_exists: nix/goodnet-mcu.nix
+        - kernel_feature: GOODNET_MCU_TRIM
+
+  "C99 SDK subset":
+    rule:
+      file_exists: sdk/c99/
+
+  "Rust":
+    rule:
+      file_exists: bridges/goodnet-rs/Cargo.toml
+
+  "Python":
+    rule:
+      file_exists: bridges/goodnet-py/setup.py
+
+  "Go":
+    rule:
+      file_exists: bridges/goodnet-go/go.mod
+
+  "Zig":
+    rule:
+      file_exists: bridges/goodnet-zig/build.zig
+
+  "Hardware key store":
+    rule:
+      any:
+        - plugin_exists: plugins/security/tpm
+        - extension_registered: gn.security.tpm
+
+  "Post-quantum security provider":
+    rule:
+      any:
+        - plugin_exists: plugins/security/pq
+        - kernel_feature: ML_KEM
+
+  "OpenTelemetry trace propagation across mesh hops":
+    rule:
+      kernel_feature: otel_span_propagate
+
+  "Concrete exporter plugins":
+    rule:
+      any:
+        - plugin_exists: plugins/metrics/prometheus
+        - plugin_exists: plugins/metrics/otlp
+
+  "File transfer handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/file_transfer
+        - extension_registered: gn.transfer
+
+  "Identity registration handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/identity
+        - extension_registered: gn.identity
+
+  "Group membership handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/group
+        - extension_registered: gn.group
+
+  "Goodnetd binary roadmap":
+    rule:
+      kernel_feature: GOODNETD_TRACKED_IN_KERNEL_ROADMAP
+
+  "CLI introspection tool":
+    rule:
+      file_exists: tools/goodnetctl/
+
+  "Config validator":
+    rule:
+      file_exists: tools/config_validator/
+
+  "TCP-TURN (RFC 6062)":
+    rule:
+      any:
+        - kernel_feature: REQUESTED_TRANSPORT_TCP
+        - kernel_feature: TURN_CONNECTION_BIND_REQUEST
+        - kernel_feature: TURN_CONNECTION_ATTEMPT_INDICATION
+        - kernel_feature: TURN_TCP_ALLOCATE
+        - kernel_feature: turn_tcp_relay

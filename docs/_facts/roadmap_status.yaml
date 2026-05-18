@@ -88,3 +88,84 @@ features:
 - name: Raw inject bridge
   status: done
   evidence: plugins/links/raw_inject/ present
+- name: Full WASM kernel build
+  status: missing
+  evidence: nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent
+- name: JS SDK + WebSocket bridge
+  status: missing
+  evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension
+    id 'gn.handler.web-api-proxy' not registered in plugins/
+- name: C ABI version of `IPluginRuntime`
+  status: missing
+  evidence: sdk/plugin_runtime.h absent
+- name: Subprocess sandbox
+  status: missing
+  evidence: token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent
+- name: BRIDGE kind first-class plugin taxonomy
+  status: missing
+  evidence: token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp
+    absent
+- name: io_uring runtime
+  status: missing
+  evidence: token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent
+- name: aarch64 Linux
+  status: missing
+  evidence: token 'aarch64-linux-ci' absent
+- name: Android build
+  status: missing
+  evidence: nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent
+- name: MCU port
+  status: missing
+  evidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent
+- name: C99 SDK subset
+  status: missing
+  evidence: sdk/c99/ absent
+- name: Rust
+  status: missing
+  evidence: bridges/goodnet-rs/Cargo.toml absent
+- name: Python
+  status: missing
+  evidence: bridges/goodnet-py/setup.py absent
+- name: Go
+  status: missing
+  evidence: bridges/goodnet-go/go.mod absent
+- name: Zig
+  status: missing
+  evidence: bridges/goodnet-zig/build.zig absent
+- name: Hardware key store
+  status: missing
+  evidence: plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered
+    in plugins/
+- name: Post-quantum security provider
+  status: missing
+  evidence: plugins/security/pq/ absent; token 'ML_KEM' absent
+- name: OpenTelemetry trace propagation across mesh hops
+  status: missing
+  evidence: token 'otel_span_propagate' absent
+- name: Concrete exporter plugins
+  status: missing
+  evidence: plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent
+- name: File transfer handler
+  status: missing
+  evidence: plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not
+    registered in plugins/
+- name: Identity registration handler
+  status: missing
+  evidence: plugins/handlers/identity/ absent; extension id 'gn.identity' not registered
+    in plugins/
+- name: Group membership handler
+  status: missing
+  evidence: plugins/handlers/group/ absent; extension id 'gn.group' not registered
+    in plugins/
+- name: Goodnetd binary roadmap
+  status: missing
+  evidence: token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent
+- name: CLI introspection tool
+  status: missing
+  evidence: tools/goodnetctl/ absent
+- name: Config validator
+  status: missing
+  evidence: tools/config_validator/ absent
+- name: TCP-TURN (RFC 6062)
+  status: done
+  evidence: 'token ''REQUESTED_TRANSPORT_TCP'' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...)'

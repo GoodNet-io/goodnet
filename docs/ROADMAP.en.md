@@ -46,6 +46,31 @@ to refresh the table.
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
+| Full WASM kernel build | ✗ missing | nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent |
+| JS SDK + WebSocket bridge | ✗ missing | plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension id 'gn.handler.web-api-proxy' not registered in plugins/ |
+| C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
+| Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
+| BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
+| io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
+| aarch64 Linux | ✗ missing | token 'aarch64-linux-ci' absent |
+| Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
+| MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
+| C99 SDK subset | ✗ missing | sdk/c99/ absent |
+| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
+| Python | ✗ missing | bridges/goodnet-py/setup.py absent |
+| Go | ✗ missing | bridges/goodnet-go/go.mod absent |
+| Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
+| Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
+| Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
+| OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
+| Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
+| File transfer handler | ✗ missing | plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not registered in plugins/ |
+| Identity registration handler | ✗ missing | plugins/handlers/identity/ absent; extension id 'gn.identity' not registered in plugins/ |
+| Group membership handler | ✗ missing | plugins/handlers/group/ absent; extension id 'gn.group' not registered in plugins/ |
+| Goodnetd binary roadmap | ✗ missing | token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent |
+| CLI introspection tool | ✗ missing | tools/goodnetctl/ absent |
+| Config validator | ✗ missing | tools/config_validator/ absent |
+| TCP-TURN (RFC 6062) | ✗ missing | token 'TURN_TCP_ALLOCATE' absent; token 'turn_tcp_relay' absent |
 <!-- /livedoc:roadmap_status_table -->
 
 ---
@@ -176,6 +201,223 @@ Tracked outside the four directions above; no version gates them.
   so legacy services land on the mesh without recompiling against
   the SDK. Plain-POSIX demo at `tests/demo/c_raw_inject/` proves the
   client-side surface stays at libc.
+
+---
+
+## WASM / web
+
+Three independent extensions of the kernel into WASM / browser
+territory. Each ships separately — they don't depend on each
+other.
+
+### WASM plugin runtime (sandbox for untrusted plugins)
+
+A **fourth IPluginRuntime variant** alongside Dynamic / Static /
+Remote. WASM modules load through `wasmtime` or `wasmer` and run
+inside the WASM sandbox the runtime provides — no process
+boundary like Remote, no shared address space like Dynamic.
+
+Use case: untrusted third-party plugins (marketplace, user-
+submitted handlers) run with capability-limited host-call surface
+without the IPC overhead of subprocess workers. The
+`IPluginRuntime` interface already abstracts this;
+[`plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) §2a
+documents the C ABI extension that lands when the first WASM
+runtime arrives. Authentication reuses the manifest SHA-256 pin.
+
+This is **orthogonal** to the browser story below — WASM plugins
+run inside a native goodnetd, not in a browser.
+
+### Web — browser integration
+
+The kernel is a native C++23 process. Browsers can't open raw UDP
+sockets, can't drive full ICE without WebRTC, can't load arbitrary
+shared libraries. To make GoodNet usable from a browser app, two
+approaches; neither requires kernel-side changes beyond a new
+handler / a build target.
+
+- **Full WASM kernel build** — compile `core/` + `sdk/` + the
+  in-tree plugin matrix to WASM via Emscripten. A browser tab runs
+  a real GoodNet peer of equal standing to a native one. Link
+  layer adapts: `gn.link.wss` is the canonical carrier (browsers
+  speak WebSockets natively), `gn.link.udp` becomes WebRTC
+  `RTCDataChannel`-shaped when raw UDP is needed. Memory & threading
+  shape constrains plugin choice; the `IPluginRuntime` abstraction
+  already lets us load only a subset (static plugins only — no
+  dlopen in WASM). Heavy work but the kernel ABI doesn't change.
+
+- **JS SDK + WebSocket bridge** — far simpler near-term path. The
+  browser DOES NOT run goodnet code. Instead:
+  - A kernel handler `gn.handler.web-api-proxy` listens on
+    WebSocket (consumes `gn.link.ws` via composer pattern).
+    Exposes the SDK surface — `query_extension`, `send_to`,
+    `register_handler`, `subscribe_data`, etc. — as JSON-RPC
+    messages over the WS frame stream. Authentication via Ed25519
+    public key the JS client presents at handshake.
+  - A JS SDK (`goodnet-js` npm package) wraps the WS connection.
+    Calls look native — `gn.send_to(peer_pk, payload)` — but
+    marshal as JSON-RPC over the bridge. The browser app writes
+    code as if it were a native peer; goodnetd does the heavy
+    network lifting (Noise handshakes, NAT traversal, gossip)
+    and proxies the wire.
+
+  This pattern makes goodnetd a multi-tenant gateway: many browser
+  apps can share one goodnetd instance through their own WS
+  connections. Operator deployment is one goodnetd binary on a
+  public VPS; users hit `wss://goodnet.example.com/api` from any
+  modern browser. Browser API limits stop mattering because the
+  browser is a thin client, not a peer.
+
+The two approaches are not mutually exclusive — full-WASM peer is
+the long road; JS SDK + bridge is what unblocks browser users in
+the near term.
+
+---
+
+## Runtimes & sandboxing
+
+Beyond Dynamic / Static / Remote, additional runtime variants for
+different sandboxing and performance trade-offs.
+
+- **C ABI version of `IPluginRuntime`** — currently a C++ interface.
+  A C ABI extension lets the runtime itself be a loadable plugin
+  (so a WASM or eBPF runtime ships as a `.so` rather than being
+  compiled into the kernel). Documented in
+  [`plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) §2a;
+  lands when the first non-built-in runtime arrives.
+- **Subprocess sandbox** — Linux user-namespaces + seccomp-bpf
+  filter + cgroup resource ceilings around `RemoteHost::spawn`.
+  Wire protocol does not change; only the `fork`+`execve` call
+  site adds the isolation primitives. Required before
+  third-party untrusted workers (marketplace, user-submitted
+  handlers) are a use case. Current trust model documented in
+  [`remote-plugin.en.md`](contracts/remote-plugin.en.md) §1a.
+- **BRIDGE kind first-class plugin taxonomy** — `raw_inject`
+  currently lives as a LINK plugin with workarounds
+  (`raw-v1` protocol, synthetic anonymous pk, `LOOPBACK` trust).
+  A dedicated `GN_PLUGIN_KIND_BRIDGE` with own vtable shape
+  (no listen/connect/send slots, inject-only) + `BridgeRegistry`
+  cleans the taxonomy. Justified when bridges become massive
+  (Slack, MQTT, CGI, etc.) and the LINK-shape workarounds repeat.
+- **io_uring runtime** — Linux async-io framework, faster than
+  epoll on high-fanout (many small connections) deployments.
+  Could ship as an `IPluginRuntime` flavor consumed by io_uring-
+  aware link plugins, or as a kernel-level dispatcher option that
+  any link plugin opts into.
+
+---
+
+## Cross-platform / cross-arch
+
+- **aarch64 Linux** — current CI matrix is x86_64 + Windows mingw.
+  Native ARM Linux builds (server / Raspberry Pi / cloud ARM
+  instances) need a CI runner. Code itself is portable; the
+  matrix is the missing piece.
+- **Android build** — Android NDK toolchain target for the kernel
+  and the static-plugin bundle. Reuses the same `nix run .#build
+  -- static` shape with a cross-compile profile. Use case:
+  Android apps embed goodnet as a JNI-callable library rather
+  than running goodnetd as a separate process. Mobile-reconnect
+  story (RTM_NEWLINK netlink watcher) already lands on Linux —
+  Android inherits it.
+- **MCU port** (ESP32 / RP2040) — heavy SDK trim, no
+  `std::vector` in hot paths, no mold/LTO, possibly no libsodium
+  (use mbedTLS-crypto for size). Mostly a build-and-test
+  exercise; the kernel surface is small enough to fit a 4 MB
+  flash budget.
+- **C99 SDK subset** — for toolchains where C++17 is unavailable.
+  Mirrors `sdk/*.h` shape; plugin authors get the C-ABI surface
+  without the C++ convenience headers.
+
+---
+
+## Language bindings
+
+The kernel ABI is C-ABI clean. Bindings ship as separate repos
+that consume `sdk/*.h` without recompiling the kernel.
+
+- **Rust** — `cbindgen`-generated wrappers around `sdk/*.h` +
+  idiomatic Rust trait for handlers / link plugins.
+- **Python** — synchronous C-extension SDK. Subprocess
+  remote-plugin path already works; in-process C-extension
+  bindings would give a faster path for Python-side handlers.
+- **Go** — cgo wrappers, idiomatic Go API for the most-used SDK
+  surface (`gn_core_query_extension`, `host_api->send`, etc.).
+- **Zig** — Zig's `@cImport` already works against `sdk/*.h`;
+  documented as best-practice with example bindings repo.
+
+---
+
+## Security extensions
+
+- **Hardware key store** — TPM, YubiKey, secure-enclave backing
+  for the Ed25519 identity key. The security-provider abstraction
+  in [`security-trust.en.md`](contracts/security-trust.en.md)
+  already lets a plugin substitute the key source; a `gn.security.tpm`
+  plugin would wire it.
+- **Post-quantum security provider** — ML-KEM (FIPS 203) /
+  ML-DSA (FIPS 204) provider when the standards settle and
+  libsodium / OpenSSL ship vetted implementations. The Noise
+  protocol abstraction can host the PQ handshake without a wire-
+  level change.
+
+---
+
+## Observability
+
+The counter surface ships through `host_api->emit_counter` per
+[`metrics.en.md`](contracts/metrics.en.md). Exporters are plugins,
+not kernel code.
+
+- **OpenTelemetry trace propagation across mesh hops** — span
+  IDs travel in envelope metadata so a multi-hop request shows up
+  as one trace, even when each hop is a different peer.
+- **Concrete exporter plugins** — `gn.metrics.prometheus` (HTTP
+  endpoint scraped by Prometheus) and `gn.metrics.otlp` (OTLP gRPC
+  push to a collector). Both consume the kernel's iterate_counters
+  surface; neither ships in the kernel binary.
+
+---
+
+## Application handlers
+
+Tracked here as the natural plugin tree expansion. Each is a
+self-contained handler / extension that registers through the
+existing kernel surface.
+
+- **File transfer handler** — streaming large objects across
+  multiple connections, resume after disconnect, integrity per
+  chunk.
+- **Identity registration handler** — `pk → human-friendly name`
+  binding, gossip-propagated.
+- **Group membership handler** — CRDT-based group state sync
+  for chat rooms / collaboration apps.
+
+---
+
+## Operations tooling
+
+- **Goodnetd binary roadmap** — `apps/` was extracted from the
+  kernel tree to a separate
+  [`GoodNet-io/goodnetd`](https://github.com/GoodNet-io/goodnetd)
+  repo. Operator-facing binary has its own roadmap there; this
+  doc tracks kernel + plugin tree only.
+- **CLI introspection tool** — `goodnetctl` (or equivalent) for
+  operators: list connections, show metrics, kick a session, dump
+  routing table. Equivalent to `redis-cli` / `etcdctl` in the
+  operator's toolbox.
+- **Config validator** — standalone tool that parses a TOML / JSON
+  config against the schema before deploy, surfaces typos and
+  missing-required errors. Operator runs it as a pre-deploy
+  check.
+
+---
+
+## ICE follow-ups
+
+- **TCP-TURN (RFC 6062)** — TURN relay over TCP transport
+  (currently UDP-only in `plugins/links/ice`). Required for
+  TCP-only network environments that block UDP TURN traffic.
 
 ---
 
