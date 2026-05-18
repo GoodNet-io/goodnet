@@ -45,8 +45,11 @@ wire framing, no conn-id needed.
 ### 2.1 Extension vtable
 
 ```c
-gn_dns_api_t* api = host_api->query_extension_checked(
-    "gn.dns", GN_EXT_DNS_VERSION, sizeof(gn_dns_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, "gn.dns", GN_EXT_DNS_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_dns_api_t* api = (const gn_dns_api_t*)vt;
 
 api->resolve(api->ctx, "alice.example", 13,
              GN_DNS_RR_A, /*max_results*/ 0,

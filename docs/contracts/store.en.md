@@ -33,8 +33,11 @@ vtable — no wire framing, no conn-id needed.
 ### 2.1 Extension vtable
 
 ```c
-gn_store_api_t* api = host_api->query_extension_checked(
-    "gn.store", GN_EXT_STORE_VERSION, sizeof(gn_store_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, "gn.store", GN_EXT_STORE_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_store_api_t* api = (const gn_store_api_t*)vt;
 
 api->put(api->ctx, "peer/alice", 11,
          pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);

@@ -38,10 +38,12 @@ the reference plugin is `plugins/strategies/float_send_rtt/`.
 ### 2.1 Extension vtable
 
 ```c
-gn_strategy_api_t* api = host_api->query_extension_checked(
-    "gn.strategy.<plugin-name>",
-    GN_EXT_STRATEGY_VERSION,
-    sizeof(gn_strategy_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, "gn.strategy.<plugin-name>",
+    GN_EXT_STRATEGY_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_strategy_api_t* api = (const gn_strategy_api_t*)vt;
 ```
 
 Two function slots:

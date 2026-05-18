@@ -39,9 +39,11 @@ configured interval).
 ### 2.1 Extension vtable
 
 ```c
-gn_heartbeat_api_t* api = host_api->query_extension_checked(
-    GN_EXT_HEARTBEAT, GN_EXT_HEARTBEAT_VERSION,
-    sizeof(gn_heartbeat_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, GN_EXT_HEARTBEAT, GN_EXT_HEARTBEAT_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_heartbeat_api_t* api = (const gn_heartbeat_api_t*)vt;
 
 gn_heartbeat_stats_t stats{};
 api->get_stats(api->ctx, &stats);   // peer_count + min/avg/max RTT
