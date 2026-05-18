@@ -133,7 +133,7 @@ manual edits.
 |---|---|---|---|---|
 | ice | `ice` | [`plugins/links/ice`](../../plugins/links/ice) | yes | ICE NAT-traversal link for GoodNet. Implements the controlled / |
 | ipc | `ipc` | [`plugins/links/ipc`](../../plugins/links/ipc) | no | AF_UNIX SOCK_STREAM transport for GoodNet. `ipc:///run/goodnet.sock` |
-| quic | `quic` | [`plugins/links/quic`](../../plugins/links/quic) | yes |  |
+| quic | `quic` | [`plugins/links/quic`](../../plugins/links/quic) | yes | QUIC transport for GoodNet. OpenSSL-3.6-native QUIC layered on a |
 | tcp | `tcp` | [`plugins/links/tcp`](../../plugins/links/tcp) | yes | TCP transport for GoodNet. Listens on an `tcp://host:port` URI, |
 | tls | `tls` | [`plugins/links/tls`](../../plugins/links/tls) | yes | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | `udp` | [`plugins/links/udp`](../../plugins/links/udp) | yes | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
@@ -159,7 +159,7 @@ manual edits.
 |---|---|---|
 | ice | [`plugins/links/ice`](../../plugins/links/ice) | ICE NAT-traversal link for GoodNet. Implements the controlled / |
 | ipc | [`plugins/links/ipc`](../../plugins/links/ipc) | AF_UNIX SOCK_STREAM transport for GoodNet. `ipc:///run/goodnet.sock` |
-| quic | [`plugins/links/quic`](../../plugins/links/quic) |  |
+| quic | [`plugins/links/quic`](../../plugins/links/quic) | QUIC transport for GoodNet. OpenSSL-3.6-native QUIC layered on a |
 | tcp | [`plugins/links/tcp`](../../plugins/links/tcp) | TCP transport for GoodNet. Listens on an `tcp://host:port` URI, |
 | tls | [`plugins/links/tls`](../../plugins/links/tls) | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | [`plugins/links/udp`](../../plugins/links/udp) | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |

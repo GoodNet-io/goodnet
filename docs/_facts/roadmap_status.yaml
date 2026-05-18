@@ -4,9 +4,8 @@ features:
   evidence: plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered
     in plugins/
 - name: Multi-path scheduler
-  status: missing
-  evidence: plugins/extensions/multipath/ absent; extension id 'gn.multipath' not
-    registered in plugins/
+  status: done
+  evidence: plugins/strategies/float_send_rtt/ present
 - name: Directed relay → direct upgrade
   status: missing
   evidence: plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not

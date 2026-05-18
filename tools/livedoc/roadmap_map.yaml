@@ -29,10 +29,10 @@ features:
   "Multi-path scheduler":
     rule:
       any:
-        - plugin_exists: plugins/extensions/multipath
-        - extension_registered: gn.multipath
+        - plugin_exists: plugins/strategies/float_send_rtt
+        - extension_registered: gn.strategy.rtt-optimal
     partial_if:
-      symbol_in_kernel: link_switch
+      symbol_in_kernel: pick_conn
 
   "Directed relay → direct upgrade":
     rule:

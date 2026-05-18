@@ -12,6 +12,8 @@
 **Composer surface:** yes
 **Tests:** 11 cases in [`plugins/links/quic/tests`](../../plugins/links/quic/tests)
 
+_QUIC transport for GoodNet. OpenSSL-3.6-native QUIC layered on a_
+
 ## Source
 
 This page summarises [`plugins/links/quic/README.md`](../../plugins/links/quic/README.md). For build instructions, configure flags, and contract details open the plugin's own README directly.

@@ -21,7 +21,7 @@ to refresh the table.
 | Feature | Status | Evidence |
 |---|---|---|
 | NAT-traversal pipeline | ✗ missing | plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered in plugins/ |
-| Multi-path scheduler | ✗ missing | plugins/extensions/multipath/ absent; extension id 'gn.multipath' not registered in plugins/ |
+| Multi-path scheduler | ✓ done | plugins/strategies/float_send_rtt/ present |
 | Directed relay → direct upgrade | ✗ missing | plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not registered in plugins/ |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
 | Address-based forwarding | ✗ missing | plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/ |
