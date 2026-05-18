@@ -155,7 +155,7 @@ upstream of the protocol layer.
 A future revision may add `gnet.frame.malformed` /
 `gnet.frame.size_exceeded` / `raw.frame.size_exceeded` counters
 once protocol-side validation grows beyond the deframe envelope.
-For v1.0 the operator reads the deframe outcome through `drop.*`.
+Today the operator reads the deframe outcome through `drop.*`.
 
 ---
 
