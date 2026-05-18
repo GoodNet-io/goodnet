@@ -317,15 +317,15 @@ Loadable plugins под `plugins/handlers/`, `plugins/links/`, `plugins/security
 
 ## Plugin separation
 
-Каждый loadable plugin — independent unit. Собственный git с remote'ом на bare mirror; собственный `default.nix` с standalone build; собственный LICENSE (GPL-2 для strategic plugins на anti-enclosure ground; MIT для periphery; Apache-2.0 для TLS из соображений OpenSSL compat); собственный per-plugin README; собственные tests.
+Каждый loadable plugin — independent unit. Собственный git с remote'ом на bare mirror; собственный `default.nix` с standalone build; собственный LICENSE (GPL-2 для strategic plugins на anti-enclosure ground; MIT для periphery; Apache-2.0 для OpenSSL-tied plugins TLS / QUIC + reference-strategy float_send_rtt); собственный per-plugin README; собственные tests.
 
 Standalone flake plugin'а pull'ит kernel через slim subflake `nix/kernel-only/` — не root flake. Это разрывает цикл plugin → monorepo → plugin: standalone build плагина не тянет за собой все остальные plugin'ы из monorepo.
 
-Tests тоже plugin-bound. SDK exposes `<sdk/test/conformance/link_teardown.hpp>` — typed-test contract template. Каждый link plugin (tcp/ws/ipc/tls) держит собственный `tests/test_<link>_conformance.cpp` с `INSTANTIATE` для своего type'а. IPC TSan teardown race fail'ит в IPC plugin's own test suite, не в kernel's. Owner plugin'а владеет fix'ом.
+Tests тоже plugin-bound. SDK exposes `<sdk/test/conformance/link_teardown.hpp>` — typed-test contract template. Каждый link plugin (tcp/ws/ipc/tls/ice) держит собственный `tests/test_<link>_conformance.cpp` с `INSTANTIATE` для своего type'а. IPC TSan teardown race fail'ит в IPC plugin's own test suite, не в kernel's. Owner plugin'а владеет fix'ом.
 
 Cross-plugin integration tests, требующие нескольких плагинов плюс kernel (например, noise + tcp + handler), живут в отдельном repo `goodnet-integration-tests`, который pull'ится в `tests/integration/` slot тем же setup механизмом.
 
-После rc1 каждый plugin получает org repo `GoodNet-io/<kind>-<name>` (например `GoodNet-io/security-noise`, `GoodNet-io/link-tcp`). До rc1 mirror'ы локальные, чтобы не публиковать незавершённый surface.
+Каждый plugin после spinoff'а получает org repo `GoodNet-io/<kind>-<name>` (например `GoodNet-io/security-noise`, `GoodNet-io/link-tcp`); до spinoff'а mirror'ы локальные. Процедура spinoff'а — `dist/migrate/spinoff-cookbook.md`.
 
 Two deployment modes из одного source. Static archive — linked в kernel binary, доступен без dlopen, но требует kernel rebuild на каждое plugin change. Dynamic .so — loaded через manifest verification + dlopen pipeline, hot-reload-eligible если `descriptor.hot_reload_safe == 1`. Один `default.nix` экспортирует обе варианты.
 
