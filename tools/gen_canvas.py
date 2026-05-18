@@ -320,7 +320,7 @@ NODES: dict[str, tuple[str, str]] = {
         "LinkRegistry",
         "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\n"
         "Registry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n"
-        "`ipc`, `tls`).\n\n"
+        "`ipc`, `tls`, `ice`, `quic`).\n\n"
         "**Conn-id ownership gate** (`security-trust.en.md` §6a):\n"
         "хранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\n"
         "Любая попытка чужого link'а позвать `notify_*` для conn_id, чей\n"
