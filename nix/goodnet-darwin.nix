@@ -99,6 +99,12 @@ cross.stdenv.mkDerivation {
     ## `isLinux` for the build host; once visible the derivation
     ## emits Mach-O, so the runtime platform is darwin.
     platforms = pkgs.lib.platforms.darwin;
+    ## Marked broken so `nix flake check` skips the derivation when
+    ## the Apple SDK is not staged — eval succeeds (skip_reason is
+    ## still readable) but the build short-circuits cleanly instead
+    ## of failing on libsbuf-14.1.0 / cctools deep in the cross stage.
+    ## Operator who has staged the SDK overrides with `NIXPKGS_ALLOW_BROKEN=1`.
+    broken = true;
   };
 
   ## CI reads `passthru.skip_reason` to short-circuit the
