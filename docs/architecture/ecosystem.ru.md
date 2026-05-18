@@ -39,7 +39,7 @@ _Plugin dlopen pipeline: discover → load → init → register._
 |---|---|---|---|
 | **Kernel** | `GoodNet-io/goodnet` (репо платформы) | GPL-2 + linking exception | C ABI таблица + 4 vtable-реестра + executor + signal bus |
 | **Static plugin** | внутри kernel git'а под `plugins/protocols/<name>/` | GPL-2 (часть kernel binary) | Обязательные wire-слои: gnet (mesh-framing), raw (passthrough) |
-| **Loadable plugin** | `GoodNet-io/<kind>-<name>/` per плагин | GPL-2 + LE (стратегические) или MIT (периферия) или Apache-2 (TLS-OpenSSL) | handler / link / security / extension через `register_*`, dlopen'ятся ядром при старте |
+| **Loadable plugin** | `GoodNet-io/<kind>-<name>/` per плагин | GPL-2 + LE (стратегические) или MIT (периферия) или Apache-2 (TLS-OpenSSL) | handler / link / security / strategy / extension через `register_*`, dlopen'ятся ядром при старте |
 | **App** | `GoodNet-io/<app-name>/` per app | MIT по умолчанию | Operator-side бинари: используют kernel как library через `sdk/core.h` + `bridges/<lang>/`. Например `gssh`, `goodnet-panel`, `goodnet-store`. |
 | **Binding** | `GoodNet-io/bridges-<lang>/` per язык | MIT | Per-language consumer wrapper над capi (RAII в C++, ownership-transfer в Rust, etc). Сейчас shipped: `bridges/cpp/` |
 | **Integration-tests** | `GoodNet-io/integration-tests` | MIT | Cross-plugin + cross-app тесты что требуют нескольких компонентов поднять одновременно |
@@ -58,6 +58,7 @@ _Plugin dlopen pipeline: discover → load → init → register._
 | Новый transport (TCP / UDP / WS / IPC / TLS / ICE / QUIC альтернатива) | loadable plugin, kind=link, репо `GoodNet-io/link-<name>/` |
 | Новый security provider (Noise альтернатива) | loadable plugin, kind=security, репо `GoodNet-io/security-<name>/` |
 | Новый message handler (heartbeat / discovery / DHT-style) | loadable plugin, kind=handler, репо `GoodNet-io/handler-<name>/` |
+| Новый send-path picker (float-send / cost-aware / latency-tier) | loadable plugin, kind=strategy, репо `GoodNet-io/strategy-<name>/` |
 | Plugin-to-plugin coordination API (peer-info, autonat, relay-control) | extension в существующем плагине либо standalone handler-плагин с extension surface |
 | Operator-facing binary (CLI tool, daemon, demo) | app, репо `GoodNet-io/<app-name>/`, использует `sdk/core.h` + `bridges/<lang>/` |
 | Per-language wrapper над capi (Rust / Python / Zig / Go) | binding, репо `GoodNet-io/bridges-<lang>/` |
