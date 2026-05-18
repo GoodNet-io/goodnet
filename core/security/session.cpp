@@ -351,6 +351,208 @@ gn_result_t SecuritySession::decrypt_transport(
     return GN_OK;
 }
 
+gn_result_t SecuritySession::decrypt_batch_transport(
+    CryptoWorkerPool&                              pool,
+    std::span<const std::span<const std::uint8_t>> ciphertexts,
+    std::vector<std::vector<std::uint8_t>>&        out_plaintexts) {
+    if (!fast_crypto_active()) return GN_ERR_INVALID_STATE;
+    out_plaintexts.clear();
+    if (ciphertexts.empty()) return GN_OK;
+
+    for (const auto& cipher : ciphertexts) {
+        if (cipher.size() < InlineCrypto::kTagBytes) {
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+    }
+
+    const std::size_t k = ciphertexts.size();
+    const std::uint64_t nonce_base = inline_crypto_.reserve_recv_nonces(k);
+
+    out_plaintexts.resize(k);
+    std::vector<CryptoWorkerPool::Job> jobs;
+    jobs.reserve(k);
+    for (std::size_t i = 0; i < k; ++i) {
+        const auto& cipher = ciphertexts[i];
+        const std::size_t plain_size = cipher.size() - InlineCrypto::kTagBytes;
+        out_plaintexts[i] = take_plaintext_buffer();
+        out_plaintexts[i].resize(plain_size);
+        std::span<std::uint8_t> plain_slot{
+            out_plaintexts[i].data(), plain_size};
+        jobs.push_back(inline_crypto_.make_decrypt_job(
+            cipher, nonce_base + i, plain_slot));
+    }
+
+    pool.run_batch(jobs);
+
+    for (std::size_t i = 0; i < k; ++i) {
+        if (jobs[i].result_len == static_cast<std::size_t>(-1)) {
+            out_plaintexts.clear();
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        out_plaintexts[i].resize(jobs[i].result_len);
+    }
+    return GN_OK;
+}
+
+std::vector<std::uint8_t>
+SecuritySession::take_plaintext_buffer() noexcept {
+    if (recycled_plaintext_pool_.empty()) return {};
+    std::vector<std::uint8_t> buf = std::move(recycled_plaintext_pool_.back());
+    recycled_plaintext_pool_.pop_back();
+    buf.clear();
+    return buf;
+}
+
+void SecuritySession::release_plaintext_buffer(
+    std::vector<std::uint8_t>&& buf) noexcept {
+    if (recycled_plaintext_pool_.size() >= kRecycledPlaintextPoolMax) return;
+    buf.clear();
+    recycled_plaintext_pool_.push_back(std::move(buf));
+}
+
+void SecuritySession::recycle_plaintext_buffers(
+    std::vector<std::vector<std::uint8_t>>& buffers) noexcept {
+    for (auto& buf : buffers) {
+        if (recycled_plaintext_pool_.size() >= kRecycledPlaintextPoolMax) break;
+        buf.clear();
+        recycled_plaintext_pool_.push_back(std::move(buf));
+    }
+    buffers.clear();
+}
+
+gn_result_t SecuritySession::decrypt_batch_transport_stream(
+    CryptoWorkerPool&                       pool,
+    std::span<const std::uint8_t>           wire_bytes,
+    std::vector<std::vector<std::uint8_t>>& out_plaintexts) {
+    if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
+        return GN_ERR_INVALID_ENVELOPE;
+    if (!inline_crypto_.seeded()) {
+        /// Vtable fallback path is per-call only; batch dispatch
+        /// gains nothing without the inline fast path. Defer to the
+        /// scalar walker.
+        return decrypt_transport_stream(wire_bytes, out_plaintexts);
+    }
+
+    std::lock_guard lock(recv_mu_);
+
+    if (recv_buffer_.size() + wire_bytes.size() > recv_buffer_cap_bytes_) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    recv_buffer_.insert(recv_buffer_.end(),
+                         wire_bytes.begin(), wire_bytes.end());
+
+    std::size_t cursor = 0;
+    auto erase_consumed = [&] {
+        if (cursor > 0) {
+            using diff_t = std::vector<std::uint8_t>::difference_type;
+            recv_buffer_.erase(recv_buffer_.begin(),
+                                recv_buffer_.begin()
+                                    + static_cast<diff_t>(cursor));
+            cursor = 0;
+        }
+    };
+
+    /// Walk the buffer once to enumerate every complete cipher
+    /// frame, remembering the wire-byte cursor positions so a
+    /// per-frame failure can splice the cursor precisely. Empty /
+    /// oversized prefixes are still rejected synchronously before
+    /// any nonce is consumed.
+    struct FrameSlot {
+        std::size_t cipher_offset = 0;
+        std::size_t cipher_size   = 0;
+        std::size_t frame_end     = 0;  // cursor after this frame
+    };
+    std::vector<FrameSlot> slots;
+
+    while (cursor + kFramePrefixBytes <= recv_buffer_.size()) {
+        const std::uint16_t len = static_cast<std::uint16_t>(
+            (static_cast<std::uint16_t>(recv_buffer_[cursor]) << 8) |
+            static_cast<std::uint16_t>(recv_buffer_[cursor + 1]));
+        if (len == 0) {
+            cursor += kFramePrefixBytes;
+            erase_consumed();
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        if (len > kFrameCipherMaxBytes) {
+            cursor += kFramePrefixBytes;
+            erase_consumed();
+            return GN_ERR_FRAME_TOO_LARGE;
+        }
+        const std::size_t total = kFramePrefixBytes + len;
+        if (cursor + total > recv_buffer_.size()) break;
+
+        slots.push_back({cursor + kFramePrefixBytes,
+                         static_cast<std::size_t>(len),
+                         cursor + total});
+        cursor += total;
+    }
+
+    if (slots.empty()) {
+        return GN_OK;  // partial — wait for more bytes
+    }
+
+    /// Batch-of-one falls through to the scalar path so the latch /
+    /// cv handshake in `CryptoWorkerPool::run_batch` doesn't tax
+    /// every single-frame tick.
+    if (slots.size() == 1) {
+        const auto& slot = slots.front();
+        std::span<const std::uint8_t> cipher{
+            recv_buffer_.data() + slot.cipher_offset, slot.cipher_size};
+        std::vector<std::uint8_t> plaintext = take_plaintext_buffer();
+        const gn_result_t rc = inline_crypto_.decrypt(cipher, plaintext);
+        if (rc != GN_OK) {
+            erase_consumed();
+            return rc;
+        }
+        out_plaintexts.push_back(std::move(plaintext));
+        erase_consumed();
+        return GN_OK;
+    }
+
+    const std::size_t k = slots.size();
+    const std::uint64_t nonce_base = inline_crypto_.reserve_recv_nonces(k);
+
+    std::vector<std::vector<std::uint8_t>> batch_out;
+    batch_out.resize(k);
+    std::vector<CryptoWorkerPool::Job> jobs;
+    jobs.reserve(k);
+    for (std::size_t i = 0; i < k; ++i) {
+        const auto& slot = slots[i];
+        const std::size_t plain_size =
+            slot.cipher_size - InlineCrypto::kTagBytes;
+        batch_out[i] = take_plaintext_buffer();
+        batch_out[i].resize(plain_size);
+        std::span<const std::uint8_t> cipher{
+            recv_buffer_.data() + slot.cipher_offset, slot.cipher_size};
+        std::span<std::uint8_t> plain_slot{batch_out[i].data(), plain_size};
+        jobs.push_back(inline_crypto_.make_decrypt_job(
+            cipher, nonce_base + i, plain_slot));
+    }
+
+    pool.run_batch(jobs);
+
+    for (std::size_t i = 0; i < k; ++i) {
+        if (jobs[i].result_len == static_cast<std::size_t>(-1)) {
+            /// Erase up to and including the failing frame so the
+            /// next call starts at the next frame boundary. OK
+            /// plaintexts already produced are discarded — the
+            /// invariant matches the scalar walker, which never
+            /// emits any plaintext on the call that hits AEAD
+            /// failure.
+            cursor = slots[i].frame_end;
+            erase_consumed();
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        batch_out[i].resize(jobs[i].result_len);
+    }
+
+    out_plaintexts.insert(out_plaintexts.end(),
+                          std::make_move_iterator(batch_out.begin()),
+                          std::make_move_iterator(batch_out.end()));
+    erase_consumed();
+    return GN_OK;
+}
+
 gn_result_t SecuritySession::decrypt_transport_stream(
     std::span<const std::uint8_t> wire_bytes,
     std::vector<std::vector<std::uint8_t>>& out_plaintexts) {
@@ -424,7 +626,7 @@ gn_result_t SecuritySession::decrypt_transport_stream(
         std::span<const std::uint8_t> cipher{
             recv_buffer_.data() + cursor + kFramePrefixBytes, len};
 
-        std::vector<std::uint8_t> plaintext;
+        std::vector<std::uint8_t> plaintext = take_plaintext_buffer();
         gn_result_t rc;
         if (inline_crypto_.seeded()) {
             rc = inline_crypto_.decrypt(cipher, plaintext);

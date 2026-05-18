@@ -185,6 +185,34 @@ public:
         std::span<const std::uint8_t> wire_bytes,
         std::vector<std::vector<std::uint8_t>>& out_plaintexts);
 
+    /// Drain like `decrypt_transport_stream` but dispatch the AEAD
+    /// pass K-way through @p pool when enough complete frames are
+    /// available in one tick. A batch of one falls through to the
+    /// scalar path to skip the pool's latch+cv overhead. The fast
+    /// path is only taken when `fast_crypto_active()` is true;
+    /// otherwise this defers to `decrypt_transport_stream`.
+    [[nodiscard]] gn_result_t decrypt_batch_transport_stream(
+        CryptoWorkerPool&                       pool,
+        std::span<const std::uint8_t>           wire_bytes,
+        std::vector<std::vector<std::uint8_t>>& out_plaintexts);
+
+    /// Decrypt a batch of N already-deframed ciphertext spans in
+    /// parallel through @p pool. Each entry of @p ciphertexts is a
+    /// raw `[cipher+tag]` span (no wire prefix); each output buffer
+    /// holds the recovered plaintext for the matching index. The
+    /// session reserves K recv nonces atomically before dispatch,
+    /// so the per-frame nonce sequence stays gap-free under the
+    /// single-writer inbound-strand invariant.
+    ///
+    /// @pre `fast_crypto_active() == true`.
+    /// @return `GN_OK` on success. `GN_ERR_INVALID_ENVELOPE` when
+    ///         any frame fails AEAD authentication; partial results
+    ///         in @p out_plaintexts are cleared.
+    [[nodiscard]] gn_result_t decrypt_batch_transport(
+        CryptoWorkerPool&                              pool,
+        std::span<const std::span<const std::uint8_t>> ciphertexts,
+        std::vector<std::vector<std::uint8_t>>&        out_plaintexts);
+
     /// Single-frame decrypt — kept for tests and the rare callers
     /// that already split on the security boundary. Production
     /// inbound flows through `decrypt_transport_stream` so the
@@ -305,6 +333,38 @@ private:
     /// stays unseeded and the session falls back to the vtable
     /// encrypt/decrypt slots.
     InlineCrypto                             inline_crypto_;
+
+public:
+    /// Free-list cap on `recycled_plaintext_pool_`. Sized to absorb
+    /// one steady-state inbound batch plus headroom.
+    static constexpr std::size_t             kRecycledPlaintextPoolMax = 16;
+
+private:
+    /// Free-list of reusable plaintext byte buffers for the inbound
+    /// hot path. The kernel allocates one `std::vector<std::uint8_t>`
+    /// per decrypted frame in `notify_inbound_bytes`; the recycled
+    /// pool caps that at `kRecycledPlaintextPoolMax` slots so steady
+    /// state reuses capacity instead of heap-churning. The session
+    /// is single-writer on the inbound strand, so the pool needs no
+    /// lock. The send / handshake paths never touch it.
+    std::vector<std::vector<std::uint8_t>>   recycled_plaintext_pool_;
+
+    /// Pop one plaintext buffer off `recycled_plaintext_pool_` (or
+    /// allocate fresh when empty). Inbound-strand only.
+    [[nodiscard]] std::vector<std::uint8_t> take_plaintext_buffer() noexcept;
+    /// Return a plaintext buffer to `recycled_plaintext_pool_` if
+    /// there is room; otherwise drop it. Inbound-strand only.
+    void release_plaintext_buffer(std::vector<std::uint8_t>&& buf) noexcept;
+
+public:
+    /// Reclaim plaintext buffers from a consumed batch back into the
+    /// session's free list. The caller passes the same vector it
+    /// received from `decrypt_*_transport` after every plaintext has
+    /// been routed. Each buffer is cleared (size → 0, capacity kept)
+    /// and stored up to `kRecycledPlaintextPoolMax`; excess slots
+    /// drop naturally. Inbound-strand only.
+    void recycle_plaintext_buffers(
+        std::vector<std::vector<std::uint8_t>>& buffers) noexcept;
 };
 
 /// Wire-side framing constants used by `SecuritySession` and the
