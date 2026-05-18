@@ -40,6 +40,21 @@ def fmt_ns(n):
     return f"{n/1e9:.2f} s"
 
 
+# Bench `case` names that came from the in-process kernel + real
+# security/protocol stack are tagged with the `RealFixture` prefix.
+# Google-benchmark fixture-class names live to the left of the first
+# `/`, so the case strings look like `RealFixtureTcp/TcpEcho/64/...`
+# (one-way A.2) or `RealFixtureTcpEcho/TcpEchoRoundtrip/64/...`
+# (track-А round-trip, sibling fixture) — both start with
+# `RealFixture` but neither has `RealFixture/` literally. Drop the
+# trailing `/` so the prefix recognises every sibling class.
+_REAL_PREFIX = "RealFixture"
+
+
+def is_real_row(row):
+    return row.get("case", "").startswith(_REAL_PREFIX)
+
+
 def parse_gbench(j, out):
     for b in j.get("benchmarks", []):
         name = b.get("name", "?")
@@ -77,9 +92,22 @@ def parse_gbench(j, out):
             total_bytes = float(bps) * float(time_ns) / 1e9 * float(iters)
             if total_bytes > 0:
                 cpu_ns_per_byte = float(cpu_total_us) * 1e3 / total_bytes
+        # `mode` discriminator — every gbench row carries it so the
+        # downstream pivot tables can refuse to mix parody and real
+        # rows in the same column. `RealFixture` cases boot the full
+        # kernel + Noise + gnet stack (production-shape, comparable
+        # to libp2p / iroh); every other case is the parody matrix
+        # (`<Plug>Fixture/...`, link plugin wired directly to
+        # LinkStub, no security, no protocol layer — comparable to
+        # iperf3 / socat). The two number sets answer different
+        # questions; mixing them in one column would lie by ~5-10×
+        # in either direction depending on which row a reader
+        # latches onto first. See `docs/perf/methodology.en.md` §1.3.
+        mode = "real" if name.startswith(_REAL_PREFIX) else "parody"
         row = {
             "stack": "goodnet",
             "case":  name,
+            "mode":  mode,
             "time_ns": time_ns,
             "throughput_bps": bps,
             "error":  error_msg,
@@ -118,6 +146,30 @@ def fmt_kb(v):
     return f"{n:+d} KiB"
 
 
+# Classify a comparison-harness `metric` string into one of the two
+# bench shapes. `real` = transport + AEAD + framing/mux (libp2p,
+# iroh, planned GoodNet RealFixture rows); `parody` = raw socket
+# baseline with no security and no framing (iperf3, socat).
+# `openssl` handshake is a record-layer measurement only and lands
+# in `single_stack` next to other handshake numbers — left
+# `parody` for cell-mixing purposes because the handshake number
+# itself sits in a separate section. Returns `None` for metrics
+# that aren't carried in a comparable pivot table (binary sizes,
+# DX LOC counts, etc.); the caller skips mode tagging for those.
+_REAL_METRIC_TOKENS = ("libp2p", "iroh")
+
+
+def _classify_metric_mode(metric):
+    if not isinstance(metric, str):
+        return None
+    m = metric.lower()
+    if any(tok in m for tok in _REAL_METRIC_TOKENS):
+        return "real"
+    if "iperf3" in m or "socat" in m or "raw" in m:
+        return "parody"
+    return None
+
+
 def parse_comparison(j, out):
     if j.get("metric") == "binary_sizes":
         out["binary_sizes"] = j
@@ -126,13 +178,84 @@ def parse_comparison(j, out):
         out["comparison_weights"] = j
         return
     if "rows" in j:
+        # Tag the table itself so per-payload pivot validators can
+        # compare across tables sharing a column. `metric` carries
+        # the per-stack name (`libp2p_echo_throughput`,
+        # `iroh_echo_throughput`); both classify to `real`.
+        if "mode" not in j:
+            mode = _classify_metric_mode(j.get("metric"))
+            if mode is not None:
+                j["mode"] = mode
         out.setdefault("tables", []).append(j)
         return
     if "metric" in j and "p50" in j:
+        if "mode" not in j:
+            mode = _classify_metric_mode(j.get("metric"))
+            if mode is not None:
+                j["mode"] = mode
         out.setdefault("single_stack", []).append(j)
         return
     if "metric" in j and "bytes_per_sec" in j:
+        if "mode" not in j:
+            # `throughput_stack` is the iperf3 / planned-libp2p
+            # bucket. Tag by metric so the cross-impl table can
+            # surface mismatches if a future runner accidentally
+            # emits a `real`-shape row through this slot.
+            mode = _classify_metric_mode(j.get("metric"))
+            if mode is not None:
+                j["mode"] = mode
+            else:
+                # Fall back to `stack` field — iperf3 lists itself
+                # as `iperf3 (raw TCP)`, so a `parody` classification
+                # is the conservative default for unknown raw-socket
+                # entries.
+                stack = (j.get("stack") or "").lower()
+                if any(tok in stack for tok in _REAL_METRIC_TOKENS):
+                    j["mode"] = "real"
+                elif "iperf3" in stack or "socat" in stack:
+                    j["mode"] = "parody"
         out.setdefault("throughput_stack", []).append(j)
+
+
+class ModeMismatchError(RuntimeError):
+    """Pivot table tried to land cells from different bench shapes in
+    one column. The aggregator refuses to render such a mix because a
+    reader scanning the column would compare numbers that paid
+    different costs (parody = raw socket; real = transport + AEAD +
+    framing/mux). Raise instead of silently emitting the mixed row
+    so the runner fails fast — `docs/perf/methodology.en.md` §1.3
+    pairing rule states why this is a methodology error, not a
+    formatting one."""
+
+
+def _validate_pivot_modes(cells, section_label):
+    """Assert every cell in @p cells carries the same `mode` tag.
+
+    @p cells is a sequence of `(column_name, mode)` tuples — the
+    aggregator collects them as it walks a pivot table's rows. The
+    function ignores cells where `mode is None` (no shape was
+    classifiable), so future runners that emit untagged rows fail
+    open rather than blocking the report. A non-None mismatch
+    aborts the run via `ModeMismatchError`."""
+    seen = {}
+    for col, mode in cells:
+        if mode is None:
+            continue
+        prev = seen.setdefault(mode, col)
+        if prev is not col and not (prev == col):
+            # Same column appearing twice with same mode is fine;
+            # the key insight is that we want to find the FIRST
+            # column per distinct mode.
+            pass
+    if len(seen) <= 1:
+        return
+    pairs = ", ".join(f"{col!r}={mode}" for mode, col in seen.items())
+    raise ModeMismatchError(
+        f"section {section_label!r} mixes bench shapes in one pivot "
+        f"table: {pairs}. Refusing to emit — see "
+        f"`docs/perf/methodology.en.md` §1.3 (pairing rule). Move "
+        f"the mismatched cell into a separate section, or correct "
+        f"its `mode` tag in the source runner.")
 
 
 def fmt_size_bytes(n):
@@ -180,21 +303,6 @@ def fmt_per_byte(n):
     if v < 1000:
         return f"{v:.1f} ns/B"
     return f"{v/1000:.2f} μs/B"
-
-
-# Bench `case` names that came from the in-process kernel + real
-# security/protocol stack are tagged with the `RealFixture` prefix.
-# Google-benchmark fixture-class names live to the left of the first
-# `/`, so the case strings look like `RealFixtureTcp/TcpEcho/64/...`
-# (one-way A.2) or `RealFixtureTcpEcho/TcpEchoRoundtrip/64/...`
-# (track-А round-trip, sibling fixture) — both start with
-# `RealFixture` but neither has `RealFixture/` literally. Drop the
-# trailing `/` so the prefix recognises every sibling class.
-_REAL_PREFIX = "RealFixture"
-
-
-def is_real_row(row):
-    return row.get("case", "").startswith(_REAL_PREFIX)
 
 
 def main(argv):
@@ -367,6 +475,11 @@ def main(argv):
         r"^RealFixture(?P<plug>Tcp|Ipc|Quic)Echo/"
         r"(?:Tcp|Ipc|Quic)EchoRoundtrip/(?P<sz>\d+)/")
     by_payload: dict[int, dict[str, float]] = {}
+    # Track which `mode` tag each cell landed with so the pivot can
+    # fail fast if a parody row sneaks in via a future runner
+    # mis-labelling its metric. See `_validate_pivot_modes` for the
+    # rationale: same section = same shape, always.
+    cell_modes: list[tuple[str, str]] = []
     for r in aggregated.get("perf", []):
         m = echo_re.match(r.get("case", ""))
         if not m or not r.get("throughput_bps"):
@@ -374,10 +487,12 @@ def main(argv):
         sz = int(m.group("sz"))
         col = f"GoodNet {m.group('plug').upper()}+Noise+gnet"
         by_payload.setdefault(sz, {})[col] = float(r["throughput_bps"])
+        cell_modes.append((col, r.get("mode", "real")))
     for tbl in aggregated.get("tables", []):
         if tbl.get("metric") not in (
                 "libp2p_echo_throughput", "iroh_echo_throughput"):
             continue
+        tbl_mode = tbl.get("mode", "real")
         for row in tbl.get("rows", []):
             sz = row.get("payload")
             bps = row.get("bytes_per_sec", 0)
@@ -385,6 +500,9 @@ def main(argv):
                 continue
             col = row.get("stack", "?")
             by_payload.setdefault(int(sz), {})[col] = float(bps)
+            cell_modes.append((col, tbl_mode))
+    _validate_pivot_modes(cell_modes,
+                          "А. Comparable echo round-trip")
     if by_payload:
         stacks = ["GoodNet TCP+Noise+gnet", "GoodNet IPC+Noise+gnet",
                   "GoodNet QUIC+Noise+gnet",
