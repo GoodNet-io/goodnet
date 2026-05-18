@@ -598,13 +598,15 @@
             # Auto-pull missing loadable plugins. Each shell entry
             # (interactive `nix develop` and the `--command` apps
             # the operator-facing scripts re-enter) runs a fast
-            # idempotent check; if any of the eight loadable
-            # plugin slots is empty, dispatch to `install-plugins`
-            # so a fresh kernel checkout becomes a fully-wired
-            # workspace without a separate manual setup step.
-            # `|| true` keeps shell entry usable when no mirror /
-            # remote is reachable — the operator sees the warning
-            # `install-plugins` printed and can act on it.
+            # idempotent check; if any loadable plugin slot is
+            # empty, dispatch to `install-plugins` so a fresh kernel
+            # checkout becomes a fully-wired workspace without a
+            # separate manual setup step. The slot list mirrors
+            # `nix/install-plugins.nix` — keep both in sync when a
+            # new plugin lands. `|| true` keeps shell entry usable
+            # when no mirror / remote is reachable — the operator
+            # sees the warning `install-plugins` printed and can
+            # act on it.
             shellHook = ''
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
@@ -612,13 +614,17 @@
 
               _gn_plugin_slots="\
                 plugins/handlers/heartbeat \
+                plugins/handlers/store \
+                plugins/handlers/dns \
                 plugins/links/tcp \
                 plugins/links/udp \
                 plugins/links/ws \
                 plugins/links/ipc \
                 plugins/links/tls \
+                plugins/links/ice \
                 plugins/security/noise \
-                plugins/security/null"
+                plugins/security/null \
+                bridges/cpp"
               _gn_missing=0
               for _gn_slot in $_gn_plugin_slots; do
                 if [ ! -d "$_gn_slot/.git" ]; then
