@@ -140,6 +140,41 @@ if(TARGET goodnet_ice_objects AND TARGET goodnet_udp_objects)
     )
 endif()
 
+# Subprocess plugin runtime — wire-proxy round-trip cost. Drives
+# the LINK / HANDLER / SECURITY proxies through the same kernel-
+# side RemoteHost the production runtime uses, with the in-tree
+# worker stubs (`remote_echo`, `remote_handler_stub`,
+# `remote_noise_stub`) as the worker process binaries. Each worker
+# target is built independently; missing any of them disables the
+# corresponding fixture set in the bench at runtime (the macro
+# guards refuse to compile without all three paths defined).
+if(TARGET remote_echo_worker
+   AND TARGET remote_handler_stub_worker
+   AND TARGET remote_noise_stub_worker)
+    add_executable(bench_subprocess plugins/bench_subprocess.cpp)
+    target_link_libraries(bench_subprocess PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+        ${CMAKE_DL_LIBS}
+    )
+    add_dependencies(bench_subprocess
+        remote_echo_worker
+        remote_handler_stub_worker
+        remote_noise_stub_worker
+    )
+    target_compile_definitions(bench_subprocess PRIVATE
+        "GOODNET_REMOTE_ECHO_PATH=\"$<TARGET_FILE:remote_echo_worker>\""
+        "GOODNET_REMOTE_HANDLER_STUB_PATH=\"$<TARGET_FILE:remote_handler_stub_worker>\""
+        "GOODNET_REMOTE_NOISE_STUB_PATH=\"$<TARGET_FILE:remote_noise_stub_worker>\""
+    )
+    set_target_properties(bench_subprocess PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
 # Composition stacks — depth-3 WSS-over-TLS-over-TCP measures the
 # overhead of stacking three composer plugins versus the per-layer
 # numbers from bench_tcp / bench_tls / bench_ws.
