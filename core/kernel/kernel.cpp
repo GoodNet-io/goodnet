@@ -3,8 +3,12 @@
 
 #include "kernel.hpp"
 
+#include "link_capability.hpp"
+
 #include <core/util/log.hpp>
 #include <core/util/log_config.hpp>
+
+#include <sdk/extensions/link_capability.h>
 
 #include <algorithm>
 #include <chrono>
@@ -13,6 +17,32 @@
 #include <thread>
 
 namespace gn::core {
+
+namespace {
+
+int link_capability_get_thunk(void* /*ctx*/, gn_link_capability_t* out) {
+    if (out == nullptr) return -1;
+    const auto& snap = ::gn::host_link_capability();
+    out->can_bind_udp_v4 = snap.can_bind_udp_v4;
+    out->can_bind_udp_v6 = snap.can_bind_udp_v6;
+    out->can_bind_tcp_v4 = snap.can_bind_tcp_v4;
+    out->can_bind_tcp_v6 = snap.can_bind_tcp_v6;
+    return 0;
+}
+
+/// Process-static vtable handed out under `gn.link.capability`. The
+/// kernel registers the extension once in its constructor; the
+/// snapshot itself lives in `host_link_capability()` so a refresh
+/// after netlink interface change becomes visible to every consumer
+/// without re-registration.
+const gn_link_capability_api_t kLinkCapabilityApi{
+    .api_size = sizeof(gn_link_capability_api_t),
+    .get      = &link_capability_get_thunk,
+    .ctx      = nullptr,
+    ._reserved = {nullptr, nullptr, nullptr, nullptr},
+};
+
+}  // namespace
 
 Kernel::Kernel() noexcept {
     /// `limits_` is zero-initialised by the field declaration's
@@ -35,6 +65,19 @@ Kernel::Kernel() noexcept {
     GN_LOG_INFO("kernel constructed "
                 "(max_connections={}, max_extensions={})",
                 limits_.max_connections, limits_.max_extensions);
+
+    /// Surface `gn.link.capability` for plugins. The vtable is
+    /// process-static — every kernel instance shares it; the
+    /// snapshot it forwards to lives in `host_link_capability()`
+    /// and refreshes through `refresh_host_link_capability()`. A
+    /// failure to register (LIMIT_REACHED via max_extensions == 0
+    /// or a future name clash) leaves the kernel up but with the
+    /// capability surface absent — consumers fall back to "assume
+    /// everything is available" which is the historical behaviour.
+    (void)extensions_.register_extension(
+        GN_EXT_LINK_CAPABILITY,
+        GN_EXT_LINK_CAPABILITY_VERSION,
+        static_cast<const void*>(&kLinkCapabilityApi));
 }
 
 /// Joins the timer executor before the default member sequence
