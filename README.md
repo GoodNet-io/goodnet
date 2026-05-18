@@ -1,10 +1,6 @@
 # GoodNet
 
-[![CI (Forgejo)](http://localhost/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost/goodnet-io/goodnet/actions)
-
-<!-- TODO: confirm forgejo web URL — the badge href above is a placeholder.
-     The instance exposes SSH on :222 but the web port is not pinned in
-     this tree yet. See docs/operator/ci-forgejo-setup.en.md. -->
+[![CI (Forgejo)](http://localhost:3000/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost:3000/goodnet-io/goodnet/actions)
 
 A small networking kernel with pluggable transports, security
 providers, protocol layers, and handlers. Applications embed it

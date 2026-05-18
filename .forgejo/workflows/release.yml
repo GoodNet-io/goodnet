@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   build-linux:
-    runs-on: nix-self-hosted
+    runs-on: nixos:host
     strategy:
       fail-fast: false
       matrix:
@@ -110,7 +110,7 @@ jobs:
     # cross is enough to ship a working binary today, and the
     # Linux-host derivation cohabits with the existing nix cache
     # path.
-    runs-on: nix-self-hosted
+    runs-on: nixos:host
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -145,7 +145,7 @@ jobs:
   # who want a runnable container pull that repo.
 
   changelog:
-    runs-on: nix-self-hosted
+    runs-on: nixos:host
     outputs:
       notes: ${{ steps.gen.outputs.notes }}
     steps:
@@ -172,7 +172,7 @@ jobs:
 
   release:
     needs: [build-linux, build-windows, changelog]
-    runs-on: nix-self-hosted
+    runs-on: nixos:host
     env:
       # `GH_TOKEN` is the per-repo Forgejo secret carrying a GitHub
       # token (classic `repo` scope, or fine-grained `contents:write`

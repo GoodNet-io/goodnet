@@ -2,7 +2,7 @@
 
 Forgejo is the sole CI. The workflow files at
 `.forgejo/workflows/{ci,dev,release}.yml` target the runner label
-`nix-self-hosted` and assume Nix is preinstalled on `PATH`. The
+`nixos:host` and assume Nix is preinstalled on `PATH`. The
 `.github/workflows/` directory is empty by design — no GitHub
 Actions runs anything for this repo. Release artefacts are built on
 the Forgejo runner on tag push and published to GitHub Releases via
@@ -33,13 +33,13 @@ The runner needs a one-time registration token from the Forgejo web
 admin. Generate one at:
 
 ```
-http://<forgejo-host>:<port>/-/admin/actions/runners
+http://localhost:3000/-/admin/actions/runners
 ```
 
-TODO: confirm forgejo web URL — the current instance exposes SSH on
-:222 but the web port is not yet pinned; ask the operator who set
-up the instance or check `docker-forgejo.service` / the systemd unit
-for the `-p` mapping.
+The local instance binds web on :3000 and SSH on :222 per
+`/etc/systemd/system/docker-forgejo.service` (`-p 3000:3000 -p 222:22`).
+Data lives in `/home/vaniello/forgejo/data`; admin password is in
+`/home/vaniello/forgejo/admin-password.txt`.
 
 The page has a "Create new runner" button which yields a
 `registration token` valid for ~1 hour. Keep it out of shell
@@ -52,10 +52,10 @@ mkdir -p ~/.config/forgejo-runner
 cd ~/.config/forgejo-runner
 ~/.nix-profile/bin/forgejo-runner register \
   --no-interactive \
-  --instance http://<forgejo-host>:<port>/ \
+  --instance http://localhost:3000/ \
   --token "$REGISTRATION_TOKEN" \
   --name "$(hostname)-nix" \
-  --labels nix-self-hosted
+  --labels nixos:host
 ```
 
 This drops a `.runner` file in the cwd. To run as a systemd user
@@ -89,9 +89,9 @@ systemctl --user status forgejo-runner.service
 docker run -d --restart=always \
   --name forgejo-runner \
   -v "$PWD/forgejo-runner-data:/data" \
-  -e GITEA_INSTANCE_URL=http://<forgejo-host>:<port>/ \
+  -e GITEA_INSTANCE_URL=http://localhost:3000/ \
   -e GITEA_RUNNER_REGISTRATION_TOKEN="$REGISTRATION_TOKEN" \
-  -e GITEA_RUNNER_LABELS=nix-self-hosted \
+  -e GITEA_RUNNER_LABELS=nixos:host \
   code.forgejo.org/forgejo/runner:latest
 ```
 
@@ -108,7 +108,7 @@ A throwaway workflow to confirm Nix is on `PATH` inside the runner:
 on: { workflow_dispatch: {} }
 jobs:
   ping:
-    runs-on: nix-self-hosted
+    runs-on: nixos:host
     steps:
       - uses: actions/checkout@v4
       - run: nix --version
