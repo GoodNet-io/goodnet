@@ -24,9 +24,9 @@ extern "C" {
  *
  * The struct is opaque to the plugin; accessor functions in
  * `sdk/connection.h` (`gn_ctx_local_pk` / `_remote_pk` / `_conn_id` /
- * `_trust` / `_plugin_state`) provide read access to local identity,
- * remote identity, connection id, trust class, and a plugin-private
- * scratch slot.
+ * `_trust` / `_allows_relay` / `_plugin_state`) provide read access
+ * to local identity, remote identity, connection id, trust class,
+ * relay-admission bit, and a plugin-private scratch slot.
  */
 typedef struct gn_connection_context_s gn_connection_context_t;
 
