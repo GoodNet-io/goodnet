@@ -10,7 +10,13 @@ FROM goodnet:nix-static AS base
 
 # Runtime tooling for the harness: nc for signaling round-trip
 # inside the shared volume, ip/ss for live diagnostics.
-USER root
+#
+# No USER directive — nix-built static base has no /etc/passwd
+# entries at all (not even uid 0 is resolvable as "0"), so
+# `USER root` and `USER 0` both fail with `invalid argument` on
+# stock Docker daemons. The default user inherits from the base
+# image, which for `goodnet:nix-static` is already uid 0 because
+# nix dockerTools builds run all layer ops as uid 0.
 RUN if command -v apt-get >/dev/null 2>&1; then \
         apt-get update && apt-get install -y --no-install-recommends \
             netcat-openbsd iproute2 ca-certificates && \
