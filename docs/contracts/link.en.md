@@ -392,4 +392,7 @@ is about to disappear.
 - Host API entries used: `host-api.en.md` §2.
 - ICE link config recipes (per-deployment-shape knob tuning):
   [`../operator/ice-recipes.en.md`](../operator/ice-recipes.en.md).
+- Encrypted-transport choice matrix (TLS / DTLS / QUIC / WSS / ICE
+  registration map and operator-facing selection guide):
+  [`../architecture/transport-layers.en.md`](../architecture/transport-layers.en.md).
 - Extension query semantics: `host-api.en.md` §2 (`query_extension_checked`).

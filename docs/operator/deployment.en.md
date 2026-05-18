@@ -625,3 +625,4 @@ sandboxing is a planned extension.
 - [metrics](../contracts/metrics.en.md) — drop-reason metrics surface and cardinality cap
 - [gssh](./gssh.ru.md) — SSH-over-GoodNet sibling guide (modes, peers.json, listen unit)
 - [ice-recipes](./ice-recipes.en.md) — `plugins/links/ice` config recipes by deployment shape; full `ice.*` key matrix
+- [transport-layers](../architecture/transport-layers.en.md) — TLS / DTLS / QUIC / WSS / ICE plugin and scheme map plus operator-facing choice matrix
