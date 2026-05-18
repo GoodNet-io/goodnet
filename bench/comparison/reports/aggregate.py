@@ -118,10 +118,12 @@ def parse_gbench(j, out):
             "time_ns": time_ns,
             "throughput_bps": bps,
             "error":  error_msg,
-            "p50_ns":  b.get("lat_p50_ns"),
-            "p95_ns":  b.get("lat_p95_ns"),
-            "p99_ns":  b.get("lat_p99_ns"),
-            "p999_ns": b.get("lat_p999_ns"),
+            "p50_ns":   b.get("lat_p50_ns"),
+            "p95_ns":   b.get("lat_p95_ns"),
+            "p99_ns":   b.get("lat_p99_ns"),
+            "p999_ns":  b.get("lat_p999_ns"),
+            "p9999_ns": b.get("lat_p9999_ns"),
+            "lat_samples": b.get("lat_samples"),
             "rss_kb_delta":      b.get("rss_kb_delta"),
             "rss_peak_kb_delta": b.get("rss_peak_kb_delta"),
             "vsz_peak_kb_delta": b.get("vsz_peak_kb_delta"),
@@ -881,32 +883,40 @@ def main(argv):
         lat_rows = [
             r for r in perf
             if any(r.get(k) for k in ("p50_ns", "p95_ns",
-                                       "p99_ns", "p999_ns"))
+                                       "p99_ns", "p999_ns",
+                                       "p9999_ns"))
         ]
         if lat_rows:
-            out.append("## Latency tail — P50 → P99.9 ladder")
+            out.append("## Latency tail — P50 → P99.99 ladder")
             out.append("")
             out.append("_Tail latency is the dimension that distinguishes "
                        "an evenly-paced p2p stack from one that pauses on "
                        "GC / strand-hop / allocator slow paths. A widening "
                        "gap between P99 and P99.9 across rows is the "
                        "signal — flat rows mean the bench body is "
-                       "uniformly fast. Cases with a single iteration "
-                       "(handshake fixtures) report the same number at "
-                       "every percentile by definition._")
+                       "uniformly fast. Cases with fewer than 10 000 "
+                       "samples report P99.99 == P99.9 by linear "
+                       "interpolation; the `samples` column makes the "
+                       "underlying N visible so operators can tell which "
+                       "rows have enough mass for the deepest tail. See "
+                       "`docs/perf/methodology.en.md` §4.4 for the "
+                       "fixture-by-fixture interpretation guide._")
             out.append("")
-            out.append("| Case | P50 | P95 | P99 | P99.9 |")
-            out.append("|---|---|---|---|---|")
+            out.append("| Case | Samples | P50 | P95 | P99 | P99.9 | P99.99 |")
+            out.append("|---|---|---|---|---|---|---|")
             for r in lat_rows:
                 case = r["case"]
                 if case.startswith(_REAL_PREFIX):
                     case = "real:" + case[len(_REAL_PREFIX):]
+                n = r.get("lat_samples")
+                n_str = f"{int(n):,}" if n is not None and n > 0 else "—"
                 out.append(
-                    f"| {case} | "
+                    f"| {case} | {n_str} | "
                     f"{fmt_ns(r.get('p50_ns'))} | "
                     f"{fmt_ns(r.get('p95_ns'))} | "
                     f"{fmt_ns(r.get('p99_ns'))} | "
-                    f"{fmt_ns(r.get('p999_ns'))} |")
+                    f"{fmt_ns(r.get('p999_ns'))} | "
+                    f"{fmt_ns(r.get('p9999_ns'))} |")
             out.append("")
 
         if real_rows:
