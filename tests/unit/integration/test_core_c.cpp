@@ -210,11 +210,13 @@ TEST(CoreC, GetStatsZeroedAfterStart) {
     ASSERT_EQ(gn_core_get_stats(core, &stats), GN_OK);
 
     /// No traffic, no plugins, no providers — every counter is zero
-    /// at this point in the kernel's life.
+    /// at this point in the kernel's life, except `extensions_registered`
+    /// which carries the kernel-internal `gn.link.capability` surface
+    /// the constructor registers for plugin consumption.
     EXPECT_EQ(stats.connections_active,    0u);
     EXPECT_EQ(stats.handlers_registered,   0u);
     EXPECT_EQ(stats.links_registered,      0u);
-    EXPECT_EQ(stats.extensions_registered, 0u);
+    EXPECT_EQ(stats.extensions_registered, 1u);
     EXPECT_EQ(stats.bytes_in,              0u);
     EXPECT_EQ(stats.bytes_out,             0u);
     EXPECT_EQ(stats.frames_in,             0u);
