@@ -65,6 +65,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/raw_inject/CMakeLists.txt")
+    add_subdirectory(links/raw_inject)
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/udp/CMakeLists.txt")
     add_subdirectory(links/udp)
 endif()
@@ -97,6 +101,16 @@ endif()
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
     add_subdirectory(links/quic)
+endif()
+
+# PortMap surfaces the `gn.link.portmap` extension (NAT-PMP / PCP /
+# UPnP IGD) consumed by ICE before host-candidate gathering. Added
+# before strategies so the in-tree ICE composer fixture can resolve
+# the extension at conditional time when the integration tests link
+# it.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
+    add_subdirectory(links/portmap)
 endif()
 
 # Strategy plugins consume `sdk/extensions/strategy.h`.

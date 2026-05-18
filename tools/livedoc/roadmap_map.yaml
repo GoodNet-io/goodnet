@@ -146,3 +146,7 @@ features:
   "Wire codec GN_ERR_WIRE_DECODE":
     rule:
       symbol_in_kernel: GN_ERR_WIRE_DECODE
+
+  "Port mapping (UPnP / PCP / NAT-PMP)":
+    rule:
+      plugin_exists: plugins/links/portmap

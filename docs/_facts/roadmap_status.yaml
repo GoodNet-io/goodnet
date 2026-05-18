@@ -19,6 +19,9 @@ features:
   status: done
   evidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr
     const char* kMdnsIPv6Multicast...)
+- name: Port mapping (UPnP / PCP / NAT-PMP)
+  status: done
+  evidence: plugins/links/portmap/ present
 - name: Kademlia-style DHT
   status: missing
   evidence: plugins/handlers/kademlia/ absent

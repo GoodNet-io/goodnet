@@ -26,6 +26,7 @@ to refresh the table.
 | DPLPMTUD active path-MTU probing | ✓ done | plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present |
 | Multi-TURN fallback | ✓ done | token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...) |
 | IPv6 mDNS dual-stack | ✓ done | token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...) |
+| Port mapping (UPnP / PCP / NAT-PMP) | ✓ done | plugins/links/portmap/ present |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
 | Address-based forwarding | ✗ missing | plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/ |
 | KV storage handler | ✓ done | plugins/handlers/store/ present |
@@ -72,6 +73,13 @@ side has a public address.
 - **IPv6 mDNS dual-stack** — `ff02::fb` multicast listener alongside
   the legacy IPv4 `224.0.0.251` socket for `.local.` discovery on
   v6-only networks.
+- **Port mapping (UPnP / PCP / NAT-PMP)** — explicit NAT mapping
+  through `plugins/links/portmap`. PCP (RFC 6887) and NAT-PMP
+  (RFC 6886) implemented on UDP/5351 with `/proc/net/route` default
+  gateway discovery; UPnP IGD stays a stub until the SSDP + SOAP
+  codec lands. ICE queries the `gn.link.portmap` extension before
+  host-candidate gathering when the host sits behind a symmetric
+  NAT.
 
 These ride on top of the existing link / security / protocol layers
 through plugins; the kernel does not grow new surfaces.
