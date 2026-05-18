@@ -89,9 +89,11 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/ice)
 endif()
 
-# QUIC requires OpenSSL 3.5+ for OSSL_QUIC_*_method; the build will
-# fail at compile time on older OpenSSL — kept after udp/tls/ice so
-# its composer test fixture can see all three carrier object libraries.
+# QUIC requires OpenSSL 3.6+ for OSSL_QUIC_*_method + SSL_new_listener
+# (the server side landed in 3.6 — see plugins/links/quic/CMakeLists.txt
+# for the exact API set the plugin uses); the build fails at compile
+# time on older OpenSSL. Kept after udp/tls/ice so its composer test
+# fixture can see all three carrier object libraries.
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
     add_subdirectory(links/quic)
