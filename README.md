@@ -34,6 +34,9 @@ Without Nix: gcc 15, libsodium, OpenSSL, asio, spdlog,
 gtest, rapidcheck, CMake 3.25 — install via your package manager,
 then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
+LibFuzzer-driven parser harness (clang only, opt-in): see
+[`docs/operator/fuzzing.en.md`](docs/operator/fuzzing.en.md).
+
 ## What makes it different
 
 - **Multi-path transport, runtime adaptive.** Every transport
