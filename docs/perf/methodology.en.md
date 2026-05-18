@@ -269,6 +269,97 @@ rust-libp2p / iroh) and feeds the JSON into the aggregator.
 The 1 KB row of every stack lands in the TL;DR; the rest
 spreads across the report sections.
 
+### 4.1 Environmental controls — mandatory before bench
+
+Bench rows from a `powersave` / `schedutil` governor are NOT
+valid for cross-commit comparison. The CPU scales its frequency
+under load against the OS schedule, which means a 64-byte
+throughput row's "ns per send" depends on what the rest of the
+machine was doing during the bench window. Production-grade
+numbers require:
+
+```bash
+sudo cpupower frequency-set -g performance
+# Confirm: cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+# → performance
+```
+
+Other levers, in roughly decreasing impact order:
+
+- **Turbo / boost**: leave ENABLED for realistic numbers
+  (production servers run with boost on). DISABLE if you need
+  reproducibility across batches — `echo 1 | sudo tee
+  /sys/devices/system/cpu/intel_pstate/no_turbo` (or
+  `echo 0 > /sys/devices/system/cpu/cpufreq/boost` on AMD).
+- **SMT / hyperthreading**: noise sink. Disable for tail-latency
+  benches; leave on for throughput benches (matches production).
+- **ASLR**: leave at `2` (the kernel default). Reproducibility
+  across runs comes from the bench using statistical aggregation
+  over many iterations, not from process-layout determinism.
+- **Background load**: kill `firefox`, `cargo build`, etc.
+  before the bench. `loadavg < 0.5` is the sanity check.
+
+The aggregator reads `/sys/devices/system/cpu/cpu0/cpufreq/
+scaling_governor` and emits the result in the report's
+`## Environment` header. A row scanning `schedutil` should be
+treated as advisory only, not a regression-gate input.
+
+### 4.2 Statistical confidence — repetitions + aggregate
+
+Single-iteration bench rows are nit-pickable: a 5% delta vs
+baseline could be real or could be that one warm-up iteration
+hit a cold L2 line. The runner addresses this by:
+
+1. Each `bench_<plugin>` binary runs with
+   `--benchmark_min_time=0.3s` — google-benchmark auto-scales
+   iteration count to fill the window, so the per-iteration
+   number is the average over hundreds of thousands of calls
+   even on the cheapest fixtures.
+2. The aggregator drops gbench's `_mean / _median / _stddev /
+   _cv` aggregate rows (suffix-based skip in `parse_gbench`) to
+   avoid double-counting; the iteration row already carries the
+   convergence-checked number.
+3. The `Δ vs baseline` column in the parody / real tables (when
+   `--baseline=<path-to-prev-report.md>` is supplied) flags any
+   row that drifted >15% in latency or >10% in throughput
+   against the prior bench report. A `[REGRESSION]` marker
+   appears inline so the row is visible without an external
+   diff tool.
+
+For tighter convergence (`bench-CI`-style gates, not the
+day-to-day `run_all.sh` flow), invoke each binary directly
+with `--benchmark_repetitions=5
+--benchmark_report_aggregates_only=true` so each row reports
+`{mean, median, stddev}`. The aggregator does NOT currently
+render the stddev column; the convention is to feed both the
+baseline and the candidate JSON to `tools/bench_compare.py`,
+which exits non-zero on >5% regression. Hooks into the
+release process live in `bench/CHANGELOG.md`.
+
+### 4.3 Honest fixture failures
+
+A row that hit `SkipWithError("inbound timeout")` is not the
+same as a row that ran to completion — collapsing both into
+`—` lies. The aggregator surfaces the SkipWithError message in
+a `Status` column on every perf-table row:
+
+- `ok` — the fixture ran the loop body and reported a number.
+- `SKIP: <reason>` — the bench fixture caught a failure and
+  stopped (loopback setup race, handshake timeout, send
+  rejection). The cause is visible inline; nothing for the
+  reader to dig out of the JSON.
+- `no data` — google-benchmark emitted a benchmark row but it
+  carried neither time nor throughput. Should be rare — usually
+  a sign that the fixture's `SetIterationTime` (manual-time
+  benches) never fired before the loop exited.
+
+Crashing fixtures (e.g. `bench_udp` hits glibc
+`malloc.c:2610` with a heap-arena assertion in current `HEAD`)
+fail outside the benchmark loop, so no row reaches the
+aggregator. The runner reports those by their absence; the
+report's `## Known crashes` section, when present, lists them
+with the diagnostic the operator should reproduce locally.
+
 ---
 
 ## 5. Cross-references
