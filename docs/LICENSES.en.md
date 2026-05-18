@@ -16,16 +16,22 @@ itself.
 |---|---|---|---|
 | `core/` | GPL-2.0 + Linking Exception | kernel | strong copyleft on the kernel; plugin boundary released by the exception |
 | `sdk/` | MIT | SDK | header-only ABI; permissive so any plugin author can link without licence drag |
+| `bridges/cpp/` | MIT | binding | operator-side C++ binding; permissive so embedders never inherit copyleft from picking up the wrapper |
 | `plugins/protocols/gnet/` | GPL-2.0 + Linking Exception | strategic | mandatory mesh framing; structurally part of the kernel binary |
 | `plugins/links/tcp/` | GPL-2.0 + Linking Exception | strategic | fundamental transport — free in the strong sense |
 | `plugins/links/udp/` | GPL-2.0 + Linking Exception | strategic | fundamental transport |
 | `plugins/links/ws/` | GPL-2.0 + Linking Exception | strategic | web-access bet; permissive licensing here would let a SaaS lift the WS gateway and never contribute back |
+| `plugins/links/ice/` | GPL-2.0 + Linking Exception | strategic | NAT-traversal access channel — same posture as the other connectivity bets |
 | `plugins/security/noise/` | GPL-2.0 + Linking Exception | strategic | crypto layer; strong copyleft mirrors GnuTLS's stance |
 | `plugins/handlers/heartbeat/` | GPL-2.0 + Linking Exception | strategic | canonical reference handler — every new handler reads its source |
+| `plugins/handlers/store/` | GPL-2.0 + Linking Exception | strategic | distributed KV — substrate that out-of-tree handlers compose on |
+| `plugins/handlers/dns/` | GPL-2.0 + Linking Exception | strategic | name-service layer over the KV substrate |
 | `plugins/links/ipc/` | MIT | periphery | local AF_UNIX socket transport |
 | `plugins/security/null/` | MIT | periphery | loopback / IntraNode-only debug provider |
 | `plugins/protocols/raw/` | MIT | periphery | opaque-payload template for foreign-protocol bridges |
 | `plugins/links/tls/` | Apache-2.0 | OpenSSL-tied | aligns with OpenSSL 3.x's Apache-2.0; GPL-2 link with OpenSSL would need an extra exception clause |
+| `plugins/links/quic/` | Apache-2.0 | OpenSSL-tied | OpenSSL-3.6-native QUIC; same licence posture as the TLS plugin |
+| `plugins/strategies/float_send_rtt/` | Apache-2.0 | strategy reference | reference multi-path strategy; Apache for ecosystem-friendliness as a template |
 | `manifesto/` | CC-BY-SA-4.0 | text | book / publication artefact, not source |
 
 ## Compatibility matrix
