@@ -364,12 +364,14 @@ Russian: see [`README.ru.md`](README.ru.md).
 ## License
 
 GPL-2.0 with linking exception for the strategic baseline:
-kernel, the bundled TCP / UDP / WS / Noise / Heartbeat plugins.
-The linking exception lets out-of-tree plugins ship under any
-license — the boundary is the C ABI, not the license. Periphery
-plugins (raw protocol, null security, IPC link) are MIT for
-ecosystem reach. The TLS plugin is Apache-2.0 for OpenSSL
-compatibility.
+kernel, the gnet protocol layer, and the GPL-2-licensed bundled
+plugins — TCP / UDP / WS / ICE link plugins, Noise security
+provider, Heartbeat / Store / DNS handlers. The linking exception
+lets out-of-tree plugins ship under any license — the boundary is
+the C ABI, not the license. Periphery plugins (raw protocol,
+null security, IPC link) are MIT for ecosystem reach. The
+OpenSSL-tied plugins (TLS link, QUIC link) and the reference
+strategy (float-send-rtt) are Apache-2.0.
 
 The strategic licensing rationale is the same one Linux applied
 in 1991: GPL on the kernel keeps the substrate open, the linking
