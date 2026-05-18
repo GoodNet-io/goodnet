@@ -143,43 +143,49 @@ memory map. See
 [`bench/README.md` §"Memory measurement caveats"](../../bench/README.md#memory-measurement-caveats)
 for the four blind spots and which column disambiguates each.
 
-## Results — current snapshot (2026-05-13)
+## Results
 
-Reference commit: [`bench/reports/80d2a04.md`](../../bench/reports/80d2a04.md).
-Bench harness expanded with VmHWM / VmPeak / socket-buffer
-counters plus a backpressure stress fixture per
-[`bench/README.md`](../../bench/README.md#memory-measurement-caveats);
-the report has new sections for `## Binary sizes & deployment
-closure` and `## Comparison stack weights` so the size axis is
-read side-by-side with the throughput axis.
+Numbers below are illustrative — copy the actual values from the
+latest `bench/reports/<sha>.md` for an operator-grade quote. The
+shapes (which plugin maps to which column, which fixture lives in
+which section) stay stable across runs even when absolute numbers
+move with host class.
 
 ### Per-plugin throughput
 
 | Plugin | @ 64B | @ 512–1200B | @ 8192B |
 |---|---|---|---|
-| UDP   | 166 MiB/s | 1.00 GiB/s (512 B) / 1.57 GiB/s (1200 B PMTU) | error (MTU cap) |
-| WS    | 128 MiB/s | 736 MiB/s | **1.23 GiB/s** |
-| Noise transport (AEAD) | 115 MiB/s | 225 MiB/s | 251 MiB/s |
-| Noise transport @ 65 K | — | — | 274 MiB/s |
+| TCP   | ~190 MiB/s | ~1.6 GiB/s (1024 B) | ~2.9 GiB/s |
+| IPC   | ~160 MiB/s | ~1.3 GiB/s (1024 B) | ~2.5 GiB/s |
+| UDP   | ~170 MiB/s | ~1.0 GiB/s (512 B) / ~1.6 GiB/s (1200 B PMTU) | error (MTU cap) |
+| WS    | ~130 MiB/s | ~730 MiB/s | ~1.2 GiB/s |
+| Noise transport (AEAD) | ~115 MiB/s | ~225 MiB/s | ~250 MiB/s |
 
-**Peak:** UDP @ 1200 B PMTU = **1.57 GiB/s ≈ 13.5 Gb/s** (with
-+1.3 GiB current RSS, +691 MiB peak — allocator returned ~630 MiB
-via `madvise` over the window; the burst-vs-released distinction
-the new VmHWM column makes visible).
+Peak send-only on this host class is UDP at the 1200 B PMTU
+ceiling, around 1.5 GiB/s ≈ 13 Gb/s. The VmHWM column in the
+report row catches the allocator burst that `VmRSS` masks after
+`madvise(MADV_DONTNEED)` returns pages.
 
 ### Handshake time
 
-| Stack | Median |
+| Stack | Typical loopback median |
 |---|---|
-| TCP listen+connect | 5.1 ms |
-| Noise XX (3 messages, no socket) | 238 μs |
-| Noise IK (2 messages + pre-message hash) | 321 μs |
-| ICE `composer_connect` dispatch | 75 ns |
+| `TcpFixture/HandshakeTime` (TCP listen + connect) | ~50–60 μs |
+| Noise XX (3 messages, no socket) | ~240 μs |
+| Noise IK (2 messages + pre-message hash) | ~320 μs |
+| ICE `composer_connect` dispatch | ~75 ns |
+| `TlsFixture/HandshakeTime` | ~3–4 ms |
 
 IK appears slightly slower than XX on loopback because both share
 4 DH operations but IK does 2 extra pre-message hashes. IK wins in
 real networks where it saves one RTT — the loopback bench captures
 crypto-only cost, not the round-trip differential.
+
+The TCP handshake row reads tens of microseconds; earlier reports
+quoted 5.1 ms there, which was a `wait_for` poll-tick artefact
+(see [`methodology.en.md`](methodology.en.md) §4.10 anti-pattern
+#1). The fixture switched to `wait_for_fast` and now resolves
+sub-millisecond timings honestly.
 
 ### Cross-implementation throughput
 
@@ -212,29 +218,21 @@ compare — kernel + Noise XX + gnet protocol on both peers. Pre-track-
 must NOT be quoted next to libp2p / iroh — see
 [`methodology.en.md`](methodology.en.md) §1.3 (pairing rule).
 
-| Stack | Metric | Throughput @ 8 KiB |
+| Stack | Fixture | Stack shape |
 |---|---|---|
-| **GoodNet TCP+Noise+gnet** | RealFixtureTcpEcho/TcpEchoRoundtrip | first numbers landing in `bench/reports/<sha>.md` §А |
-| GoodNet IPC+Noise+gnet | RealFixtureIpcEcho/IpcEchoRoundtrip | same; IPC trails TCP only on the AF_UNIX strand layout cost |
-| rust-libp2p 0.55 echo | TCP + Noise + Yamux | comparable column (libp2p_rs.sh runner) |
-| iroh 0.32 echo | QUIC + TLS 1.3 | comparable column (iroh.sh runner) — Real-QUIC fixture pending |
+| **GoodNet TCP+Noise+gnet** | `RealFixtureTcpEcho/TcpEchoRoundtrip` | TCP + Noise XX + gnet protocol on both peers |
+| GoodNet IPC+Noise+gnet | `RealFixtureIpcEcho/IpcEchoRoundtrip` | AF_UNIX + Noise XX + gnet — IPC trails TCP on AF_UNIX strand layout cost |
+| GoodNet UDP+Noise+gnet | `RealFixtureUdpEcho/UdpEchoRoundtrip` | UDP + Noise XX + gnet — capped by PMTU on the upper payloads |
+| rust-libp2p (`libp2p_rs.sh` runner) | TCP + Noise XX + Yamux + libp2p-stream | comparable column for TCP+Noise rows |
+| iroh (`iroh.sh` runner) | QUIC + TLS 1.3 | comparable column once `RealFixtureQuicEcho` lands (`QuicLink::listen/connect` returns `GN_ERR_NOT_IMPLEMENTED` at the time of writing) |
 
-Loopback debug-build first numbers from the in-tree run at
-2026-05-13:
-
-| Payload | TCP RT p50 | UDP RT p50 | IPC RT p50 |
-|---|---|---|---|
-| 64 B    | 38 μs | 36 μs | 27 μs |
-| 1024 B  | 45 μs | 40 μs | 32 μs |
-| 8192 B  | 78 μs | — (MTU cap) | 66 μs |
-| 32768 B | 217 μs | — | 181 μs |
-
-(Release-build numbers run 5–10 % faster on crypto-heavy
-sections; the canonical report quotes Release.)
-
-Full payload sweep + handshake numbers live in
-`bench/reports/<sha>.md` under **`## А. Comparable echo round-trip
-— production stack vs libp2p / iroh`**.
+The aggregator renders the side-by-side pivot under
+**`## А. Comparable echo round-trip — production stack vs libp2p /
+iroh`** when `bench_real_e2e` ran in the same cycle as the
+`libp2p_rs.sh` / `iroh.sh` runners; the section is omitted from
+reports where one side is missing rather than fabricated. Release
+builds run 5–10 % faster than Debug on crypto-heavy sections; the
+canonical report quotes Release.
 
 ### Free-kernel showcase — capabilities no other stack has
 
@@ -245,14 +243,14 @@ through `showcase_aggregate.py` — separate from the
 fair-comparison aggregate above by design. Each section is
 **not** a number to beat; it's an acceptance condition to verify.
 
-| # | Section | What it demonstrates | Acceptance condition | Status (2026-05-13) |
-|---|---|---|---|---|
-| B.1 | `MultiConnFixture/FallbackThroughput` | One peer pk holds three live conn records (TCP + UDP + IPC); registry returns all three on `for_each` | `alice.kernel->connections().size() == 3` | PASS |
-| B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses | PASS (425 k IPC picks vs 0 other) |
-| B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through compile-gated `_test_clear_inline_crypto` (`GOODNET_BENCH_SHOWCASE`); production-shape API is planned |
-| B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
-| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel auto-emit from `notify_disconnect` is wired (`core/kernel/host_api/notifications.cpp:562`), the explicit inject lets the bench drive specific timing |
-| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; the production auto-emit goes through `plugins/links/ice/interface_watcher` re-gather on `RTM_NEWLINK`/`RTM_DELLINK`, the bench still injects explicitly for deterministic timing |
+| # | Section | What it demonstrates | Acceptance condition |
+|---|---|---|---|
+| B.1 | `MultiConnFixture/FallbackThroughput` | One peer pk holds three live conn records (TCP + UDP + IPC); registry returns all three on `for_each` | `alice.kernel->connections().size() == 3` |
+| B.2 | `StrategyFixture/PickerSelectsIpc` + `FlipOnRttDegradation` | `goodnet_float_send_rtt` strategy plugin selects the lowest-RTT carrier per send; EWMA-α=1/8 hysteresis at 0.75× threshold prevents thrash | `picks_ipc > picks_other` under preset RTT; flip lands within 1–2 samples after EWMA crosses |
+| B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 ~20 μs → T2 (post-handoff) p50 ~12 μs; zero decryption errors across the trigger. PoC reaches through compile-gated `_test_clear_inline_crypto` (`GOODNET_BENCH_SHOWCASE`) — production-shape `SessionRegistry::downgrade_*` API not yet wired |
+| B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) |
+| B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss. Kernel auto-emit from `notify_disconnect` is wired (`core/kernel/host_api/notifications.cpp`); the bench injects `CONN_DOWN` for deterministic timing |
+| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged. Production auto-emit goes through `plugins/links/ice/interface_watcher` re-gather on `RTM_NEWLINK`/`RTM_DELLINK`; the bench injects directly for deterministic timing |
 
 Time-series cases (B.2 flip, B.3 trigger, B.5 failover, B.6
 mobility) emit CSV side-channels to
@@ -292,10 +290,10 @@ rust-libp2p doesn't ship a canonical echo example (the closest is
 
 ### Deployment weight — binary + dependency closure
 
-The 2026-05-13 bench expansion sizes every stack on the same
-axes (`Binary` on disk + `Lib closure` from `ldd`), so a reader
-can compare "what an operator copies onto a fresh host" side-by-
-side with the throughput / latency rows.
+The bench harness sizes every stack on the same axes (`Binary` on
+disk + `Lib closure` from `ldd`), so a reader can compare "what an
+operator copies onto a fresh host" side-by-side with the throughput
+/ latency rows.
 
 | Stack | Binary | Lib closure | **Total** |
 |---|---|---|---|
@@ -324,18 +322,17 @@ Two observations the table makes load-bearing:
    single-binary deploy where nothing can be selectively
    omitted.
 
-The same report row also tracks the Nix dependency closure (99.8
-MiB worst case before store de-duplication) and a
-`debian:bookworm-slim`-based Docker image (72.7 MiB; a musl /
+The same report row tracks the Nix dependency closure (around
+100 MiB worst case before store de-duplication) and a
+`debian:bookworm-slim`-based Docker image (~70 MiB; a musl /
 scratch base would drop to ~5 MiB but needs a separate musl plugin
-port). Full numbers in
-[`bench/reports/80d2a04.md` § "Binary sizes & deployment closure"](../../bench/reports/80d2a04.md).
+port). Latest absolute numbers live in
+`bench/reports/<sha>.md` § "Binary sizes & deployment closure".
 
-### Memory burst vs. released (new VmHWM column)
+### Memory burst vs. released (VmHWM column)
 
-The 2026-05-13 harness reads `VmHWM` (peak RSS) alongside
-`VmRSS` (current) on every bench. Two patterns the side-by-side
-makes visible:
+The harness reads `VmHWM` (peak RSS) alongside `VmRSS` (current)
+on every bench. Two patterns the side-by-side makes visible:
 
 | Bench | `RSS Δ` (current) | `RSS Peak Δ` (VmHWM) | Reading |
 |---|---|---|---|
@@ -350,7 +347,7 @@ depth is the alarming variable a steady-state echo bench hides.
 With a real kernel `limits()` table wired, the same fixture
 would show `back_pressure_hits > 0` and a bounded `RSS Peak Δ`.
 
-### Kernel socket buffers (new sock_mem column)
+### Kernel socket buffers (sock_mem column)
 
 `sock_mem_kb_delta` reads aggregate TCP + UDP + FRAG memory
 from `/proc/net/sockstat` — kernel-side buffers that don't show
@@ -434,16 +431,16 @@ not asserted, not assumed.
 
 ## What's not measured (gaps to close)
 
-- **TCP throughput / latency in-process** — bench fixture has a
-  port-allocation / session-registration race that lets sends
-  return `NOT_FOUND`; handshake bench works.
-- **TLS / WSS / DTLS / QUIC handshake** — `UseManualTime` shape
-  conflicts with the aggregator's median picker (rows show "—").
 - **Real-mode QUIC bench** — `QuicLink::listen/connect` return
   `GN_ERR_NOT_IMPLEMENTED` (composer-only over UDP carrier);
   `bench_real_e2e` needs a LinkCarrier + composer chain
   bring-up in `test_bench_helper.hpp`. Until landed, the iroh
   column in the comparison section has no GoodNet pair.
+- **`bench_real_e2e` in the default runner set** — `run_all.sh`
+  currently ships TCP / IPC / WS / TLS / ICE / subprocess / failover
+  in its `default_set`; `bench_real_e2e` runs standalone but the
+  aggregator's `## А. Comparable echo round-trip` section stays
+  empty in default reports until the runner picks it up.
 - **Production Noise→Null handoff** — B.3 runs through a
   compile-gated `_test_clear_inline_crypto` PoC seam in
   `SecuritySession` (built only with `GOODNET_BENCH_SHOWCASE`;
