@@ -214,7 +214,7 @@ observability.
 | Composer | `subscribe_data` | install receive callback на L1 conn для L2 framing'а; baseline = `NOT_IMPLEMENTED` |
 | Composer | `unsubscribe_data` | снять подписку, idempotent; baseline = `NOT_IMPLEMENTED` |
 
-Steady-слоты функционируют у всех baseline-link'ов в v1.0.x.
+Steady-слоты функционируют у всех baseline-link'ов сегодня.
 Composer-слоты — резерв для L2-семейства (WSS, TLS, ICE).
 До того как первый composer-плагин выйдет и контракт будет
 проверен end-to-end, baseline возвращает `GN_ERR_NOT_IMPLEMENTED`.

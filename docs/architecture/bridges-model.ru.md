@@ -417,7 +417,7 @@ destructor (или `Drop` impl в Rust, `__del__` в Python) вызывает
 | `Core` | `gn_core_t*` | `gn_core_destroy` |
 | `Connection` | `gn_conn_id_t` + back-ptr | `gn_core_disconnect` (opt-in) |
 | `Subscription` | `(gn_core_t*, token, kind)` | `gn_core_unsubscribe` или `gn_core_off_conn_state` |
-| `HandlerHandle` | `gn_handler_id_t` + heap context | (heap context only в v1.0) |
+| `HandlerHandle` | `gn_handler_id_t` + heap context | (heap context only сегодня — kernel-side handler unregister пока на стороне `gn_core_t`) |
 
 Авто-clone'ы не разрешены. Rust binding делает `Send` без `Sync` для
 `Core` (см. ниже). Python binding делает `__copy__` / `__deepcopy__`

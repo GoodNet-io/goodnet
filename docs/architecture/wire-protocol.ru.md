@@ -433,8 +433,8 @@ Kernel, собранный для 0x01, отвергает 0x02-фреймы с
 `GN_ERR_DEFRAME_CORRUPT`. Negotiation версии живёт на capability-
 handshake post-Noise, не в самом wire.
 
-В out-of-scope для v1 явно перечислены: BATCHED frames (несколько
-sub-frame в одном wire-frame; deferred до v2), отдельная
+Out-of-scope для этого wire-формата явно перечислены: BATCHED
+frames (несколько sub-frame в одном wire-frame), отдельная
 header-аутентификация (Noise уже MAC-ает весь ciphertext), флаг
 компрессии (payload-content concern, выше этого слоя), фрагментация
 (transport-уровень: TCP сегментирует естественно, UDP — через
