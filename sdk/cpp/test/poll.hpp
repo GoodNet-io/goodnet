@@ -56,4 +56,28 @@ template <class Predicate>
     return pred();
 }
 
+/// Tight-poll variant — `std::this_thread::yield()` between
+/// predicate evaluations instead of a millisecond-granularity
+/// sleep. Resolution is OS scheduler quantum (~1-50µs) rather than
+/// the default 5ms tick, so loopback round-trips and connection
+/// setup latencies that complete in tens of microseconds are
+/// measured at their real magnitude rather than rounded up to the
+/// next poll boundary. Burns one core for the wait window — use
+/// only in benchmarks / tests that need sub-millisecond resolution
+/// (e.g. `bench/plugins/bench_tcp.cpp::LatencyRoundtrip`,
+/// `HandshakeTime`).
+template <class Predicate>
+[[nodiscard]] bool wait_for_fast(
+    Predicate&& pred,
+    std::chrono::milliseconds timeout =
+        std::chrono::milliseconds{1000}) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (pred()) return true;
+        std::this_thread::yield();
+    }
+    return pred();
+}
+
 }  // namespace gn::sdk::test
