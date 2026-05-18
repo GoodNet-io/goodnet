@@ -48,14 +48,17 @@ wire framing, no conn-id needed.
 gn_dns_api_t* api = host_api->query_extension_checked(
     "gn.dns", GN_EXT_DNS_VERSION, sizeof(gn_dns_api_t));
 
-api->put(api->ctx, "peer/alice", 11,
-         pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);
+api->resolve(api->ctx, "alice.example", 13,
+             GN_DNS_RR_A, /*max_results*/ 0,
+             on_record, /*emit_user*/ nullptr);
 ```
 
-Eight slots: `put / get / query / del / subscribe / unsubscribe /
-cleanup_expired` plus the `ctx`/`_reserved` ABI footer.
-`query` covers exact / prefix / since-timestamp modes through a
-single record-emitting callback.
+Three slots: `resolve / put_record / delete_record` plus the
+`ctx`/`_reserved` ABI footer. `resolve` walks the cascade
+(local store → cache → upstream via c-ares) and fires the emit
+callback once per record. `put_record` / `delete_record` proxy
+into the backing `gn.store` extension under the
+`<u16 type-byte BE>/<name>` store-key shape.
 
 ### 2.2 Wire surface
 
