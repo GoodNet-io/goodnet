@@ -73,7 +73,7 @@ gn_result_t (*unsubscribe)(void* host_ctx, gn_subscription_id_t id);
 
 Раздельные сигнатуры дают biding'ам строгую типизацию callback'а на канале без cast'ов через `(const void*, size_t)`. `unsubscribe` остаётся универсальной — id несёт channel tag в верхних битах и сам выбирает правильный канал.
 
-`for_each_connection` пробегает реестр под per-shard read-lock'ом, отдавая visitor'у `(conn, trust, remote_pk, uri)`. Это единственный путь итерации; отдельных `for_each_handler` или `for_each_link` нет — плагин не управляет реестрами, он лишь даёт в них вклад. Сорок одна точка входа схлопнулась до двадцати одной с восемью зарезервированными slot'ами.
+`for_each_connection` пробегает реестр под per-shard read-lock'ом, отдавая visitor'у `(conn, trust, remote_pk, uri)`. Это единственный путь итерации; отдельных `for_each_handler` или `for_each_link` нет — плагин не управляет реестрами, он лишь даёт в них вклад.
 
 ---
 
