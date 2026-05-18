@@ -191,7 +191,7 @@ NODES: dict[str, tuple[str, str]] = {
         "void        (*shutdown)(void* self);\n"
         "uint32_t    (*properties)(void* self);  // stream/datagram/...\n"
         "```\n\n"
-        "Регистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\n"
+        "Регистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`, `ice://`, `quic://`).\n"
         "Conn-id ownership gate: только владелец схемы может звать\n"
         "`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n"
         "(`security-trust.en.md` §6a)."

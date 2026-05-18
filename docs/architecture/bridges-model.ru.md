@@ -249,7 +249,7 @@ worker pool размером `max(1, hardware_concurrency()/2)` thread'ов на
 на которых строится binding:
 
 - `CONNECTED` / `DISCONNECTED` / `BACKPRESSURE_*` — на link plugin'a
-  strand'е (TCP это один из workers, UDP/WS/IPC/TLS — single).
+  strand'е (TCP это один из workers, UDP/WS/IPC/TLS/ICE/QUIC — single).
 - `TRUST_UPGRADED` — на thread'е что drove handshake completion.
 - Service-executor callback'и (`set_timer(delay_ms, …)`) — всегда
   на kernel-side service executor thread'е.

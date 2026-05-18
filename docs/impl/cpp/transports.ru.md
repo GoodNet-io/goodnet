@@ -39,7 +39,7 @@ silent-fail'ов.
 
 | Поле | Что в нём |
 |---|---|
-| `meta->name` | scheme — `"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`. Один scheme = один plugin. |
+| `meta->name` | scheme — `"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`, `"ice"`, `"quic"`. Один scheme = один plugin. |
 | `vtable` | `gn_link_vtable_t*` — primary surface (см. [`sdk/link.h`](../../../sdk/link.h)). |
 | `self` | per-plugin state (типично `*Link` C++ объект). |
 | `lifetime_anchor` | `shared_ptr<void>` для quiescence wait per [`plugin-lifetime.en.md` §4](../../contracts/plugin-lifetime.en.md). |

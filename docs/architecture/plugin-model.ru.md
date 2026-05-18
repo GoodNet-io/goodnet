@@ -174,7 +174,7 @@ Reserved msg_id values недоступны для регистрации: `0x00
 
 ## Transport (link) vtable
 
-Link перевозит байты. Не интерпретирует payload, не аутентифицирует peer'ов, не маршрутизирует messages. Регистрируется через `register_vtable(GN_REGISTER_LINK, meta, vt, self, &id)` где `meta->name` — URI scheme (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`).
+Link перевозит байты. Не интерпретирует payload, не аутентифицирует peer'ов, не маршрутизирует messages. Регистрируется через `register_vtable(GN_REGISTER_LINK, meta, vt, self, &id)` где `meta->name` — URI scheme (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`, `"ice"`, `"quic"`).
 
 ```c
 typedef struct gn_link_vtable_s {
