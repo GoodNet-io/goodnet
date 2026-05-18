@@ -64,8 +64,8 @@ bit  mask   name                  meaning
 
 Reserved биты на inbound — frame проходит парсер (биты маскируются), но
 deframer записывает counter `gnet.dropped.reserved_bit` для observability.
-Forward-compatibility: v1.1 расширения садятся в reserved биты без bump
-версии.
+Forward-compatibility: будущие protocol-revision расширения садятся в
+reserved биты без bump версии.
 
 ### Три encoding-режима
 
