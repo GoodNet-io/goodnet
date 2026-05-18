@@ -37,6 +37,46 @@ then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 LibFuzzer-driven parser harness (clang only, opt-in): see
 [`docs/operator/fuzzing.en.md`](docs/operator/fuzzing.en.md).
 
+### Local test gate and CI gating
+
+`nix run .#setup` wires `core.hooksPath` to `.githooks/`, installing
+two hooks in the clone:
+
+- **`pre-commit`** — `clang-tidy --warnings-as-errors=*` on every
+  staged C++ file plus the ABI / banlist / livedoc drift checks.
+- **`pre-push`** — when the push targets `refs/heads/main`, re-runs
+  the cheap CI subset locally (`tools/livedoc.py --check`, `pytest
+  tests/livedoc tests/tools`, vanilla debug `ctest`) before the
+  push leaves the machine. The hook is a no-op for any other branch.
+
+Bypass once with the standard Git escape hatch when you know what
+you're doing:
+
+```bash
+git commit --no-verify   # skip pre-commit for one commit
+git push   --no-verify   # skip pre-push for one push
+```
+
+The full CI matrix lives in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Gate                | When                                |
+|---------------------|-------------------------------------|
+| `flake-check`       | every PR + push to main             |
+| `livedoc-check`     | every PR + push to main             |
+| `build-and-test`    | every PR + push to main             |
+| `plugin-verify`     | every PR + push to main             |
+| `windows-cross-build` | every PR + push to main           |
+| `bench-smoke`       | push to main OR PR label `bench`    |
+| `ice-3node`         | push to main OR PR label `ice-test` |
+| `fuzz-smoke`        | push to main OR PR label `fuzz`     |
+| `asan-smoke`        | push to main OR PR label `sanitizer` |
+| `tsan-smoke`        | push to main OR PR label `sanitizer` |
+
+`asan-smoke` + `tsan-smoke` previously stayed local-only; they now
+run on every push to main so a race or UAF that slipped past local
+dev surfaces before the next release tag. Tag a PR with `sanitizer`
+when your change touches concurrency-sensitive code.
+
 ## What makes it different
 
 - **Multi-path transport, runtime adaptive.** Every transport
