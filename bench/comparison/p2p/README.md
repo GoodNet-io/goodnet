@@ -1,11 +1,15 @@
 # Rust P2P baselines
 
 Fair-compare loopback echo round-trip между GoodNet
-(`UdpFixture/EchoRoundtrip`, `WsFixture/EchoRoundtrip` in
-`bench/plugins/`) и двумя зрелыми Rust P2P-стеками: **rust-libp2p
-0.55** (TCP + Noise + Yamux) и **iroh 0.32** (QUIC + TLS 1.3).
-Одна и та же hot-loop форма с обеих сторон даёт честное cross-impl
-число, без apples-to-oranges пересчёта.
+(`RealFixtureTcpEcho/TcpEchoRoundtrip`,
+`RealFixtureUdpEcho/UdpEchoRoundtrip`,
+`RealFixtureIpcEcho/IpcEchoRoundtrip` in `bench/plugins/`) и
+двумя зрелыми Rust P2P-стеками: **rust-libp2p 0.55** (TCP + Noise
++ Yamux) и **iroh 0.32** (QUIC + TLS 1.3). Одна и та же hot-loop
+форма с обеих сторон даёт честное cross-impl число, без
+apples-to-oranges пересчёта. Pairing rule по §1.3 методологии:
+TCP-class против libp2p; QUIC pairing зарезервирован под
+`bench_real_e2e RealFixtureQuic*` когда landed.
 
 ## Layout
 
