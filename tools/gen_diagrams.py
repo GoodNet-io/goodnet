@@ -1290,7 +1290,7 @@ def gen_extension_query():
 
         c.node("cons_call",
                "auto* api = static_cast<const my_ext_v1_vtable_t*>(vt);\n"
-               "if (GN_API_HAS(api, do_thing))\n"
+               "if (GN_API_HAS(my_ext_v1_vtable_t, api, do_thing))\n"
                "    api->do_thing(arg);",
                color=PEACH, fontcolor=PEACH,
                style="filled,rounded", fillcolor=SURFACE1, fontsize="8")

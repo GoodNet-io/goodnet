@@ -113,7 +113,7 @@
 <title>cons_call</title>
 <path fill="#45475a" stroke="#fab387" stroke-width="1.2" d="M1964.85,-186.64C1964.85,-186.64 1719.75,-186.64 1719.75,-186.64 1713.75,-186.64 1707.75,-180.64 1707.75,-174.64 1707.75,-174.64 1707.75,-153.38 1707.75,-153.38 1707.75,-147.38 1713.75,-141.38 1719.75,-141.38 1719.75,-141.38 1964.85,-141.38 1964.85,-141.38 1970.85,-141.38 1976.85,-147.38 1976.85,-153.38 1976.85,-153.38 1976.85,-174.64 1976.85,-174.64 1976.85,-180.64 1970.85,-186.64 1964.85,-186.64"/>
 <text text-anchor="middle" x="1842.3" y="-173.28" font-family="JetBrains Mono,Fira Code,monospace" font-size="8.00" fill="#fab387">auto* api = static_cast&lt;const my_ext_v1_vtable_t*&gt;(vt);</text>
-<text text-anchor="middle" x="1842.3" y="-162.03" font-family="JetBrains Mono,Fira Code,monospace" font-size="8.00" fill="#fab387">if (GN_API_HAS(api, do_thing))</text>
+<text text-anchor="middle" x="1842.3" y="-162.03" font-family="JetBrains Mono,Fira Code,monospace" font-size="8.00" fill="#fab387">if (GN_API_HAS(my_ext_v1_vtable_t, api, do_thing))</text>
 <text text-anchor="middle" x="1842.3" y="-150.78" font-family="JetBrains Mono,Fira Code,monospace" font-size="8.00" fill="#fab387"> &#160;&#160;&#160;api&#45;&gt;do_thing(arg);</text>
 </g>
 <!-- cons_branch&#45;&gt;cons_call -->
