@@ -158,7 +158,8 @@ RC_GTEST_PROP(GnetWireProperty,
     /// Pick a non-zero pattern that lives entirely inside the reserved
     /// bits 3..7 — these are forward-compat slots: a v1 reader masks
     /// them off and continues parsing rather than dropping the
-    /// connection. v1.1 flags land here without breaking v1 peers.
+    /// connection. Future protocol-revision flags land here without
+    /// breaking v1 peers.
     /// Restrict the pattern to ONLY reserved bits — a generated
     /// value with low bits set could trip the broadcast / explicit
     /// validation downstream and falsely look like a rejection of

@@ -240,9 +240,10 @@ TEST(GnetWireParseRejection, ZeroVersion) {
 }
 
 TEST(GnetWireForwardCompat, ReservedBit3Masked) {
-    /// Reserved bits are forward-compat — v1.1+ flags land in
-    /// them. v1 must mask the unknown bit off and continue
-    /// parsing rather than drop the connection.
+    /// Reserved bits are forward-compat — a future protocol
+    /// revision can land new flags in them. v1 must mask the
+    /// unknown bit off and continue parsing rather than drop the
+    /// connection.
     auto buf = make_valid_header(0, 1, kFixedHeaderSize);
     buf[kOffsetFlags] = 0x08;  /// bit 3 reserved
     ParsedHeader out{};

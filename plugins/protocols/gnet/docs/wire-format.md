@@ -76,9 +76,9 @@ bit  mask   name                  meaning
 
 Reserved bits set on inbound → silently masked off; the frame
 parses on the bits the reader understands. Forward-compatibility
-posture: a v1.1 sender that lands a new flag in `0x08`–`0x80`
+posture: a newer sender that lands a new flag in `0x08`–`0x80`
 keeps interoperating with a v1 reader without dropping the
-connection. A future version that needs strict rejection promotes
+connection. A future revision that needs strict rejection promotes
 the flag out of the reserved range and the inbound check on that
 specific bit decides drop-or-accept.
 
