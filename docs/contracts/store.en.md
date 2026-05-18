@@ -40,10 +40,10 @@ api->put(api->ctx, "peer/alice", 11,
          pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);
 ```
 
-Eight slots: `put / get / query / del / subscribe / unsubscribe /
-cleanup_expired` plus the `ctx`/`_reserved` ABI footer.
-`query` covers exact / prefix / since-timestamp modes through a
-single entry-emitting callback.
+Seven slots: `put / get / query / del / subscribe / unsubscribe /
+cleanup_expired` plus the `api_size` size-prefix and `ctx`/`_reserved`
+ABI footer. `query` covers exact / prefix / since-timestamp modes
+through a single entry-emitting callback.
 
 ### 2.2 Wire surface
 
