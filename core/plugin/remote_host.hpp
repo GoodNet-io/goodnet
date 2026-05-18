@@ -122,6 +122,19 @@ public:
         reply_timeout_ = t;
     }
 
+    /// Per-slot reply timeout override. The lookup site in the
+    /// dispatcher consults the override map first and falls back to
+    /// the unscoped `set_reply_timeout` value when no entry matches.
+    /// Useful when some slots (REGISTER, UNREGISTER, LISTEN, CONNECT,
+    /// DISCONNECT) are inherently fast while custom handler-call
+    /// slots may take seconds.
+    void set_reply_timeout_for_slot(std::uint16_t slot_id,
+                                    std::chrono::milliseconds t);
+
+    /// Drop every per-slot override; subsequent calls observe only
+    /// the unscoped `set_reply_timeout` value.
+    void clear_reply_timeout_overrides();
+
     /// Number of completed round-trip `PLUGIN_CALL` exchanges.
     /// Tests assert non-zero to confirm the wire is live.
     [[nodiscard]] std::size_t round_trips() const noexcept {
@@ -215,6 +228,9 @@ private:
     std::atomic<std::uint32_t>       next_request_id_{1};
     std::atomic<std::size_t>         round_trips_{0};
     std::chrono::milliseconds        reply_timeout_{std::chrono::seconds{5}};
+    std::mutex                       timeout_overrides_mu_;
+    std::unordered_map<std::uint16_t, std::chrono::milliseconds>
+                                      timeout_overrides_;
 
     PluginContext*                   ctx_{nullptr};
     host_api_t                       kernel_host_api_{};

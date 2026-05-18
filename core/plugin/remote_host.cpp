@@ -62,6 +62,17 @@ void RemoteHost::deliver_reply_(std::uint32_t, std::uint32_t,
 void RemoteHost::fail_pending_(gn_result_t, const char*) noexcept                    {}
 void RemoteHost::encode_error_(PayloadVec&, gn_result_t, std::string_view)           {}
 
+void RemoteHost::set_reply_timeout_for_slot(std::uint16_t slot_id,
+                                            std::chrono::milliseconds t) {
+    std::lock_guard<std::mutex> lk(timeout_overrides_mu_);
+    timeout_overrides_[slot_id] = t;
+}
+
+void RemoteHost::clear_reply_timeout_overrides() {
+    std::lock_guard<std::mutex> lk(timeout_overrides_mu_);
+    timeout_overrides_.clear();
+}
+
 }  // namespace gn::core
 
 #else  // POSIX path
@@ -516,7 +527,16 @@ gn_result_t RemoteHost::round_trip_(std::uint32_t slot_id,
         pending_.erase(rid);
         return rc;
     }
-    if (fut.wait_for(reply_timeout_) != std::future_status::ready) {
+    std::chrono::milliseconds wait_budget = reply_timeout_;
+    {
+        std::lock_guard<std::mutex> lk(timeout_overrides_mu_);
+        if (auto it = timeout_overrides_.find(
+                static_cast<std::uint16_t>(slot_id));
+            it != timeout_overrides_.end()) {
+            wait_budget = it->second;
+        }
+    }
+    if (fut.wait_for(wait_budget) != std::future_status::ready) {
         std::lock_guard<std::mutex> lk(pending_mu_);
         pending_.erase(rid);
         return GN_ERR_INVALID_STATE;
@@ -524,6 +544,17 @@ gn_result_t RemoteHost::round_trip_(std::uint32_t slot_id,
     out = fut.get();
     round_trips_.fetch_add(1, std::memory_order_relaxed);
     return GN_OK;
+}
+
+void RemoteHost::set_reply_timeout_for_slot(std::uint16_t slot_id,
+                                            std::chrono::milliseconds t) {
+    std::lock_guard<std::mutex> lk(timeout_overrides_mu_);
+    timeout_overrides_[slot_id] = t;
+}
+
+void RemoteHost::clear_reply_timeout_overrides() {
+    std::lock_guard<std::mutex> lk(timeout_overrides_mu_);
+    timeout_overrides_.clear();
 }
 
 void RemoteHost::encode_error_(PayloadVec& out,

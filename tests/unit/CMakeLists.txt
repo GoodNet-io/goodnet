@@ -95,6 +95,15 @@ if(TARGET remote_handler_stub_worker)
     )
 endif()
 
+# Per-slot reply-timeout-override regression — same fall-back shape.
+if(TARGET remote_slow_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_slow_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_SLOW_STUB_PATH=\"$<TARGET_FILE:remote_slow_stub_worker>\""
+    )
+endif()
+
 gtest_discover_tests(goodnet_unit_tests
     DISCOVERY_TIMEOUT 30
     PROPERTIES TIMEOUT 60

@@ -216,6 +216,14 @@ SECURITY providers — the kernel synthesises a
 frames at 0x300..0x308. Adding a new slot uses a fresh integer;
 existing values never shift.
 
+Per-slot timeout overrides — the kernel-side
+`RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
+the host caller dial different deadlines per slot. Fast slots
+(REGISTER, UNREGISTER, LISTEN, CONNECT, DISCONNECT) typically run
+in milliseconds; slow custom handler calls may legitimately need
+seconds. The unscoped `set_reply_timeout` value remains the
+fallback for any slot without an explicit override.
+
 ## §7 — Handle translation
 
 The wire avoids exposing process-address-space pointers. Every

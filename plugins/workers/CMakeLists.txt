@@ -14,3 +14,7 @@ endif()
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/remote_handler_stub/CMakeLists.txt")
     add_subdirectory(remote_handler_stub)
 endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/remote_slow_stub/CMakeLists.txt")
+    add_subdirectory(remote_slow_stub)
+endif()
