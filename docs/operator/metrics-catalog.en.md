@@ -9,9 +9,9 @@ renderer — see [metrics](../contracts/metrics.en.md) §1.
 
 This page enumerates the **kernel-emitted** and
 **static-plugin-emitted** names. Counters from loadable plugins
-(handler-heartbeat, link-tcp, link-ws, link-ipc, link-tls,
-security-noise, security-null, ...) live in each plugin's own
-repository — see §7.
+(handler-{heartbeat,store,dns}, link-{tcp,udp,ws,ipc,tls,ice,quic},
+security-{noise,null}, strategy-float-send-rtt) live in each
+plugin's own repository — see §7.
 
 ## Contents
 
