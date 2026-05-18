@@ -6,6 +6,31 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Link capability probe + required-plugin manifest pin
+
+`core/kernel/link_capability.{cpp,hpp}` adds a host-side bind probe
+for UDP / TCP on IPv4 and IPv6. `gn::host_link_capability()`
+probes once on first call, caches the four-bool snapshot, and
+re-probes on `refresh_host_link_capability()`. Plugin code
+consults the cached snapshot through the new
+`GN_EXT_LINK_CAPABILITY` extension (registered by the kernel
+constructor) instead of every UDP plugin retrying its bind in a
+log-spamming loop. A graceful-degradation host (corporate
+firewall, mobile carrier with UDP blocked, container without
+IPv6) gets one summary WARN at probe time naming the disabled
+carrier families.
+
+`ManifestEntry::required` (parsed from the JSON `required` key,
+default `false`) pins critical plugins for the loader. After every
+load `PluginManager::load` walks the manifest and rejects with
+`GN_ERR_INVALID_STATE` if any required entry has no registered
+instance, naming the missing paths in the diagnostic. Operators
+pin `gn.link.tcp` + `gn.link.tls` so a misconfigured deploy never
+silently runs without the minimum carrier set.
+
+Four tests under `LinkCapability*` and
+`PluginManager_ManifestRequired` cover the contract end-to-end.
+
 ### RemoteHost — per-slot reply-timeout override
 
 `RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
