@@ -208,11 +208,11 @@ TEST(WireCodecPeek, MajorType) {
     EXPECT_EQ(major, 3u);  // major 3 = text string
 }
 
-TEST(WireCodecDecodeErrors, EmptyBufferIsRange) {
+TEST(WireCodecDecodeErrors, EmptyBufferIsWireDecode) {
     std::vector<std::uint8_t> empty;
     auto r = make_reader(empty);
     std::uint64_t v = 0;
-    EXPECT_EQ(wire::decode_u64(r, v), GN_ERR_OUT_OF_RANGE);
+    EXPECT_EQ(wire::decode_u64(r, v), GN_ERR_WIRE_DECODE);
 }
 
 TEST(WireCodecDecodeErrors, MajorMismatch) {
@@ -220,7 +220,7 @@ TEST(WireCodecDecodeErrors, MajorMismatch) {
     wire::encode_text(buf, "not a number");
     auto r = make_reader(buf);
     std::uint64_t v = 0;
-    EXPECT_EQ(wire::decode_u64(r, v), GN_ERR_OUT_OF_RANGE);
+    EXPECT_EQ(wire::decode_u64(r, v), GN_ERR_WIRE_DECODE);
 }
 
 TEST(WireCodecDecodeErrors, TruncatedBytestring) {
@@ -229,5 +229,35 @@ TEST(WireCodecDecodeErrors, TruncatedBytestring) {
                                       0x01, 0x02, 0x03};
     auto r = make_reader(buf);
     std::span<const std::uint8_t> got{};
-    EXPECT_EQ(wire::decode_bytes(r, got), GN_ERR_OUT_OF_RANGE);
+    EXPECT_EQ(wire::decode_bytes(r, got), GN_ERR_WIRE_DECODE);
+}
+
+TEST(WireCodecDecodeErrors, DiagnosticPopulated) {
+    // Type mismatch: encode a text string, ask for u64 — diag string
+    // must capture the failure site.
+    std::vector<std::uint8_t> buf;
+    wire::encode_text(buf, "x");
+    std::string diag;
+    auto r = make_reader(buf);
+    r.diag = &diag;
+    std::uint64_t v = 0;
+    EXPECT_EQ(wire::decode_u64(r, v), GN_ERR_WIRE_DECODE);
+    EXPECT_FALSE(diag.empty());
+    EXPECT_NE(diag.find("expected unsigned int"), std::string::npos)
+        << "diag=\"" << diag << "\"";
+}
+
+TEST(WireCodecDecodeErrors, NumericOverflowStaysOutOfRange) {
+    // CBOR negative magnitude past int64_t::max — the decode is
+    // well-formed, the value just does not fit. Must remain
+    // `GN_ERR_OUT_OF_RANGE`, distinct from WIRE_DECODE.
+    std::vector<std::uint8_t> buf;
+    // major 1, additional 27 (8 bytes), magnitude = 0x8000_0000_0000_0000
+    buf.push_back(static_cast<std::uint8_t>((1u << 5) | 27u));
+    for (int i = 0; i < 8; ++i) {
+        buf.push_back(i == 0 ? 0x80 : 0x00);
+    }
+    auto r = make_reader(buf);
+    std::int64_t v = 0;
+    EXPECT_EQ(wire::decode_i64(r, v), GN_ERR_OUT_OF_RANGE);
 }

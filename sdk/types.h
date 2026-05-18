@@ -313,7 +313,7 @@ typedef enum gn_result_e {
                                        *   above the cap declared in
                                        *   `limits.en.md`, array index past
                                        *   end, etc. */
-    GN_ERR_FRAME_TOO_LARGE    = -16  /**< wire frame length exceeds the
+    GN_ERR_FRAME_TOO_LARGE    = -16, /**< wire frame length exceeds the
                                        *   contract's per-frame ceiling
                                        *   (`plugins/protocols/gnet/docs/wire-format.md` §2.4
                                        *   `kMaxFrameBytes`). Distinct from
@@ -325,6 +325,21 @@ typedef enum gn_result_e {
                                        *   maps this code to the
                                        *   `drop.frame_too_large` counter
                                        *   per `metrics.en.md` §3. */
+    GN_ERR_WIRE_DECODE        = -17  /**< CBOR / wire-format decode
+                                       *   failure: type tag mismatch,
+                                       *   premature EOF, malformed
+                                       *   initial byte, bad simple-value
+                                       *   tag. Distinct from
+                                       *   `GN_ERR_OUT_OF_RANGE` so the
+                                       *   wire codec can preserve the
+                                       *   "value outside contract range"
+                                       *   meaning for numeric overflows
+                                       *   (e.g. negative magnitude past
+                                       *   `int64_t::max`). Producers
+                                       *   that hand a `std::string*
+                                       *   out_diag` to the decoder also
+                                       *   get a one-line description of
+                                       *   the failure site. */
 } gn_result_t;
 
 /**
@@ -359,6 +374,7 @@ static inline const char* gn_strerror(gn_result_t r) {
         case GN_ERR_NOT_FOUND:             return "not found";
         case GN_ERR_OUT_OF_RANGE:          return "value outside the contract's permitted range";
         case GN_ERR_FRAME_TOO_LARGE:       return "wire frame exceeds kMaxFrameBytes ceiling";
+        case GN_ERR_WIRE_DECODE:           return "wire-format decode failed (CBOR type mismatch, EOF, or bad tag)";
     }
     return "unknown gn_result_t";
 }

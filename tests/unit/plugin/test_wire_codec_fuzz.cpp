@@ -44,7 +44,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeU64NeverCrashes,
     auto r = make_reader(bytes);
     std::uint64_t v = 0;
     const auto rc = wire::decode_u64(r, v);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, DecodeI64NeverCrashes,
@@ -52,7 +53,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeI64NeverCrashes,
     auto r = make_reader(bytes);
     std::int64_t v = 0;
     const auto rc = wire::decode_i64(r, v);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, DecodeBytesNeverCrashes,
@@ -60,7 +62,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeBytesNeverCrashes,
     auto r = make_reader(bytes);
     std::span<const std::uint8_t> out;
     const auto rc = wire::decode_bytes(r, out);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
     if (rc == GN_OK) {
         RC_ASSERT(out.size() <= bytes.size());
     }
@@ -71,7 +74,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeTextNeverCrashes,
     auto r = make_reader(bytes);
     std::string_view out;
     const auto rc = wire::decode_text(r, out);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
     if (rc == GN_OK) {
         RC_ASSERT(out.size() <= bytes.size());
     }
@@ -82,7 +86,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeArrayHeaderNeverCrashes,
     auto r = make_reader(bytes);
     std::size_t n = 0;
     const auto rc = wire::decode_array_header(r, n);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, DecodeMapHeaderNeverCrashes,
@@ -90,7 +95,8 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeMapHeaderNeverCrashes,
     auto r = make_reader(bytes);
     std::size_t n = 0;
     const auto rc = wire::decode_map_header(r, n);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, DecodeBoolNeverCrashes,
@@ -98,14 +104,16 @@ RC_GTEST_PROP(WireCodecFuzz, DecodeBoolNeverCrashes,
     auto r = make_reader(bytes);
     bool v = false;
     const auto rc = wire::decode_bool(r, v);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, DecodeNullNeverCrashes,
               (const std::vector<std::uint8_t>& bytes)) {
     auto r = make_reader(bytes);
     const auto rc = wire::decode_null(r);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
 }
 
 RC_GTEST_PROP(WireCodecFuzz, PeekMajorNeverCrashes,
@@ -113,7 +121,8 @@ RC_GTEST_PROP(WireCodecFuzz, PeekMajorNeverCrashes,
     auto r = make_reader(bytes);
     std::uint8_t major = 0xFF;
     const auto rc = wire::peek_major_type(r, major);
-    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE);
+    RC_ASSERT(rc == GN_OK || rc == GN_ERR_OUT_OF_RANGE ||
+              rc == GN_ERR_WIRE_DECODE);
     if (rc == GN_OK) {
         RC_ASSERT(major <= 7);
     }

@@ -31,7 +31,7 @@ constexpr std::string_view kUnknownSentinel = "unknown gn_result_t";
 /// without extending this array — and without a matching case in
 /// `gn_strerror` — surfaces as a test failure instead of silently
 /// returning the sentinel in production.
-constexpr std::array<gn_result_t, 16> kAllCodes = {
+constexpr std::array<gn_result_t, 18> kAllCodes = {
     GN_OK,
     GN_ERR_NULL_ARG,
     GN_ERR_OUT_OF_MEMORY,
@@ -48,6 +48,8 @@ constexpr std::array<gn_result_t, 16> kAllCodes = {
     GN_ERR_INTERNAL,
     GN_ERR_NOT_FOUND,
     GN_ERR_OUT_OF_RANGE,
+    GN_ERR_FRAME_TOO_LARGE,
+    GN_ERR_WIRE_DECODE,
 };
 
 }  // namespace
