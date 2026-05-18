@@ -411,13 +411,13 @@
             ' _ "$@"
           '';
 
-          # `nix run .#new-plugin -- <kind> <name>` — scaffold a fresh
+          # `nix run .#plugin -- new <kind> <name>` — scaffold a fresh
           # plugin under `plugins/<kind>/<name>/` with the standalone
           # CMakeLists branch, default.nix, standalone flake, source
           # skeleton, placeholder gtest, README, and a TODO LICENSE.
           gn-new-plugin = import ./nix/new-plugin.nix { inherit pkgs; };
 
-          # `nix run .#pull-plugin -- <repo-name>` — clone a loadable
+          # `nix run .#plugin -- pull <repo-name>` — clone a loadable
           # plugin's git into `plugins/<kind>/<name>/` so the kernel
           # build picks it up. Defaults to a local bare mirror under
           # `${XDG_DATA_HOME}/goodnet-mirrors/` (overridable via
@@ -425,7 +425,7 @@
           # `github:GoodNet-io/<repo-name>` if no mirror is set up.
           gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
 
-          # `nix run .#install-plugins` — pull every canonical
+          # `nix run .#plugin -- install` — pull every canonical
           # loadable plugin in one shot. The single command a new
           # contributor (or a CI runner) runs after `git clone` to
           # materialise the full loadable set under `plugins/<kind>
@@ -482,13 +482,14 @@
             '';
           };
 
-          # `nix run .#init-mirrors` — bare-clone each plugin's
-          # nested working git into `${MIRROR_DIR}/<repo>.git` and
-          # wire `origin` in the working clone so subsequent
+          # Mirror builder (invoked from `gn-setup`) — bare-clone each
+          # plugin's nested working git into `${MIRROR_DIR}/<repo>.git`
+          # and wire `origin` in the working clone so subsequent
           # `git push` / `git pull` flow against the mirror.
           # Single-call setup that turns each in-tree plugin into
           # something `install-plugins` can re-clone for a fresh
-          # checkout.
+          # checkout. Not exposed as a top-level app; the bootstrap
+          # path is `nix run .#setup`.
           gn-init-mirrors =
             import ./nix/init-mirrors.nix { inherit pkgs; };
 

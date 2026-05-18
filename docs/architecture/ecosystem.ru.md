@@ -100,7 +100,7 @@ pilot'а mass-applied на все восемь loadable плагинов плю�
 
 Шаги в порядке выполнения:
 
-1. `nix run .#new-plugin -- <kind> <name>` создаёт скелет
+1. `nix run .#plugin -- new <kind> <name>` создаёт скелет
    `plugins/<kind>/<name>/` со своим `.git/`, `flake.nix`,
    `CMakeLists.txt`, `manifest.json` и шаблонным тестом.
 2. Bare mirror однократно: `git clone --bare <plugin-checkout>
@@ -123,7 +123,7 @@ pilot'а mass-applied на все восемь loadable плагинов плю�
 
 ```bash
 # 1. Scaffold нового плагина (создаёт plugins/<kind>/<name>/ skeleton)
-nix run .#new-plugin -- links my-transport
+nix run .#plugin -- new links my-transport
 # или: handler / security / protocols (для статических wire layers)
 
 # 2. Зайти в plugin checkout

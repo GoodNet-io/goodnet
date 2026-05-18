@@ -23,7 +23,7 @@ repository — `link-tcp`, `link-udp`, `link-ws`, `link-ipc`,
 `link-tls`, `link-ice`, `link-quic`, `security-noise`,
 `security-null`, `handler-heartbeat`, `handler-store`,
 `handler-dns`, `strategy-float-send-rtt`. Pull them into the
-local checkout with `nix run .#install-plugins`; each repo
+local checkout with `nix run .#plugin -- install`; each repo
 ships its own `flake.nix`, `default.nix`, `LICENSE`, and
 release cadence.
 

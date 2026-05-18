@@ -68,7 +68,7 @@ Security provider — это плагин, который терминирует
 ## 3. Шаг 1. Scaffold
 
 ```sh
-nix run .#new-plugin -- security myprov
+nix run .#plugin -- new security myprov
 ```
 
 Скелет — `plugins/security/myprov/` с тем же набором

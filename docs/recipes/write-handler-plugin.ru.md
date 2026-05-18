@@ -63,7 +63,7 @@ GoodNet поставляет генератор скелета — он раск
 `default.nix`, плейсхолдер-тест и stub'ы README/LICENSE:
 
 ```sh
-nix run .#new-plugin -- handlers echo
+nix run .#plugin -- new handlers echo
 ```
 
 После запуска появляется `plugins/handlers/echo/` со следующим

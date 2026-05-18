@@ -68,7 +68,7 @@ peer'ов, не маршрутизирует сообщения. Его зада
 ## 3. Шаг 1. Scaffold
 
 ```sh
-nix run .#new-plugin -- links tcpx
+nix run .#plugin -- new links tcpx
 ```
 
 Скелет создаётся в `plugins/links/tcpx/` с тем же набором
