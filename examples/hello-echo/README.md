@@ -1,9 +1,19 @@
 # hello-echo — minimum GoodNet client + server
 
 Reference "hello world" for DX comparison. The two source files
-compile against the GoodNet SDK and use the modern sugar
-(`gn::sdk::connect_to`, `gn::sdk::listen_to`, `Subscription`) so
-the LOC count reflects the API as it's recommended today.
+target the GoodNet SDK as it's recommended today — modern sugar
+(`gn::sdk::connect_to`, `gn::sdk::listen_to`, `Subscription`,
+`Subscription::on_data_any`) so the LOC count reflects the
+current API, not the verbose pre-sugar shape.
+
+Source-only — these files are **NOT built** (`examples/CMakeLists.txt`
+adds `two_node` + `bench` only). The `host_api_default()` call in
+both is a placeholder for the operator-provided `host_api_t*` (a
+real embedding wires this through `build_host_api` against a kernel
+the embedder constructs; see `examples/two_node/main.cpp` for the
+canonical embedding shape). The placeholder keeps the LOC count
+honest — it counts the lines an SDK consumer writes, not the
+embedder glue.
 
 The matching reference for other stacks lives in
 `bench/comparison/setup/` — each `setup/*.sh` fetches the

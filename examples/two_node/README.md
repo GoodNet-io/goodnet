@@ -38,7 +38,7 @@ Debug build adds the `[kernel.cpp]` source-location prefix on the
 
 ## Source
 
-`main.cpp` (≈260 lines) — kernel construct, plugin load through
+`main.cpp` (~290 lines) — kernel construct, plugin load through
 `PluginManager.dlopen` for the noise provider, identity setup,
 handler register, dual `notify_connect`, payload round-trip. Worth
 reading as the shortest end-to-end host before writing your own.
