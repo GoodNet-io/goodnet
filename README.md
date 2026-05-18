@@ -1,7 +1,6 @@
 # GoodNet
 
 [![CI (Forgejo)](http://localhost/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost/goodnet-io/goodnet/actions)
-[![CI (GitHub smoke)](https://github.com/GoodNet-io/goodnet/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/GoodNet-io/goodnet/actions/workflows/ci.yml)
 
 <!-- TODO: confirm forgejo web URL — the badge href above is a placeholder.
      The instance exposes SSH on :222 but the web port is not pinned in
@@ -64,19 +63,20 @@ git commit --no-verify   # skip pre-commit for one commit
 git push   --no-verify   # skip pre-push for one push
 ```
 
-CI is split between two runners. The full matrix runs on the
-project's self-hosted Forgejo Actions instance
-([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml); runner
-setup in [`docs/operator/ci-forgejo-setup.en.md`](docs/operator/ci-forgejo-setup.en.md));
-GitHub Actions carries only `flake-check` + `livedoc-check` as a
-public-facing smoke ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
-Release artefacts continue to publish through GitHub on tag push
-([`.github/workflows/release.yml`](.github/workflows/release.yml)).
+CI runs end-to-end on the project's self-hosted Forgejo Actions
+instance ([`.forgejo/workflows/ci.yml`](.forgejo/workflows/ci.yml);
+runner setup in
+[`docs/operator/ci-forgejo-setup.en.md`](docs/operator/ci-forgejo-setup.en.md)).
+GitHub Actions is not used. Release artefacts are built on the same
+Forgejo runner on tag push and published to GitHub Releases via the
+`gh` CLI ([`.forgejo/workflows/release.yml`](.forgejo/workflows/release.yml));
+see "GitHub Releases publish" in the operator doc for the `GH_TOKEN`
+secret setup.
 
 | Gate                | When                                | Where             |
 |---------------------|-------------------------------------|-------------------|
-| `flake-check`       | every PR + push to main             | Forgejo + GitHub  |
-| `livedoc-check`     | every PR + push to main             | Forgejo + GitHub  |
+| `flake-check`       | every PR + push to main             | Forgejo           |
+| `livedoc-check`     | every PR + push to main             | Forgejo           |
 | `build-and-test`    | every PR + push to main             | Forgejo           |
 | `plugin-verify`     | every PR + push to main             | Forgejo           |
 | `windows-cross-build` | every PR + push to main           | Forgejo           |

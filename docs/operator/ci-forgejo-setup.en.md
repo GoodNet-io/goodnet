@@ -1,14 +1,17 @@
 # CI — Forgejo runner setup
 
-The full CI matrix runs on a self-hosted Forgejo Actions runner. The
-workflow files at `.forgejo/workflows/{ci,dev,release}.yml` target
-the runner label `nix-self-hosted` and assume Nix is preinstalled
-on `PATH`. The GitHub copy at `.github/workflows/ci.yml` carries
-only `flake-check` + `livedoc-check` as a public smoke; the heavy
-jobs (build-and-test, plugin-verify matrix, windows-cross-build,
-bench-smoke, ice-3node, fuzz-smoke, asan-smoke, tsan-smoke) live on
-Forgejo. See the README "Local test gate and CI gating" table for
-where each gate lands.
+Forgejo is the sole CI. The workflow files at
+`.forgejo/workflows/{ci,dev,release}.yml` target the runner label
+`nix-self-hosted` and assume Nix is preinstalled on `PATH`. The
+`.github/workflows/` directory is empty by design — no GitHub
+Actions runs anything for this repo. Release artefacts are built on
+the Forgejo runner on tag push and published to GitHub Releases via
+the `gh` CLI; see "GitHub Releases publish" below for the token
+secret setup. The full job list (build-and-test, plugin-verify
+matrix, windows-cross-build, bench-smoke, ice-3node, fuzz-smoke,
+asan-smoke, tsan-smoke, plus the cheap flake-check + livedoc-check
+gates) lives in `ci.yml`. See the README "Local test gate and CI
+gating" table for where each gate lands.
 
 ## Prerequisites
 
@@ -115,9 +118,68 @@ jobs:
 Trigger it from the Forgejo Actions UI; both `nix --version` and
 `nix flake check` should succeed without any extra setup step.
 
+## GitHub Releases publish
+
+`.forgejo/workflows/release.yml` builds Linux+Windows x86_64
+artefacts on tag push (tags matching `v*`) and publishes them to
+GitHub Releases at `goodnet-io/goodnet`. The publish step uses the
+`gh` CLI (staged from `nixpkgs#gh` on demand) — there is no
+`softprops/action-gh-release` wrapper anymore.
+
+### Token secret
+
+The release job reads a per-repo Forgejo secret named **`GH_TOKEN`**.
+Required scopes on the GitHub side:
+
+- Classic PAT: `repo` (full), OR
+- Fine-grained PAT: `Contents: read and write` on
+  `goodnet-io/goodnet`, expiry as your security policy dictates.
+
+Set it in the Forgejo web UI:
+
+```
+Repo Settings → Actions → Secrets → Add Secret
+  Name:  GH_TOKEN
+  Value: <github personal access token>
+```
+
+The runner exposes the secret to the `release` job through
+`env.GH_TOKEN: ${{ secrets.GH_TOKEN }}`; the `gh` CLI picks it up
+from that env var automatically (no `gh auth login` needed). The
+same job pins `GH_REPO: goodnet-io/goodnet` so `gh` does not have
+to infer the remote from the checkout.
+
+### Publish command
+
+The job uses a create-or-upload split so re-running the workflow on
+the same tag stays idempotent:
+
+```bash
+nix shell nixpkgs#gh --command bash -euo pipefail -c '
+  assets=(
+    "goodnet-${TAG}-linux-x86_64.tar.gz"
+    "goodnet-${TAG}-linux-x86_64.tar.gz.sha256"
+    "goodnet-${TAG}-windows-x86_64.zip"
+    "goodnet-${TAG}-windows-x86_64.zip.sha256"
+  )
+  if gh release view "${TAG}" >/dev/null 2>&1; then
+    gh release upload "${TAG}" "${assets[@]}" --clobber
+  else
+    gh release create "${TAG}" "${assets[@]}" \
+      --title "${TAG}" \
+      --notes-file release-notes.md
+  fi
+'
+```
+
+`release-notes.md` is written one step earlier from the
+`changelog` job's `notes` output (auto-generated diff `${PREV}..${TAG}`
+in commit-list form). `--clobber` overwrites assets of the same name
+on a re-run; the release row itself is preserved.
+
 ## Cross-references
 
 - `.forgejo/workflows/ci.yml` — full job set
-- `.forgejo/workflows/release.yml` — TODO on aarch64 runner label
-  and `softprops/action-gh-release@v2` validation
+- `.forgejo/workflows/release.yml` — tag-push build + GitHub
+  Releases publish via `gh` CLI
 - README — CI gating table with the "Where" column
