@@ -5,20 +5,21 @@
 # `plugins/<kind>/<name>/` directory so the kernel build sees it
 # again. Each loadable plugin lives in its own repo at
 # `https://github.com/GoodNet-io/<repo>` (or a local mirror); the
-# kernel's `plugins/handlers/`, `plugins/links/`, `plugins/security/`
-# directories stay empty until the operator pulls in what they
-# want for local development.
+# kernel's `plugins/handlers/`, `plugins/links/`, `plugins/security/`,
+# `plugins/strategies/` directories stay empty until the operator
+# pulls in what they want for local development.
 #
 # Repo-name convention.  Plugin repos are named `<kind-singular>
 # -<name>` (e.g. `security-noise`, `link-tcp`,
-# `handler-heartbeat`). The first hyphen
+# `handler-heartbeat`, `strategy-float_send_rtt`). The first hyphen
 # splits the singular kind from the plugin name; the kernel's
 # directory layout reverses it (`plugins/<plural-kind>/<name>/`):
 #
-#   handler-heartbeat → plugins/handlers/heartbeat/
-#   link-tcp          → plugins/links/tcp/
-#   protocol-raw      → plugins/protocols/raw/
-#   security-noise    → plugins/security/noise/
+#   handler-heartbeat       → plugins/handlers/heartbeat/
+#   link-tcp                → plugins/links/tcp/
+#   protocol-raw            → plugins/protocols/raw/
+#   security-noise          → plugins/security/noise/
+#   strategy-float_send_rtt → plugins/strategies/float_send_rtt/
 #
 # Source lookup order (first match wins):
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo-name>.git`   (env override)
@@ -48,10 +49,11 @@ pkgs.writeShellApplication {
 
     repo_name="$1"
 
-    if ! [[ "$repo_name" =~ ^(handler|link|protocol|security)-[a-z][a-z0-9_-]*$ ]]; then
+    if ! [[ "$repo_name" =~ ^(handler|link|protocol|security|strategy)-[a-z][a-z0-9_-]*$ ]]; then
       echo "pull-plugin: '$repo_name' must match" >&2
-      echo "  (handler|link|protocol|security)-[a-z][a-z0-9_-]*" >&2
-      echo "  examples: security-noise, link-tcp, handler-heartbeat" >&2
+      echo "  (handler|link|protocol|security|strategy)-[a-z][a-z0-9_-]*" >&2
+      echo "  examples: security-noise, link-tcp, handler-heartbeat," >&2
+      echo "            strategy-float_send_rtt" >&2
       exit 1
     fi
 
@@ -59,10 +61,11 @@ pkgs.writeShellApplication {
     plugin_name="''${repo_name#*-}"
 
     case "$kind_singular" in
-      handler)  kind=handlers  ;;
-      link)     kind=links     ;;
-      protocol) kind=protocols ;;
-      security) kind=security  ;;
+      handler)  kind=handlers   ;;
+      link)     kind=links      ;;
+      protocol) kind=protocols  ;;
+      security) kind=security   ;;
+      strategy) kind=strategies ;;
     esac
 
     if [ ! -f flake.nix ] || [ ! -d plugins ]; then

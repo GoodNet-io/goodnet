@@ -38,7 +38,7 @@ pkgs.writeShellApplication {
     if [ $# -ne 2 ]; then
       cat >&2 <<USAGE
     Usage: nix run .#plugin -- new <kind> <name>
-      <kind>: handlers | links | protocols | security
+      <kind>: handlers | links | protocols | security | strategies
       <name>: lowercase identifier matching [a-z][a-z0-9_-]*
     USAGE
       exit 1
@@ -48,10 +48,10 @@ pkgs.writeShellApplication {
     name="$2"
 
     case "$kind" in
-      handlers|links|protocols|security) ;;
+      handlers|links|protocols|security|strategies) ;;
       *)
         echo "new-plugin: invalid kind '$kind'." >&2
-        echo "  Valid kinds: handlers, links, protocols, security." >&2
+        echo "  Valid kinds: handlers, links, protocols, security, strategies." >&2
         exit 1
         ;;
     esac
@@ -64,10 +64,11 @@ pkgs.writeShellApplication {
     fi
 
     case "$kind" in
-      handlers)  kind_singular="handler"  ;;
-      links)     kind_singular="link"     ;;
-      protocols) kind_singular="protocol" ;;
-      security)  kind_singular="security" ;;
+      handlers)   kind_singular="handler"  ;;
+      links)      kind_singular="link"     ;;
+      protocols)  kind_singular="protocol" ;;
+      security)   kind_singular="security" ;;
+      strategies) kind_singular="strategy" ;;
     esac
 
     plugin_attr="goodnet-''${kind_singular}-''${name}"
