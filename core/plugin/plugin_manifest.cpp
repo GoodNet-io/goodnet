@@ -171,12 +171,28 @@ PluginManifest::sha256_of_fd(int fd) noexcept {
     return digest;
 }
 
+void PluginManifest::rebuild_index_() {
+    /// Full rebuild rather than incremental: callers reach this
+    /// after `entries_.clear()` (parse) or a single push_back
+    /// (add_entry). The push_back path could `index_.emplace`, but
+    /// the parse path then needs a separate clear-and-fill — the
+    /// uniform rebuild keeps the two helpers consistent. Manifests
+    /// are bounded by `max_plugins`, so the linear pass over
+    /// `entries_` is a fixed cost regardless of operator scale.
+    index_.clear();
+    index_.reserve(entries_.size());
+    for (std::size_t i = 0; i < entries_.size(); ++i) {
+        index_[entries_[i].path] = i;
+    }
+}
+
 void PluginManifest::add_entry(const std::string& path,
                                 const PluginHash&  sha256) {
     ManifestEntry me{};
     me.path   = canonicalise(path);
     me.sha256 = sha256;
     entries_.push_back(std::move(me));
+    rebuild_index_();
 }
 
 void PluginManifest::add_entry(const std::string& path,
@@ -189,12 +205,14 @@ void PluginManifest::add_entry(const std::string& path,
     me.kind   = kind;
     me.args   = std::move(args);
     entries_.push_back(std::move(me));
+    rebuild_index_();
 }
 
 gn_result_t PluginManifest::parse(std::string_view  json,
                                    PluginManifest&   out,
                                    std::string&      diagnostic) {
     out.entries_.clear();
+    out.index_.clear();
 
     nlohmann::json parsed;
     try {
@@ -321,33 +339,22 @@ gn_result_t PluginManifest::parse(std::string_view  json,
 
         out.entries_.push_back(std::move(me));
     }
+    out.rebuild_index_();
     return GN_OK;
 }
 
-namespace {
-
-/// Locate the manifest entry for @p path; canonicalises the lookup
-/// so relative and absolute spellings collapse to the same key.
-[[nodiscard]] std::vector<ManifestEntry>::const_iterator
-find_entry(const std::vector<ManifestEntry>& entries,
-           const std::string& path) {
-    /// Linear scan is fine for v1: even a saturated deployment
-    /// loads a few dozen plugins. A future revision can switch to
-    /// a hash-keyed map if the count climbs.
-    const std::string lookup = canonicalise(path);
-    return std::find_if(entries.begin(), entries.end(),
-        [&](const ManifestEntry& e) { return e.path == lookup; });
-}
-
-}  // namespace
-
 const ManifestEntry* PluginManifest::find(const std::string& path) const {
-    const auto it = find_entry(entries_, path);
-    return it == entries_.end() ? nullptr : &*it;
+    /// O(1) lookup via the path → index map. Canonicalisation matches
+    /// the storage rules of `add_entry` / `parse` so relative and
+    /// absolute spellings collapse to the same key.
+    const std::string lookup = canonicalise(path);
+    const auto it = index_.find(lookup);
+    if (it == index_.end()) return nullptr;
+    return &entries_[it->second];
 }
 
 bool PluginManifest::contains(const std::string& path) const {
-    return find_entry(entries_, path) != entries_.end();
+    return index_.contains(canonicalise(path));
 }
 
 bool PluginManifest::verify(const std::string& path,
@@ -355,8 +362,8 @@ bool PluginManifest::verify(const std::string& path,
     /// Lookup before hashing so an unlisted path returns the
     /// "no manifest entry" diagnostic without paying the file
     /// I/O cost. Tests pin the diagnostic strings.
-    const auto it = find_entry(entries_, path);
-    if (it == entries_.end()) {
+    const ManifestEntry* entry = find(path);
+    if (entry == nullptr) {
         diagnostic = "no manifest entry for path: ";
         diagnostic += path;
         return false;
@@ -369,11 +376,11 @@ bool PluginManifest::verify(const std::string& path,
         return false;
     }
 
-    if (*observed != it->sha256) {
+    if (*observed != entry->sha256) {
         diagnostic = "manifest sha256 mismatch on: ";
         diagnostic += path;
         diagnostic += " (expected ";
-        diagnostic += encode_hex(it->sha256);
+        diagnostic += encode_hex(entry->sha256);
         diagnostic += ", observed ";
         diagnostic += encode_hex(*observed);
         diagnostic += ')';
@@ -386,18 +393,18 @@ bool PluginManifest::verify(const std::string& path,
 bool PluginManifest::verify_digest(const std::string& path,
                                     const PluginHash&  observed,
                                     std::string&       diagnostic) const {
-    const auto it = find_entry(entries_, path);
-    if (it == entries_.end()) {
+    const ManifestEntry* entry = find(path);
+    if (entry == nullptr) {
         diagnostic = "no manifest entry for path: ";
         diagnostic += path;
         return false;
     }
 
-    if (observed != it->sha256) {
+    if (observed != entry->sha256) {
         diagnostic = "manifest sha256 mismatch on: ";
         diagnostic += path;
         diagnostic += " (expected ";
-        diagnostic += encode_hex(it->sha256);
+        diagnostic += encode_hex(entry->sha256);
         diagnostic += ", observed ";
         diagnostic += encode_hex(observed);
         diagnostic += ')';

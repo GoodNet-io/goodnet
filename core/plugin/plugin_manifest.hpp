@@ -38,6 +38,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <sdk/types.h>
@@ -199,7 +200,27 @@ public:
     [[nodiscard]] static std::string encode_hex(const PluginHash& h);
 
 private:
+    /// Rebuild `index_` from `entries_`. Called from every code path
+    /// that mutates the vector (`add_entry`, `parse` after the
+    /// pre-clear) so the two stay in lockstep.
+    void rebuild_index_();
+
+    /// Canonical storage — preserves insertion order so a manifest
+    /// dump matches the JSON the operator handed in. The vector is
+    /// authoritative; the index below is a derived structure that
+    /// must be rebuilt after any mutation.
     std::vector<ManifestEntry> entries_;
+
+    /// O(1) lookup by canonicalised path → index into `entries_`.
+    /// Built alongside `entries_` because `find` is hot in
+    /// `PluginManager::open_one` (one lookup per plugin load) and
+    /// the previous linear scan would re-key its O(N²) under a
+    /// future deployment with hundreds of pinned plugins. The map
+    /// stores indices rather than pointers so a `entries_` realloc
+    /// during `add_entry` doesn't invalidate the lookup; rebuild
+    /// after every mutation is cheap (manifests are bounded by the
+    /// configured `max_plugins`).
+    std::unordered_map<std::string, std::size_t> index_;
 };
 
 }  // namespace gn::core
