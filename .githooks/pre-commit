@@ -133,7 +133,7 @@ fi
 [ -z "$staged" ] && exit 0
 
 if [ ! -f build/compile_commands.json ]; then
-    echo "pre-commit: build/compile_commands.json missing — run \`nix run .#dev\` first" >&2
+    echo "pre-commit: build/compile_commands.json missing — run \`nix run .#build\` first" >&2
     echo "pre-commit: bypass with \`git commit --no-verify\` if intentional" >&2
     exit 1
 fi
