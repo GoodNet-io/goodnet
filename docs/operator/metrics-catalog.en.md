@@ -136,7 +136,7 @@ Per-name plugin load / unload counters
 (`plugin.load.success`, `plugin.load.fail`,
 `plugin.unload.drain_timeout`) are not currently emitted. The
 kernel logs every load / unload but the metric surface for those
-events is reserved for a later v1.x increment — see
+events is not part of this contract — see
 [plugin-lifetime](../contracts/plugin-lifetime.en.md) §3.
 
 ---
