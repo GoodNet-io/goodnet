@@ -3,8 +3,8 @@
   // Drop into /etc/goodnet/node.json and adjust limits to taste.
   // Every `limits.*` field has a built-in default per the active
   // profile; only override the ones you intentionally want to bend.
-  // See `docs/contracts/config.md` for the full schema and
-  // `docs/install.md` for deployment guidance.
+  // See `docs/contracts/config.en.md` for the full schema and
+  // `docs/install.en.md` for deployment guidance.
 
   // Profile selects the per-field default baseline. v1 ships:
   //   "embedded" — small device, ≤ 64 conns, no relay, low memory.
