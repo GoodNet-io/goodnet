@@ -94,6 +94,31 @@ const LinkCapability& host_link_capability() {
             st.cached.can_bind_udp_v6 ? "yes" : "no",
             st.cached.can_bind_tcp_v4 ? "yes" : "no",
             st.cached.can_bind_tcp_v6 ? "yes" : "no");
+
+        /// Summary WARN naming the disabled carrier families. A
+        /// graceful-degradation host (corporate firewall, mobile
+        /// carrier with UDP blocked, container without IPv6) gets
+        /// one line per probe round instead of every plugin
+        /// hammering the log on each bind retry. Subsequent
+        /// per-plugin UDP errors are expected to log at DEBUG
+        /// once the consuming plugin checks the capability first.
+        const bool udp_gone =
+            !st.cached.can_bind_udp_v4 && !st.cached.can_bind_udp_v6;
+        const bool tcp_gone =
+            !st.cached.can_bind_tcp_v4 && !st.cached.can_bind_tcp_v6;
+        if (udp_gone && tcp_gone) {
+            ::gn::log::warn(
+                "host link capability: UDP and TCP unavailable, "
+                "disabling every IP carrier");
+        } else if (udp_gone) {
+            ::gn::log::warn(
+                "host link capability: UDP unavailable, disabling "
+                "udp/dtls/quic/ice-udp-candidates carriers");
+        } else if (tcp_gone) {
+            ::gn::log::warn(
+                "host link capability: TCP unavailable, disabling "
+                "tcp/tls/ws/wss carriers");
+        }
     }
     return st.cached;
 }
