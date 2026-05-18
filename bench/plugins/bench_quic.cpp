@@ -10,6 +10,7 @@
 #include <plugins/links/udp/udp.hpp>
 #include "../../plugins/links/tls/tests/support/test_self_signed_cert.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <span>
@@ -74,6 +75,17 @@ BENCHMARK_DEFINE_F(QuicFixture, HandshakeTime)(::benchmark::State& state) {
         }
         state.ResumeTiming();
 
+        std::atomic<int> accept_count{0};
+        gn_subscription_id_t accept_tok = 0;
+        if (fresh_server->composer_subscribe_accept(
+                +[](void* user, gn_conn_id_t, const char*) {
+                    static_cast<std::atomic<int>*>(user)
+                        ->fetch_add(1, std::memory_order_release);
+                }, &accept_count, &accept_tok) != GN_OK) {
+            state.SkipWithError("subscribe_accept failed");
+            break;
+        }
+
         const auto t0 = std::chrono::steady_clock::now();
         if (fresh_server->composer_listen("quic://127.0.0.1:0") != GN_OK) {
             state.SkipWithError("server listen failed");
@@ -91,11 +103,10 @@ BENCHMARK_DEFINE_F(QuicFixture, HandshakeTime)(::benchmark::State& state) {
             state.SkipWithError("connect failed");
             break;
         }
-        /// Composer accept-bus fires on server side when the QUIC
-        /// handshake completes; signal arrives via the kernel stub.
-        if (!::gn::sdk::test::wait_for(
-                [&] { return sh->kernel.stub.connects.load() >= 1; },
-                10s)) {
+        if (!::gn::sdk::test::wait_for_fast(
+                [&] {
+                    return accept_count.load(std::memory_order_acquire) >= 1;
+                }, 10s)) {
             state.SkipWithError("handshake timeout");
             break;
         }
@@ -104,6 +115,7 @@ BENCHMARK_DEFINE_F(QuicFixture, HandshakeTime)(::benchmark::State& state) {
             std::chrono::duration<double>(t1 - t0).count());
 
         state.PauseTiming();
+        (void)fresh_server->composer_unsubscribe_accept(accept_tok);
         fresh_client->shutdown();
         fresh_server->shutdown();
         ch->bridge.plugin->shutdown();

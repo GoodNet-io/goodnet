@@ -9,6 +9,7 @@
 #include <plugins/links/udp/udp.hpp>
 #include "../../plugins/links/tls/tests/support/test_self_signed_cert.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <span>
@@ -51,6 +52,23 @@ struct DtlsFixture : public ::benchmark::Fixture {
 };
 
 BENCHMARK_DEFINE_F(DtlsFixture, HandshakeTime)(::benchmark::State& state) {
+    /// Subscribe to the composer accept-bus ONCE — `composer_listen`
+    /// fires the bus when the DTLS handshake completes for an
+    /// inbound peer. Counting connects through the bench kernel's
+    /// `notify_connect` slot misses this signal: composer-mode TLS
+    /// / DTLS notifies through the bus, not through the kernel
+    /// stub's link host_api notify_connect slot.
+    std::atomic<int> accept_count{0};
+    gn_subscription_id_t accept_tok = 0;
+    if (server->composer_subscribe_accept(
+            +[](void* user, gn_conn_id_t, const char*) {
+                static_cast<std::atomic<int>*>(user)
+                    ->fetch_add(1, std::memory_order_release);
+            }, &accept_count, &accept_tok) != GN_OK) {
+        state.SkipWithError("subscribe_accept failed");
+        return;
+    }
+
     for (auto _ : state) {
         if (server->composer_listen("dtls://127.0.0.1:0") != GN_OK) {
             state.SkipWithError("server listen failed");
@@ -61,6 +79,7 @@ BENCHMARK_DEFINE_F(DtlsFixture, HandshakeTime)(::benchmark::State& state) {
             state.SkipWithError("listen_port failed");
             break;
         }
+        const int before = accept_count.load(std::memory_order_acquire);
         const auto t0 = std::chrono::steady_clock::now();
         gn_conn_id_t cconn = GN_INVALID_ID;
         if (client->composer_connect(
@@ -68,9 +87,10 @@ BENCHMARK_DEFINE_F(DtlsFixture, HandshakeTime)(::benchmark::State& state) {
             state.SkipWithError("connect failed");
             break;
         }
-        if (!::gn::sdk::test::wait_for(
-                [&] { return server_h->kernel.stub.connects.load() >= 1; },
-                5s)) {
+        if (!::gn::sdk::test::wait_for_fast(
+                [&] {
+                    return accept_count.load(std::memory_order_acquire) > before;
+                }, 5s)) {
             state.SkipWithError("handshake timeout");
             break;
         }
@@ -78,6 +98,7 @@ BENCHMARK_DEFINE_F(DtlsFixture, HandshakeTime)(::benchmark::State& state) {
         state.SetIterationTime(
             std::chrono::duration<double>(t1 - t0).count());
     }
+    (void)server->composer_unsubscribe_accept(accept_tok);
 }
 
 BENCHMARK_REGISTER_F(DtlsFixture, HandshakeTime)
