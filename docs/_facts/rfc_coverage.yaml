@@ -36,9 +36,10 @@ rfcs:
 - rfc: 8899
   title: Packetization Layer Path MTU Discovery for Datagram Transports
   area: ICE / NAT traversal
-  status: planned
+  status: full
   implementation: plugins/links/ice
-  notes: Config knob ice.path_mtu in place; probe-based discovery tracked in ROADMAP.
+  notes: DPLPMTUD probe state machine in path_mtu.{hpp,cpp}; STUN binding-request
+    padding the probe to the candidate MTU; convergence within kProbeGranularity bytes.
 - rfc: 8085
   title: UDP Usage Guidelines
   area: ICE / NAT traversal

@@ -3,8 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every operator
 **Last verified:** 2026-04-29
-**Stability:** v1.x; signed manifests are a planned additive
-              extension
+**Stability:** v1.x; the format is append-only.
 
 ---
 

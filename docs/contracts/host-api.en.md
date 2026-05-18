@@ -665,13 +665,13 @@ canonical shape:
 A second shape — bridge installs a `subscribe_data` callback on
 another plugin's link conn through `sdk/extensions/link.h` composer
 slots, sees foreign-protocol bytes on a shared TCP/UDP/IPC socket,
-and feeds them through `inject(LAYER_FRAME)` — is reserved for v1.x.
-The baseline link plugins (TCP, UDP, WS, IPC) inherit
+and feeds them through `inject(LAYER_FRAME)` — is not part of this
+contract. The baseline link plugins (TCP, UDP, WS, IPC) inherit
 `GN_ERR_NOT_IMPLEMENTED` defaults for the composer slots through the
-`GN_LINK_PLUGIN` macro (`sdk/cpp/link_plugin.hpp:216-240`); TLS is
-the sole link in v1 with explicit overrides, but those expose its
-own L2 shape, not a foreign-protocol composer surface. The L1-shared
-subscribe pattern lands with the relay / DHT layer.
+`GN_LINK_PLUGIN` macro (`sdk/cpp/link_plugin.hpp:216-240`); TLS, WS
+and ICE are the links that override the composer surface, but those
+expose their own L2 shapes, not a foreign-protocol composer surface.
+The L1-shared subscribe pattern is the relay / DHT layer's surface.
 
 Bridges that fan in many foreign clients through one IPC source
 share a single rate-limit bucket per the §8 paragraph above; the

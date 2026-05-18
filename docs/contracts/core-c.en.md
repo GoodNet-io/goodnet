@@ -373,9 +373,9 @@ See §4 for the plugin-load discipline this entry honours end-to-end.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Per-name unload through the plugin manager. |
+| Effect | Per-name unload through the plugin manager. Routes to `PluginManager::unload(name)`, which walks the same `shutdown_requested → unregister → cancel-timers → drain-anchor → shutdown → close` chain `gn_core_destroy` runs but limited to the one matching instance. Other loaded plugins keep running. Quiescence semantics match the full-teardown path: the kernel waits up to `PluginManager::quiescence_timeout()` (optionally per-entry overridden by the manifest's `quiescence_timeout_s`) for outstanding dispatch snapshots to drop their `lifetime_anchor` copies before closing the `.so`. |
 | Parameters | `name` — `@borrowed` plugin name as registered in its descriptor. |
-| Returns | `GN_ERR_NULL_ARG` on either NULL; otherwise `GN_ERR_NOT_IMPLEMENTED`. The plugin manager today exposes only full-teardown `shutdown()`; per-name unload is reserved for v1.x. Hosts that need full teardown go through `gn_core_destroy` + a fresh `gn_core_create`. |
+| Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on either NULL; `GN_ERR_NOT_FOUND` when no loaded plugin matches `name` (idempotent past that point). |
 | Concurrency | safe from any thread. |
 
 ### 3.8 Provider registration

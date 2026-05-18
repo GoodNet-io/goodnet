@@ -79,7 +79,7 @@ _1 counter name(s) emitted across the tree._
 
 | Counter | Family | Emitted from |
 |---|---|---|
-| `drop.queue_hard_cap` | drop | [`plugins/links/ipc/ipc.cpp`](../../plugins/links/ipc/ipc.cpp), [`plugins/links/tcp/tcp.cpp`](../../plugins/links/tcp/tcp.cpp), [`plugins/links/tls/tls.cpp`](../../plugins/links/tls/tls.cpp) |
+| `drop.queue_hard_cap` | drop | [`plugins/links/ipc/ipc.cpp`](../../plugins/links/ipc/ipc.cpp), [`plugins/links/tcp/tcp.cpp`](../../plugins/links/tcp/tcp.cpp), [`plugins/links/tls/tls.cpp`](../../plugins/links/tls/tls.cpp), [`plugins/links/ws/.claude/worktrees/agent-a2c26df9/ws.cpp`](../../plugins/links/ws/.claude/worktrees/agent-a2c26df9/ws.cpp) + 2 more |
 <!-- /livedoc:metrics_catalog_table -->
 
 ## 3. Built-in counters

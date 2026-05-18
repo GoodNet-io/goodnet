@@ -16,17 +16,17 @@ Security provider vtable — **11 slots** + `4` reserved ([`sdk/security.h`](../
 
 | Slot | Signature |
 |---|---|
-| [provider_id](../../sdk/security.h#L103) | `const char * (*)(void *)` |
-| [handshake_open](../../sdk/security.h#L123) | `gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t, const uint8_t[64], const uint8_t[32], const uint8_t *, void **)` |
-| [handshake_step](../../sdk/security.h#L144) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [handshake_complete](../../sdk/security.h#L152) | `int (*)(void *, void *)` |
-| [export_transport_keys](../../sdk/security.h#L166) | `gn_result_t (*)(void *, void *, gn_handshake_keys_t *)` |
-| [encrypt](../../sdk/security.h#L178) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [decrypt](../../sdk/security.h#L191) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [rekey](../../sdk/security.h#L201) | `gn_result_t (*)(void *, void *)` |
-| [handshake_close](../../sdk/security.h#L206) | `void (*)(void *, void *)` |
-| [destroy](../../sdk/security.h#L209) | `void (*)(void *)` |
-| [allowed_trust_mask](../../sdk/security.h#L225) | `uint32_t (*)(void *)` |
+| [provider_id](../../sdk/security.h#L113) | `const char * (*)(void *)` |
+| [handshake_open](../../sdk/security.h#L133) | `gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t, const uint8_t[64], const uint8_t[32], const uint8_t *, void **)` |
+| [handshake_step](../../sdk/security.h#L154) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [handshake_complete](../../sdk/security.h#L162) | `int (*)(void *, void *)` |
+| [export_transport_keys](../../sdk/security.h#L176) | `gn_result_t (*)(void *, void *, gn_handshake_keys_t *)` |
+| [encrypt](../../sdk/security.h#L188) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [decrypt](../../sdk/security.h#L201) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [rekey](../../sdk/security.h#L211) | `gn_result_t (*)(void *, void *)` |
+| [handshake_close](../../sdk/security.h#L216) | `void (*)(void *, void *)` |
+| [destroy](../../sdk/security.h#L219) | `void (*)(void *)` |
+| [allowed_trust_mask](../../sdk/security.h#L235) | `uint32_t (*)(void *)` |
 <!-- /livedoc:security_vtable_slots -->
 
 ## 1. Purpose
@@ -151,7 +151,7 @@ names the canonical pattern.
 A bridge that mistakenly declares `Untrusted` on its IPC link
 under the canonical v1 stack (null security loaded) is rejected
 synchronously: the security-mask gate at
-`SessionRegistry::create` (`core/security/session.cpp:498-512`)
+`SessionRegistry::create` (`core/security/session.cpp:691-704`)
 sees the trust-class miss against `null_allowed_trust_mask =
 Loopback | IntraNode`, returns `GN_ERR_INVALID_ENVELOPE`, and
 the `notify_connect` thunk erases the conn record before the
@@ -263,7 +263,7 @@ enumeration at registration:
 - The active **security provider** declares its admitted classes via
   `gn_security_provider_vtable_t::allowed_trust_mask`. The kernel
   checks the bit at `SessionRegistry::create`
-  (`core/security/session.cpp:498-511`); a miss returns
+  (`core/security/session.cpp:691-704`); a miss returns
   `GN_ERR_INVALID_ENVELOPE` and increments the same metric.
 
 The admitted set for any stack is the intersection of the two masks

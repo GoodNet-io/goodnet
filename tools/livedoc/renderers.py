@@ -269,9 +269,15 @@ def rfc_coverage_table(facts: dict) -> str:
                 impl_md = f"[`{impl}`](../../{impl})"
             else:
                 impl_md = impl
+            rfc_id = str(r["rfc"])
+            if rfc_id.startswith("draft-"):
+                url = f"https://datatracker.ietf.org/doc/{rfc_id}/"
+                label = rfc_id
+            else:
+                url = f"https://datatracker.ietf.org/doc/html/rfc{rfc_id}"
+                label = f"RFC {rfc_id}"
             lines.append(
-                f"| [RFC {r['rfc']}]"
-                f"(https://datatracker.ietf.org/doc/html/rfc{r['rfc']}) "
+                f"| [{label}]({url}) "
                 f"| {r.get('title','—')} | {badge} | {impl_md} |"
             )
         lines.append("")

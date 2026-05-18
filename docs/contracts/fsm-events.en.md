@@ -95,9 +95,8 @@ used. Discarding `Propagation` is a contract violation.
 
 `host_api->send` itself returns `gn_result_t`; on a hard-cap drop
 the result is `GN_ERR_LIMIT_REACHED` per `backpressure.en.md` §1. The
-`gn_backpressure_t` enum is the wire shape reserved for the
-per-connection pressure channel once it ships in a v1.x minor —
-plugins that subscribe to that future channel **must** branch on
+`gn_backpressure_t` enum is the wire shape for the per-connection
+pressure channel — plugins that subscribe **must** branch on
 the value, since `BACKPRESSURE_HARD_LIMIT` arrives as a discrete
 event and ignoring it would tight-loop on `send`.
 

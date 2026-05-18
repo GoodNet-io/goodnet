@@ -10,7 +10,7 @@
 **Slot:** `gn.link.ice`
 **URI schemes:** `ice`
 **Composer surface:** yes
-**Tests:** 79 cases in [`plugins/links/ice/tests`](../../plugins/links/ice/tests)
+**Tests:** 117 cases in [`plugins/links/ice/tests`](../../plugins/links/ice/tests)
 
 _ICE NAT-traversal link for GoodNet. Implements the controlled /_
 

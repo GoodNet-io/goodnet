@@ -21,10 +21,10 @@
 | [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) | Traversal Using Relays around NAT (TURN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) | Trickle ICE for SDP | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8305](https://datatracker.ietf.org/doc/html/rfc8305) | Happy Eyeballs Version 2 | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
-| [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ○ planned | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8085](https://datatracker.ietf.org/doc/html/rfc8085) | UDP Usage Guidelines | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) | Multicast DNS | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
-| [RFC draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/html/rfcdraft-ietf-mmusic-mdns-ice-candidates) | Using Multicast DNS to Protect Privacy When Exposing ICE Candidates | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
+| [draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/draft-ietf-mmusic-mdns-ice-candidates/) | Using Multicast DNS to Protect Privacy When Exposing ICE Candidates | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 
 ### Noise / cryptography
 

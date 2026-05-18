@@ -19,70 +19,70 @@ slots:
 - name: provider_id
   signature: const char * (*)(void *)
   file: sdk/security.h
-  line: 103
+  line: 113
   family: misc
   doc: identifier.
 - name: handshake_open
   signature: gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t,
     const uint8_t[64], const uint8_t[32], const uint8_t *, void **)
   file: sdk/security.h
-  line: 123
+  line: 133
   family: misc
   doc: a new handshake state for a connection.
 - name: handshake_step
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 144
+  line: 154
   family: misc
   doc: one step of the handshake.
 - name: handshake_complete
   signature: int (*)(void *, void *)
   file: sdk/security.h
-  line: 152
+  line: 162
   family: misc
   doc: whether the handshake has reached the transport phase.
 - name: export_transport_keys
   signature: gn_result_t (*)(void *, void *, gn_handshake_keys_t *)
   file: sdk/security.h
-  line: 166
+  line: 176
   family: misc
   doc: transport keys after `handshake_complete` returns true.
 - name: encrypt
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 178
+  line: 188
   family: misc
   doc: a plaintext payload.
 - name: decrypt
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 191
+  line: 201
   family: misc
   doc: a ciphertext payload.
 - name: rekey
   signature: gn_result_t (*)(void *, void *)
   file: sdk/security.h
-  line: 201
+  line: 211
   family: misc
   doc: both ciphers atomically.
 - name: handshake_close
   signature: void (*)(void *, void *)
   file: sdk/security.h
-  line: 206
+  line: 216
   family: misc
   doc: down a handshake state.
 - name: destroy
   signature: void (*)(void *)
   file: sdk/security.h
-  line: 209
+  line: 219
   family: misc
   doc: Plugin destruction.
 - name: allowed_trust_mask
   signature: uint32_t (*)(void *)
   file: sdk/security.h
-  line: 225
+  line: 235
   family: misc
   doc: of `gn_trust_class_t` values this provider may serve.

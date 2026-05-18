@@ -252,7 +252,7 @@ fair-comparison aggregate above by design. Each section is
 | B.3 | `HandoffFixture/NoiseSteady` + `TriggerStep` + `NullSteady` | Post-handshake Noise→Null security provider migration: identity-binding survives Noise handshake, per-frame AEAD drops off on a kernel-driven trigger | T0 (Noise inline) p50 = 18–22 μs → T2 (post-handoff) p50 = 10–13 μs; zero decryption errors across the trigger | PoC works through compile-gated `_test_clear_inline_crypto` (`GOODNET_BENCH_SHOWCASE`); production-shape API is planned |
 | B.4 | `FanoutFixture/Producers` | N producer threads spam `api.send_to(peer_pk)` in parallel; kernel strand-per-conn + crypto worker pool absorb the load | Throughput grows monotonically with N until single-writer drain CAS plateaus (single-carrier knee ≈ N=2) | PASS — 9408 sends on N=8 in 50 μs window |
 | B.5 | `FailoverFixture/IpcDrop` | Picker drives between three carriers; `CONN_DOWN` injected mid-bench evicts the winner; next pick re-routes to the next-best RTT | Flip lands within ≤ 5 iters of drop; zero packet loss | PASS through manual `inject_conn_down`; kernel auto-emit from `notify_disconnect` is wired (notifications.cpp:558), the explicit inject lets the bench drive specific timing |
-| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; an `RTM_NEWLINK` netlink observer that would auto-emit the event is not wired |
+| B.6 | `MobilityFixture/LanShortcut` | Synthetic LAN host candidate appears mid-bench (RTT 2 μs vs TURN-relayed 60 μs); picker flips; peer identity preserved; `turn_bytes` delta after flip = 0 | Flip within ≤ 5 iters of LAN appearance; identity unchanged | PASS through manual `inject_conn_up`; the production auto-emit goes through `plugins/links/ice/interface_watcher` re-gather on `RTM_NEWLINK`/`RTM_DELLINK`, the bench still injects explicitly for deterministic timing |
 
 Time-series cases (B.2 flip, B.3 trigger, B.5 failover, B.6
 mobility) emit CSV side-channels to
@@ -461,9 +461,12 @@ not asserted, not assumed.
   timing without staging a full kernel connect/disconnect dance;
   the manual injection is bench-side convenience, not a gap.
 - **Network mobility** — AF_NETLINK socket on `RTM_NEWLINK` /
-  `RTM_DELLINK` is not wired; B.6 mobility bench simulates the
-  event through a synthetic second carrier. With the netlink
-  observer landed, the bench just listens.
+  `RTM_DELLINK` is wired via
+  `plugins/links/ice/interface_watcher.{hpp,cpp}` and drives an
+  ICE host-candidate re-gather on debounced interface events.
+  The B.6 bench still injects its own synthetic second carrier so
+  the trigger timing is deterministic against the bench window;
+  the netlink observer covers the production reachability path.
 - **xprocess (inter-process)** — the operator-facing topology;
   current numbers are all in-process.
 - **Inter-host LAN** — no two-machine harness in tree yet.

@@ -279,8 +279,8 @@ threaded workers would add a response demultiplexer keyed by
 - **Kernel side**: `core/plugin/remote_host.{hpp,cpp}` — spawns the
   worker, drives the framing reader thread, exposes `call_init /
   call_register / call_unregister / call_shutdown` to the
-  `PluginManager` (full integration is not yet wired; the proof currently
-  drives `RemoteHost` directly).
+  `PluginManager` through the `RemoteRuntime` polymorphic runtime
+  (`core/plugin/runtimes/remote.{hpp,cpp}`).
 - **Worker stub (C++)**: `sdk/cpp/remote_plugin.{hpp,cpp}` plus
   `goodnet_remote_plugin_stub` static library. Workers fill in a
   `WorkerConfig` and hand control to `gn::sdk::remote::run_worker`.
