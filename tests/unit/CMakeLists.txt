@@ -50,6 +50,20 @@ target_link_libraries(goodnet_unit_tests
         ${CMAKE_DL_LIBS}
 )
 
+# raw_inject integration test pulls the link's OBJECT lib plus the
+# raw-v1 protocol layer. The OBJECT lib is only present when the
+# bundled-plugins switch is on; the test source self-skips by
+# returning early when the include isn't satisfied so kernel-only
+# checkouts still build.
+if(TARGET goodnet_raw_inject_objects)
+    target_link_libraries(goodnet_unit_tests
+        PRIVATE goodnet_raw_inject_objects)
+endif()
+if(TARGET GoodNet::protocol_raw)
+    target_link_libraries(goodnet_unit_tests
+        PRIVATE GoodNet::protocol_raw)
+endif()
+
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)
 goodnet_apply_pch(goodnet_unit_tests)
 
@@ -74,6 +88,33 @@ if(TARGET remote_echo_worker)
     target_compile_definitions(goodnet_unit_tests
         PRIVATE
             "GOODNET_REMOTE_ECHO_PATH=\"$<TARGET_FILE:remote_echo_worker>\""
+    )
+endif()
+
+# SECURITY proxy regression — same fall-back shape as remote_echo.
+if(TARGET remote_noise_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_noise_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_NOISE_STUB_PATH=\"$<TARGET_FILE:remote_noise_stub_worker>\""
+    )
+endif()
+
+# HANDLER proxy regression — same fall-back shape as remote_echo.
+if(TARGET remote_handler_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_handler_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_HANDLER_STUB_PATH=\"$<TARGET_FILE:remote_handler_stub_worker>\""
+    )
+endif()
+
+# Per-slot reply-timeout-override regression — same fall-back shape.
+if(TARGET remote_slow_stub_worker)
+    add_dependencies(goodnet_unit_tests remote_slow_stub_worker)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE
+            "GOODNET_REMOTE_SLOW_STUB_PATH=\"$<TARGET_FILE:remote_slow_stub_worker>\""
     )
 endif()
 

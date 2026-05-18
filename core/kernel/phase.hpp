@@ -2,7 +2,7 @@
 /// @brief  Kernel lifecycle phases.
 ///
 /// Mirrors the diagram in `docs/contracts/fsm-events.en.md` §2 plus the
-/// plugin lifecycle phases in `plugin-lifetime.md` §2. Phases are
+/// plugin lifecycle phases in `plugin-lifetime.en.md` §2. Phases are
 /// linear; backward transitions are forbidden.
 
 #pragma once

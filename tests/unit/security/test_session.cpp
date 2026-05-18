@@ -254,7 +254,7 @@ TEST(SecuritySession, EncryptRejectedDuringHandshake) {
     EXPECT_NE(session.decrypt_transport({}, out), GN_OK);
 }
 
-// ── Pending handshake queue (backpressure.md §8) ─────────────────────────
+// ── Pending handshake queue (backpressure.en.md §8) ─────────────────────────
 
 namespace {
 
@@ -497,7 +497,7 @@ TEST(SessionRegistry, CreateAcceptsTrustClassInProviderMask) {
     EXPECT_EQ(prov.handshake_open_calls, 1);
 }
 
-// ── Stream framing (backpressure.md §9 + handshake.md §7) ────────────────
+// ── Stream framing (backpressure.en.md §9 + handshake.md §7) ────────────────
 
 namespace {
 
@@ -649,7 +649,7 @@ TEST(SecuritySessionStream, RecvBufferCapHonoursOpenParameter) {
     /// default ceiling is ~128 KiB, so a 4097-byte chunk under
     /// this cap returns LIMIT_REACHED while the same chunk under
     /// the default would not. The cap follows operator-tuned
-    /// `gn_limits_t::max_frame_bytes` per `backpressure.md` §9.
+    /// `gn_limits_t::max_frame_bytes` per `backpressure.en.md` §9.
     FakeProvider prov;
     auto vt = make_vtable();
     SecuritySession session;
@@ -684,4 +684,217 @@ TEST(SecuritySessionStream, EncryptThenDecryptStreamRoundTrip) {
     EXPECT_EQ(session.decrypt_transport_stream(wire, out), GN_OK);
     ASSERT_EQ(out.size(), 1u);
     EXPECT_EQ(out[0], plain);
+}
+
+// ── Inline fast-path batch decrypt ───────────────────────────────────────
+
+namespace {
+
+/// FakeProvider variant that exports a matching pair of cipher
+/// keys so the session's inline-crypto seed succeeds and the fast
+/// path engages. Two sessions wired with mirrored keys form an
+/// alice/bob pair that round-trips wire frames.
+struct FastFakeProvider {
+    std::uint8_t send_key_fill = 0;
+    std::uint8_t recv_key_fill = 0;
+    std::uint32_t trust_mask = (1u << GN_TRUST_UNTRUSTED) |
+                                (1u << GN_TRUST_PEER)      |
+                                (1u << GN_TRUST_LOOPBACK)  |
+                                (1u << GN_TRUST_INTRA_NODE);
+
+    static std::uint32_t mask(void* self) {
+        return static_cast<FastFakeProvider*>(self)->trust_mask;
+    }
+    static gn_result_t open(void*, gn_conn_id_t, gn_trust_class_t,
+                             gn_handshake_role_t, const std::uint8_t*,
+                             const std::uint8_t*, const std::uint8_t*,
+                             void** out) {
+        if (out) *out = nullptr;
+        return GN_OK;
+    }
+    static gn_result_t step(void*, void*, const std::uint8_t*, std::size_t,
+                             gn_secure_buffer_t* out) {
+        if (out) { out->bytes = nullptr; out->size = 0;
+                    out->free_user_data = nullptr; out->free_fn = nullptr; }
+        return GN_OK;
+    }
+    static int complete(void*, void*) { return 1; }
+    static gn_result_t export_keys(void* self, void*,
+                                    gn_handshake_keys_t* out) {
+        if (!out) return GN_ERR_NULL_ARG;
+        auto* p = static_cast<FastFakeProvider*>(self);
+        std::memset(out, 0, sizeof(*out));
+        out->api_size = sizeof(*out);
+        std::memset(out->send_cipher_key, p->send_key_fill,
+                     GN_CIPHER_KEY_BYTES);
+        std::memset(out->recv_cipher_key, p->recv_key_fill,
+                     GN_CIPHER_KEY_BYTES);
+        return GN_OK;
+    }
+    static void close(void*, void*) {}
+};
+
+gn_security_provider_vtable_t make_fast_vtable() {
+    gn_security_provider_vtable_t v{};
+    v.api_size              = sizeof(gn_security_provider_vtable_t);
+    v.handshake_open        = &FastFakeProvider::open;
+    v.handshake_step        = &FastFakeProvider::step;
+    v.handshake_complete    = &FastFakeProvider::complete;
+    v.export_transport_keys = &FastFakeProvider::export_keys;
+    v.handshake_close       = &FastFakeProvider::close;
+    v.allowed_trust_mask    = &FastFakeProvider::mask;
+    return v;
+}
+
+SecurityEntry make_fast_entry(FastFakeProvider& p,
+                               const gn_security_provider_vtable_t& vt) {
+    return SecurityEntry{.provider_id = "fast",
+                          .vtable = &vt, .self = &p,
+                          .lifetime_anchor = {}};
+}
+
+void drive_to_transport(SecuritySession& s, FastFakeProvider& p,
+                         const gn_security_provider_vtable_t& vt) {
+    ASSERT_EQ(s.open(make_fast_entry(p, vt), /*conn*/ 1,
+                       GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR,
+                       std::span<const std::uint8_t, GN_PRIVATE_KEY_BYTES>(kZeroSk),
+                       std::span<const std::uint8_t, GN_PUBLIC_KEY_BYTES>(kZeroPk),
+                       std::span<const std::uint8_t>{}),
+              GN_OK);
+    std::vector<std::uint8_t> tmp;
+    ASSERT_EQ(s.advance_handshake({}, tmp), GN_OK);
+    ASSERT_EQ(s.phase(), SecurityPhase::Transport);
+    ASSERT_TRUE(s.fast_crypto_active());
+}
+
+}  // namespace
+
+TEST(SecuritySessionBatchDecrypt, RoundTripThroughPool) {
+    /// Alice encrypts a batch, bob decrypts through the pool — the
+    /// recovered plaintexts match in order.
+    FastFakeProvider alice_p{.send_key_fill = 0x55, .recv_key_fill = 0xAA};
+    FastFakeProvider bob_p  {.send_key_fill = 0xAA, .recv_key_fill = 0x55};
+    auto vt = make_fast_vtable();
+    SecuritySession alice;
+    SecuritySession bob;
+    drive_to_transport(alice, alice_p, vt);
+    drive_to_transport(bob,   bob_p,   vt);
+
+    const std::vector<std::vector<std::uint8_t>> plains{
+        {1, 2, 3}, {4, 5, 6, 7}, {8}, {9, 10, 11, 12, 13}};
+    std::vector<std::vector<std::uint8_t>> wires;
+    gn::core::CryptoWorkerPool pool(2);
+    ASSERT_EQ(alice.encrypt_batch_transport(pool, plains, wires), GN_OK);
+    ASSERT_EQ(wires.size(), plains.size());
+
+    /// Strip the 2-byte BE prefix per wire frame to get the raw
+    /// cipher span the batch-decrypt API expects.
+    std::vector<std::span<const std::uint8_t>> ciphers;
+    for (const auto& w : wires) {
+        ASSERT_GE(w.size(), kFramePrefixBytes);
+        ciphers.emplace_back(w.data() + kFramePrefixBytes,
+                              w.size() - kFramePrefixBytes);
+    }
+
+    std::vector<std::vector<std::uint8_t>> back;
+    ASSERT_EQ(bob.decrypt_batch_transport(pool, ciphers, back), GN_OK);
+    ASSERT_EQ(back.size(), plains.size());
+    for (std::size_t i = 0; i < plains.size(); ++i) {
+        EXPECT_EQ(back[i], plains[i]);
+    }
+}
+
+TEST(SecuritySessionBatchDecrypt, AeadFailureClearsOutput) {
+    FastFakeProvider alice_p{.send_key_fill = 0x55, .recv_key_fill = 0xAA};
+    FastFakeProvider bob_p  {.send_key_fill = 0xAA, .recv_key_fill = 0x55};
+    auto vt = make_fast_vtable();
+    SecuritySession alice;
+    SecuritySession bob;
+    drive_to_transport(alice, alice_p, vt);
+    drive_to_transport(bob,   bob_p,   vt);
+
+    const std::vector<std::vector<std::uint8_t>> plains{
+        {1, 2, 3}, {4, 5, 6}};
+    std::vector<std::vector<std::uint8_t>> wires;
+    gn::core::CryptoWorkerPool pool(2);
+    ASSERT_EQ(alice.encrypt_batch_transport(pool, plains, wires), GN_OK);
+    wires[1][kFramePrefixBytes] ^= 0xFF;  // tamper second cipher
+
+    std::vector<std::span<const std::uint8_t>> ciphers;
+    for (const auto& w : wires) {
+        ciphers.emplace_back(w.data() + kFramePrefixBytes,
+                              w.size() - kFramePrefixBytes);
+    }
+
+    std::vector<std::vector<std::uint8_t>> back;
+    EXPECT_EQ(bob.decrypt_batch_transport(pool, ciphers, back),
+              GN_ERR_INVALID_ENVELOPE);
+    EXPECT_TRUE(back.empty());
+}
+
+TEST(SecuritySessionBatchDecrypt, StreamRoundTripBatchOfMany) {
+    /// `decrypt_batch_transport_stream` peels every complete frame
+    /// from a concatenated wire buffer and decrypts the batch in
+    /// parallel through the pool.
+    FastFakeProvider alice_p{.send_key_fill = 0x11, .recv_key_fill = 0x22};
+    FastFakeProvider bob_p  {.send_key_fill = 0x22, .recv_key_fill = 0x11};
+    auto vt = make_fast_vtable();
+    SecuritySession alice;
+    SecuritySession bob;
+    drive_to_transport(alice, alice_p, vt);
+    drive_to_transport(bob,   bob_p,   vt);
+
+    const std::vector<std::vector<std::uint8_t>> plains{
+        {0xA1, 0xA2}, {0xB1, 0xB2, 0xB3}, {0xC1}, {0xD1, 0xD2, 0xD3, 0xD4}};
+    std::vector<std::vector<std::uint8_t>> wires;
+    gn::core::CryptoWorkerPool pool(2);
+    ASSERT_EQ(alice.encrypt_batch_transport(pool, plains, wires), GN_OK);
+
+    std::vector<std::uint8_t> concat;
+    for (const auto& w : wires) {
+        concat.insert(concat.end(), w.begin(), w.end());
+    }
+
+    std::vector<std::vector<std::uint8_t>> back;
+    ASSERT_EQ(bob.decrypt_batch_transport_stream(pool, concat, back), GN_OK);
+    ASSERT_EQ(back.size(), plains.size());
+    for (std::size_t i = 0; i < plains.size(); ++i) {
+        EXPECT_EQ(back[i], plains[i]);
+    }
+}
+
+TEST(SecuritySessionBatchDecrypt, RecyclePlaintextBuffersCapsAtMax) {
+    /// Recycling beyond `kRecycledPlaintextPoolMax` drops excess
+    /// buffers naturally; the next batch pulls capacity-reserved
+    /// buffers off the free list.
+    FastFakeProvider alice_p{.send_key_fill = 0x77, .recv_key_fill = 0x88};
+    FastFakeProvider bob_p  {.send_key_fill = 0x88, .recv_key_fill = 0x77};
+    auto vt = make_fast_vtable();
+    SecuritySession alice;
+    SecuritySession bob;
+    drive_to_transport(alice, alice_p, vt);
+    drive_to_transport(bob,   bob_p,   vt);
+
+    std::vector<std::vector<std::uint8_t>> plains;
+    plains.reserve(SecuritySession::kRecycledPlaintextPoolMax + 4);
+    for (std::size_t i = 0;
+         i < SecuritySession::kRecycledPlaintextPoolMax + 4; ++i) {
+        plains.push_back(std::vector<std::uint8_t>(8, static_cast<std::uint8_t>(i)));
+    }
+    std::vector<std::vector<std::uint8_t>> wires;
+    gn::core::CryptoWorkerPool pool(2);
+    ASSERT_EQ(alice.encrypt_batch_transport(pool, plains, wires), GN_OK);
+
+    std::vector<std::span<const std::uint8_t>> ciphers;
+    for (const auto& w : wires) {
+        ciphers.emplace_back(w.data() + kFramePrefixBytes,
+                              w.size() - kFramePrefixBytes);
+    }
+    std::vector<std::vector<std::uint8_t>> back;
+    ASSERT_EQ(bob.decrypt_batch_transport(pool, ciphers, back), GN_OK);
+    EXPECT_EQ(back.size(), plains.size());
+
+    /// Reclaim and ensure the caller's vector is emptied.
+    bob.recycle_plaintext_buffers(back);
+    EXPECT_TRUE(back.empty());
 }

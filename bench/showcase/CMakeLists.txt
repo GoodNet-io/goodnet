@@ -1,4 +1,4 @@
-# Free-kernel showcase bench (track Б of the plan).
+# Free-kernel showcase bench.
 #
 # Builds `bench_showcase` — one binary with six sections
 # (B.1..B.6). Links kernel + every transport's OBJECT lib + gnet
@@ -10,6 +10,14 @@
 # plugin's `_objects` target only configures when the strategies
 # sub-checkout is present (mirrors `bench/CMakeLists.txt`
 # treatment of `bench_float_send_rtt`).
+
+if(NOT GOODNET_BENCH_SHOWCASE)
+    message(STATUS
+        "bench_showcase: skipped (GOODNET_BENCH_SHOWCASE not set; "
+        "set -DGOODNET_BENCH_SHOWCASE=ON to compile the inline-crypto "
+        "downgrade seam the showcase needs)")
+    return()
+endif()
 
 if(NOT GOODNET_BENCH_STRATEGIES)
     message(STATUS
@@ -66,6 +74,14 @@ target_link_libraries(bench_showcase PRIVATE
 add_dependencies(bench_showcase goodnet_security_noise)
 target_compile_definitions(bench_showcase PRIVATE
     "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    # Compile-time gate for the inline-crypto downgrade seam used by
+    # §B.3. The kernel-side `SecuritySession::_test_clear_inline_crypto`
+    # is declared and defined only under this macro; the top-level
+    # `GOODNET_BENCH_SHOWCASE` option also propagates it kernel-wide
+    # so the kernel objects bench_showcase links against actually
+    # carry the symbol. This per-target define ensures the bench
+    # binary itself sees the helper-side guard.
+    GOODNET_BENCH_SHOWCASE
 )
 target_include_directories(bench_showcase PRIVATE
     ${CMAKE_SOURCE_DIR})

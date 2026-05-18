@@ -9,7 +9,7 @@ handler.
 
 [`plugin-model`](plugin-model.ru.md) описывает 4 vtable kind'а на
 уровне «handler — один из них». [`routing`](routing.ru.md) показывает
-дorgan dispatcher chain. [`handler-registration.md`](../contracts/handler-registration.en.md) —
+дorgan dispatcher chain. [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
 формальный contract. Эта глава — про **повседневные паттерны**: как
 typical handler выглядит, как handlers композятся между собой,
 куда не надо лезть.
@@ -111,7 +111,7 @@ optional post-dispatch hook (для logging, metrics, etc).
 2. **Snapshot dispatch** — kernel снимает priority-desc snapshot
    handler'ов раз в начале walk'а; если handler unregister'ится
    mid-walk, snapshot его всё равно содержит. Per
-   [`handler-registration.md §3`](../contracts/handler-registration.en.md).
+   [`handler-registration.en.md §3`](../contracts/handler-registration.en.md).
 3. **Synchronous dispatch** — `handle_message` бегает на kernel
    dispatch thread. Не блокировать. Не вызывать back в host_api
    методы что могут recurse'нуть в dispatch.
@@ -198,14 +198,15 @@ struct PeerInfoPlugin {
 host_api->register_vtable(host_ctx, GN_REGISTER_HANDLER,
                           &handler_meta, &handler_vtable, self, &h_id);
 host_api->register_extension(host_ctx, "gn.peer-info", 0x10000,
-                             &extension_vtable, self, &e_id);
+                             &extension_vtable);
 ```
 
 Other plugins — например relay-direct-upgrade handler — вызывают
-`query_extension_checked("gn.peer-info", 1, &vt, &vt_self)` чтобы
-получить `vt->get_uris(...)`. Per
-[`extension-model`](extension-model.ru.md), kernel agnostic — только
-registry.
+`query_extension_checked(host_ctx, "gn.peer-info", 0x10000, &vt)`,
+проверяют `r == GN_OK`, кастуют `vt` в `const gn_peer_info_api_t*`
+и зовут `vt->get_uris(vt->ctx, ...)` (ctx-pointer держит provider
+plugin's `self`). Per [`extension-model`](extension-model.ru.md),
+kernel agnostic — только registry.
 
 ### Handler chain — middleware
 
@@ -335,9 +336,9 @@ gossip-out, чтобы не fan-out'ить чаще раза в секунду.
 Несколько msg_id зарезервированы под kernel-internal протокол:
 
 - `0x10` — heartbeat (per heartbeat plugin convention)
-- `0x12` — capability TLV (per [`capability-tlv.md`](../contracts/capability-tlv.en.md))
+- `0x12` — capability TLV (per [`capability-tlv.en.md`](../contracts/capability-tlv.en.md))
 - `0x11` — attestation dispatch (kernel-managed,
-  [`attestation.md`](../contracts/attestation.en.md))
+  [`attestation.en.md`](../contracts/attestation.en.md))
 
 Plugin может зарегистрировать handler на эти msg_id, но обычно не
 надо — kernel сам processes их через специальные dispatcher'ы. Если
@@ -499,23 +500,23 @@ Integration tests с реальным kernel'ом — через
 
 ## Cross-references
 
-- [`handler-registration.md`](../contracts/handler-registration.en.md) —
+- [`handler-registration.en.md`](../contracts/handler-registration.en.md) —
   формальный contract: vtable shape, propagation rules, snapshot
   dispatch invariants
-- [`recipes/write-handler-plugin.md`](../recipes/write-handler-plugin.ru.md) —
+- [`recipes/write-handler-plugin.ru.md`](../recipes/write-handler-plugin.ru.md) —
   пошаговое создание handler plugin'а от scaffold до commit
-- [`recipes/subscribe-conn-events.md`](../recipes/subscribe-conn-events.ru.md) —
+- [`recipes/subscribe-conn-events.ru.md`](../recipes/subscribe-conn-events.ru.md) —
   cleanup handler-side state on DISCONNECTED
-- [`recipes/register-extension.md`](../recipes/register-extension.ru.md) —
+- [`recipes/register-extension.ru.md`](../recipes/register-extension.ru.md) —
   handler-as-publisher pattern (handler + extension surface)
-- [`recipes/instrument-with-metrics.md`](../recipes/instrument-with-metrics.ru.md) —
+- [`recipes/instrument-with-metrics.ru.md`](../recipes/instrument-with-metrics.ru.md) —
   emit_counter через api в handler'е
 - [`routing`](routing.ru.md) — kernel router внутрь handler chain
 - [`extension-model`](extension-model.ru.md) — как handler-as-publisher
   resolved'ится через `query_extension_checked`
 - [`overview`](overview.ru.md) §«Что знает ядро» — kernel agnostic
   про handlers, registry-only
-- [`capability-tlv.md`](../contracts/capability-tlv.en.md) — wire
+- [`capability-tlv.en.md`](../contracts/capability-tlv.en.md) — wire
   format для capability negotiation msg ids
-- [`limits.md`](../contracts/limits.en.md) — `max_handlers_per_msg_id`
+- [`limits.en.md`](../contracts/limits.en.md) — `max_handlers_per_msg_id`
   и другие quota

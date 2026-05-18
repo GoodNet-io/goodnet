@@ -1,8 +1,24 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 #
 # Iterate every scenario override under scenarios/*.yml against the
-# base docker-compose.yml. For each one:
+# base docker-compose.yml. The list is glob-driven and sorted
+# alphabetically, so new scenarios get picked up automatically by
+# dropping a fresh `<name>.yml` under `scenarios/`. The current set:
+#
+#   all_relay              both peers symmetric  → relay ↔ relay
+#   full_cone              both peers full-cone  → srflx ↔ srflx
+#   hairpin                shared NAT            → host ↔ host (hairpin)
+#   ice_lite_gateway       B is ICE-lite         → A drives nomination
+#   ipv6_mdns              dual-stack v4+v6      → mDNS-hidden host pair
+#   multi_turn_failover    primary TURN flaky    → secondary takes over
+#   no_udp_fallback        UDP blocked end-to-end→ relay-TCP+TLS
+#   port_prediction        symmetric-stride NAT  → predicted port pair
+#   quic_over_ice          quic://<peer-pk> URI  → QUIC handshake over ICE pair
+#   restricted_mtu         path MTU 900          → DPLPMTUD discovery
+#   symmetric_relay        A symmetric / B cone  → relay ↔ srflx
+#
+# For each scenario:
 #
 #   1. tear down any leftover stack
 #   2. `up -d --build` with the scenario override layered in
@@ -15,12 +31,11 @@
 #   0  — every scenario produced both .done files
 #   1  — at least one scenario timed out / failed
 #
-# Slice-1 scope: the loop machinery + per-scenario teardown lands
-# now; the actual connect-and-write-done logic depends on the peer
-# harness binary (`peer/run.sh` placeholder) which is a follow-up.
-# Running this script today brings up the topology cleanly and
-# always reports timeout — useful for shape-checking the compose
-# wiring before the harness binary exists.
+# The peer harness binary is built on the host from the dev shell
+# (`peer/build-harness.sh`) and copied into `peer/` alongside the
+# required plugin .so set before the first `compose up --build`.
+# Docker caches the resulting image so subsequent scenarios reuse
+# the layer.
 
 set -uo pipefail
 
@@ -31,6 +46,57 @@ SCENARIOS_DIR="scenarios"
 SIGNAL_VOL="ice3node_signal"
 PASS=0
 FAIL=0
+
+# Build the peer harness on the host and stage the binary + plugin
+# .so set into `peer/` next to the Dockerfile so `COPY harness` and
+# `COPY plugins/` resolve at image-build time. Skipping this on
+# `SKIP_HARNESS_BUILD=1` is a developer convenience for iterating on
+# the orchestrator without rebuilding C++.
+if [ "${SKIP_HARNESS_BUILD:-0}" != "1" ]; then
+    echo "=== building peer harness ==="
+    bash peer/build-harness.sh
+
+    repo_root="$(cd ../../.. && pwd)"
+    build_dir="${BUILD_DIR:-${repo_root}/build-release}"
+
+    # Stage the plugin .so set the harness manifest expects.
+    # Plugin set kept narrow: security (null + noise), link (udp +
+    # tcp + ice + optional quic), handler-heartbeat. Anything else
+    # the dev shell built is dropped — small image layer + the
+    # harness mints SHA-256 per-file at start-up so spurious .so
+    # bytes are pure overhead.
+    mkdir -p peer/plugins
+    rm -f peer/plugins/*.so
+    for plugin in libgoodnet_security_null.so \
+                  libgoodnet_security_noise.so \
+                  libgoodnet_link_udp.so \
+                  libgoodnet_link_tcp.so \
+                  libgoodnet_link_ice.so \
+                  libgoodnet_link_quic.so \
+                  libgoodnet_handler_heartbeat.so ; do
+        if [ -f "${build_dir}/plugins/${plugin}" ]; then
+            cp -f "${build_dir}/plugins/${plugin}" "peer/plugins/${plugin}"
+        else
+            echo "  WARN: missing ${plugin} in ${build_dir}/plugins/" >&2
+        fi
+    done
+
+    # Stage a statically-linked busybox for the peer image's `ip`
+    # / `route` applets. `goodnet:nix-static` ships only coreutils;
+    # the peer entrypoint uses `ip route add default via …` to
+    # swing the default route through the per-LAN NAT container
+    # before invoking the harness. nix's `pkgsStatic.busybox` is
+    # the musl + scratch variant; canonical `busybox:latest` is
+    # dynamically-linked debian and fails to exec against the
+    # nix-store interpreter the base image embeds.
+    if [ ! -x peer/busybox-static ]; then
+        nix develop --command bash -c \
+            'cp -f "$(nix-build --no-link --expr "with import <nixpkgs> {}; pkgsStatic.busybox")/bin/busybox" peer/busybox-static'
+        chmod +x peer/busybox-static
+    fi
+
+    echo "=== staged $(ls peer/plugins | wc -l) plugin(s) + harness + busybox ==="
+fi
 
 # Discover every override; alphabetical so the order is stable.
 mapfile -t SCENARIOS < <(find "${SCENARIOS_DIR}" -maxdepth 1 -name "*.yml" | sort)
@@ -54,14 +120,25 @@ for override in "${SCENARIOS[@]}"; do
     # Wait for both `.done` markers in the shared volume. The
     # peer harness writes them on first inbound byte from the
     # other peer; absence past TIMEOUT_S means the connect
-    # never completed.
+    # never completed. A `.fail` marker on either side is a
+    # hard error — the daemon refused to start or the connect
+    # attempt produced a deterministic error — so we break
+    # early rather than waste the full timeout.
     deadline=$(( $(date +%s) + TIMEOUT_S ))
+    a_fail=n; b_fail=n
     while [ "$(date +%s)" -lt "${deadline}" ]; do
         a_done=$(docker compose -f docker-compose.yml exec -T peer_a \
             test -f /var/lib/ice3-signal/A.done && echo y || echo n)
         b_done=$(docker compose -f docker-compose.yml exec -T peer_b \
             test -f /var/lib/ice3-signal/B.done && echo y || echo n)
+        a_fail=$(docker compose -f docker-compose.yml exec -T peer_a \
+            test -f /var/lib/ice3-signal/A.fail && echo y || echo n)
+        b_fail=$(docker compose -f docker-compose.yml exec -T peer_b \
+            test -f /var/lib/ice3-signal/B.fail && echo y || echo n)
         if [ "${a_done}" = "y" ] && [ "${b_done}" = "y" ]; then
+            break
+        fi
+        if [ "${a_fail}" = "y" ] || [ "${b_fail}" = "y" ]; then
             break
         fi
         sleep 1
@@ -70,6 +147,13 @@ for override in "${SCENARIOS[@]}"; do
     if [ "${a_done:-n}" = "y" ] && [ "${b_done:-n}" = "y" ]; then
         echo "  ${name}: PASS"
         PASS=$((PASS+1))
+    elif [ "${a_fail:-n}" = "y" ] || [ "${b_fail:-n}" = "y" ]; then
+        echo "  ${name}: FAIL (a.fail=${a_fail:-n} b.fail=${b_fail:-n})"
+        echo "  --- peer_a logs ---"
+        docker compose -f docker-compose.yml logs --tail=50 peer_a | sed 's/^/    /'
+        echo "  --- peer_b logs ---"
+        docker compose -f docker-compose.yml logs --tail=50 peer_b | sed 's/^/    /'
+        FAIL=$((FAIL+1))
     else
         echo "  ${name}: TIMEOUT (a=${a_done:-n} b=${b_done:-n})"
         echo "  --- peer_a logs ---"

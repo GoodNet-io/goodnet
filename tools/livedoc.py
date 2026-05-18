@@ -5,6 +5,7 @@ Usage:
     python3 tools/livedoc.py --all         # full refresh
     python3 tools/livedoc.py --abi         # ABI facts only
     python3 tools/livedoc.py --roadmap     # roadmap status only
+    python3 tools/livedoc.py --catalogs    # metrics + config keys + RFC coverage
     python3 tools/livedoc.py --diagrams    # SVG + canvas only
     python3 tools/livedoc.py --inject      # markdown rewrites only
     python3 tools/livedoc.py --check       # exit non-zero if drift
@@ -114,8 +115,8 @@ def _build_regions(facts: dict) -> dict[str, str]:
     # land under the image without scrolling. Add new SVGs here so
     # any prose doc can embed them via <!-- livedoc:embed_<name> -->.
     embed_specs = {
-        "architecture":          "Kernel ABI surface, registries, and the eight plugin slots.",
-        "kernel_fsm":            "Kernel lifecycle: created → started → stopped → destroyed.",
+        "architecture":          "Kernel ABI surface (host_api_t) and the five registries plugins land in.",
+        "kernel_fsm":            "Kernel lifecycle: Load → Wire → Resolve → Ready → Running → PreShutdown → Shutdown → Unload.",
         "connection_fsm":        "Per-connection state machine through handshake to ready.",
         "connection_lifecycle":  "End-to-end conn lifetime: link → noise → attestation → ready.",
         "message_inbound":       "Inbound envelope path from socket bytes to handler dispatch.",
@@ -129,7 +130,7 @@ def _build_regions(facts: dict) -> dict[str, str]:
         "plugin_separation":     "Plugin process / git boundary — each plugin in its own checkout.",
         "c_cpp_bridging":        "C ABI ↔ C++ implementation bridging across the SDK boundary.",
         "nonce_window":          "Anti-replay nonce window in the Noise transport phase.",
-        "signal_bus":            "Signal-bus fanout for OFFER / ANSWER / EOC.",
+        "signal_bus":            "Signal-bus fanout for conn-state and config-reload channels.",
         "extension_query":       "Extension query path: query_extension_checked → vtable handoff.",
         "host_api_kinds":        "host_api_t KIND-tagged register/unregister discipline.",
         "composer_extension":    "Composer surface dispatch via bit-63 kComposerIdBit on conn-id.",

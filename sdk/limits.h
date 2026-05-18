@@ -20,7 +20,7 @@ extern "C" {
  *
  * Loaded from `Config::limits` before the kernel reaches the `Wire` phase.
  * Most fields determine at-startup allocations; runtime reload is not
- * supported in v1.x — operators restart the kernel to change limits.
+ * supported — operators restart the kernel to change limits.
  */
 typedef struct gn_limits_s {
     /* Connections */
@@ -44,7 +44,7 @@ typedef struct gn_limits_s {
     uint32_t max_plugins;                /**< dlopen ceiling */
     uint32_t max_extensions;             /**< extension registry size */
 
-    /* Service executor (timer.md §6) */
+    /* Service executor (timer.en.md §6) */
     uint32_t max_timers;                 /**< active one-shot timers */
     uint32_t max_pending_tasks;          /**< queued service-executor tasks (set_timer fire-and-forget) */
     uint32_t max_timers_per_plugin;      /**< per-anchor timer cap; 0 = no
@@ -55,7 +55,7 @@ typedef struct gn_limits_s {
                                               exhausts the kernel's global
                                               budget and starves siblings. */
 
-    /* Foreign-payload injection rate limiter (host-api.md §8) */
+    /* Foreign-payload injection rate limiter (host-api.en.md §8) */
     uint32_t inject_rate_per_source;     /**< token-bucket refill rate per
                                               source — tokens per second
                                               accrued for the bridge plugin's
@@ -74,7 +74,7 @@ typedef struct gn_limits_s {
                                               cap, so unbounded source-id
                                               growth cannot exhaust memory */
 
-    /* Handshake-phase send buffer (backpressure.md §8) */
+    /* Handshake-phase send buffer (backpressure.en.md §8) */
     uint32_t pending_handshake_bytes;    /**< per-conn cap on app data
                                               buffered while the security
                                               session is in Handshake phase */
@@ -83,7 +83,7 @@ typedef struct gn_limits_s {
     uint64_t max_storage_table_entries;
     uint64_t max_storage_value_bytes;
 
-    /* Metrics cardinality (`metrics.md` §3.1).
+    /* Metrics cardinality (`metrics.en.md` §3.1).
      *
      * Hard cap on the number of distinct counter names a single
      * `MetricsRegistry` will hold. The slow path of `increment`
@@ -92,15 +92,15 @@ typedef struct gn_limits_s {
      * cliff — the alternative (LRU eviction) silently loses
      * established counters and produces missing-data spikes on
      * every Prometheus scrape. Default 8192 = built-in counters
-     * + ~7 plugins × ~50 names + headroom; matches the per-target
+     * + ~13 plugins × ~50 names + headroom; matches the per-target
      * scrape budget Prometheus's default config tolerates.
      *
-     * Slot promoted out of `_reserved[]` per `abi-evolution.md`
+     * Slot promoted out of `_reserved[]` per `abi-evolution.en.md`
      * §4 — the slot count drops by one to keep MINOR-compat
      * bytes-precise. */
     uint32_t max_counter_names;
 
-    /* Per-channel subscription cap (`conn-events.md` §3).
+    /* Per-channel subscription cap (`conn-events.en.md` §3).
      *
      * Hard cap on the number of live subscriptions a single
      * `SignalChannel` (`GN_SUBSCRIBE_CONN_STATE`,
@@ -113,7 +113,7 @@ typedef struct gn_limits_s {
      * extension-registry default and supports the documented
      * pattern of one subscription per plugin instance.
      *
-     * Slot promoted out of `_reserved[]` per `abi-evolution.md`
+     * Slot promoted out of `_reserved[]` per `abi-evolution.en.md`
      * §4 — same MINOR-compat shape as `max_counter_names`. */
     uint32_t max_subscriptions;
 
@@ -124,7 +124,7 @@ typedef struct gn_limits_s {
     uint32_t max_capability_blob_bytes;
 
     /* MUST be zero. Slot count `5` (uint32_t) follows the
-     * operator-tunable family per `abi-evolution.md` §4 — limits
+     * operator-tunable family per `abi-evolution.en.md` §4 — limits
      * accumulate faster than vtable slots over the platform's
      * lifetime, and the wider tail keeps a MAJOR bump off this
      * surface. */

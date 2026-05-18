@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   tests/unit/sdk/test_connection.cpp
 /// @brief  Coverage for `sdk/cpp/connection.hpp` (RAII conn handle)
-///         and `sdk/cpp/connect.hpp` (scheme-dispatch sugar) — DX
-///         Tier 1 sugar landed 2026-05-12.
+///         and `sdk/cpp/connect.hpp` (scheme-dispatch sugar).
 
 #include <gtest/gtest.h>
 

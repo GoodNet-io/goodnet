@@ -76,7 +76,7 @@ gn_result_t (*unregister_extension)(void* host_ctx,
 
 ## Major-version compat
 
-Версия — одно `uint32_t` поле в обоих slot'ах. Convention: верхние 16 бит — major, младшие 16 бит — minor. `GN_EXT_HEARTBEAT_VERSION = 0x00010000u` читается как «v1.0». Patch уровень в этой схеме не отдельно — он растворён в minor'е и не участвует в compat-проверке.
+Версия — одно `uint32_t` поле в обоих slot'ах. Layout — канонический `gn_version_pack` (`sdk/abi.h`): `major:8 << 24 | minor:8 << 16 | patch:16`. Compat-проверка читает major из верхних 8 бит и minor из следующих 8 бит; patch на compat не влияет. Текущие extensions ship с `0x00010000u` — major=0, minor=1, patch=0 — т.е. v0.1.0 в этой схеме. Следующий bump на v1.0.0 = `gn_version_pack(1, 0, 0) = 0x01000000u`.
 
 Сверка делает `gn_version_compatible` из `sdk/abi.h`:
 
@@ -85,7 +85,7 @@ gn_result_t (*unregister_extension)(void* host_ctx,
 
 Семантика major'а — breaking change. Сменили signature метода, переименовали enum, поменяли invariant — incrementим major. Запросчики на старом major'е больше не лоадятся, что им и нужно: вызов несовместимого vtable'а — это segfault или silent corruption, лучше отказать на query.
 
-Семантика minor'а — append-only. Добавили новое поле в конец vtable, новую константу в enum, новый необязательный slot. Старые запросчики продолжают работать через `api_size`-prefix evolution внутри самого vtable type'а (см. `abi-evolution.md` §3a) — поле, которого они не знают, лежит за их `api_size`, и они его не читают.
+Семантика minor'а — append-only. Добавили новое поле в конец vtable, новую константу в enum, новый необязательный slot. Старые запросчики продолжают работать через `api_size`-prefix evolution внутри самого vtable type'а (см. `abi-evolution.en.md` §3a) — поле, которого они не знают, лежит за их `api_size`, и они его не читают.
 
 ---
 
@@ -93,7 +93,7 @@ gn_result_t (*unregister_extension)(void* host_ctx,
 
 В терминах ABI ядра vtable — `const void*`. Layout определяет плагин-публикатор в собственном SDK header'е. Конвенция:
 
-- Первое поле — `uint32_t api_size`, сохраняемое `sizeof()` структуры на момент сборки публикатора. Consumer гейтит чтение полей через `GN_API_HAS(vt, slot)`.
+- Первое поле — `uint32_t api_size`, сохраняемое `sizeof()` структуры на момент сборки публикатора. Consumer гейтит чтение полей через `GN_API_HAS(vt_type, vt, slot)`.
 - Все методы — `int (*name)(void* ctx, ...args)` или `gn_result_t (*name)(void* ctx, ...args)`. Первый аргумент каждого метода — `ctx`, который сам vtable несёт в собственном поле `void* ctx;` ближе к концу.
 - Хвост — `void* _reserved[N]` для будущих slot'ов в рамках одного major'а.
 
@@ -134,7 +134,7 @@ typedef struct gn_heartbeat_api_s {
 
 Запись регистрируется ровно когда плагин зовёт `register_extension`. До вызова — её нет, после `unregister_extension` или после teardown'а плагина — её снова нет. Запись не воскресает, не персистится между загрузками плагина, не сериализуется в config.
 
-Auto-reap на shutdown'е плагина — safety net. `plugin-lifetime.md` §4 описывает lifetime-anchor'ом, который ядро держит на каждый плагин; при shutdown'е anchor expire'ит, и ядро walk'ит свои внутренние реестры (включая `ExtensionRegistry`) и снимает все записи, которые помнят этот anchor. Плагин, который не успел вызвать `unregister_extension` сам, не оставит дырявую запись с висячим pointer'ом — ядро её снимет.
+Auto-reap на shutdown'е плагина — safety net. `plugin-lifetime.en.md` §4 описывает lifetime-anchor'ом, который ядро держит на каждый плагин; при shutdown'е anchor expire'ит, и ядро walk'ит свои внутренние реестры (включая `ExtensionRegistry`) и снимает все записи, которые помнят этот anchor. Плагин, который не успел вызвать `unregister_extension` сам, не оставит дырявую запись с висячим pointer'ом — ядро её снимет.
 
 Манипулировать lifetime'ом расширения программно — через те же два slot'а. Плагин, который хочет сменить major-версию своего расширения без полной выгрузки, зовёт `unregister_extension(name)`, потом `register_extension(name, new_version, new_vtable)`. Между ними — окно, в котором запросчики ловят `NOT_FOUND`; плагин заранее уведомляет своих известных консьюмеров через handler-channel, чтобы те не молотили в этот момент.
 
@@ -202,9 +202,9 @@ Heartbeat-плагин не знает о существовании orchestrato
 
 ## Cross-refs
 
-- Контракт: [host-api.md](../contracts/host-api.en.md) — slot'ы `register_extension` / `query_extension_checked`, error semantics, lifetime.
-- Контракт: [conn-events.md](../contracts/conn-events.en.md) — pub/sub для асинхронной координации между плагинами.
-- Контракт: [security-trust.md](../contracts/security-trust.en.md) — TrustClass и upgrade, на который плагины часто реагируют через query.
+- Контракт: [host-api.en.md](../contracts/host-api.en.md) — slot'ы `register_extension` / `query_extension_checked`, error semantics, lifetime.
+- Контракт: [conn-events.en.md](../contracts/conn-events.en.md) — pub/sub для асинхронной координации между плагинами.
+- Контракт: [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass и upgrade, на который плагины часто реагируют через query.
 - Архитектура: [overview](overview.ru.md) — место расширений в общей картине.
 - Архитектура: [plugin-model](plugin-model.ru.md) — четыре роли плагина и их vtable shapes.
 - Архитектура: [host-api-model](host-api-model.ru.md) — KIND-tagged primitives, ABI evolution.

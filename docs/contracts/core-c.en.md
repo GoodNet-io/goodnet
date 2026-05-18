@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel/core_c.cpp`, every non-C++ host
-**Implements:** size-prefix evolution per `abi-evolution.md`
+**Implements:** size-prefix evolution per `abi-evolution.en.md`
 **Last verified:** 2026-05-02
 **Stability:** stable for v1.x; new entries appended at the tail.
 
@@ -20,7 +20,7 @@ through one of the `gn_core_*` entries.
 | Surface | Direction | Audience |
 |---|---|---|
 | `sdk/core.h` (this contract) | host → kernel | host binary embedding the kernel |
-| `sdk/host_api.h` (`host-api.md`) | kernel → plugin | every loaded plugin |
+| `sdk/host_api.h` (`host-api.en.md`) | kernel → plugin | every loaded plugin |
 
 The two surfaces are independent. A non-C++ binding ships both: it
 crosses `sdk/core.h` to spin the kernel up, then exposes
@@ -35,11 +35,11 @@ forcing a host rebuild.
 This contract reuses the conventions defined elsewhere; the
 references hold without restating:
 
-- **Zero-init for value structs** — `host-api.md` §2 + `abi-evolution.md` §4.
-- **Size-prefix gating** — `abi-evolution.md` §3.
-- **Ownership tags** (`@owned`, `@borrowed`, `@in-out`) — `abi-evolution.md` §6.
+- **Zero-init for value structs** — `host-api.en.md` §2 + `abi-evolution.en.md` §4.
+- **Size-prefix gating** — `abi-evolution.en.md` §3.
+- **Ownership tags** (`@owned`, `@borrowed`, `@in-out`) — `abi-evolution.en.md` §6.
 - **Error codes** — `sdk/types.h` enumerates every `gn_result_t`.
-- **Exception safety across the boundary** — `abi-evolution.md` §4a.
+- **Exception safety across the boundary** — `abi-evolution.en.md` §4a.
 
 GoodNet wraps every host-side entry through the same `safe_invoke`
 discipline: a C++ exception escaping kernel code never crosses the C
@@ -53,7 +53,7 @@ the slot's "no-op" sentinel).
 
 The host walks the kernel through a linear phase chain. Phase
 identifiers match `core/kernel/phase.hpp` and the diagram in
-`fsm-events.md` §2.
+`fsm-events.en.md` §2.
 
 ```
    Construct ──gn_core_create──▶ (phase Load, Wire, Resolve, Ready
@@ -116,7 +116,7 @@ on `NULL` is a no-op.
 
 Every entry returns `gn_result_t`, an opaque id, or `void`. Negative
 returns are errors; the host **MUST** propagate or handle. Silent
-drops are a contract violation per `fsm-events.md` §4.
+drops are a contract violation per `fsm-events.en.md` §4.
 
 ### 3.1 Lifecycle
 
@@ -146,7 +146,7 @@ drops are a contract violation per `fsm-events.md` §4.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Walks the FSM through `PreShutdown → Shutdown`, releases every host-side subscription (the message-handler registrations and conn-event channel tokens this handle owns), drains plugin anchors per `plugin-lifetime.md` §4 (default 1 s), publishes `DISCONNECTED` for every live connection, then frees the handle. |
+| Effect | Walks the FSM through `PreShutdown → Shutdown`, releases every host-side subscription (the message-handler registrations and conn-event channel tokens this handle owns), drains plugin anchors per `plugin-lifetime.en.md` §4 (default 1 s), publishes `DISCONNECTED` for every live connection, then frees the handle. |
 | Parameters | `core` — `@owned`; consumed by the call. |
 | Returns | `void`. |
 | Concurrency | NOT safe to invoke concurrently with any other call on the same handle. The host **MUST** quiesce other threads before calling. |
@@ -204,7 +204,7 @@ drops are a contract violation per `fsm-events.md` §4.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Re-parses `json_str`, validates it, and applies the new config atomically. On failure the previous config remains active — no partially-applied state is observable. After a successful reload the kernel publishes on `GN_SUBSCRIBE_CONFIG_RELOAD` per `conn-events.md` §3. |
+| Effect | Re-parses `json_str`, validates it, and applies the new config atomically. On failure the previous config remains active — no partially-applied state is observable. After a successful reload the kernel publishes on `GN_SUBSCRIBE_CONFIG_RELOAD` per `conn-events.en.md` §3. |
 | Parameters | `json_str` — `@borrowed` NUL-terminated UTF-8 JSON; copied internally before return. |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on either NULL; the kernel's parse / validate error code on bad input. |
 | Concurrency | thread-safe; concurrent reloads serialise. |
@@ -227,7 +227,7 @@ drops are a contract violation per `fsm-events.md` §4.
 |---|---|
 | Producer | kernel |
 | Effect | Copies the limits struct into the kernel. The input pointer is not retained. |
-| Parameters | `limits` — `@borrowed`; **MUST** be zero-initialised per `abi-evolution.md` §4. |
+| Parameters | `limits` — `@borrowed`; **MUST** be zero-initialised per `abi-evolution.en.md` §4. |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on either NULL; `GN_ERR_INVALID_STATE` after `gn_core_init` has returned `GN_OK`. |
 | Concurrency | bootstrap-only; the host calls it before `gn_core_init` returns. |
 
@@ -282,7 +282,7 @@ drops are a contract violation per `fsm-events.md` §4.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Tears `conn` down through the owning link plugin's `disconnect` slot. The kernel publishes `DISCONNECTED` per `conn-events.md` §2a synchronously before this call returns. |
+| Effect | Tears `conn` down through the owning link plugin's `disconnect` slot. The kernel publishes `DISCONNECTED` per `conn-events.en.md` §2a synchronously before this call returns. |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on NULL `core`; `GN_ERR_NOT_IMPLEMENTED` when the embedded host_api has no `disconnect` slot bound; otherwise the host_api `disconnect` slot's return verbatim (`GN_ERR_NOT_FOUND` on unknown `conn`). |
 | Concurrency | safe from any thread. |
 
@@ -294,7 +294,7 @@ drops are a contract violation per `fsm-events.md` §4.
 |---|---|
 | Producer | kernel |
 | Effect | Snapshots the aggregate counters into `*out`. The walk reads each connection record under its shard read lock, summing `bytes_in`, `bytes_out`, `frames_in`, `frames_out`. Reads are not coordinated; concurrent traffic may bump counters between field-by-field reads. |
-| Parameters | `out` — `@in-out` caller-allocated; **MUST** be zero-initialised on first call (the kernel rejects non-NULL `_reserved` slots with `GN_ERR_INVALID_ENVELOPE` per `abi-evolution.md` §4). |
+| Parameters | `out` — `@in-out` caller-allocated; **MUST** be zero-initialised on first call (the kernel rejects non-NULL `_reserved` slots with `GN_ERR_INVALID_ENVELOPE` per `abi-evolution.en.md` §4). |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on either NULL; `GN_ERR_INVALID_ENVELOPE` when any `_reserved` slot is non-NULL on entry. |
 | Concurrency | safe from any thread. Per-frame consistency is bounded by the kernel's atomic counter granularity. |
 | Ownership | caller owns `out`. The kernel does not retain the buffer. |
@@ -337,10 +337,10 @@ See §4 for the field-by-field pin on `gn_stats_t`.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Subscribes to the `CONNECTED` / `DISCONNECTED` / `TRUST_UPGRADED` / `BACKPRESSURE_*` channel per `conn-events.md` §2. The kernel translates each kernel-internal `ConnEvent` into a `gn_conn_event_t` payload before invoking the C callback. |
+| Effect | Subscribes to the `CONNECTED` / `DISCONNECTED` / `TRUST_UPGRADED` / `BACKPRESSURE_*` channel per `conn-events.en.md` §2. The kernel translates each kernel-internal `ConnEvent` into a `gn_conn_event_t` payload before invoking the C callback. |
 | Parameters | `cb` — `@borrowed`; lifetime as in `gn_core_subscribe`. |
 | Returns | non-zero token on success; `0` on NULL `core`/`cb`. |
-| Concurrency | safe from any thread. Callbacks fire synchronously on the publishing thread per `conn-events.md` §2a. |
+| Concurrency | safe from any thread. Callbacks fire synchronously on the publishing thread per `conn-events.en.md` §2a. |
 
 #### `gn_core_off_conn_state`
 
@@ -360,7 +360,7 @@ See §5 for the token semantics shared by both subscription families.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Pins the embedded plugin manager into production mode (`set_manifest_required(true)`), installs a single-entry manifest `(so_path → expected_sha256)`, and calls `PluginManager::load`. The loader runs the per-plugin sequence from `plugin-manifest.md` §4 (integrity check before `dlopen`, `RESOLVE_NO_SYMLINKS \| RESOLVE_NO_MAGICLINKS` symlink defence on Linux 5.6+) and the two-phase activation from `plugin-lifetime.md` §5. |
+| Effect | Pins the embedded plugin manager into production mode (`set_manifest_required(true)`), installs a single-entry manifest `(so_path → expected_sha256)`, and calls `PluginManager::load`. The loader runs the per-plugin sequence from `plugin-manifest.en.md` §4 (integrity check before `dlopen`, `RESOLVE_NO_SYMLINKS \| RESOLVE_NO_MAGICLINKS` symlink defence on Linux 5.6+) and the two-phase activation from `plugin-lifetime.en.md` §5. |
 | Parameters | `so_path` — `@borrowed` path to the .so; resolved relative to the kernel's working directory. `expected_sha256` — `@borrowed` 32-byte SHA-256 digest. |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on any NULL; `GN_ERR_INTEGRITY_FAILED` on hash mismatch / unreadable file / manifest rejection; `GN_ERR_VERSION_MISMATCH` on SDK major-version drift; `GN_ERR_LIMIT_REACHED` when the manager is already active or the load would exceed `gn_limits_t::max_plugins`; the plugin's own init error code on setup failure. |
 | Concurrency | bootstrap-only; the kernel rejects a second load while the manager is active. |
@@ -373,9 +373,9 @@ See §4 for the plugin-load discipline this entry honours end-to-end.
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Per-name unload through the plugin manager. |
+| Effect | Per-name unload through the plugin manager. Routes to `PluginManager::unload(name)`, which walks the same `shutdown_requested → unregister → cancel-timers → drain-anchor → shutdown → close` chain `gn_core_destroy` runs but limited to the one matching instance. Other loaded plugins keep running. Quiescence semantics match the full-teardown path: the kernel waits up to `PluginManager::quiescence_timeout()` (optionally per-entry overridden by the manifest's `quiescence_timeout_s`) for outstanding dispatch snapshots to drop their `lifetime_anchor` copies before closing the `.so`. |
 | Parameters | `name` — `@borrowed` plugin name as registered in its descriptor. |
-| Returns | `GN_ERR_NULL_ARG` on either NULL; otherwise `GN_ERR_NOT_IMPLEMENTED`. The plugin manager today exposes only full-teardown `shutdown()`; per-name unload is reserved for v1.x. Hosts that need full teardown go through `gn_core_destroy` + a fresh `gn_core_create`. |
+| Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on either NULL; `GN_ERR_NOT_FOUND` when no loaded plugin matches `name` (idempotent past that point). |
 | Concurrency | safe from any thread. |
 
 ### 3.8 Provider registration
@@ -390,7 +390,7 @@ These entries inject an in-process vtable without going through
 |---|---|
 | Producer | kernel |
 | Effect | Registers an in-process security provider vtable. Equivalent to `host_api->register_security(meta->name, vtable, self)`. |
-| Parameters | `meta` — `@borrowed`; **MUST** be zero-initialised per `abi-evolution.md` §4; `meta->name` doubles as the provider id. `vtable` — `@borrowed` for the lifetime of the registration. `self` — `@borrowed` provider-side state pointer. |
+| Parameters | `meta` — `@borrowed`; **MUST** be zero-initialised per `abi-evolution.en.md` §4; `meta->name` doubles as the provider id. `vtable` — `@borrowed` for the lifetime of the registration. `self` — `@borrowed` provider-side state pointer. |
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on any NULL or NULL `meta->name`; `GN_ERR_NOT_IMPLEMENTED` when the embedded host_api has no `register_security` slot bound. |
 | Concurrency | safe from any thread. |
 
@@ -399,11 +399,11 @@ These entries inject an in-process vtable without going through
 | Property | Specification |
 |---|---|
 | Producer | kernel |
-| Effect | Registers an in-process protocol-layer vtable, overriding the default `gnet-v1` layer the kernel statically links during `gn_core_init`. Equivalent to assigning `kernel->set_protocol_layer(...)` from the C++ side. |
-| Parameters | `vtable` — `@borrowed` for the lifetime of the registration; carries the framer / deframer entries per `protocol-layer.md` §2. `self` — `@borrowed` provider-side state. |
-| Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` when either pointer is NULL or the kernel has no embedded protocol-layer slot. |
-| Concurrency | safe from any thread; one provider per kernel — re-registering replaces the incumbent. |
-| Ordering | Call before `gn_core_init` in hosts that need a non-default layer; calling after `init` swaps the layer mid-run, which is supported but breaks any in-flight conn that already framed bytes through the old layer. |
+| Effect | Registers an in-process protocol-layer vtable into the kernel's layer registry. Equivalent to `kernel.protocol_layers().register_layer(layer, &out_id)` from the C++ side. |
+| Parameters | `vtable` — `@borrowed` for the lifetime of the registration; carries the framer / deframer entries per `protocol-layer.en.md` §2. `self` — `@borrowed` provider-side state. |
+| Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` when either pointer is NULL; `GN_ERR_VERSION_MISMATCH` when `vtable->api_size` is smaller than the kernel-compiled struct. |
+| Concurrency | safe from any thread; the registry admits multiple layers per kernel — each registration yields a fresh id and conns map to the layer that owns their `protocol_id`. |
+| Ordering | Call between `gn_core_init` and `gn_core_start`. The kernel does not auto-register any default layer — hosts that need framing (e.g. `gnet`) must register their layer before opening conns. |
 
 #### `gn_core_register_handler`
 
@@ -413,7 +413,7 @@ These entries inject an in-process vtable without going through
 | Effect | Registers an in-process handler vtable. Equivalent to `host_api->register_vtable(GN_REGISTER_HANDLER, meta, vtable, self, &out_id)`. |
 | Parameters | `meta` — `@borrowed`; per-handler shape from `sdk/types.h` (`name = protocol_id`, meaningful `msg_id`, meaningful `priority`). `vtable` — `@borrowed`. `self` — `@borrowed` handler-side state. |
 | Returns | non-zero `gn_handler_id_t` on success; `GN_INVALID_HANDLER_ID` on NULL or registry rejection. |
-| Concurrency | safe from any thread. The returned id encodes the kind tag in its top bits per `host-api.md` §2. |
+| Concurrency | safe from any thread. The returned id encodes the kind tag in its top bits per `host-api.en.md` §2. |
 
 #### `gn_core_register_link`
 
@@ -439,7 +439,7 @@ never bumps this surface's ABI.
 | Producer | kernel |
 | Effect | Versioned vtable lookup against the kernel's `ExtensionRegistry`. The kernel routes the call into the embedded `host_api->query_extension_checked` slot. |
 | Parameters | `name` — `@borrowed` extension name. `required_version` — minimum producer version the consumer accepts. |
-| Returns | `@borrowed const void*` vtable on success; `NULL` when the extension is missing, the registered version is older than `required_version`, the host_api slot is unbound, or either argument is NULL. Lifetime is tied to the providing plugin per `plugin-lifetime.md` §4. |
+| Returns | `@borrowed const void*` vtable on success; `NULL` when the extension is missing, the registered version is older than `required_version`, the host_api slot is unbound, or either argument is NULL. Lifetime is tied to the providing plugin per `plugin-lifetime.en.md` §4. |
 | Concurrency | safe from any thread. |
 | Ownership | kernel-owned; the host **MUST NOT** free. |
 
@@ -471,7 +471,7 @@ never bumps this surface's ABI.
 | Producer | kernel |
 | Effect | Returns a pointer to the `host_api_t` table the embedded kernel built for the host. The host uses it to drive a slot that has no `gn_core_*` mirror — timers, posted tasks, structured logging at a custom level, foreign-payload injection. |
 | Returns | `@borrowed const host_api_t*`; lifetime tied to `core`. `NULL` on NULL core. |
-| Concurrency | safe from any thread. The returned table itself is reentrant per `host-api.md` §3. |
+| Concurrency | safe from any thread. The returned table itself is reentrant per `host-api.en.md` §3. |
 | Ownership | kernel-owned; the host **MUST NOT** free. |
 
 ### 3.11 Versioning
@@ -491,7 +491,7 @@ never bumps this surface's ABI.
 |---|---|
 | Producer | kernel |
 | Effect | none observable. |
-| Returns | `(GN_SDK_VERSION_MAJOR << 16) | (GN_SDK_VERSION_MINOR << 8) | GN_SDK_VERSION_PATCH` — the same triple `gn_plugin_sdk_version` exports, packed for cheap comparison. |
+| Returns | `gn_version_pack(GN_SDK_VERSION_MAJOR, GN_SDK_VERSION_MINOR, GN_SDK_VERSION_PATCH)` — layout `major:8 << 24 \| minor:8 << 16 \| patch:16` per `sdk/abi.h`. The same triple `gn_plugin_sdk_version` exports, packed for ordered comparison. |
 | Concurrency | safe from any thread. |
 
 See §6 for the compatibility rule the host applies to the result.
@@ -501,7 +501,7 @@ See §6 for the compatibility rule the host applies to the result.
 ## 4. Caller-allocated structs
 
 `gn_stats_t` is the only value struct introduced by `sdk/core.h`.
-The shared zero-init contract from `host-api.md` §2 + `abi-evolution.md`
+The shared zero-init contract from `host-api.en.md` §2 + `abi-evolution.en.md`
 §4 applies in full; this section pins the slot layout.
 
 ```c
@@ -529,19 +529,19 @@ typedef struct gn_stats_s {
 | `bytes_out` | sum over `for_each` | snapshot total |
 | `frames_in` | sum over `for_each` | snapshot total |
 | `frames_out` | sum over `for_each` | snapshot total |
-| `plugin_dlclose_leaks` | `PluginManager::leaked_handles()` | tracks the `plugin.leak.dlclose_skipped` counter from `plugin-lifetime.md` §4 |
+| `plugin_dlclose_leaks` | `PluginManager::leaked_handles()` | tracks the `plugin.leak.dlclose_skipped` counter from `plugin-lifetime.en.md` §4 |
 | `_reserved[4]` | reserved | **MUST** be NULL on every call |
 
 Zero-init contract: the host either value-inits the struct (`gn_stats_t s = {0};`)
 or `memset`s it to zero before calling `gn_core_get_stats`. Per
-`abi-evolution.md` §4, partially-initialised reserved bytes carry stack
+`abi-evolution.en.md` §4, partially-initialised reserved bytes carry stack
 garbage that breaks the kernel's contiguous-range reads. The kernel
 asserts on entry: any non-NULL `_reserved[i]` returns
 `GN_ERR_INVALID_ENVELOPE` before any field is written, leaving
 `*out` untouched in the failed slot.
 
 Future fields are added by **promoting** a `_reserved` slot per
-`abi-evolution.md` §4 (the slot becomes a named field, the array
+`abi-evolution.en.md` §4 (the slot becomes a named field, the array
 shrinks by one, the struct's byte length stays constant).
 
 ---
@@ -554,7 +554,7 @@ plugin into the embedded kernel. The discipline it honours:
 1. **Manifest SHA-256 is mandatory.** The host passes a 32-byte
    digest the operator computed at distribution time. The loader
    refuses every byte mismatch with `GN_ERR_INTEGRITY_FAILED` per
-   `plugin-manifest.md` §6.
+   `plugin-manifest.en.md` §6.
 2. **Production mode is forced.** `gn_core_load_plugin` calls
    `set_manifest_required(true)` before the load runs. There is no
    developer-mode escape on this surface — every embedded host load
@@ -563,7 +563,7 @@ plugin into the embedded kernel. The discipline it honours:
 3. **Symlink defence.** On Linux 5.6+ the loader uses
    `openat2(AT_FDCWD, path, RESOLVE_NO_SYMLINKS | RESOLVE_NO_MAGICLINKS)`
    to refuse every symlink along the path and every magic-link such
-   as `/proc/self/fd/N` per `plugin-manifest.md` §4.1. Older kernels
+   as `/proc/self/fd/N` per `plugin-manifest.en.md` §4.1. Older kernels
    fall back to `O_NOFOLLOW` on the leaf component only. Hash and
    load operate on the same descriptor so a swap between the two
    cannot route the loader to a different inode.
@@ -576,19 +576,19 @@ plugin into the embedded kernel. The discipline it honours:
    table out of the global namespace so two plugins with overlapping
    internal names do not collide.
 6. **5+1 entry symbols.** The loader drives the C entry symbols
-   from `plugin-lifetime.md` §3 in order:
+   from `plugin-lifetime.en.md` §3 in order:
    `gn_plugin_sdk_version`, `gn_plugin_init`, `gn_plugin_register`,
    plus `gn_plugin_descriptor` (optional) on the way up;
    `gn_plugin_unregister`, `gn_plugin_shutdown` on the way down.
 7. **Two-phase activation.** `init_all` runs across every loaded
    plugin before any `register_all` runs, so a partial init failure
    tears down the partial set without exposing handlers/links to
-   live traffic per `plugin-lifetime.md` §5.
+   live traffic per `plugin-lifetime.en.md` §5.
 
 On hash mismatch the loader returns `GN_ERR_INTEGRITY_FAILED` and
 no `dlopen` runs; the kernel state is untouched. On any later
 phase failure the plugin manager runs the documented rollback
-(`plugin-lifetime.md` §5 — `rollback_register` falls through to
+(`plugin-lifetime.en.md` §5 — `rollback_register` falls through to
 `rollback_init`) so partial state never survives.
 
 ---
@@ -634,8 +634,8 @@ The kernel exposes its version twice: a human-readable string and a
 packed integer.
 
 ```c
-const char* gn_version(void);          /* "1.0.0-dev", "1.0.0-rc1", … */
-uint32_t    gn_version_packed(void);   /* (MAJOR << 16) | (MINOR << 8) | PATCH */
+const char* gn_version(void);          /* NUL-terminated semver string */
+uint32_t    gn_version_packed(void);   /* gn_version_pack layout: major:8 << 24 | minor:8 << 16 | patch:16 */
 ```
 
 The packed form is the comparable representation. The host computes
@@ -646,7 +646,7 @@ through `gn_plugin_sdk_version`:
   rebuilds.
 - **MINOR** — additive. A host built against `kernel.minor` keeps
   working at higher kernel minors. Slots appended at the tail
-  (size-prefix-protected per `abi-evolution.md` §3) are gated by the
+  (size-prefix-protected per `abi-evolution.en.md` §3) are gated by the
   host's compile-time view of the table.
 - **PATCH** — non-binary. Documentation and comment changes only.
 
@@ -660,25 +660,27 @@ on the host's compile-time view.
 The string form is for log lines and operator UI; the host **MUST
 NOT** parse it for compatibility decisions.
 
-The pre-RC reshape window from `abi-evolution.md` §3b applies to
-this surface: until `v1.0.0-rc1` is tagged the entries below may be
-removed, renamed, or reordered without a major bump. The window
-closes on the day the tag lands; from then on every rule in §3 of
-`abi-evolution.md` applies without exception.
+The pre-`v1.0.0` reshape window from `abi-evolution.en.md` §3b
+applies to this surface: through the entire rc cycle (`v1.0.0-rc1`,
+`v1.0.0-rc2`, …) the entries below may be removed, renamed, or
+reordered without a major bump. RC tags are integration
+checkpoints, not freeze points. The window closes only on the
+plain `v1.0.0` tag; from then on every rule in §3 of
+`abi-evolution.en.md` applies without exception.
 
 ---
 
 ## 8. Cross-references
 
-- Plugin-side surface (the inverse direction): `host-api.md`.
-- Evolution rules and `_reserved` discipline: `abi-evolution.md`.
-- Plugin entry symbols and two-phase activation: `plugin-lifetime.md`.
-- Manifest format and verification ordering: `plugin-manifest.md`.
-- FSM phase enumeration: `fsm-events.md` §2 +
+- Plugin-side surface (the inverse direction): `host-api.en.md`.
+- Evolution rules and `_reserved` discipline: `abi-evolution.en.md`.
+- Plugin entry symbols and two-phase activation: `plugin-lifetime.en.md`.
+- Manifest format and verification ordering: `plugin-manifest.en.md`.
+- FSM phase enumeration: `fsm-events.en.md` §2 +
   `core/kernel/phase.hpp`.
 - `gn_conn_event_t` payload and the `BACKPRESSURE_*` rules:
-  `conn-events.md`.
+  `conn-events.en.md`.
 - `gn_message_t` envelope shape (referenced by `gn_message_cb_t`
-  payload pointer): `protocol-layer.md`.
+  payload pointer): `protocol-layer.en.md`.
 - Error-code semantics (`GN_ERR_NOT_FOUND` vs `GN_ERR_UNKNOWN_RECEIVER`,
   `GN_ERR_OUT_OF_RANGE`, etc.): `sdk/types.h`.

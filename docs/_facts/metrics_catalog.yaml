@@ -5,14 +5,21 @@ counters:
   - emit_counter
   sources:
   - file: plugins/links/ipc/ipc.cpp
-    line: 594
+    line: 660
   - file: plugins/links/ipc/ipc.cpp
-    line: 622
+    line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 726
+    line: 728
   - file: plugins/links/tcp/tcp.cpp
-    line: 766
+    line: 768
   - file: plugins/links/tls/tls.cpp
-    line: 774
+    line: 864
   - file: plugins/links/tls/tls.cpp
-    line: 812
+    line: 902
+- name: raw_inject.inject.error
+  family: raw_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 306

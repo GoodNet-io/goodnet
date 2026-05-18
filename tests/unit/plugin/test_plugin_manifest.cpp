@@ -3,7 +3,7 @@
 ///         streamer, hex codec, and the kernel-side enforcement
 ///         in `PluginManager::open_one`.
 ///
-/// Pins `plugin-manifest.md` invariants:
+/// Pins `plugin-manifest.en.md` invariants:
 ///   - empty manifest = developer mode (every plugin loads);
 ///   - non-empty manifest = production mode (path absent or hash
 ///     mismatch fails with `GN_ERR_INTEGRITY_FAILED`);
@@ -147,7 +147,7 @@ TEST(PluginManifest_Sha, FdInvalidReturnsNullopt) {
 }
 
 TEST(PluginManifest_Sha, OpenAt2RefusesParentDirectorySymlink) {
-    /// `plugin-manifest.md` §4.1 — the kernel uses
+    /// `plugin-manifest.en.md` §4.1 — the kernel uses
     /// `openat2(RESOLVE_NO_SYMLINKS)` so a symlink anywhere in
     /// the path's prefix (not just the leaf) is rejected with
     /// `ELOOP`. The pre-T16 path used `O_NOFOLLOW` which only
@@ -190,7 +190,7 @@ TEST(PluginManifest_Sha, OpenAt2RefusesParentDirectorySymlink) {
 }
 
 TEST(PluginManifest_Sha, FdOpenedWithNoFollowRefusesSymlink) {
-    /// `plugin-manifest.md` §4.1 — the kernel opens the manifest
+    /// `plugin-manifest.en.md` §4.1 — the kernel opens the manifest
     /// path with `O_NOFOLLOW` so a symlink at the leaf component
     /// is refused before any hashing runs. The defence is not
     /// inside `sha256_of_fd` itself (which receives an already-

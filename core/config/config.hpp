@@ -1,7 +1,7 @@
 /// @file   core/config/config.hpp
 /// @brief  Config holder + JSON load + lookup for the kernel and plugins.
 ///
-/// Per `limits.md` §2 / `host-api.md` §2 (config slots): the kernel
+/// Per `limits.en.md` §2 / `host-api.en.md` §2 (config slots): the kernel
 /// owns one Config instance loaded from JSON at startup; plugins
 /// query it through `host_api->config_get` (typed via
 /// `gn_config_value_type_t`). Top-level keys are flat strings; nested values
@@ -82,7 +82,7 @@ public:
     [[nodiscard]] gn_result_t merge_json(std::string_view overlay,
                                          std::string* out_reason = nullptr);
 
-    /// Validate cross-field invariants from `limits.md` §3. Returns
+    /// Validate cross-field invariants from `limits.en.md` §3. Returns
     /// `GN_ERR_LIMIT_REACHED` when any invariant fails; the offending
     /// field name is appended to @p out_reason if non-null.
     ///

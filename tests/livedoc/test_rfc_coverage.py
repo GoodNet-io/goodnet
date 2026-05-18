@@ -51,3 +51,17 @@ def test_write_emits_yaml(tiny_repo, monkeypatch):
     path = rfc_coverage.write()
     text = path.read_text()
     assert "rfcs:" in text and "QUIC" in text
+
+
+def test_write_honours_monkeypatched_facts_path(tiny_repo, monkeypatch):
+    """Mirror of the regression test in test_test_inventory /
+    test_config_keys / test_metrics_catalog — pin
+    `rfc_coverage.write()` against the default-argument trap
+    that corrupted the real facts files in commit 2474cd7."""
+    map_path = tiny_repo / "tools" / "livedoc" / "rfc_coverage.yaml"
+    map_path.parent.mkdir(parents=True, exist_ok=True)
+    map_path.write_text("rfcs: []\n")
+    monkeypatch.setattr(rfc_coverage, "MAP_PATH", map_path)
+    expected = tiny_repo / "docs" / "_facts" / "rfc_coverage.yaml"
+    returned = rfc_coverage.write()
+    assert returned == expected

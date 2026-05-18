@@ -5,7 +5,7 @@
 
 ![kernel fsm](../img/kernel_fsm.svg)
 
-_Kernel lifecycle: created → started → stopped → destroyed._
+_Kernel lifecycle: Load → Wire → Resolve → Ready → Running → PreShutdown → Shutdown → Unload._
 <!-- /livedoc:embed_kernel_fsm -->
 
 
@@ -65,9 +65,9 @@ directory.
 
 ### Wire
 
-`host_api_t` полностью построен через `host_api_builder.cpp`,
-все 21 слот заполнены адресами kernel-thunks, `_reserved[8]`
-обнулён. Регистрируются статические kernel-internal-плагины:
+`host_api_t` полностью построен через `host_api_builder.cpp`
+(thunks живут в `core/kernel/host_api/*.cpp`); все слоты
+заполнены адресами kernel-thunks, `_reserved[8]` обнулён. Регистрируются статические kernel-internal-плагины:
 `plugins/protocols/gnet` (canonical mesh-framing) — обязательно;
 `plugins/protocols/raw` — опционально, если оператор включил.
 Статические плагины линкуются в бинарь ядра и не проходят через
@@ -82,7 +82,7 @@ inline-shim. Запрещён `dlopen`, запрещены любые сетев
 каждого плагина: путь резолвится относительно executable directory
 (через relative-path-check, чтобы закрыть LD_LIBRARY_PATH-вектор);
 SHA-256 файла сравнивается с переданным манифестом
-(`plugin-manifest.md`); расхождение — `GN_ERR_INTEGRITY_FAILED`,
+(`plugin-manifest.en.md`); расхождение — `GN_ERR_INTEGRITY_FAILED`,
 загрузка прерывается. При совпадении — `dlopen` с
 `RTLD_NOW | RTLD_LOCAL`, резолвится пять плюс один экспортируемых
 символов: `gn_plugin_sdk_version`, `gn_plugin_init`,
@@ -227,14 +227,14 @@ Ready → (register_all failure) → rollback_register → rollback_init → Unl
 ## Наблюдаемость
 
 Фазовые переходы публикуются через стандартную шину сигналов из
-[`signal-channel.md`](../contracts/signal-channel.en.md). Конкретный
+[`signal-channel.en.md`](../contracts/signal-channel.en.md). Конкретный
 канал — `SignalChannel<PhaseEvent>`; `PhaseEvent` несёт пару
 `(prev, next)` плюс монотонный sequence-number для дедупликации.
 Подписаться можно kernel-internal через
 `Kernel::subscribe(weak_ptr<IPhaseObserver>)`; плагины
 подписываются через размеченный канал host_api `subscribe`-слота
 с дискриминатором `GN_SUBSCRIBE_PHASE` (см.
-[`fsm-events.md`](../contracts/fsm-events.en.md) §7).
+[`fsm-events.en.md`](../contracts/fsm-events.en.md) §7).
 
 Слабая природа подписки прощает плагину забытый `unsubscribe`:
 weak_ptr-наблюдатель естественно протухает, как только плагин
@@ -274,7 +274,7 @@ gnarly-состоянию: один плагин уже зарегистриро
 ядро останавливается чисто.
 
 Контракт описан в
-[`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) §5.
+[`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) §5.
 Ключевое наблюдение: между `init_all` и `register_all` плагины
 **уже имеют живой `host_api`**, но **ещё не видят** друг друга
 через регистры. Это даёт окно для `query_extension_checked` —
@@ -375,7 +375,7 @@ mesh-routing, тихие drop'ы сообщений по неочевидным 
 - **Ошибка во время Shutdown** — игнорируется, walk-shutdown
   продолжается. Цель этой фазы — drain, не recovery.
 
-Это правило «либо все восемь плагинов запустились, либо ни одного»
+Это правило «либо все плагины запустились, либо ни одного»
 делает шум на старте громким и видимым: оператор узнаёт о бажном
 плагине в первой секунде запуска, а не через десять минут
 после сообщения, не дошедшего до пира.

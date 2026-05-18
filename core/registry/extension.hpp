@@ -39,6 +39,13 @@ struct ExtensionEntry {
     /// that want an anchor-bearing handle should reach for the C++
     /// `query_extension_with_anchor` overload.
     std::shared_ptr<void> lifetime_anchor;
+
+    /// Monotonic registration sequence. The strategy-chain dispatch
+    /// (`host_api->send_to`) walks chained plugins in the order
+    /// they were registered; `query_prefix` sorts results by this
+    /// field so the iteration is deterministic regardless of the
+    /// underlying hash-map order.
+    std::uint64_t         seq = 0;
 };
 
 class ExtensionRegistry {
@@ -50,7 +57,7 @@ public:
     /// Register a vtable under @p name with @p version. Fails with
     /// `GN_ERR_LIMIT_REACHED` if @p name is already taken OR the live
     /// entry count already equals the `set_max_extensions` cap
-    /// (`limits.md` §4a).
+    /// (`limits.en.md` §4a).
     /// @p lifetime_anchor mirrors `HandlerRegistry::register_handler`.
     [[nodiscard]] gn_result_t register_extension(std::string_view name,
                                                  std::uint32_t version,
@@ -67,7 +74,7 @@ public:
 
     /// Look up @p name and verify the registered version is compatible
     /// with @p requested_version. Compatibility rule from
-    /// `abi-evolution.md` §2: major must match exactly, registered
+    /// `abi-evolution.en.md` §2: major must match exactly, registered
     /// minor must be >= requested minor. Returns the vtable pointer
     /// through @p out_vtable on success, NULL on miss or mismatch.
     [[nodiscard]] gn_result_t query_extension_checked(std::string_view name,
@@ -87,6 +94,7 @@ private:
     mutable std::shared_mutex                       mu_;
     std::unordered_map<std::string, ExtensionEntry> entries_;
     std::uint32_t                                   max_entries_ = 0;
+    std::uint64_t                                   next_seq_    = 0;
 };
 
 } // namespace gn::core

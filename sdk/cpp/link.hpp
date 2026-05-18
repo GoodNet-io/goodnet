@@ -29,14 +29,14 @@ using ByteSpanList = std::span<const std::span<const std::uint8_t>>;
 /// Links move bytes — they do not interpret payloads, do not
 /// authenticate peers (security plugins do that), and do not route
 /// messages (the kernel does that). The single-writer invariant from
-/// `link.md` §4 applies to every implementation: at most one task
+/// `link.en.md` §4 applies to every implementation: at most one task
 /// may be writing to a given underlying socket at a time, regardless
 /// of how the language enforces it (mutex, single-task ownership,
 /// actor mailbox).
 ///
 /// Async work posted by a link implementation captures a weak
 /// observer of the link's reference-counted handle and upgrades
-/// before dereferencing link state. See `plugin-lifetime.md` §4.
+/// before dereferencing link state. See `plugin-lifetime.en.md` §4.
 class ILink {
 public:
     virtual ~ILink() = default;

@@ -18,6 +18,7 @@
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
 #include "../connection_context.hpp"
@@ -107,6 +108,30 @@ gn_result_t notify_connect(void* host_ctx,
         ev.trust = trust;
         std::memcpy(ev.remote_pk.data(), remote_pk, GN_PUBLIC_KEY_BYTES);
         pc->kernel->on_conn_event().fire(ev);
+    }
+
+    /// Notify every registered strategy that a new conn opened so
+    /// per-peer winner caches can consider it on the next dispatch.
+    /// Best-effort, same posture as the CONN_DOWN side: a strategy
+    /// throwing here does not unwind the connection registry
+    /// insertion already committed above.
+    {
+        auto strategies =
+            pc->kernel->extensions().query_prefix("gn.strategy.");
+        for (const auto& entry : strategies) {
+            const auto* sapi =
+                static_cast<const gn_strategy_api_t*>(entry.vtable);
+            if (!sapi || !sapi->on_path_event ||
+                sapi->api_size < sizeof(gn_strategy_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn   = new_id;
+            sample.rtt_us = 0;   // no probe landed yet — unknown
+            (void)sapi->on_path_event(
+                sapi->ctx, remote_pk,
+                GN_PATH_EVENT_CONN_UP, &sample);
+        }
     }
 
     auto& sec = pc->kernel->security();
@@ -258,8 +283,8 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             return GN_OK;
         }
         if (session->phase() == SecurityPhase::Transport) {
-            const gn_result_t rc = session->decrypt_transport_stream(
-                wire_bytes, plaintexts);
+            const gn_result_t rc = session->decrypt_batch_transport_stream(
+                pc->kernel->crypto_pool(), wire_bytes, plaintexts);
             if (rc != GN_OK) return rc;
             if (plaintexts.empty()) return GN_OK;
         }
@@ -280,7 +305,10 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
         rec->protocol_id);
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    for (const auto& pt : plaintexts) {
+    /// `pt` is captured by-value reference; the buffers stay owned
+    /// by `plaintexts` so the recycle pass at end-of-call can hand
+    /// them back to the session's recycled-plaintext free list.
+    for (auto& pt : plaintexts) {
         auto deframed = layer->deframe(
             ctx, std::span<const std::uint8_t>(pt));
         if (!deframed.has_value()) {
@@ -356,6 +384,9 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             }
             route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
         }
+    }
+    if (session != nullptr && !plaintexts.empty()) {
+        session->recycle_plaintext_buffers(plaintexts);
     }
     return GN_OK;
 }
@@ -507,6 +538,32 @@ gn_result_t notify_disconnect(void* host_ctx,
     ev.trust     = snapshot->trust;
     ev.remote_pk = snapshot->remote_pk;
     pc->kernel->on_conn_event().fire(ev);
+
+    /// Notify every registered strategy that this conn went down so
+    /// per-peer winner caches drop the stale id. Walks the same
+    /// `gn.strategy.*` extension set the dispatch path uses; each
+    /// strategy's `on_path_event` slot is non-null by macro
+    /// contract, so the call is unconditional. Failures are
+    /// best-effort — a strategy that throws or returns an error
+    /// does not block the kernel-side cleanup we have already
+    /// committed.
+    {
+        auto strategies =
+            pc->kernel->extensions().query_prefix("gn.strategy.");
+        for (const auto& entry : strategies) {
+            const auto* sapi =
+                static_cast<const gn_strategy_api_t*>(entry.vtable);
+            if (!sapi || !sapi->on_path_event ||
+                sapi->api_size < sizeof(gn_strategy_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn = conn;
+            (void)sapi->on_path_event(
+                sapi->ctx, snapshot->remote_pk.data(),
+                GN_PATH_EVENT_CONN_DOWN, &sample);
+        }
+    }
     return GN_OK;
 }
 

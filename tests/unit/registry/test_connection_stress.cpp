@@ -6,7 +6,7 @@
 /// Realistic plugin fan-out, however, runs through dozens of
 /// concurrent inserts and lookups while erases drain the registry —
 /// the path on which the kernel's per-shard locking strategy from
-/// `registry.md` §3 is load-bearing. The cases below pin the
+/// `registry.en.md` §3 is load-bearing. The cases below pin the
 /// invariants under that load:
 ///
 ///   - Every successful insert lands a unique `(id, pk, uri)`
@@ -79,7 +79,7 @@ TEST(ConnectionRegistry_Stress, ManyConcurrentInsertsAllSucceedDistinct) {
     /// Seeds are biased away from zero so every record carries a
     /// non-zero `remote_pk` — `ConnectionRegistry::insert_with_index`
     /// intentionally skips indexing the all-zero placeholder per
-    /// `registry.md`, and a dropped pk index would mask a real
+    /// `registry.en.md`, and a dropped pk index would mask a real
     /// concurrency bug under this stress.
     constexpr std::uint64_t kSeedBase = 0x1ULL << 60;
     auto seed_for = [&](std::size_t idx, int i) {

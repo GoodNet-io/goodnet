@@ -27,7 +27,7 @@ enum class Propagation : int {
 ///
 /// Handlers are registered by the kernel against a `(protocol_id, msg_id)`
 /// pair. Multiple handlers may share the same pair; dispatch order is
-/// priority-driven (TBD in handler registration contract).
+/// priority-driven (see `docs/contracts/handler-registration.en.md`).
 class IHandler {
 public:
     virtual ~IHandler() = default;

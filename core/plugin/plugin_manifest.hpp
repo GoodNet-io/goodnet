@@ -12,7 +12,7 @@
 ///
 /// Lifecycle:
 ///   1. Operator builds the manifest at distribution time —
-///      `goodnet manifest emit plugins/*.so > plugins.json`
+///      `goodnetd manifest emit plugins/*.so > plugins.json`
 ///      (tooling lives outside this header).
 ///   2. Operator hands the manifest to `Kernel::set_plugin_manifest`
 ///      before reaching `Load` phase.
@@ -38,6 +38,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 #include <sdk/types.h>
@@ -63,11 +64,25 @@ enum class ManifestKind : std::uint8_t {
 /// path paired with the SHA-256 the operator approved. The
 /// `kind`/`args` fields are only meaningful for remote entries and
 /// are quietly ignored by the dlopen path.
+///
+/// `quiescence_timeout_s` overrides the kernel-wide quiescence wait
+/// (`PluginManager::set_quiescence_timeout`) for this single entry:
+/// a plugin that legitimately runs long-tail async work (slow disk
+/// flush, large key derivation) declares its own ceiling here so
+/// `rollback()` does not leak its dlclose handle just because the
+/// global default is tuned for fast-quiescing protocol plugins.
+/// Zero (the default) selects the global value. Units: seconds.
 struct ManifestEntry {
     std::string  path;
     PluginHash   sha256{};
     ManifestKind kind{ManifestKind::Dynamic};
     std::vector<std::string> args;  ///< argv tail handed to a remote worker
+    std::uint32_t quiescence_timeout_s{0};  ///< 0 ⇒ use global default
+    /// Required-plugin pin. When `true`, `PluginManager::load` refuses
+    /// to complete unless this entry's plugin registered successfully.
+    /// Default `false` preserves existing behaviour for entries that
+    /// omit the field. Parsed from the JSON `required` key.
+    bool         required{false};
 };
 
 /// Operator-supplied integrity allowlist.
@@ -179,6 +194,14 @@ public:
     /// collapse to the same key.
     [[nodiscard]] const ManifestEntry* find(const std::string& path) const;
 
+    /// Canonicalise a path the same way `add_entry` and `parse` do.
+    /// Exposed so callers comparing live paths against manifest
+    /// entries collapse to the same key without rewriting the
+    /// filesystem rules. Falls back to the original string on
+    /// filesystem errors.
+    [[nodiscard]] static std::string canonical_path(
+        const std::string& path) noexcept;
+
     /// Decode a 64-character hex string into a 32-byte digest.
     /// Returns `nullopt` on length mismatch or non-hex characters.
     [[nodiscard]] static std::optional<PluginHash>
@@ -190,7 +213,27 @@ public:
     [[nodiscard]] static std::string encode_hex(const PluginHash& h);
 
 private:
+    /// Rebuild `index_` from `entries_`. Called from every code path
+    /// that mutates the vector (`add_entry`, `parse` after the
+    /// pre-clear) so the two stay in lockstep.
+    void rebuild_index_();
+
+    /// Canonical storage — preserves insertion order so a manifest
+    /// dump matches the JSON the operator handed in. The vector is
+    /// authoritative; the index below is a derived structure that
+    /// must be rebuilt after any mutation.
     std::vector<ManifestEntry> entries_;
+
+    /// O(1) lookup by canonicalised path → index into `entries_`.
+    /// Built alongside `entries_` because `find` is hot in
+    /// `PluginManager::open_one` (one lookup per plugin load) and
+    /// the previous linear scan would re-key its O(N²) under a
+    /// future deployment with hundreds of pinned plugins. The map
+    /// stores indices rather than pointers so a `entries_` realloc
+    /// during `add_entry` doesn't invalidate the lookup; rebuild
+    /// after every mutation is cheap (manifests are bounded by the
+    /// configured `max_plugins`).
+    std::unordered_map<std::string, std::size_t> index_;
 };
 
 }  // namespace gn::core

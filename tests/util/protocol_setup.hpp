@@ -1,10 +1,7 @@
 /// @file   tests/util/protocol_setup.hpp
 /// @brief  Test helper that registers a protocol layer with the kernel.
 ///
-/// Pre-relax the same line in test fixtures was
-/// `kernel.set_protocol_layer(proto)`. After the relax of
-/// `IProtocolLayer` to a registry (see commit history on
-/// `feat/protocol-layer-registry`) registration goes through
+/// Registration goes through
 /// `Kernel::protocol_layers().register_layer(...)` and yields an id.
 /// Most fixtures don't care about the id; this helper hides the
 /// out-id plumbing and the `(void)` discard of the registration

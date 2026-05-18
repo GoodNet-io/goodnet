@@ -25,8 +25,8 @@ static_stripped=""
 closure_kb=""
 docker_image_kb=""
 
-if [[ -f build-release/bin/goodnet ]]; then
-    dyn_kernel=$(stat -c %s build-release/bin/goodnet)
+if [[ -f build-release/bin/goodnetd ]]; then
+    dyn_kernel=$(stat -c %s build-release/bin/goodnetd)
 fi
 _plugin_so_count=$(find build-release/plugins -maxdepth 1 -name 'lib*.so' 2>/dev/null | wc -l)
 if [[ ${_plugin_so_count:-0} -gt 0 ]]; then
@@ -35,10 +35,10 @@ if [[ ${_plugin_so_count:-0} -gt 0 ]]; then
         awk '{s+=$1} END {print s+0}')
     dyn_plugin_count=$_plugin_so_count
 fi
-if [[ -f build-static/bin/goodnet ]]; then
-    static_kernel=$(stat -c %s build-static/bin/goodnet)
+if [[ -f build-static/bin/goodnetd ]]; then
+    static_kernel=$(stat -c %s build-static/bin/goodnetd)
     tmp_strip=$(mktemp)
-    cp build-static/bin/goodnet "$tmp_strip"
+    cp build-static/bin/goodnetd "$tmp_strip"
     strip "$tmp_strip" 2>/dev/null || true
     static_stripped=$(stat -c %s "$tmp_strip")
     rm -f "$tmp_strip"
@@ -64,10 +64,10 @@ fi
 # and silently skipped when docker is unreachable.
 if command -v docker >/dev/null 2>&1 && \
    docker info >/dev/null 2>&1 && \
-   [[ -f build-static/bin/goodnet ]] && \
+   [[ -f build-static/bin/goodnetd ]] && \
    [[ -f dist/Dockerfile.static ]]; then
     tmpctx=$(mktemp -d)
-    cp build-static/bin/goodnet "$tmpctx/goodnet"
+    cp build-static/bin/goodnetd "$tmpctx/goodnetd"
     cp dist/Dockerfile.static "$tmpctx/Dockerfile"
     if docker build -q -t goodnet:bench-static "$tmpctx" >/dev/null 2>&1; then
         # docker image inspect's `Size` is the layer-summed bytes,

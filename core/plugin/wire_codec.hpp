@@ -17,15 +17,20 @@
 /// — that markdown file is the binding spec; this header is the
 /// implementation contract.
 ///
-/// Errors return `GN_ERR_OUT_OF_RANGE` for malformed input (the
-/// closest match in `sdk/types.h` to "CBOR decode failure"); the
-/// reader's `pos` is left at the offending byte so a caller can
-/// emit a useful diagnostic.
+/// Errors return `GN_ERR_WIRE_DECODE` for malformed input
+/// (type-tag mismatch, premature EOF, bad initial byte, unknown
+/// simple-value tag); the reader's `pos` is left at the offending
+/// byte and, when the caller provides a `diag` sink on the Reader,
+/// a one-line description of the failure is written to it.
+/// `GN_ERR_OUT_OF_RANGE` stays reserved for *numeric* range
+/// violations (a CBOR major-1 negative magnitude that does not fit
+/// `int64_t`, a length prefix past `size_t`).
 
 #pragma once
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -59,9 +64,18 @@ void encode_null(std::vector<std::uint8_t>& out);
 
 /// Stateful reader. `pos` advances on every successful decode; on
 /// failure the caller can inspect `pos` to find the offending byte.
+///
+/// `diag` is an optional out-string the decoders write to on failure
+/// — mirrors the shape `PluginManifest::parse(..., std::string&)`
+/// uses for the same purpose. `nullptr` (the default) discards the
+/// diagnostic, so hot paths that only branch on the error code pay
+/// no allocation cost. Callers that surface decode failures back to
+/// an operator hand in a long-lived string the codec fills on the
+/// first error.
 struct Reader {
     std::span<const std::uint8_t> buf;
-    std::size_t pos{0};
+    std::size_t                   pos{0};
+    std::string*                  diag{nullptr};
 };
 
 [[nodiscard]] gn_result_t decode_u64(Reader& r, std::uint64_t& out);

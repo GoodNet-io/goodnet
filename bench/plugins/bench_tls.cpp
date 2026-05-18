@@ -153,6 +153,22 @@ BENCHMARK_DEFINE_F(TlsFixture, HandshakeTime)(::benchmark::State& state) {
         if (gn::tests::support::generate_self_signed(cert, key)) {
             fresh_server->set_server_credentials(cert, key);
         }
+        /// composer_listen + composer_connect drive the accept-bus
+        /// rather than the kernel `notify_connect` slot. Subscribe
+        /// before the listen call so the cb is wired before any
+        /// inbound TCP connection lands.
+        std::atomic<int> accept_count{0};
+        gn_subscription_id_t accept_tok = 0;
+        const auto sub_rc = fresh_server->composer_subscribe_accept(
+            +[](void* user, gn_conn_id_t, const char*) {
+                static_cast<std::atomic<int>*>(user)
+                    ->fetch_add(1, std::memory_order_release);
+            }, &accept_count, &accept_tok);
+        if (sub_rc != GN_OK) {
+            state.SkipWithError("subscribe_accept failed");
+            state.ResumeTiming();
+            break;
+        }
         state.ResumeTiming();
 
         const auto t0 = std::chrono::steady_clock::now();
@@ -173,12 +189,9 @@ BENCHMARK_DEFINE_F(TlsFixture, HandshakeTime)(::benchmark::State& state) {
             state.SkipWithError("connect failed");
             break;
         }
-        /// Handshake completion observable through the accept-bus
-        /// fire on the server. Wait for it, then record elapsed.
-        if (!::gn::sdk::test::wait_for(
+        if (!::gn::sdk::test::wait_for_fast(
                 [&] {
-                    /// Indirect signal: server got an accept event.
-                    return sh.kernel.stub.connects.load() >= 1;
+                    return accept_count.load(std::memory_order_acquire) >= 1;
                 }, 5s)) {
             state.SkipWithError("handshake timeout");
             break;
@@ -188,6 +201,7 @@ BENCHMARK_DEFINE_F(TlsFixture, HandshakeTime)(::benchmark::State& state) {
             std::chrono::duration<double>(t1 - t0).count());
 
         state.PauseTiming();
+        (void)fresh_server->composer_unsubscribe_accept(accept_tok);
         fresh_client->shutdown();
         fresh_server->shutdown();
         ch.tcp->shutdown();

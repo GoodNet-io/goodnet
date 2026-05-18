@@ -80,7 +80,7 @@ public:
     /// connection of that class. Default is "permit every class" so
     /// the canonical mesh-framing implementation needs no override;
     /// implementations narrower in scope (passthrough / opaque-
-    /// payload) override to a subset. Per `security-trust.md` §4 the
+    /// payload) override to a subset. Per `security-trust.en.md` §4 the
     /// kernel enforces the gate before any envelope rides.
     [[nodiscard]] virtual std::uint32_t allowed_trust_mask() const noexcept {
         return (1u << GN_TRUST_UNTRUSTED)  |

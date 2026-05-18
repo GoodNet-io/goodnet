@@ -113,7 +113,7 @@ void MetricsRegistry::increment(std::string_view name) {
         return;
     }
 
-    /// Cardinality cap (`metrics.md` §3.1). Zero disables the
+    /// Cardinality cap (`metrics.en.md` §3.1). Zero disables the
     /// check; a non-zero cap rejects the *new* counter and bumps
     /// `metrics.cardinality_rejected` so the operator can spot the
     /// cliff without losing established names. LRU eviction would

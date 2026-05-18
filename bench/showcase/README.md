@@ -1,11 +1,11 @@
 # GoodNet free-kernel showcase bench
 
-Track Б of the bench rework — six bench sections that demonstrate
-what GoodNet does **architecturally** that other p2p / RPC stacks
-(`libp2p`, `iroh`, `WebRTC`, `gRPC`) cannot reproduce natively. NOT
-a fair comparison track — that lives in `bench/reports/<sha>.md`
-section А (`bench_real_e2e.cpp` round-trip cases pivoted side-by-
-side with `libp2p-echo` and `iroh-echo`).
+Six bench sections that demonstrate what GoodNet does
+**architecturally** that other p2p / RPC stacks (`libp2p`,
+`iroh`, `WebRTC`, `gRPC`) cannot reproduce natively. NOT a fair
+comparison track — that lives in `bench/reports/<sha>.md`
+comparison section (`bench_real_e2e.cpp` round-trip cases pivoted
+side-by-side with `libp2p-echo` and `iroh-echo`).
 
 The reader of this report is asked «попробуй повторить» — every
 acceptance row is something `libp2p` / `iroh` / `WebRTC` /
@@ -19,8 +19,8 @@ acceptance row is something `libp2p` / `iroh` / `WebRTC` /
 | B.2 | Strategy-driven carrier selection | `goodnet_float_send_rtt` plugin (in-tree OBJECT lib) | Works in-tree |
 | B.3 | Provider handoff Noise→Null после handshake | `SecuritySession::_test_clear_inline_crypto` (env-gated PoC) | PoC via env-gated seam |
 | B.4 | Multi-thread fanout | Kernel strand-per-conn + crypto pool | Works in-tree |
-| B.5 | Carrier failover | `float_send_rtt` `CONN_DOWN` eviction + re-pick | Stand-in for Slice-9-KERNEL emit |
-| B.6 | Mobility → LAN shortcut | Multi-connect + strategy + ICE-restart shape | Synthetic — C.4 netlink hook pending |
+| B.5 | Carrier failover | `float_send_rtt` `CONN_DOWN` eviction + re-pick | Works in-tree (bench injects the event) |
+| B.6 | Mobility → LAN shortcut | Multi-connect + strategy + ICE-restart shape | Works in-tree (bench injects the carrier arrival) |
 
 ## Build
 
@@ -57,34 +57,45 @@ debugging).
 ## B.3 PoC disclaimer
 
 The Noise→Null handoff in B.3 reaches into kernel-private state
-through `SecuritySession::_test_clear_inline_crypto`, gated at
-runtime through `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`. The bench
-process sets the env var from `main` so child kernels inherit. The
-gate fails closed otherwise — accidentally linking the seam into a
-production binary is observable through the
-`tests/unit/security/test_inline_downgrade_gate.cpp` unit test,
-which pins the contract.
+through `SecuritySession::_test_clear_inline_crypto`, compile-gated
+through the `GOODNET_BENCH_SHOWCASE` macro. Default builds do not
+compile the method at all — accidentally linking the seam into a
+production binary fails at link time. The bench-side helper in
+`bench/test_bench_showcase.hpp` carries the same `#ifdef`, so a
+caller built without the macro receives `GN_ERR_NOT_IMPLEMENTED`.
+The `tests/unit/security/test_inline_downgrade_gate.cpp` unit test
+pins the in-bench phase-guard contract (the method refuses outside
+`SecurityPhase::Transport`).
 
 The production-shape handoff (`SessionRegistry::downgrade_*` +
 trust-class hook on connection bring-up + peer-side wire signal)
-is a v1.x followup. The bench's PoC suffices to surface the
+is a followup. The bench's PoC suffices to surface the
 latency-step number; it is NOT a path operators should use.
 
-## Other deferrals documented in code
+## Bench-only synthesis
 
-* `CONN_UP`/`CONN_DOWN` auto-emit from `notify_connect` /
-  `notify_disconnect` → Slice-9-KERNEL. B.5 and B.6 fire these
-  manually right after `link->disconnect` / synthetic carrier
-  arrival; ~10 LOC of bench code marked `XXX bench: stand-in for
-  slice-9 kernel emit`. Delete when slice 9 lands.
-* `RTM_NEWLINK` / `RTM_DELLINK` AF_NETLINK socket → kernel emits
-  `GN_CONN_EVENT_NETWORK_CHANGE` → C.4 Network mobility. B.6
-  simulates the event with a synthetic second carrier; with C.4
-  the bench just listens.
-* Kernel-side RTT measurement (heartbeat extension writing
-  `ConnectionRecord::last_rtt_us`) → Slice-9-HEARTBEAT. B.2/B.5/B.6
-  inject RTT directly through `picker.on_path_event(RTT_UPDATE)`
-  in the meantime.
+The bench drives a few events directly rather than staging a
+full kernel connect/disconnect dance for each iteration. The
+kernel-side auto-emit paths exist (`notify_connect` fires
+`CONN_UP`, `notify_disconnect` fires `CONN_DOWN`); the bench
+synthesis is for deterministic timing, not coverage of a gap.
+
+* `CONN_UP` / `CONN_DOWN` injection — B.5 fires `CONN_DOWN`
+  right after `link->disconnect` so the picker reacts on the
+  same iteration; B.6 fires `CONN_UP` on a synthetic second
+  carrier rather than wiring up a real LAN host candidate.
+* Network-mobility event from an `AF_NETLINK` socket
+  (`RTM_NEWLINK` / `RTM_DELLINK` → `GN_CONN_EVENT_NETWORK_CHANGE`).
+  B.6 synthesises a second carrier directly; the kernel-side
+  netlink observer is not wired here.
+
+Kernel-side RTT measurement runs through the heartbeat handler:
+PONG matches a pending ping and calls `notify_rtt_sample`, which
+the kernel republishes to strategies as
+`GN_PATH_EVENT_RTT_UPDATE`. The bench uses the same path; the
+explicit `picker.on_path_event` calls in B.2/B.5/B.6 only drive
+the strategy when the bench wants a specific RTT value rather
+than the measured one.
 
 ## Reading the report
 

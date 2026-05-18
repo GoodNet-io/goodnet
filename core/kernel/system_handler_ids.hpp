@@ -36,8 +36,9 @@ inline constexpr std::uint32_t kIdentityRangeEnd      = 0x1F;
 inline constexpr std::uint32_t kAttestationMsgId      = 0x11;
 
 /// Identity-rotation announcement — `docs/contracts/identity.en.md`
-/// §7. 150-byte signed proof. The follow-up rotation patch wires
-/// the receiver-side kernel handler.
+/// §7. 150-byte signed proof. The receiver-side kernel handler
+/// lives in `core/kernel/host_api/notifications.cpp::notify_inbound_bytes`
+/// (rotation branch).
 inline constexpr std::uint32_t kIdentityRotationMsgId = 0x12;
 
 /// Capability-blob distribution — `docs/contracts/capability-tlv.en.md`.
@@ -46,9 +47,11 @@ inline constexpr std::uint32_t kIdentityRotationMsgId = 0x12;
 inline constexpr std::uint32_t kCapabilityBlobMsgId   = 0x13;
 
 /// User-level 2FA challenge / response wire pair — see
-/// `docs/recipes/user-2fa-via-plugins.md`. Apps drive the
-/// challenge-response via standard send / handler registration on
-/// these ids. Plugin-reserved (registerable, not injectable).
+/// `docs/contracts/system-handlers.en.md` §3 (table row `0x14` /
+/// `0x15`) which points to `identity.en.md` §6 for the protocol
+/// details. Apps drive the challenge-response via standard send /
+/// handler registration on these ids. Plugin-reserved
+/// (registerable, not injectable).
 inline constexpr std::uint32_t kIdentityChallengeMsgId = 0x14;
 inline constexpr std::uint32_t kIdentityResponseMsgId  = 0x15;
 

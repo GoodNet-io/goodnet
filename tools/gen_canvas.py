@@ -9,10 +9,10 @@ Reads the architecture description from this file, computes a layout via
 Graphviz `dot`, and writes a JSON Canvas document. The shape matches the
 current code:
 
-  * 8 loadable plugin units + kernel + integration-tests, drawn as
-    independent cells (each lives in its own git checkout under
-    plugins/<kind>/<name>/, with goodnet-integration-tests as the 9th
-    sibling).
+  * 13 loadable plugin units + kernel + integration-tests + bridges-cpp,
+    drawn as independent cells (each lives in its own git checkout —
+    plugin slots under plugins/<kind>/<name>/, the bridges-cpp slot at
+    bridges/cpp/, and the integration-tests overlay at tests/integration/).
   * Kernel as a pure registry: handlers / links / security providers /
     extensions are all owned by plugins and reach the kernel through
     `host_api->register_*`.
@@ -91,7 +91,7 @@ GROUPS = [
         ["n_plug_mgr", "n_svc_res", "n_anchor"]),
     ("g_signal",  "SIGNAL INFRASTRUCTURE (core/kernel/)",  C_PURPLE,
         ["n_conn_events", "n_metrics", "n_timer"]),
-    # ── Plugin units (each ships in its own git, see goodnet-io/<kind>-<name>) ──
+    # ── Plugin units (each ships in its own git, see GoodNet-io/<kind>-<name>) ──
     ("g_proto",   "PROTOCOL PLUGINS (kernel-static)",      C_ORANGE,
         ["n_gnet_proto", "n_raw_proto"]),
     ("g_security", "SECURITY PLUGINS",                     C_ORANGE,
@@ -149,7 +149,7 @@ NODES: dict[str, tuple[str, str]] = {
         "} gn_result_t;\n"
         "```\n\n"
         "Один enum для каждого failure mode.\n"
-        "Контракт `host-api.md` фиксирует возврат на каждом slot'е."
+        "Контракт `host-api.en.md` фиксирует возврат на каждом slot'е."
     ),
 
     # ── SDK interfaces ──────────────────────────────────────────────────────
@@ -165,42 +165,51 @@ NODES: dict[str, tuple[str, str]] = {
     "n_handler_iface": (
         "gn_handler_vtable_t",
         "# gn_handler_vtable_t\n`sdk/handler.h`\n\n"
-        "Handler — обработчик envelope'ов на конкретный `msg_id` или wildcard.\n\n"
+        "Handler — обработчик envelope'ов на конкретный `msg_id`.\n\n"
         "```c\n"
-        "gn_propagation_t (*on_message)(void* self,\n"
-        "                                const gn_message_header_t*,\n"
-        "                                const gn_endpoint_t*,\n"
-        "                                const uint8_t* payload, size_t);\n"
-        "void (*on_conn_state)(void* self, gn_conn_id_t,\n"
-        "                       const char* uri, gn_conn_state_t);\n"
+        "const char* (*protocol_id)(void* self);\n"
+        "void (*supported_msg_ids)(void* self,\n"
+        "                           const uint32_t** out_ids,\n"
+        "                           size_t* out_count);\n"
+        "gn_propagation_t (*handle_message)(void* self,\n"
+        "                                    const gn_message_t* envelope);\n"
+        "void (*on_result)(void* self, const gn_message_t* env,\n"
+        "                  gn_propagation_t result);\n"
+        "void (*on_init)(void* self);\n"
+        "void (*on_shutdown)(void* self);\n"
         "```\n\n"
-        "Регистрируется через\n"
-        "`register_vtable(GN_REGISTER_HANDLER, meta{name, msg_id, priority}, vt, self, &id)`."
+        "Регистрируется через `register_vtable(GN_REGISTER_HANDLER,\n"
+        "meta{name=protocol_id, msg_id, priority, namespace_id},\n"
+        "vt, self, &id)`."
     ),
     "n_link_iface": (
         "gn_link_vtable_t",
         "# gn_link_vtable_t\n`sdk/link.h`\n\n"
         "Link — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n"
         "```c\n"
+        "const char* (*scheme)(void* self);\n"
         "gn_result_t (*listen)(void* self, const char* uri);\n"
-        "gn_result_t (*connect)(void* self, const char* uri,\n"
-        "                       const uint8_t pk[GN_PUBLIC_KEY_BYTES]);\n"
-        "gn_result_t (*send)(void* self, gn_conn_id_t,\n"
-        "                    const uint8_t* bytes, size_t);\n"
-        "gn_result_t (*close)(void* self, gn_conn_id_t);\n"
-        "void        (*shutdown)(void* self);\n"
-        "uint32_t    (*properties)(void* self);  // stream/datagram/...\n"
+        "gn_result_t (*connect)(void* self, const char* uri);\n"
+        "gn_result_t (*send)(void* self, gn_conn_id_t conn,\n"
+        "                    const uint8_t* bytes, size_t size);\n"
+        "gn_result_t (*send_batch)(void* self, gn_conn_id_t conn,\n"
+        "                          const gn_byte_span_t* batch, size_t count);\n"
+        "gn_result_t (*disconnect)(void* self, gn_conn_id_t conn);\n"
+        "const char* (*extension_name)(void* self);\n"
+        "const void* (*extension_vtable)(void* self);\n"
+        "void        (*destroy)(void* self);\n"
         "```\n\n"
-        "Регистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`).\n"
+        "Регистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`, `ice://`, `quic://`).\n"
         "Conn-id ownership gate: только владелец схемы может звать\n"
         "`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n"
-        "(`security-trust.md` §6a)."
+        "(`security-trust.en.md` §6a)."
     ),
     "n_security_iface": (
         "gn_security_provider_vtable_t",
         "# gn_security_provider_vtable_t\n`sdk/security.h`\n\n"
         "Security provider — handshake + AEAD.\n\n"
         "```c\n"
+        "provider_id(self) -> const char*;\n"
         "handshake_open(self, conn, trust, role,\n"
         "               local_sk, local_pk, remote_pk, &state);\n"
         "handshake_step(self, state, in, in_size, &out_msg);\n"
@@ -209,10 +218,13 @@ NODES: dict[str, tuple[str, str]] = {
         "encrypt(self, state, plain, plain_size, &out);\n"
         "decrypt(self, state, cipher, cipher_size, &out);\n"
         "rekey(self, state); handshake_close(self, state);\n"
+        "destroy(self);\n"
         "allowed_trust_mask(self) -> uint32_t;\n"
         "```\n\n"
-        "v1: один активный провайдер на ядро. Per-trust-class селекция\n"
-        "уезжает в StackRegistry в v1.x."
+        "Multi-provider StackRegistry — kernel picks the first registered\n"
+        "provider whose `allowed_trust_mask` admits the conn's trust class\n"
+        "(`null` on Loopback / IntraNode, `noise` on Untrusted / Peer in\n"
+        "the same process)."
     ),
     "n_protocol_iface": (
         "gn_protocol_layer_t",
@@ -227,7 +239,7 @@ NODES: dict[str, tuple[str, str]] = {
     ),
     "n_trust": (
         "TrustClass",
-        "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.md`\n\n"
+        "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.en.md`\n\n"
         "```c\n"
         "GN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\n"
         "GN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\n"
@@ -235,7 +247,7 @@ NODES: dict[str, tuple[str, str]] = {
         "GN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n"
         "```\n\n"
         "**Один путь апгрейда:** `Untrusted → Peer` после успешной\n"
-        "взаимной аттестации (см. `attestation.md`). Любой другой\n"
+        "взаимной аттестации (см. `attestation.en.md`). Любой другой\n"
         "переход отбит ядром синхронно.\n\n"
         "Loopback и IntraNode фиксируются на `notify_connect`\n"
         "и не меняются."
@@ -259,7 +271,7 @@ NODES: dict[str, tuple[str, str]] = {
         "Тонкая оркестрация фаз — никаких знаний о wire-форматах,\n"
         "транспортах или security политиках. Ядро держит регистры и\n"
         "позволяет плагинам слать сообщения друг другу.\n\n"
-        "**Lifecycle FSM** (`plugin-lifetime.md` §2):\n"
+        "**Lifecycle FSM** (`plugin-lifetime.en.md` §2):\n"
         "```\n"
         "discover → dlopen → version-check →\n"
         "init_all → register_all → on_running →\n"
@@ -295,7 +307,7 @@ NODES: dict[str, tuple[str, str]] = {
         "Внутренний обработчик 232-байтового attestation envelope.\n"
         "Запускается **после** Noise (или эквивалента), удерживает trust class\n"
         "на `Untrusted` пока обе стороны не отправили и не проверили payload\n"
-        "(`docs/contracts/attestation.md`).\n\n"
+        "(`docs/contracts/attestation.en.md`).\n\n"
         "Только успешная взаимная аттестация переводит conn в `Peer`."
     ),
 
@@ -311,17 +323,17 @@ NODES: dict[str, tuple[str, str]] = {
     "n_handler_reg": (
         "HandlerRegistry",
         "# HandlerRegistry\n`core/registry/handler.{hpp,cpp}`\n\n"
-        "Registry для KIND_HANDLER. Поиск по `msg_id` →\n"
-        "приоритетно отсортированный список. `lookup` возвращает snapshot\n"
-        "by-value, чьи lifetime_anchor копии держат плагин загруженным\n"
-        "до конца dispatch'а."
+        "Registry для KIND_HANDLER. Ключ — triple `(namespace_id,\n"
+        "protocol_id, msg_id)` → priority-sorted chain. `lookup`\n"
+        "возвращает snapshot by-value, чьи lifetime_anchor копии\n"
+        "держат плагин загруженным до конца dispatch'а."
     ),
     "n_link_reg": (
         "LinkRegistry",
         "# LinkRegistry\n`core/registry/link.{hpp,cpp}`\n\n"
         "Registry для KIND_LINK. Ключ — URI scheme (`tcp`, `udp`, `ws`,\n"
-        "`ipc`, `tls`).\n\n"
-        "**Conn-id ownership gate** (`security-trust.md` §6a):\n"
+        "`ipc`, `tls`, `ice`, `quic`).\n\n"
+        "**Conn-id ownership gate** (`security-trust.en.md` §6a):\n"
         "хранит маппинг scheme → lifetime_anchor зарегистрировавшего плагина.\n"
         "Любая попытка чужого link'а позвать `notify_*` для conn_id, чей\n"
         "scheme принадлежит другому плагину, ловит `GN_ERR_NOT_FOUND`."
@@ -329,8 +341,11 @@ NODES: dict[str, tuple[str, str]] = {
     "n_sec_reg": (
         "SecurityRegistry",
         "# SecurityRegistry\n`core/registry/security.{hpp,cpp}`\n\n"
-        "Один активный provider'ный slot v1 (`security-trust.md` §6).\n"
-        "Второй `register_security` возвращает `GN_ERR_LIMIT_REACHED`.\n\n"
+        "Multi-provider StackRegistry: держит N security providers'ов,\n"
+        "каждый объявляет admitted trust classes через\n"
+        "`allowed_trust_mask`. `find_for_trust(trust)` выбирает первый\n"
+        "registered provider чей mask admits класс. Только дубликат\n"
+        "`provider_id` возвращает `GN_ERR_LIMIT_REACHED`.\n\n"
         "При `Sessions::create` ядро сверяет `trust` конна с\n"
         "`provider->allowed_trust_mask()`; mismatch → синхронный отказ +\n"
         "`metrics.drop.trust_class_mismatch`."
@@ -339,10 +354,11 @@ NODES: dict[str, tuple[str, str]] = {
         "ExtensionRegistry",
         "# ExtensionRegistry\n`core/registry/extension.{hpp,cpp}`\n\n"
         "Глобальный namespace для plugin↔plugin контрактов\n"
-        "(`heartbeat.peer.miss`, `link.upgrade.tls`, ...).\n\n"
+        "(`gn.heartbeat`, `gn.store`, `gn.dns`, `gn.strategy.*`,\n"
+        "`gn.link.<scheme>`, `gn.ui`, ...).\n\n"
         "`register_extension(name, version, vtable)` —\n"
         "`query_extension_checked(name, version, &vtable)` —\n"
-        "версия сверяется по semver-major + min-minor (`abi-evolution.md`).\n\n"
+        "версия сверяется по semver-major + min-minor (`abi-evolution.en.md`).\n\n"
         "Ядро — pure registry; никаких встроенных extension'ов."
     ),
     "n_session_reg": (
@@ -358,7 +374,7 @@ NODES: dict[str, tuple[str, str]] = {
         "PluginManager",
         "# PluginManager\n`core/plugin/plugin_manager.{hpp,cpp}`\n\n"
         "dlopen + ABI version check (`gn_plugin_sdk_version`).\n\n"
-        "Two-phase activation (`plugin-lifetime.md` §5):\n"
+        "Two-phase activation (`plugin-lifetime.en.md` §5):\n"
         "1. `init_all` — все плагины строят локальный state\n"
         "2. `register_all` — плагины зовут `register_vtable` / `register_security` /\n"
         "    `register_extension` под отсортированным порядком зависимостей\n\n"
@@ -391,8 +407,9 @@ NODES: dict[str, tuple[str, str]] = {
         "ConnEvents channel",
         "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\n"
         "Один pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\n"
-        "Несёт state-машину conn'а: `Connecting → Handshake → Established →\n"
-        "Closing → Closed` плюс backpressure soft/clear.\n\n"
+        "Шесть событий: `CONNECTED`, `DISCONNECTED`, `TRUST_UPGRADED`\n"
+        "(Untrusted → Peer), `BACKPRESSURE_SOFT` / `_CLEAR` (queue\n"
+        "watermark crossings), `IDENTITY_ROTATED`.\n\n"
         "Подписки парятся с lifetime_anchor подписчика —\n"
         "`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\n"
         "если плагин уже выгрузился."
@@ -409,7 +426,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_timer": (
         "TimerRegistry",
         "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\n"
-        "Один shared service executor (`timer.md`). Все таймеры\n"
+        "Один shared service executor (`timer.en.md`). Все таймеры\n"
         "плагинов парятся с их lifetime_anchor.\n"
         "После shutdown_requested — pending fire'ы дропаются\n"
         "до того как зайдут в плагин."
@@ -437,7 +454,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_noise_plugin": (
         "security-noise",
         "# security-noise\n`plugins/security/noise/`\n\n"
-        "Independent git unit (mirror `goodnet-io/security-noise`).\n"
+        "Independent git unit (mirror `GoodNet-io/security-noise`).\n"
         "GPL-2 + linking exception.\n\n"
         "Реализует `gn_security_provider_vtable_t`:\n"
         "- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n"
@@ -463,12 +480,12 @@ NODES: dict[str, tuple[str, str]] = {
     "n_tcp_plugin": (
         "link-tcp",
         "# link-tcp\n`plugins/links/tcp/`\n\n"
-        "Independent git unit (`goodnet-io/link-tcp`). GPL-2 + lex.\n\n"
-        "`scheme = \"tcp\"`. Boost.Asio:\n"
+        "Independent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n"
+        "`scheme = \"tcp\"`. Standalone Asio:\n"
         "- async accept / connect / read / write\n"
         "- per-connection strand + send queue\n"
         "- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\n"
-        "Bench (post inline-crypto Phase 1): 6.42 Gbps single-conn 16KB×1000."
+        "Bench: см. `bench/reports/` (`bench_tcp` fixture)."
     ),
     "n_udp_plugin": (
         "link-udp",
@@ -481,7 +498,8 @@ NODES: dict[str, tuple[str, str]] = {
         "link-ws",
         "# link-ws\n`plugins/links/ws/`\n\n"
         "Independent git unit. GPL-2 + lex.\n\n"
-        "`scheme = \"ws\"` / `\"wss\"`. Boost.Beast — binary frames только.\n"
+        "`scheme = \"ws\"` / `\"wss\"`. In-house RFC 6455 framing\n"
+        "(plugins/links/ws/wire.hpp) — binary frames только.\n"
         "Browser-friendly путь к ядру."
     ),
     "n_ipc_plugin": (
@@ -491,7 +509,7 @@ NODES: dict[str, tuple[str, str]] = {
         "`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\n"
         "Bridge-плагины поверх IPC объявляют `IntraNode` на\n"
         "`notify_connect` — null security их пропустит без handshake'а\n"
-        "(`security-trust.md` §3, bridge-плагины)."
+        "(`security-trust.en.md` §3, bridge-плагины)."
     ),
     "n_tls_plugin": (
         "link-tls",
@@ -507,12 +525,13 @@ NODES: dict[str, tuple[str, str]] = {
     "n_heartbeat_plugin": (
         "handler-heartbeat",
         "# handler-heartbeat\n`plugins/handlers/heartbeat/`\n\n"
-        "Independent git unit (`goodnet-io/handler-heartbeat`). GPL-2 + lex.\n\n"
+        "Independent git unit (`GoodNet-io/handler-heartbeat`). GPL-2 + lex.\n\n"
         "Реализует `gn_handler_vtable_t`:\n"
         "- per-peer ping/pong на таймере\n"
         "- jitter `hash(conn_id) % 5s`\n"
         "- max_missed → `host_api->disconnect(conn)`\n"
-        "- регистрирует extension `heartbeat.peer.miss` для соседних плагинов\n\n"
+        "- регистрирует `gn.heartbeat` extension (RTT + STUN-on-the-wire\n"
+        "  observed-address reflection) для соседних плагинов\n\n"
         "Cooperative shutdown через `is_shutdown_requested` —\n"
         "ре-arm таймера прекращается."
     ),
@@ -521,7 +540,7 @@ NODES: dict[str, tuple[str, str]] = {
     "n_int_tests": (
         "goodnet-integration-tests",
         "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\n"
-        "mirror `goodnet-io/integration-tests`).\n\n"
+        "mirror `GoodNet-io/integration-tests`).\n\n"
         "Cross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n"
         "(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\n"
         "момент.\n\n"

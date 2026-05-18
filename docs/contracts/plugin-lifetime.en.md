@@ -54,6 +54,46 @@ Phases 4–5 are the **two-phase activation**. Phases 7–9 mirror in reverse;
 phase 8 must complete before phase 9 to avoid dispatching into a torn-down
 plugin.
 
+PluginManager dispatches every phase through a runtime registry
+keyed by the manifest entry's `kind` string. The kernel ships
+three built-in runtimes:
+
+| Kind | Linkage | Discovery | Lifecycle |
+|---|---|---|---|
+| `dynamic` (default) | dlopen(.so) | path → integrity → dlopen | dlsym entry symbols |
+| `static` | linked into kernel | walk `gn_plugin_static_registry[]` | per-entry function pointers |
+| `remote` | subprocess worker | `RemoteHost::spawn` over `sdk/remote/wire.h` | `PLUGIN_CALL` wire frames |
+
+Host programs that bundle a custom runtime (WebAssembly host, FFI-
+via-IPC bridge, per-process sandbox) implement `IPluginRuntime`
+(in `core/plugin/plugin_runtime.hpp`) and register the instance
+through `PluginManager::register_runtime(kind, std::unique_ptr<
+IPluginRuntime>)` before `load`. From that point on, manifest
+entries whose `kind` field matches dispatch through the custom
+runtime; PluginManager itself is unchanged.
+
+### 2a. Future runtimes
+
+`IPluginRuntime` is a C++ abstract class today
+(`core/plugin/plugin_runtime.hpp`). `dynamic`, `static`, and
+`remote` are peer implementations linked into the kernel binary
+through the C++ surface — none of them is privileged over the
+others, and none lives in a separately-loadable module. The
+runtime registry is the integration point.
+
+A C-ABI version of the same interface is the natural extension
+when foreign-language runtimes arrive — a WASM host loader, an
+eBPF runtime that maps GoodNet plugins onto kernel-side BPF
+programs, an FFI bridge that JITs a non-C++ language into a
+worker. Each of those wants to ship as a separately-loaded
+module rather than be statically linked into the kernel, so the
+runtime itself becomes a plugin. The shape of the C-ABI surface
+mirrors the C++ interface: `init`, `register`, `unregister`,
+`shutdown`, `discover`-style entry points plus a vtable that
+`PluginManager` invokes through. Until such a runtime lands,
+the C++ interface is the only registration surface and the three
+built-in kinds cover every shipped configuration.
+
 ---
 
 ## 3. Plugin entry symbols
@@ -122,7 +162,7 @@ the start of teardown and `dlclose`:
 2. `gn_plugin_unregister` — registry entries drop their anchor copies.
 3. Cancel still-pending timers and posted tasks for this anchor so the
    drain wait is not extended by entries the plugin did not cooperatively
-   cancel itself (`timer.md` §4 #3).
+   cancel itself (`timer.en.md` §4 #3).
 4. Manager promotes its strong ref to a weak observer and drops the
    ref, leaving only in-flight dispatch snapshots and not-yet-released
    gate guards holding anchors.
@@ -207,7 +247,7 @@ Hot-reload is supported but constrained:
 - Reload sequence: `unregister → quiescence wait → shutdown → dlclose
   → dlopen → version check → init → register`.
 - The quiescence wait observes the dispatch generation counter
-  (`fsm-events.md` §6) reach a value past every in-flight read of the
+  (`fsm-events.en.md` §6) reach a value past every in-flight read of the
   old vtable. A 64-bit counter is used; wraparound across realistic
   deployment lifetimes is not a concern.
 - During quiescence the plugin's registry entry is removed from
@@ -220,12 +260,44 @@ Hot-reload is supported but constrained:
 The race between `dlclose` and pending dispatch is closed by this
 generation-quiescence wait.
 
+### 6.1. `gn_core_unload_plugin` — host-driven per-name unload
+
+`sdk/core.h::gn_core_unload_plugin(core, name)` is the host-side
+entry into the unload half of the reload sequence. It runs
+`unregister → quiescence wait → shutdown → close` on the single
+instance whose `gn_plugin_descriptor->plugin_name` matches @p name
+and returns `GN_OK`. Other loaded plugins keep running.
+
+- Lookup is by descriptor name, not by `.so` path. A plugin loaded
+  from `/opt/g/foo.so` and another loaded from `/opt/g/foo_v2.so`
+  collide if their descriptors return the same `plugin_name`;
+  loaders that admit both names must distinguish at the descriptor
+  surface.
+- The quiescence ceiling is the same `PluginManager::quiescence_timeout`
+  the full-teardown path uses, optionally overridden per-entry by the
+  manifest's `quiescence_timeout_s` field (`plugin-manifest.en.md`).
+  An anchor that does not drain inside the ceiling skips its
+  `dlclose` and bumps `plugin.leak.dlclose_skipped` so async
+  callbacks keep their .text mapped.
+- The call is idempotent: unloading an already-unloaded name
+  returns `GN_ERR_NOT_FOUND` without side-effects. The host can
+  call `gn_core_unload_plugin(core, name)` then
+  `gn_core_load_plugin(core, new_path, sha)` to complete the
+  reload; the second call lands an instance under the same name
+  as long as the new `.so` advertises the same descriptor.
+- Dependency-graph constraints are not enforced at the unload site
+  yet — a plugin whose extension other plugins still consume can
+  be unloaded; the consumers will observe `query_extension_checked`
+  miss on the next lookup. The resolver-aware "refuse if any active
+  consumer depends on @p name" gate is a contract-additive future
+  refinement (`extension-model.en.md` cross-reference).
+
 ---
 
 ## 7. Ownership annotation at the C ABI
 
 Every pointer that crosses the plugin boundary carries one of the four
-ownership tags from `abi-evolution.md` §6. The most common cases:
+ownership tags from `abi-evolution.en.md` §6. The most common cases:
 
 | Site | Direction | Tag |
 |---|---|---|
@@ -235,7 +307,7 @@ ownership tags from `abi-evolution.md` §6. The most common cases:
 | Vtable registered via `register_vtable(KIND_HANDLER, …)` | plugin → kernel | `@borrowed` until `unregister` |
 | Extension vtable from `query_extension_checked` | provider → consumer | `@borrowed` while the provider is loaded |
 
-Omitting an ownership tag is a code-review failure pre-RC.
+Omitting an ownership tag is a code-review failure.
 
 ---
 
@@ -293,7 +365,7 @@ as under a live kernel.
 
 ## 10. Cross-references
 
-- C ABI evolution: `abi-evolution.md` §3.
-- The host vtable used at registration: `host-api.md`.
-- Quiescence wait mechanics: `fsm-events.md` §6 (generation counter).
-- Handler ordering and priority: `handler-registration.md`.
+- C ABI evolution: `abi-evolution.en.md` §3.
+- The host vtable used at registration: `host-api.en.md`.
+- Quiescence wait mechanics: `fsm-events.en.md` §6 (generation counter).
+- Handler ordering and priority: `handler-registration.en.md`.

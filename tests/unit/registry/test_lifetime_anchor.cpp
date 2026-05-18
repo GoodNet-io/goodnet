@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_lifetime_anchor.cpp
 /// @brief  Plugin-quiescence anchor flows through every registry.
 ///
-/// `plugin-lifetime.md` §4 mandates that registry entries hold a
+/// `plugin-lifetime.en.md` §4 mandates that registry entries hold a
 /// reference-counted handle on the plugin's quiescence sentinel and
 /// that dispatch-time snapshots inherit the handle by value-copy so
 /// the underlying shared object cannot be unmapped while a snapshot

@@ -331,7 +331,7 @@ device_pk and the live noise session keep running.
 
 ## 11. Cross-references
 
-- TrustClass policy that gates attestation use: `security-trust.md`.
+- TrustClass policy that gates attestation use: `security-trust.en.md`.
 - Curve conversion (Ed25519 → X25519) for Noise DH: `plugins/security/noise/docs/handshake.md` §8.
 - Connection accessors that return 32-byte public keys:
-  `protocol-layer.md` §3.1.
+  `protocol-layer.en.md` §3.1.

@@ -233,7 +233,7 @@ typedef struct host_api_s {
      * | `index` past array length | `GN_ERR_OUT_OF_RANGE` |
      * | unknown @p type enum value | `GN_ERR_INVALID_ENVELOPE` |
      *
-     * Per `host-api.md` §2 and `config.md` §3.
+     * Per `host-api.en.md` §2 and `config.en.md` §3.
      *
      * @param key            dotted JSON path (`"foo.bar.baz"`).
      * @param type           expected node type; see @ref gn_config_value_type_t.
@@ -259,7 +259,7 @@ typedef struct host_api_s {
      */
     const gn_limits_t* (*limits)(void* host_ctx);
 
-    /* ── Logging (sdk/log.h, host-api.md §11) ──────────────────────────── */
+    /* ── Logging (sdk/log.h, host-api.en.md §11) ──────────────────────────── */
 
     /**
      * @brief Plugin-facing logging vtable. `should_log` short-
@@ -289,9 +289,9 @@ typedef struct host_api_s {
      *                  the call. A URI without a `scheme://` prefix is
      *                  rejected with `GN_ERR_INVALID_ENVELOPE` — the
      *                  link scheme is the registry key for the conn-id
-     *                  ownership gate (`security-trust.md` §6a).
+     *                  ownership gate (`security-trust.en.md` §6a).
      * @param trust     TrustClass computed from observable connection
-     *                  properties per `link.md` §3.
+     *                  properties per `link.en.md` §3.
      * @param role      Handshake role: initiator for outbound, responder
      *                  for inbound.
      * @param out_conn  Kernel-allocated connection id on success.
@@ -331,11 +331,14 @@ typedef struct host_api_s {
     /**
      * @brief Register a security provider with the kernel.
      *
-     * Stack policy from `security-trust.md` §4: a node uses one
-     * default provider per trust class; v1 simplification holds a
-     * single active provider total. Plugins register their vtable
-     * and self pointer; the kernel calls encrypt / decrypt /
-     * handshake entries through it.
+     * Stack policy from `security-trust.en.md` §4 + §6: the kernel
+     * admits N security providers concurrently through the
+     * StackRegistry — one entry per **distinct** `provider_id`. A
+     * call with an already-registered id returns
+     * GN_ERR_LIMIT_REACHED; a call with a fresh id is admitted and
+     * joins the per-trust-class admission set. `find_for_trust`
+     * picks the first registered provider whose `allowed_trust_mask`
+     * admits the queried class.
      *
      * @param vtable @borrowed; valid until `unregister_security`.
      */
@@ -366,7 +369,7 @@ typedef struct host_api_s {
      * `limits.max_frame_bytes`. Used by relay-style tunnels that move
      * opaque inner frames between mesh peers.
      *
-     * Per `host-api.md` §8.
+     * Per `host-api.en.md` §8.
      *
      * @param layer    @ref GN_INJECT_LAYER_MESSAGE or @ref GN_INJECT_LAYER_FRAME
      * @param source   existing connection that originated the foreign bytes
@@ -396,7 +399,7 @@ typedef struct host_api_s {
      */
     gn_result_t (*kick_handshake)(void* host_ctx, gn_conn_id_t conn);
 
-    /* ── Service executor (timer.md is the authoritative spec) ─────────── */
+    /* ── Service executor (timer.en.md is the authoritative spec) ─────────── */
 
     /**
      * @brief Schedule a one-shot callback after @p delay_ms ms.
@@ -404,7 +407,7 @@ typedef struct host_api_s {
      * `fn(user_data)` runs on the kernel's single-thread service
      * executor. The kernel pairs every timer with a weak observer
      * of the calling plugin's lifetime anchor; a callback whose
-     * plugin already unloaded is dropped silently (`timer.md` §4).
+     * plugin already unloaded is dropped silently (`timer.en.md` §4).
      *
      * @return `GN_OK` on success, `GN_ERR_NULL_ARG` on null
      *         argument, `GN_ERR_LIMIT_REACHED` when
@@ -422,7 +425,7 @@ typedef struct host_api_s {
      */
     gn_result_t (*cancel_timer)(void* host_ctx, gn_timer_id_t id);
 
-    /* ── Channel subscription (conn-events.md / config.md authoritative) ── */
+    /* ── Channel subscription (conn-events.en.md / config.en.md authoritative) ── */
 
     /**
      * @brief Subscribe to the connection-event channel.
@@ -430,7 +433,7 @@ typedef struct host_api_s {
      * The kernel pairs each subscription with a weak observer of
      * the calling plugin's lifetime anchor; a callback whose
      * plugin already unloaded is dropped silently per
-     * `conn-events.md` §3.
+     * `conn-events.en.md` §3.
      *
      * `cb` runs on the publishing thread with a borrowed
      * @ref gn_conn_event_t pointer.
@@ -454,7 +457,7 @@ typedef struct host_api_s {
      * `subscribe_conn_state`, with no per-event payload — the
      * callback signals only that a reload completed; the plugin
      * re-reads `host_api->config_get` for the keys it cares
-     * about per `config.md` §2.
+     * about per `config.en.md` §2.
      */
     gn_result_t (*subscribe_config_reload)(void* host_ctx,
                                             gn_config_reload_cb_t cb,
@@ -487,7 +490,7 @@ typedef struct host_api_s {
      *        (queue crossed `pending_queue_bytes_high`) or clear
      *        (queue dropped below `pending_queue_bytes_low`).
      *        Link plugins call this once per rising / falling
-     *        edge per `backpressure.md` §3. Restricted to
+     *        edge per `backpressure.en.md` §3. Restricted to
      *        link-role callers; other plugin kinds get
      *        @ref GN_ERR_NOT_IMPLEMENTED.
      *
@@ -501,7 +504,7 @@ typedef struct host_api_s {
                                         gn_conn_event_kind_t kind,
                                         uint64_t pending_bytes);
 
-    /* ── Metrics (metrics.md) ──────────────────────────────────────────── */
+    /* ── Metrics (metrics.en.md) ──────────────────────────────────────────── */
 
     /**
      * @brief Bump the kernel-side counter at @p name by one.
@@ -533,7 +536,7 @@ typedef struct host_api_s {
                                   gn_counter_visitor_t visitor,
                                   void* user_data);
 
-    /* ── Cooperative cancellation (plugin-lifetime.md §8) ──────────────── */
+    /* ── Cooperative cancellation (plugin-lifetime.en.md §8) ──────────────── */
 
     /**
      * @brief Non-zero once the kernel begins teardown for this plugin.
@@ -683,13 +686,20 @@ typedef struct host_api_s {
     gn_result_t (*announce_rotation)(void* host_ctx,
                                       int64_t valid_from_unix_ts);
 
+    /* ── Peer-addressed messaging (host-api.en.md) ──────────────────────
+     *
+     * `send_to(peer_pk, ...)` lets a handler dispatch to a peer
+     * identity without first resolving the conn id. The kernel
+     * walks the strategy chain to pick the live conn.
+     */
+
     /**
      * @brief Peer-pk-level outbound send. Walks every live conn to
      *        @p peer_pk, queries the registered `gn.strategy.<name>`
      *        extension's `pick_conn`, and dispatches through the
-     *        chosen conn's `send` path. DX Tier 3 / Slice 9-KERNEL
-     *        sugar — closes the "must `find_conn_by_pk` + `send` by
-     *        hand" boilerplate documented in the 2026-05-12 audit.
+     *        chosen conn's `send` path. Closes the
+     *        `find_conn_by_pk` + `send` boilerplate that
+     *        peer-addressed handlers would otherwise hand-roll.
      *
      * Single-candidate fast path: when only one conn targets
      * @p peer_pk, dispatches directly without strategy lookup. When
@@ -697,11 +707,17 @@ typedef struct host_api_s {
      * single-candidate path and falls back to "first conn" on multi-
      * candidate sets — strategies are an optional plugin family.
      *
+     * Multi-strategy chains: when more than one `gn.strategy.*`
+     * extension is registered, the kernel walks them in
+     * registration order on each call and uses the first conn
+     * returned by any strategy's `pick_conn`. A strategy that has
+     * no opinion on the candidate set returns `GN_ERR_NOT_FOUND`
+     * and the chain advances to the next. If every registered
+     * strategy passes, the kernel falls back to the head of the
+     * candidate set per `strategy.h` §3.
+     *
      * Returns the underlying `send` result. Maps:
      *   - `GN_ERR_NOT_FOUND`         no live conn to peer_pk
-     *   - `GN_ERR_LIMIT_REACHED`     more than one `gn.strategy.*`
-     *                                 extension registered
-     *     (convention: exactly one active strategy per node)
      *   - whatever `gn_strategy_api_t::pick_conn` returns on its
      *     own error paths (e.g. strategy refuses to pick).
      */
@@ -711,6 +727,44 @@ typedef struct host_api_s {
                             const uint8_t* payload,
                             size_t payload_size);
 
+    /* ── Path observability (host-api.en.md) ────────────────────────────
+     *
+     * Slots that publish carrier-level measurements to the kernel
+     * so the per-conn EWMA + strategy chain can react.
+     */
+
+    /**
+     * @brief Publish a per-connection RTT sample observed by the
+     *        caller's transport or application layer.
+     *
+     * Link plugins (TCP keep-alive ACK timing, QUIC stream RTT,
+     * ICE connectivity-check echo) push carrier-level samples;
+     * the heartbeat handler pushes application-level samples
+     * from its PING/PONG protocol. The kernel folds each sample
+     * into a per-conn EWMA(α = 1/8) per RFC 6298 and stores the
+     * smoothed value in `ConnectionRegistry::counters.last_rtt_us`
+     * so `get_endpoint` snapshots reflect it. The kernel
+     * republishes the *smoothed* value (not the raw sample) to
+     * every registered strategy through
+     * `on_path_event(GN_PATH_EVENT_RTT_UPDATE, sample)` so the
+     * chain ranks conns by latency without each strategy
+     * maintaining its own probe.
+     *
+     * Restricted to LINK or HANDLER kind callers (UNKNOWN — host
+     * embedding — also admitted). Other plugin kinds get
+     * @ref GN_ERR_NOT_IMPLEMENTED. A sample on an unknown conn id
+     * returns @ref GN_ERR_NOT_FOUND.
+     *
+     * @param conn     connection the sample belongs to.
+     * @param rtt_us   observed RTT in microseconds. Zero is the
+     *                 "no sample" sentinel and is silently dropped
+     *                 (the kernel still returns GN_OK so the
+     *                 caller can publish unconditionally).
+     */
+    gn_result_t (*notify_rtt_sample)(void* host_ctx,
+                                      gn_conn_id_t conn,
+                                      uint64_t rtt_us);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing
@@ -718,11 +772,11 @@ typedef struct host_api_s {
      * value (typically not done; the slot is `@borrowed` for the plugin
      * lifetime) MUST zero the field on copy.
      *
-     * Per `abi-evolution.md` §4: the producer zero-initialises every
+     * Per `abi-evolution.en.md` §4: the producer zero-initialises every
      * `_reserved` array on every value-type struct in this SDK; the
      * consumer treats unknown reserved contents as undefined and never
-     * reads them. New fields are added by promoting a slot to a named
-     * field, never by reusing existing reserved bytes.
+     * reads them. New fields are appended before this array; the
+     * reserved-array stays at its design size of 8 entries.
      */
     void* _reserved[8];
 } host_api_t;

@@ -2,8 +2,8 @@
 /// @brief  Unit tests for the connection-lifecycle host_api thunks.
 ///
 /// Exercises two contracts on `host_api->notify_connect` /
-/// `notify_disconnect` per `docs/contracts/host-api.md` and
-/// `security-trust.md` §4:
+/// `notify_disconnect` per `docs/contracts/host-api.en.md` and
+/// `security-trust.en.md` §4:
 ///
 ///   * `notify_connect` consults `IProtocolLayer::allowed_trust_mask()`
 ///     and refuses connections whose declared trust class is not in
@@ -13,7 +13,7 @@
 ///   * `notify_disconnect` snapshots and erases the connection
 ///     record atomically, so the published `DISCONNECTED` event
 ///     payload carries the snapshotted trust class and remote_pk
-///     per `conn-events.md` §2a.
+///     per `conn-events.en.md` §2a.
 
 #include <gtest/gtest.h>
 
@@ -76,8 +76,8 @@ PluginContext make_handler_ctx(Kernel& k) {
 
 /// Stub protocol layer that admits only Loopback and IntraNode trust
 /// classes. `deframe` / `frame` return `GN_ERR_NOT_IMPLEMENTED`; the
-/// trust gate in `thunk_notify_connect` rejects unsupported trust
-/// classes before any wire bytes flow.
+/// trust gate in the `notify_connect` thunk rejects unsupported
+/// trust classes before any wire bytes flow.
 class LoopbackOnlyProtocol final : public ::gn::IProtocolLayer {
 public:
     [[nodiscard]] std::string_view protocol_id() const noexcept override {
@@ -237,7 +237,7 @@ TEST(HostApiNotifyDisconnect, MissingConnReturnsNotFound) {
 
     /// Disconnect of a never-inserted id reports
     /// `GN_ERR_NOT_FOUND` and fires no event — per
-    /// `conn-events.md` §2 each event must correspond to a real
+    /// `conn-events.en.md` §2 each event must correspond to a real
     /// lifecycle transition; an id that was never registered has
     /// none.
     constexpr gn_conn_id_t kUnknownConn = 99999;
@@ -282,7 +282,7 @@ TEST(HostApiNotifyDisconnect, IdempotentSecondCallFiresOnceAndReportsUnknown) {
 }
 
 /// Two threads race the same `notify_disconnect(conn)` through the C
-/// ABI. Per `conn-events.md` §2a the channel publishes exactly one
+/// ABI. Per `conn-events.en.md` §2a the channel publishes exactly one
 /// DISCONNECTED for the single underlying lifecycle transition; the
 /// losing thread reports `GN_ERR_NOT_FOUND`.
 TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
@@ -350,7 +350,7 @@ TEST(HostApiNotifyDisconnect, ConcurrentSameConnFiresOnceAndOneLoses) {
         << "one DISCONNECTED per real removal, regardless of contention";
 }
 
-/// `conn-events.md` §2a Returns row: `conn == GN_INVALID_ID`
+/// `conn-events.en.md` §2a Returns row: `conn == GN_INVALID_ID`
 /// collapses to `GN_ERR_NOT_FOUND` (no record matches the
 /// sentinel id).
 TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsNotFound) {
@@ -361,7 +361,7 @@ TEST(HostApiNotifyDisconnect, InvalidConnIdReturnsNotFound) {
               GN_ERR_NOT_FOUND);
 }
 
-/// `conn-events.md` §2a Returns row: NULL host_ctx returns
+/// `conn-events.en.md` §2a Returns row: NULL host_ctx returns
 /// `GN_ERR_NULL_ARG` and changes no state.
 TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
     Kernel k;
@@ -370,9 +370,9 @@ TEST(HostApiNotifyDisconnect, NullHostCtxReturnsNullArg) {
     EXPECT_EQ(api.notify_disconnect(nullptr, 1, GN_OK), GN_ERR_NULL_ARG);
 }
 
-/// `conn-events.md` §2a Returns row: a non-transport plugin
+/// `conn-events.en.md` §2a Returns row: a non-transport plugin
 /// receives `GN_ERR_NOT_IMPLEMENTED` from `notify_disconnect`
-/// (host-api.md kind gate).
+/// (host-api.en.md kind gate).
 TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
     Kernel k;
     auto handler_ctx = make_handler_ctx(k);
@@ -381,7 +381,7 @@ TEST(HostApiNotifyDisconnect, NonTransportPluginReturnsNotImplemented) {
               GN_ERR_NOT_IMPLEMENTED);
 }
 
-/// `conn-events.md` §2a Concurrency clause: a subscriber callback
+/// `conn-events.en.md` §2a Concurrency clause: a subscriber callback
 /// may invoke `notify_disconnect` against the same `conn`
 /// re-entrantly. The re-entrant call observes the record already
 /// removed and reports `GN_ERR_NOT_FOUND` without
@@ -495,10 +495,144 @@ TEST(HostApiCanary, PoisonedContextRejectsThunksAcrossFamilies) {
               GN_ERR_INVALID_STATE);
 
     /// shutdown query — poisoned ctx surfaces as
-    /// `shutdown_requested = 1` per `host-api.md` §10 so a
+    /// `shutdown_requested = 1` per `host-api.en.md` §10 so a
     /// stale long-running loop bails instead of running with
     /// freed state.
     EXPECT_EQ(api.is_shutdown_requested(&ctx), 1);
 
     ctx.magic = PluginContext::kMagicLive;
+}
+
+// ── register_security capability gate ──────────────────────────────
+
+/// Stub security provider vtable — the gate fires before the
+/// provider ever runs, so an empty shell is enough to drive the
+/// path through `register_security`.
+gn_security_provider_vtable_t make_stub_security_vt() {
+    gn_security_provider_vtable_t v{};
+    v.api_size = sizeof(v);
+    return v;
+}
+
+TEST(HostApiRegisterSecurity, HandlerKindPluginRejected) {
+    Kernel k;
+    auto ctx = make_handler_ctx(k);
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    /// HANDLER-kind plugin has no business installing a security
+    /// provider — `register_security` capability is reserved for
+    /// SECURITY-kind plugins. The gate should refuse before the
+    /// registry sees the vtable.
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_ERR_INVALID_STATE);
+    EXPECT_FALSE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, LinkKindPluginRejected) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);  // GN_PLUGIN_KIND_LINK
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_ERR_INVALID_STATE);
+    EXPECT_FALSE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, SecurityKindPluginAccepted) {
+    Kernel k;
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    ctx.kind          = GN_PLUGIN_KIND_SECURITY;
+    ctx.plugin_name   = "test-security";
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_OK);
+    EXPECT_TRUE(k.security().is_active());
+}
+
+TEST(HostApiRegisterSecurity, HostEmbeddingAccepted) {
+    Kernel k;
+    PluginContext ctx;
+    ctx.kernel        = &k;
+    /// `GN_PLUGIN_KIND_UNKNOWN` is the embedding host's marker —
+    /// the operator's CLI / library host that drove `gn_core_create`
+    /// directly. It carries the operator's authority and is not
+    /// gated by the per-kind capability narrowing.
+    ctx.kind          = GN_PLUGIN_KIND_UNKNOWN;
+    ctx.plugin_name   = "test-host";
+    ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+    auto api = build_host_api(ctx);
+
+    auto vt = make_stub_security_vt();
+    EXPECT_EQ(api.register_security(&ctx, "gn.security.test",
+                                      &vt, /*self*/ nullptr),
+              GN_OK);
+    EXPECT_TRUE(k.security().is_active());
+}
+
+// ── register_vtable kind gate ──────────────────────────────────────
+
+TEST(HostApiRegisterVtable, HandlerKindRequiredForHandlerVtable) {
+    Kernel k;
+    /// LINK-kind plugin tries to register a HANDLER vtable —
+    /// capability gate refuses before the registry sees it.
+    auto ctx = make_transport_ctx(k);
+    auto api = build_host_api(ctx);
+
+    gn_handler_vtable_t hvt{};
+    hvt.api_size = sizeof(hvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "test.handler";
+    meta.msg_id   = 1;
+    meta.priority = 128;
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_HANDLER,
+                                    &meta, &hvt, nullptr, &id),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(HostApiRegisterVtable, LinkKindRequiredForLinkVtable) {
+    Kernel k;
+    /// HANDLER-kind plugin tries to register a LINK vtable.
+    auto ctx = make_handler_ctx(k);
+    auto api = build_host_api(ctx);
+
+    gn_link_vtable_t lvt{};
+    lvt.api_size = sizeof(lvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "tcp";
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_LINK,
+                                    &meta, &lvt, nullptr, &id),
+              GN_ERR_INVALID_STATE);
+}
+
+TEST(HostApiRegisterVtable, MatchingKindAccepted) {
+    Kernel k;
+    auto ctx = make_transport_ctx(k);   // LINK kind
+    auto api = build_host_api(ctx);
+
+    gn_link_vtable_t lvt{};
+    lvt.api_size = sizeof(lvt);
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "tcp";
+
+    std::uint64_t id = 0;
+    EXPECT_EQ(api.register_vtable(&ctx, GN_REGISTER_LINK,
+                                    &meta, &lvt, nullptr, &id),
+              GN_OK);
+    EXPECT_NE(id, 0u);
 }

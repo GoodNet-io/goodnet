@@ -22,10 +22,11 @@ extern "C" {
  * @brief Per-connection state passed to @ref gn_protocol_layer_vtable_t.deframe
  *        and `.frame`.
  *
- * The struct is opaque to the plugin; accessor functions (TBD in
- * `sdk/connection.h` once the transport contract lands) provide read access
- * to local identity, remote identity, connection id, and a plugin-private
- * scratch slot.
+ * The struct is opaque to the plugin; accessor functions in
+ * `sdk/connection.h` (`gn_ctx_local_pk` / `_remote_pk` / `_conn_id` /
+ * `_trust` / `_allows_relay` / `_plugin_state`) provide read access
+ * to local identity, remote identity, connection id, trust class,
+ * relay-admission bit, and a plugin-private scratch slot.
  */
 typedef struct gn_connection_context_s gn_connection_context_t;
 
@@ -52,7 +53,7 @@ typedef struct gn_deframe_result_s {
  *
  * The kernel calls every function with a plugin-supplied `self` pointer
  * obtained at plugin init. Begins with `api_size` for size-prefix
- * evolution per `abi-evolution.md` §3.
+ * evolution per `abi-evolution.en.md` §3.
  */
 typedef struct gn_protocol_layer_vtable_s {
     uint32_t api_size;          /**< sizeof(gn_protocol_layer_vtable_t) at producer build time */
@@ -132,7 +133,7 @@ typedef struct gn_protocol_layer_vtable_s {
      *
      * Bit `1u << GN_TRUST_<X>` set means this protocol may deframe a
      * connection at class `<X>`. The kernel reads the mask at
-     * registration; per `security-trust.md` §4 the cartesian product
+     * registration; per `security-trust.en.md` §4 the cartesian product
      * across {transport-trust, security mask, protocol mask} is
      * validated on Wire phase before any envelope rides.
      *

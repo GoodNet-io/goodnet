@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   tests/unit/sdk/test_dx_sugar.cpp
-/// @brief  Coverage for SDK DX sugar added 2026-05-12:
+/// @brief  Coverage for SDK DX sugar:
 ///           - `Subscription::on_connected/on_disconnected/...` typed slots
 ///           - `gn::parse_uri_strict(uri, scheme)`
 ///           - `gn::sdk::test::wait_for(...)` polling helper
 ///
-/// The hand-rolled `wait_for` copies in plugin test files are now
-/// expected to migrate to the SDK helper; this test pins the contract.
+/// Pins the contract that plugin test files share through the
+/// `wait_for` helper instead of hand-rolling per-plugin copies.
 
 #include <gtest/gtest.h>
 

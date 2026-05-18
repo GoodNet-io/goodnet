@@ -1,5 +1,11 @@
 # Plugin linkage modes
 
+**Status:** active · v1
+**Implements:** `sdk/plugin.h` + `core/plugin/plugin_manager.{hpp,cpp}`
+**Stability:** stable for v1.x; the three shipped modes
+(`dynamic`, `static`, `remote`) and the design slot for a fourth
+host-side custom runtime are append-only.
+
 Three ways a plugin's code lands in front of the kernel today,
 plus one in design. The C ABI in `sdk/plugin.h` is the only stable
 contract between kernel and plugin — every mode preserves it
@@ -23,7 +29,7 @@ hot-update plugins without touching the kernel binary.
 
 `make build-static` compiles every bundled plugin as an
 `add_library(... OBJECT)` and links every plugin's code into the
-`goodnet` binary itself. Entry symbols carry a per-plugin suffix
+`goodnetd` binary itself. Entry symbols carry a per-plugin suffix
 (`gn_plugin_init_link_tcp`, `gn_plugin_register_link_ipc`, …) so
 they don't collide at link time; the `GN_PLUGIN_*_NAME` macros in
 `sdk/plugin.h` drive the rename. A generated `static_plugins.cpp`
@@ -111,7 +117,7 @@ the right syscall. Windows builds skip the IPC plugin entirely
 named-pipe carrier lands; the rest of the kernel and other
 plugins build with Asio's portable reactor abstraction.
 
-`flake.nix` continues to advertise Linux-only Nix systems for now
-— macOS support requires platform-marker work on each plugin's
-flake (`meta.platforms = lib.platforms.linux ++ lib.platforms.darwin`),
+`flake.nix` advertises Linux-only Nix systems — macOS support
+requires platform-marker work on each plugin's flake
+(`meta.platforms = lib.platforms.linux ++ lib.platforms.darwin`),
 which lands per-plugin as each transport gets its own port.

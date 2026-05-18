@@ -1,5 +1,5 @@
 /// @file   core/registry/security.hpp
-/// @brief  Security-provider registry (StackRegistry v1.x preview).
+/// @brief  Security-provider registry (multi-provider StackRegistry).
 ///
 /// Holds N security providers concurrently, each declaring which
 /// `gn_trust_class_t` values it admits via its
@@ -9,13 +9,12 @@
 /// `IntraNode` and `noise` on `Untrusted` / `Peer` in the same
 /// process without an operator config switch.
 ///
-/// Per `docs/contracts/security-trust.en.md` §5 this is the
-/// "StackRegistry v1.x" the v1.0-rc series promised. The
-/// `register_provider` contract now allows multiple distinct
-/// `provider_id`s; only duplicate ids still return
-/// `GN_ERR_LIMIT_REACHED`. `current()` stays for backwards-compat
-/// — returns the first registered provider, which is what
-/// callers that don't carry a trust class observe.
+/// `register_provider` admits multiple distinct `provider_id`s;
+/// only duplicate ids return `GN_ERR_LIMIT_REACHED`. `current()`
+/// is kept for callers that do not carry a trust class — it
+/// returns the first registered provider. See
+/// `docs/contracts/security-trust.en.md` §4 for the per-component
+/// mask gate this registry feeds.
 
 #pragma once
 
@@ -42,7 +41,7 @@ struct SecurityEntry {
 
     /// Read the provider's `allowed_trust_mask` through the
     /// `safe_invoke` wrapper. A throwing slot or a missing entry
-    /// collapses to 0 (deny) per `security-trust.md` §4 — the
+    /// collapses to 0 (deny) per `security-trust.en.md` §4 — the
     /// gate cannot trust a provider that cannot enumerate its
     /// admitted classes. Single source of truth so `find_for_trust`
     /// and `SessionRegistry::create` cannot drift apart on the
@@ -58,10 +57,9 @@ public:
 
     /// Install @p vtable as a registered security provider.
     /// Returns `GN_ERR_LIMIT_REACHED` only when @p provider_id is
-    /// already present (post-StackRegistry contract). Adding a
-    /// second provider with a distinct id (e.g. `gn.security.noise`
-    /// + `gn.security.null`) is the canonical path for
-    /// per-trust-class selection.
+    /// already present. Adding a second provider with a distinct
+    /// id (e.g. `gn.security.noise` + `gn.security.null`) is the
+    /// canonical path for per-trust-class selection.
     [[nodiscard]] gn_result_t register_provider(std::string_view provider_id,
                                                 const gn_security_provider_vtable_t* vtable,
                                                 void* self,

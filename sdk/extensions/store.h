@@ -3,23 +3,24 @@
  * @brief  Extension vtable: `gn.store` — distributed key-value
  *         database surfaced as a system handler.
  *
- * The legacy `goodnetd-dns` / `apps/store` surface was a routing
- * layer that doubled as a full key-value DB: TTL'd entries,
- * prefix queries, subscribe-and-notify on write, and bulk sync
- * across nodes by `since_timestamp` watermark. This extension
- * brings that surface forward as a v1 handler plugin.
+ * The legacy `apps/store` surface was a routing layer that
+ * doubled as a full key-value DB: TTL'd entries, prefix queries,
+ * subscribe-and-notify on write, and bulk sync across nodes by
+ * `since_timestamp` watermark. This extension brings that surface
+ * forward as a v1 handler plugin.
  *
- * The plugin owns a pluggable `IStore` backend (memory for the
- * reference; sqlite + DHT + Redis planned per backend.md §2) and
- * a wire dispatcher that maps the seven `STORE_*` envelope types
- * onto the backend. Local callers reach the same surface through
- * the in-process extension vtable below — no wire framing, no
+ * The plugin owns a pluggable `IStore` backend (a memory backend
+ * and a SQLite backend ship today; further backends like DHT /
+ * Redis can land behind the same `IStore` interface). A wire
+ * dispatcher maps the seven `STORE_*` envelope types onto the
+ * backend. Local callers reach the same surface through the
+ * in-process extension vtable below — no wire framing, no
  * conn-id needed.
  *
  * @par msg_id allocation
  * The handler subscribes to `0x0600..0x0606` under `protocol_id`
  * `"gnet-v1"`. These ids are outside the kernel-reserved
- * `0x10..0x1F` range (see `system-handlers.md` §2); plugin
+ * `0x10..0x1F` range (see `system-handlers.en.md` §2); plugin
  * registration is unrestricted.
  */
 #ifndef GOODNET_SDK_EXTENSIONS_STORE_H
@@ -97,7 +98,7 @@ typedef void (*gn_store_event_cb_t)(void* user_data,
  * @brief Vtable surfaced as the `gn.store` extension.
  *
  * Versioned with @ref GN_EXT_STORE_VERSION. Begins with `api_size`
- * for size-prefix evolution per `abi-evolution.md` §3.
+ * for size-prefix evolution per `abi-evolution.en.md` §3.
  *
  * The `ctx` field carries the handler's `self` pointer; every entry
  * receives it as its first argument.

@@ -92,6 +92,25 @@ public:
         std::span<const std::uint8_t> ciphertext,
         std::vector<std::uint8_t>& out_plaintext);
 
+    /// Reserve K recv nonces atomically. Returns the base nonce;
+    /// jobs[i] uses `base + i`. Mirrors `reserve_send_nonces`. The
+    /// single-writer per-conn invariant (only one inbound drain runs
+    /// per `SecuritySession` at a time, serialised by the connection's
+    /// strand) keeps the reservation race-free against concurrent
+    /// receive paths on the same session.
+    [[nodiscard]] std::uint64_t reserve_recv_nonces(std::size_t k) noexcept;
+
+    /// Build a `CryptoWorkerPool::Job` that decrypts @p ciphertext
+    /// at @p nonce into @p out_plain. The Job stores the AEAD
+    /// success/failure flag into `result_len` — `0` means
+    /// authentication failure, otherwise the plaintext length.
+    /// `out_plain` MUST already be sized to
+    /// `ciphertext.size() - kTagBytes`.
+    [[nodiscard]] CryptoWorkerPool::Job make_decrypt_job(
+        std::span<const std::uint8_t> ciphertext,
+        std::uint64_t                 nonce,
+        std::span<std::uint8_t>       out_plain) const noexcept;
+
     [[nodiscard]] std::uint64_t send_nonce() const noexcept {
         return send_nonce_.load(std::memory_order_relaxed);
     }
@@ -105,14 +124,12 @@ public:
     /// then falls through to the provider vtable, which is a
     /// copy-through for `gn.security.null`).
     ///
-    /// This is the inline-crypto half of the post-handshake
-    /// Noise→Null handoff PoC in `bench/showcase` (track Б, §B.3).
-    /// Production-shape kernel-side handoff is a v1.x followup;
-    /// for now this hook is gated through
-    /// `SecuritySession::_test_clear_inline_crypto`, which checks
-    /// the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` env var before
-    /// calling here. Without the env var, nothing in the build
-    /// reaches this method.
+    /// The inline-crypto half of the post-handshake Noise→Null
+    /// handoff PoC in `bench/showcase` §B.3. The hook is
+    /// gated through `SecuritySession::_test_clear_inline_crypto`,
+    /// which is compiled in only when the build defines
+    /// `GOODNET_BENCH_SHOWCASE`. Default builds drop the caller
+    /// entirely, so nothing in the kernel reaches this method.
     void clear_for_test() noexcept;
 
 private:

@@ -1,0 +1,8 @@
+# Staged by `build-harness.sh` / `run_all.sh` into the docker build
+# context. The binary + plugin .so files are products of the host
+# build (`build-release/tests/docker/ice-3node/peer/harness`,
+# `build-release/plugins/lib*.so`); they're rebuilt fresh on every
+# orchestrator invocation.
+harness
+plugins/
+busybox-static

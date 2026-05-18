@@ -237,7 +237,7 @@ TEST(SignalChannel_Concurrency, MultipleProducersOneConsumer) {
 
 TEST(SignalChannel_NullHandler, ReturnsInvalidToken) {
     SignalChannel<ConfigReload> ch;
-    /// Empty std::function — `signal-channel.md` §6.1 returns the
+    /// Empty std::function — `signal-channel.en.md` §6.1 returns the
     /// invalid-token sentinel and leaves the subscriber list empty.
     SignalChannel<ConfigReload>::Handler empty;
     const auto t = ch.subscribe(empty);

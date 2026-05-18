@@ -1,4 +1,5 @@
-# nix/new-plugin.nix — `nix run .#new-plugin -- <kind> <name>` app.
+# nix/new-plugin.nix — plugin scaffolder used by
+# `nix run .#plugin -- new <kind> <name>`.
 #
 # Generates the minimum-viable directory layout for a fresh plugin
 # under `plugins/<kind>/<name>/`. Output mirrors what an in-tree
@@ -36,8 +37,8 @@ pkgs.writeShellApplication {
 
     if [ $# -ne 2 ]; then
       cat >&2 <<USAGE
-    Usage: nix run .#new-plugin -- <kind> <name>
-      <kind>: handlers | links | protocols | security
+    Usage: nix run .#plugin -- new <kind> <name>
+      <kind>: handlers | links | protocols | security | strategies
       <name>: lowercase identifier matching [a-z][a-z0-9_-]*
     USAGE
       exit 1
@@ -47,10 +48,10 @@ pkgs.writeShellApplication {
     name="$2"
 
     case "$kind" in
-      handlers|links|protocols|security) ;;
+      handlers|links|protocols|security|strategies) ;;
       *)
         echo "new-plugin: invalid kind '$kind'." >&2
-        echo "  Valid kinds: handlers, links, protocols, security." >&2
+        echo "  Valid kinds: handlers, links, protocols, security, strategies." >&2
         exit 1
         ;;
     esac
@@ -63,10 +64,11 @@ pkgs.writeShellApplication {
     fi
 
     case "$kind" in
-      handlers)  kind_singular="handler"  ;;
-      links)     kind_singular="link"     ;;
-      protocols) kind_singular="protocol" ;;
-      security)  kind_singular="security" ;;
+      handlers)   kind_singular="handler"  ;;
+      links)      kind_singular="link"     ;;
+      protocols)  kind_singular="protocol" ;;
+      security)   kind_singular="security" ;;
+      strategies) kind_singular="strategy" ;;
     esac
 
     plugin_attr="goodnet-''${kind_singular}-''${name}"
@@ -305,7 +307,7 @@ pkgs.writeShellApplication {
 
     ## Status
 
-    Scaffolded by `nix run .#new-plugin`. Replace the TODOs in
+    Scaffolded by `nix run .#plugin -- new`. Replace the TODOs in
     `__NAME__.cpp`, the test cases in `tests/test___NAME__.cpp`,
     the description in `default.nix`, and the placeholder
     `LICENSE` before merging into the plugin set.

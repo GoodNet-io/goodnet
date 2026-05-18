@@ -16,17 +16,17 @@ Security provider vtable — **11 slots** + `4` reserved ([`sdk/security.h`](../
 
 | Slot | Signature |
 |---|---|
-| [provider_id](../../sdk/security.h#L104) | `const char * (*)(void *)` |
-| [handshake_open](../../sdk/security.h#L124) | `gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t, const uint8_t[64], const uint8_t[32], const uint8_t *, void **)` |
-| [handshake_step](../../sdk/security.h#L145) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [handshake_complete](../../sdk/security.h#L153) | `int (*)(void *, void *)` |
-| [export_transport_keys](../../sdk/security.h#L167) | `gn_result_t (*)(void *, void *, gn_handshake_keys_t *)` |
-| [encrypt](../../sdk/security.h#L179) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [decrypt](../../sdk/security.h#L192) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
-| [rekey](../../sdk/security.h#L202) | `gn_result_t (*)(void *, void *)` |
-| [handshake_close](../../sdk/security.h#L207) | `void (*)(void *, void *)` |
-| [destroy](../../sdk/security.h#L210) | `void (*)(void *)` |
-| [allowed_trust_mask](../../sdk/security.h#L226) | `uint32_t (*)(void *)` |
+| [provider_id](../../sdk/security.h#L113) | `const char * (*)(void *)` |
+| [handshake_open](../../sdk/security.h#L133) | `gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t, const uint8_t[64], const uint8_t[32], const uint8_t *, void **)` |
+| [handshake_step](../../sdk/security.h#L154) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [handshake_complete](../../sdk/security.h#L162) | `int (*)(void *, void *)` |
+| [export_transport_keys](../../sdk/security.h#L176) | `gn_result_t (*)(void *, void *, gn_handshake_keys_t *)` |
+| [encrypt](../../sdk/security.h#L188) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [decrypt](../../sdk/security.h#L201) | `gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t *)` |
+| [rekey](../../sdk/security.h#L211) | `gn_result_t (*)(void *, void *)` |
+| [handshake_close](../../sdk/security.h#L216) | `void (*)(void *, void *)` |
+| [destroy](../../sdk/security.h#L219) | `void (*)(void *)` |
+| [allowed_trust_mask](../../sdk/security.h#L235) | `uint32_t (*)(void *)` |
 <!-- /livedoc:security_vtable_slots -->
 
 ## 1. Purpose
@@ -42,10 +42,11 @@ produces or routes a connection — it is never inferred from defaults.
 
 ```c
 typedef enum gn_trust_class_e {
-    GN_TRUST_UNTRUSTED  = 0,  /**< inbound connection from internet, default */
-    GN_TRUST_PEER       = 1,  /**< pubkey known + Noise handshake completed */
-    GN_TRUST_LOOPBACK   = 2,  /**< local IPC or 127.0.0.1 — no encryption needed */
-    GN_TRUST_INTRA_NODE = 3   /**< between plugins of the same kernel; in-process */
+    GN_TRUST_UNTRUSTED          = 0,  /**< inbound connection from internet, default */
+    GN_TRUST_PEER               = 1,  /**< pubkey known + Noise handshake completed */
+    GN_TRUST_LOOPBACK           = 2,  /**< local IPC or 127.0.0.1 — no encryption needed */
+    GN_TRUST_INTRA_NODE         = 3,  /**< between plugins of the same kernel; in-process */
+    GN_TRUST_ANONYMOUS_LOOPBACK = 4   /**< anonymous local ingress (bridge plugins); zero sender_pk OK */
 } gn_trust_class_t;
 ```
 
@@ -91,6 +92,7 @@ properties:
 | Intra-process pipe | `IntraNode` |
 | `Untrusted` after Noise handshake **and successful mutual attestation** | upgrade to `Peer` |
 | `Loopback` / `IntraNode` after handshake | unchanged — gate refuses any transition off these classes |
+| Anonymous bridge edge on `tcp://127.0.0.1` / `ipc://` | `AnonymousLoopback` — zero peer pk OK, see §3.5 |
 
 The kernel verifies the upgrade path on every transition:
 
@@ -104,7 +106,7 @@ Promotion to `Peer` is **gated on attestation**: the kernel does
 not call `upgrade_trust` when the security session reaches
 `Transport`. Instead, both peers first exchange a 232-byte
 attestation payload over the secured channel (per
-`attestation.md`); the kernel-internal attestation dispatcher
+`attestation.en.md`); the kernel-internal attestation dispatcher
 holds the trust class at `Untrusted` until the local side has
 sent and the remote side's payload has verified. A peer that
 completes Noise but fails to provide a valid attestation stays
@@ -139,23 +141,23 @@ transports do not duplicate it:
 
 A bridge plugin that re-publishes foreign-system payloads
 (MQTT, HTTP, OPC-UA) into the mesh runs out-of-process and opens
-an IPC link to the kernel — see `host-api.md` §8.1 for the v1
+an IPC link to the kernel — see `host-api.en.md` §8.1 for the v1
 shape. The bridge's IPC conn declares `gn_trust_class = IntraNode`
 on `notify_connect`; the null security provider's
 `allowed_trust_mask` already permits `IntraNode`
 (`plugins/security/null/null.cpp:139`), so the bridge edge runs
 without a Noise handshake. No new ABI is needed — the trust class
-exists, the security mask permits it, and `host-api.md` §8.1
+exists, the security mask permits it, and `host-api.en.md` §8.1
 names the canonical pattern.
 
 A bridge that mistakenly declares `Untrusted` on its IPC link
 under the canonical v1 stack (null security loaded) is rejected
 synchronously: the security-mask gate at
-`SessionRegistry::create` (`core/security/session.cpp:245-263`)
+`SessionRegistry::create` (`core/security/session.cpp:691-704`)
 sees the trust-class miss against `null_allowed_trust_mask =
 Loopback | IntraNode`, returns `GN_ERR_INVALID_ENVELOPE`, and
-`thunk_notify_connect` erases the conn record before the bridge
-returns from the call. The kernel bumps
+the `notify_connect` thunk erases the conn record before the
+bridge returns from the call. The kernel bumps
 `metrics.drop.trust_class_mismatch` so an operator watching the
 counter sees the misconfiguration immediately. There is no
 handshake phase, no `pending_handshake_bytes` accumulation.
@@ -169,11 +171,70 @@ declaration above avoids both failure modes.
 
 ---
 
+## 3.5. `ANONYMOUS_LOOPBACK` — zero-sender ingress for bridges
+
+### When the class is correct
+
+`GN_TRUST_ANONYMOUS_LOOPBACK` is the trust class for bridge plugins
+that accept anonymous traffic on a loopback-scope carrier and inject
+the bytes into the kernel as MESSAGE envelopes without an
+authenticated `sender_pk`. The canonical case is the raw-inject
+bridge: a foreign client dials in over `tcp://127.0.0.1:9999`, the
+bridge does not negotiate identity, and the kernel routes the bytes
+to a handler that consumes opaque payloads. Other fits:
+
+- A simulation / replay harness that injects pre-captured frames
+  through the inject API with no peer identity.
+- An out-of-process IPC bridge whose foreign side lacks a public
+  key the kernel can verify.
+
+The bridge declares `trust = GN_TRUST_ANONYMOUS_LOOPBACK` at
+`notify_connect` and passes a zero `remote_pk`. The router accepts
+the resulting zero-`sender_pk` envelope; without this trust class
+the inject path would die at the `DroppedZeroSender` rule.
+
+### Security implications — loopback-only
+
+The class is intentionally narrow:
+
+- The router accepts a zero `sender_pk` **only when** the inbound
+  envelope's `conn_id` resolves to a record with
+  `trust == GN_TRUST_ANONYMOUS_LOOPBACK` **and** the record's
+  scheme/uri is loopback-scope (`ipc://`, `tcp://127.x`,
+  `tcp://[::1]`, `tcp://localhost`). Any other host classification
+  drops back to the legacy `DroppedZeroSender` outcome.
+- A bridge that mis-declares the class on a public-network URI is
+  still rejected by the loopback-scope check; the operator does
+  not gain a cross-host anonymous ingress by typo.
+- No transition off `GN_TRUST_ANONYMOUS_LOOPBACK` is allowed —
+  `gn_trust_can_upgrade` returns false for every target except
+  the identity transition. Anonymous bridges stay anonymous.
+
+### Contract with the router
+
+```
+on inbound envelope from anonymous loopback conn:
+    if sender_pk == ZERO:
+        require conn.trust == GN_TRUST_ANONYMOUS_LOOPBACK
+        require is_loopback_scope(conn.scheme, conn.uri)
+        else drop as DroppedZeroSender
+    proceed with normal routing (broadcast | local | relay)
+```
+
+The relaxation lives in `core/kernel/router.cpp::accept_zero_sender`
+and the loopback-scope predicate lives in
+`core/kernel/router.cpp::is_loopback_scope`. The Kernel ctor wires
+the lookup once; in-tree test fixtures that construct a Router
+without a kernel leave the lookup unset and observe the legacy
+reject-zero-sender behaviour by default.
+
+---
+
 ## 3a. `gn_security_provider_vtable_t` layout
 
 A security provider implements the vtable declared in
 `sdk/security.h`. The first field carries `api_size` so the kernel
-gates additive evolution per `abi-evolution.md` §3.
+gates additive evolution per `abi-evolution.en.md` §3.
 
 ```c
 typedef struct gn_security_provider_vtable_s {
@@ -257,13 +318,13 @@ enumeration at registration:
 - The active **protocol layer** declares its admitted classes via
   `IProtocolLayer::allowed_trust_mask()`. The kernel checks the bit
   for the connection's `trust` at `notify_connect`
-  (`core/kernel/host_api_builder.cpp:1063-1070`); a miss returns
+  (`core/kernel/host_api/notifications.cpp:81`); a miss returns
   `GN_ERR_INVALID_ENVELOPE` and increments the
   `drop.trust_class_mismatch` metric.
 - The active **security provider** declares its admitted classes via
   `gn_security_provider_vtable_t::allowed_trust_mask`. The kernel
   checks the bit at `SessionRegistry::create`
-  (`core/security/session.cpp:245-258`); a miss returns
+  (`core/security/session.cpp:691-704`); a miss returns
   `GN_ERR_INVALID_ENVELOPE` and increments the same metric.
 
 The admitted set for any stack is the intersection of the two masks
@@ -280,11 +341,15 @@ The fourth common combination — `null + raw` over `Loopback` — is
 admitted because both masks include `Loopback`; the threat model
 excludes a local-process attacker who could equally read `/proc`.
 
-A unified StackRegistry that enumerates the cartesian product at
-admission, with `requires_explicit_optin` flags and
-`name`/`allowed_for[]` descriptors, lands in v1.x. v1 ships the
-per-component gates: simpler, deterministic, and already covers
-every combination the v1 plugin tree can produce.
+A richer StackRegistry surface — operator-side descriptors
+that enumerate the cartesian product at admission with
+`requires_explicit_optin` flags and `name`/`allowed_for[]`
+fields — is sketched as a future extension on top of the
+shipped multi-provider registry. The shipped per-component
+gates are simpler, deterministic, and already cover every
+combination the current plugin tree can produce; the planned
+operator-visible layer adds policy on top, not new admission
+paths.
 
 ---
 
@@ -299,11 +364,11 @@ untrusted link runs an external Noise/TLS terminator in front of
 the kernel; the kernel sees the terminated end as a `Loopback` or
 `IntraNode` link and admits null on it.
 
-A future StackRegistry (v1.x) will introduce an explicit opt-in for
-plaintext-on-untrusted as a deployment-time descriptor, so operators
-can declare it in config rather than build a custom security
-provider. Until then the safer path through the static masks is the
-only path.
+A future deployment-time descriptor on the StackRegistry will
+introduce an explicit opt-in for plaintext-on-untrusted so
+operators can declare it in config rather than build a custom
+security provider. Until then the safer path through the static
+masks is the only path.
 
 ---
 
@@ -318,12 +383,26 @@ from loaded plugins. `core/` contains only interface declarations.
 This separation prevents the kernel from accidentally exposing a
 plaintext path through pure source-level reachability.
 
-v1 admits **at most one active security provider per kernel**. A
-second `register_security` call returns `GN_ERR_LIMIT_REACHED`
-(`core/registry/security.cpp:33`); the existing provider is
-unaffected. Multi-provider per-trust-class selection — running a
-null provider for `Loopback` traffic and Noise for `Peer` /
-`Untrusted` on the same kernel — lands in v1.x via StackRegistry.
+The kernel admits multiple active security providers per kernel
+via the StackRegistry — one entry per **distinct** `provider_id`.
+A second `register_security` call carrying an already-registered
+id returns `GN_ERR_LIMIT_REACHED`
+(`core/registry/security.cpp:45-46`); a call with a fresh id is
+admitted and joins the registry. The kernel's per-trust-class
+admission (e.g. null on `Loopback` / `IntraNode`, Noise on
+`Untrusted` / `Peer`) reads through `find_for_trust` against the
+union of registered providers' masks.
+
+`find_for_trust(trust)` walks the registry in **registration
+order** and returns the first provider whose `allowed_trust_mask`
+admits the queried class. Two providers that both admit the same
+class — say a custom `noise-ik` registered alongside the canonical
+`noise-xx`, both with `Untrusted | Peer` — resolve to the one that
+registered first. Registration order is the policy: operators
+order `register_security` calls deliberately, and `init_all`
+ordering through `gn_plugin_descriptor_t::provides` /
+`requires` (see `plugin-lifetime.en.md` §5) keeps the order
+deterministic across kernel restarts.
 
 ---
 
@@ -385,10 +464,10 @@ consistency, buffer sizing, rekey semantics — lives in
 
 ## 8a. Identity rotation under trust
 
-User-key rotation is a kernel primitive (`identity.md` §10) that
+User-key rotation is a kernel primitive (`identity.en.md` §10) that
 preserves trust without an explicit policy entry on this surface:
 
-- `mesh_address` is device-derived (`identity.md` §3 decouple), so
+- `mesh_address` is device-derived (`identity.en.md` §3 decouple), so
   a `user_pk` rotation does **not** change the address. The peer's
   `TrustClass` stays at whatever it was immediately before the
   rotation arrived (`Peer` in the typical case).
@@ -422,11 +501,12 @@ above.
 
 - Wire details for the canonical security provider:
   `plugins/security/noise/docs/handshake.md`.
-- Transport-side TrustClass declaration: `link.md` §3.
-- Stack registration: `host-api.md` §2 (`register_*`).
+- Transport-side TrustClass declaration: `link.en.md` §3.
+- Stack registration: `host-api.en.md` §2 (`register_*`).
 - Kernel error on a trust-class mismatch: `GN_ERR_INVALID_ENVELOPE`
-  from `notify_connect` (`core/kernel/host_api_builder.cpp:1067-1068`,
-  protocol-layer gate) and from `SessionRegistry::create`
-  (`core/security/session.cpp:255`, security-provider gate). Both
-  sites bump `metrics.drop.trust_class_mismatch` so an operator
-  watching the counter sees the rate without an strace.
+  from `notify_connect` (`core/kernel/host_api/notifications.cpp:81`,
+  protocol-layer gate; line 184 catches the same envelope after
+  `SessionRegistry::create` reports the security-provider gate's
+  decision from `core/security/session.cpp`). Both sites bump
+  `metrics.drop.trust_class_mismatch` so an operator watching the
+  counter sees the rate without an strace.

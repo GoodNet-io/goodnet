@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Track Б — free-kernel showcase bench aggregator.
+"""Free-kernel showcase bench aggregator.
 
 Reads the JSON output of `bench_showcase` (google-benchmark format)
 plus the per-section CSV side-channels emitted by the bench's
@@ -369,8 +369,9 @@ def emit_b4(out, cases):
 def emit_b5(out, cases, csv_data):
     section_header(out, "B.5", "Carrier failover",
         "Picker выбирает IPC (RTT 20µs). Mid-bench bench инжектит "
-        "`CONN_DOWN` на IPC conn (kernel auto-emit от "
-        "`notify_disconnect` pending в Slice-9-KERNEL). Picker "
+        "`CONN_DOWN` на IPC conn (the kernel observer that would "
+        "auto-emit the event from `notify_disconnect` is not "
+        "wired here; bench drives the picker directly). Picker "
         "переключается на TCP — следующий best-RTT. Zero packet "
         "loss across the flip.",
         "У libp2p/WebRTC failover между transport instances — "
@@ -479,11 +480,11 @@ def main(argv):
         csv_data[tag] = parse_csv_series(path)
 
     out = [f"# Showcase bench report — {args.commit_sha}", ""]
-    out.append("_Track Б — free-kernel showcase. Each section "
-               "demonstrates one GoodNet-distinctive move no other "
-               "stack reproduces natively. NOT a fair-comparison "
-               "track (that lives in `bench/reports/<sha>.md` "
-               "section А); this report's reader is asked «попробуй "
+    out.append("_Free-kernel showcase. Each section demonstrates "
+               "one GoodNet-distinctive move no other stack "
+               "reproduces natively. NOT a fair-comparison surface "
+               "(that lives in `bench/reports/<sha>.md` section "
+               "А); this report's reader is asked «попробуй "
                "повторить»._")
     out.append("")
 

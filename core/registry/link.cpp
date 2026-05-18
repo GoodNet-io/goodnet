@@ -19,7 +19,7 @@ gn_result_t LinkRegistry::register_link(
         return GN_ERR_NULL_ARG;
     }
 
-    /// `abi-evolution.md` §3a: defensive size-prefix check on the
+    /// `abi-evolution.en.md` §3a: defensive size-prefix check on the
     /// plugin-provided vtable. A vtable that declares a smaller
     /// size than the kernel's known minimum is from an SDK older
     /// than the slots the kernel intends to call — reject before

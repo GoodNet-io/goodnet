@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/showcase/bench_showcase.cpp
-/// @brief  Free-kernel showcase bench (track Б of the plan in
-///         `~/.claude/plans/crispy-petting-kettle.md`).
+/// @brief  Free-kernel showcase bench — six sections, each
+///         demonstrating a GoodNet-distinctive move (multi-conn
+///         under one identity, strategy-driven picker flip, Noise
+///         → kernel fast-crypto handoff, fan-out producers, IPC
+///         failover, network-mobility carrier appearance).
 ///
 /// Six sections, each demonstrates one GoodNet-distinctive move that
 /// libp2p / WebRTC / gRPC cannot reproduce without an architectural
@@ -33,7 +36,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -553,9 +555,12 @@ BENCHMARK_REGISTER_F(FanoutFixture, Producers)
 // ════════════════════════════════════════════════════════════════════
 //
 // Picker drives between three candidate paths; mid-iteration the
-// bench injects CONN_DOWN on the IPC path (Slice-9-KERNEL auto-emit
-// pending) and the next pick_conn re-routes to TCP. Latency
-// time-series + chosen_conn time-series CSV.
+// bench injects `CONN_DOWN` on the IPC path directly and the next
+// `pick_conn` re-routes to TCP. The kernel auto-fires `CONN_DOWN`
+// from `notify_disconnect` in production; the bench injection
+// gives the failover a deterministic iteration to land on so the
+// time-series CSV is easy to read. Latency time-series +
+// chosen_conn time-series CSV.
 
 struct FailoverFixture : public ::benchmark::Fixture {
     void SetUp(::benchmark::State&) override {
@@ -598,10 +603,12 @@ BENCHMARK_DEFINE_F(FailoverFixture, IpcDrop)(::benchmark::State& state) {
     state.SetItemsProcessed(static_cast<std::int64_t>(total));
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         if (iter == drop_at) {
-            /// XXX bench: stand-in for slice-9 kernel emit. When
-            /// `notify_disconnect` auto-fires `CONN_DOWN` on
-            /// strategy plugins, delete these two lines + the
-            /// candidate-array splice.
+            /// Bench-side direct injection of `CONN_DOWN` on the
+            /// strategy. In production the kernel's
+            /// `notify_disconnect` auto-fires the event; the
+            /// bench skips the full kernel connect/disconnect
+            /// dance so the failover lands on a deterministic
+            /// iteration.
             inject_conn_down(*picker, pk, kIpcConn);
             /// Drop IPC from the candidate array. The kernel would
             /// also drop it from `registry.for_each` at this
@@ -665,9 +672,11 @@ BENCHMARK_DEFINE_F(MobilityFixture, LanShortcut)(::benchmark::State& state) {
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         if (iter == lan_up_at) {
             /// "Alice arrived home" — second carrier appears.
-            /// XXX bench: stand-in for C.4 RTM_NEWLINK
-            /// auto-trigger. When network-mobility lands, this
-            /// fires from a kernel observer instead.
+            /// Bench-only synthesis: a future kernel-side
+            /// network-mobility observer would fire `CONN_UP`
+            /// from `RTM_NEWLINK` netlink events; the bench
+            /// drives it directly so the picker reacts without
+            /// that machinery.
             inject_conn_up(*picker, pk, kLanConn, /*rtt_us*/2);
             cand[1].conn   = kLanConn;
             cand[1].rtt_us = 2;
@@ -702,12 +711,11 @@ BENCHMARK_REGISTER_F(MobilityFixture, LanShortcut)
 }  // namespace
 
 int main(int argc, char** argv) {
-    /// §B.3 — env-gate for the inline-crypto downgrade hook. Bench
-    /// process sets it before fixtures load so child kernel calls
-    /// inherit. Production binaries never set this; the gate fails
-    /// closed there.
-    ::setenv("GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE", "1", /*overwrite*/1);
-
+    /// §B.3 — the inline-crypto downgrade hook is compile-gated
+    /// through `GOODNET_BENCH_SHOWCASE` (set on this target by
+    /// `bench/showcase/CMakeLists.txt`). Production binaries do
+    /// not compile the hook at all; no runtime opt-in is needed
+    /// here.
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
     ::benchmark::RunSpecifiedBenchmarks();

@@ -41,7 +41,7 @@ typedef enum gn_conn_event_kind_e {
  * @brief One connection event payload.
  *
  * Begins with `api_size` for size-prefix evolution per
- * `abi-evolution.md` §3. New fields land before `_reserved`.
+ * `abi-evolution.en.md` §3. New fields land before `_reserved`.
  */
 typedef struct gn_conn_event_s {
     uint32_t              api_size;       /**< sizeof(gn_conn_event_t) */
@@ -80,8 +80,8 @@ typedef enum gn_subscribe_channel_e {
  * one strongly-typed signature per channel rather than casting
  * `(const void*, size_t)` to the right shape at every call site.
  *
- * Both run on the publishing thread per `conn-events.md` §3 /
- * `config.md` §2; the payload borrows for the duration of the
+ * Both run on the publishing thread per `conn-events.en.md` §3 /
+ * `config.en.md` §2; the payload borrows for the duration of the
  * call.
  */
 typedef void (*gn_conn_state_cb_t)(void* user_data,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 /// @file   tests/unit/util/test_uri.cpp
 /// @brief  parse_uri + UriParts — every recognised form and every
-///         failure mode from `docs/contracts/uri.md`.
+///         failure mode from `docs/contracts/uri.en.md`.
 
 #include <gtest/gtest.h>
 
@@ -93,7 +93,7 @@ TEST(ParseUri, MissingPort) {
 }
 
 TEST(ParseUri, ZeroPortAccepted) {
-    /// uri.md §5 — port 0 is syntactically valid for the parser;
+    /// uri.en.md §5 — port 0 is syntactically valid for the parser;
     /// `listen()` uses it for OS-allocated ephemeral ports.
     auto r = ::gn::parse_uri("tcp://127.0.0.1:0");
     ASSERT_TRUE(r.has_value());
@@ -133,7 +133,7 @@ TEST(ParseUri, BracketWithoutPortRejected) {
 }
 
 TEST(ParseUri, ControlBytesRejected) {
-    /// uri.md §5 #10 — any byte ≤ 0x20 or == 0x7F anywhere in the
+    /// uri.en.md §5 #10 — any byte ≤ 0x20 or == 0x7F anywhere in the
     /// input is rejected before parsing. CRLF in particular would
     /// otherwise let a URI carry a smuggled HTTP request line when
     /// the transport concatenates the URI into a wire frame
@@ -243,7 +243,7 @@ TEST(ParseUri, BracketedIpv6WithQuery) {
 }
 
 TEST(ParseUri, UnbracketedIpv6FallbackCanonicalisesToBrackets) {
-    /// uri.md §5.1: rightmost-`:` split rescues the legacy unbracketed
+    /// uri.en.md §5.1: rightmost-`:` split rescues the legacy unbracketed
     /// form, but canonical() always re-brackets so future call sites
     /// only see the strict shape.
     auto r = ::gn::parse_uri("tcp://::1:9000");

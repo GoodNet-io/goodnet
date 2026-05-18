@@ -15,8 +15,9 @@
 /// Single-threaded by design: the reader loop and HOST_CALL writes
 /// share one thread, so `host_api` slots may only be called from
 /// inside an entry-point that the reader dispatched. Multi-threaded
-/// workers need a response demultiplexer per request_id — pinned in
-/// `docs/contracts/remote-plugin.en.md` §9 as a follow-up.
+/// workers would need a response demultiplexer per request_id —
+/// shape pinned in `docs/contracts/remote-plugin.en.md` §9; not
+/// wired in this reference stub.
 
 #pragma once
 
@@ -52,6 +53,17 @@ struct WorkerConfig {
     /// the wire — converted to/from `void*` exactly once at the
     /// worker boundary.
     void* link_self = nullptr;
+
+    /// For security workers: the worker's real security-provider
+    /// vtable. PLUGIN_CALL frames for slots 0x300-0x308 dispatch
+    /// here on the worker side.
+    const gn_security_provider_vtable_t* security_vtable = nullptr;
+    void*                                security_self   = nullptr;
+
+    /// For handler workers: the worker's real handler vtable.
+    /// PLUGIN_CALL frames for slots 0x400-0x405 dispatch here.
+    const gn_handler_vtable_t* handler_vtable = nullptr;
+    void*                      handler_self   = nullptr;
 
     /// Entry-point lifecycle hooks. Optional: a worker that owns no
     /// per-instance state can leave them null and the stub treats

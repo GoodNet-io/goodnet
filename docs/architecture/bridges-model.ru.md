@@ -106,7 +106,7 @@ operator-side бинаря под MIT.
 | Direction | Kernel → plugin (vtable callbacks) | App → kernel (`gn_core_*`) |
 | Loaded as | `dlopen`'ed shared object | Statically linked into app binary |
 | Lifetime | Within kernel's `gn_core_t` lifetime | Owns `gn_core_t` lifetime |
-| Contract source | `host-api.md`, `link.md`, `handler-registration.md`, `security-trust.md` | `core-c.md` |
+| Contract source | `host-api.en.md`, `link.en.md`, `handler-registration.en.md`, `security-trust.en.md` | `core-c.en.md` |
 | Repo | Часть kernel git'а (`sdk/cpp/`) | Отдельный git (`bridges/cpp/`) |
 | License | GPL-2 + linking exception (часть kernel artefact'а) | MIT |
 | Distribution | Header artefact в kernel SDK install | Standalone INTERFACE target `GoodNet::cpp` |
@@ -147,7 +147,7 @@ Lifecycle проводится через цепочку `init()` → `start()` 
 до неудачного перехода. `stop()` — `noexcept`, идемпотентный.
 Destructor вызывает `gn_core_destroy`, который сам walk'ает FSM
 через `PreShutdown → Shutdown` и drain'ит plugin anchors per
-[`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) §4.
+[`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) §4.
 
 `native()` — escape hatch, возвращает `gn_core_t*` для вызовов
 `host_api_t` слотов, которые `Core` ещё не surfaced (timer
@@ -201,8 +201,8 @@ user callback, копию `protocol_id` string, копию `msg_ids` vector.
 В v1.0 kernel **не** имеет `gn_core_unregister_handler` slot'а —
 handlers живут до kernel shutdown. Destructor `HandlerHandle` поэтому
 **не reaches back** в kernel, только освобождает heap context (через
-`unique_ptr`). v1.x добавит unregister; место для wire'а уже
-запланировано в этом классе.
+`unique_ptr`). Добавление unregister запланировано как расширение;
+место для wire'а в этом классе зарезервировано.
 
 Эта асимметрия с `Subscription` (которая всегда unsubscribes)
 отражает kernel constraint, не binding decision.
@@ -239,17 +239,17 @@ service executor (один thread, под `set_timer` / `cancel_timer`), и
 плагиновые io_context'ы внутри link plugins. TCP-link plugin держит
 worker pool размером `max(1, hardware_concurrency()/2)` thread'ов на
 одном `io_context` per
-[multi-path.md](./multi-path.ru.md) — несколько connection'ов
+[multi-path.ru.md](./multi-path.ru.md) — несколько connection'ов
 прогрессируют параллельно, per-Session strand сериализует I/O одной
 связи. UDP / WS / IPC / TLS на момент v1 спавнят ровно один worker;
 будущие минорные релизы могут расширить пул, контракт это допускает.
 
 Канонический spec threading'а subscribers и callback'ов —
-[`conn-events.md` §3](../contracts/conn-events.en.md). Ключевые факты,
+[`conn-events.en.md` §3](../contracts/conn-events.en.md). Ключевые факты,
 на которых строится binding:
 
 - `CONNECTED` / `DISCONNECTED` / `BACKPRESSURE_*` — на link plugin'a
-  strand'е (TCP это один из workers, UDP/WS/IPC/TLS — single).
+  strand'е (TCP это один из workers, UDP/WS/IPC/TLS/ICE/QUIC — single).
 - `TRUST_UPGRADED` — на thread'е что drove handshake completion.
 - Service-executor callback'и (`set_timer(delay_ms, …)`) — всегда
   на kernel-side service executor thread'е.
@@ -269,7 +269,7 @@ Trampoline'ы (`message_trampoline`, `conn_event_trampoline`,
 — разной для разных event kind'ов, см. список выше. Subscriber что
 поддерживает state across event kinds **обязан** guard'ить его lock'ом
 или posting'ом каждого event'а через `host_api->set_timer(0, …)` на
-service executor thread (per `conn-events.md` §3). **Lambda не должна
+service executor thread (per `conn-events.en.md` §3). **Lambda не должна
 блокировать**: блокирующее IO, mutex с contention, sleep, длительная
 computation останавливают I/O drain для всех connections, sharing'их
 этот worker. Идиоматично — скопировать payload в очередь и
@@ -417,7 +417,7 @@ destructor (или `Drop` impl в Rust, `__del__` в Python) вызывает
 | `Core` | `gn_core_t*` | `gn_core_destroy` |
 | `Connection` | `gn_conn_id_t` + back-ptr | `gn_core_disconnect` (opt-in) |
 | `Subscription` | `(gn_core_t*, token, kind)` | `gn_core_unsubscribe` или `gn_core_off_conn_state` |
-| `HandlerHandle` | `gn_handler_id_t` + heap context | (heap context only в v1.0) |
+| `HandlerHandle` | `gn_handler_id_t` + heap context | (heap context only сегодня — kernel-side handler unregister пока на стороне `gn_core_t`) |
 
 Авто-clone'ы не разрешены. Rust binding делает `Send` без `Sync` для
 `Core` (см. ниже). Python binding делает `__copy__` / `__deepcopy__`
@@ -514,10 +514,11 @@ surface, на остаток escape hatch'и `core.host_api()` и
   таблица, escape hatch через `Core::host_api()`
 - [`handler-patterns`](handler-patterns.ru.md) — handler внутри
   плагина vs handler из app'а через `register_handler`
-- [`core-c.md`](../contracts/core-c.en.md) — full contract operator-side
+- [`core-c.en.md`](../contracts/core-c.en.md) — full contract operator-side
   C ABI, который binding оборачивает
-- [`abi-evolution.md`](../contracts/abi-evolution.en.md) — правила
-  совместимости pre-rc1 и post-rc1
+- [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — правила
+  ABI совместимости (reshape window + `_reserved` slot + `api_size`
+  gating)
 - [`error-handling`](../impl/cpp/error-handling.ru.md) —
   `gn_result_t` и mapping в C++ exceptions / `std::expected`
 - [`memory-management`](../impl/cpp/memory-management.ru.md) —

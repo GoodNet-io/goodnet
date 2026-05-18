@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_handler.cpp
 /// @brief  GoogleTest unit tests for `gn::core::HandlerRegistry`.
 ///
-/// Exercises the contract from `docs/contracts/handler-registration.md`:
+/// Exercises the contract from `docs/contracts/handler-registration.en.md`:
 /// rejection of malformed registrations, priority chain ordering with
 /// insertion-order tie-breaking, per-protocol namespace isolation,
 /// generation counter advancement, max-chain-length cap, and the
@@ -80,7 +80,7 @@ TEST(HandlerRegistry_Args, RejectsEmptyProtocolId) {
 }
 
 TEST(HandlerRegistry_Args, RejectsVtableWithSmallerApiSize) {
-    /// `abi-evolution.md` §3a: a producer-declared `api_size` smaller
+    /// `abi-evolution.en.md` §3a: a producer-declared `api_size` smaller
     /// than the kernel's struct minimum is rejected before any slot
     /// lookup. Mirrors the `register_link` and
     /// `register_provider` defensive size-prefix check.
@@ -135,9 +135,9 @@ TEST(HandlerRegistry_Args, CarriesPluginNameOntoEntry) {
 }
 
 TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
-    /// Per `handler-registration.md` §2a — `0x11` is reserved for
+    /// Per `handler-registration.en.md` §2a — `0x11` is reserved for
     /// the kernel-internal attestation dispatcher
-    /// (`attestation.md` §3). Plugin registration must be rejected
+    /// (`attestation.en.md` §3). Plugin registration must be rejected
     /// regardless of `protocol_id`.
     HandlerRegistry reg;
     gn_handler_id_t id = GN_INVALID_ID;
@@ -397,7 +397,7 @@ TEST(HandlerRegistry_Cap, ThirdRegistrationRejectedAtCap2) {
 }
 
 TEST(HandlerRegistry_Cap, ZeroDisablesEnforcement) {
-    /// Per `limits.md §4a`: a cap of zero disables the check.
+    /// Per `limits.en.md §4a`: a cap of zero disables the check.
     HandlerRegistry reg;
     reg.set_max_chain_length(0);
     EXPECT_EQ(reg.max_chain_length(), 0u);

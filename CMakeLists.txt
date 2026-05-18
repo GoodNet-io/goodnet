@@ -31,8 +31,38 @@ endif()
 
 add_compile_options(
     -Wall -Wextra -Wpedantic
-    -Wshadow -Wconversion -Wnon-virtual-dtor -Woverloaded-virtual
+    -Wshadow -Wconversion
+    # `-Wnon-virtual-dtor` and `-Woverloaded-virtual` are C++-only;
+    # applying them to C TUs (e.g. tests/abi/test_layout.c) makes
+    # gcc print a "valid for C++/ObjC++ but not for C" warning on
+    # every C compile. Wrap in a generator expression so each
+    # language only sees the flags it understands.
+    "$<$<COMPILE_LANGUAGE:CXX>:-Wnon-virtual-dtor>"
+    "$<$<COMPILE_LANGUAGE:CXX>:-Woverloaded-virtual>"
     -Wno-unused-parameter
+    # GCC 15 emits `-Wfree-nonheap-object` false positives on
+    # heavily-inlined `std::vector` reserve+push_back paths
+    # (e.g. `frame_tcp_stun`, several gnet codec hot loops). The
+    # analyzer reports `operator delete called on pointer ... with
+    # nonzero offset` — the offset is the std::vector header size
+    # the inliner exposed, not a real bug. Silenced under
+    # `$<$<CXX_COMPILER_ID:GNU>>` so clang builds (asan/tsan/fuzz)
+    # keep the diagnostic.
+    "$<$<CXX_COMPILER_ID:GNU>:-Wno-free-nonheap-object>"
+    # Catch ODR violations between translation units at compile / LTO
+    # time. Stale build-cache `.o` files (ccache hash mismatch, ninja
+    # dep-graph gap during quick file-mtime changes, build-mode
+    # transitions) can leave a TU compiled against one view of a class
+    # while consumers see a different layout. Without these flags the
+    # mismatch only surfaces as a runtime heap-corruption crash deep
+    # in glibc malloc — found exactly that pattern on bench_udp /
+    # bench_quic / bench_ice before stale .o files were force-rebuilt.
+    # `-Wodr` runs at the LTO link stage; `-Wlto-type-mismatch` is the
+    # per-symbol diagnostic. Both GCC-only so far; clang has different
+    # ODR-checker plumbing (`-fsanitize=cfi-icall` is the rough analog
+    # but link-time-only).
+    "$<$<CXX_COMPILER_ID:GNU>:-Wodr>"
+    "$<$<CXX_COMPILER_ID:GNU>:-Wlto-type-mismatch>"
     # Strip the absolute build-tree prefix from `__FILE__` so log
     # output and assertion messages carry repo-relative paths
     # (`core/util/log.hpp:42`) instead of the full filesystem
@@ -107,7 +137,7 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 # `mold` is the single biggest link-time win for a multi-target build
-# like this one (kernel + 8 plugins + 3 test binaries). Auto-detect at
+# like this one (kernel + 13 plugins + 3 test binaries). Auto-detect at
 # configure time; absence is silent — the default ld stays in use.
 if(GOODNET_USE_MOLD)
     find_program(GOODNET_MOLD_BIN mold)
@@ -235,8 +265,8 @@ endif()
 # dynamic-linkage contract from `find_package(GoodNet)`.
 #
 # Globally surface the option to the C++ preprocessor so kernel and
-# apps code (notably `apps/goodnetd/subcommands/run.cpp`) can switch
-# to `PluginManager::load_static()` at compile time. The macros in
+# host programs that embed the kernel can switch to
+# `PluginManager::load_static()` at compile time. The macros in
 # `sdk/plugin.h` are guarded on both this define AND
 # `GN_PLUGIN_STATIC_NAME` — defining only the former at the kernel
 # scope keeps the suffix rename limited to plugin TUs.
@@ -273,8 +303,8 @@ if(GOODNET_STATIC_PLUGINS)
         # files actually land in `libgoodnet_kernel.a`. Targeting
         # `goodnet_kernel_objects` (OBJECT) drops the TARGET_OBJECTS
         # generator expression silently. Same registry then reaches
-        # apps/goodnet (links kernel), find_package consumers like
-        # Solas (link kernel), and in-process operator UIs.
+        # find_package consumers (Solas, the `goodnetd` daemon, etc.)
+        # and in-process operator UIs.
         # `gn_core_init` walks the registry via
         # `PluginManager::load_static` automatically under the
         # GOODNET_STATIC_PLUGINS compile gate.
@@ -285,7 +315,7 @@ if(GOODNET_STATIC_PLUGINS)
         # `goodnet_kernel_objects`'s link line. Bundling the
         # plugin .o files via TARGET_OBJECTS doesn't carry the
         # INTERFACE_LINK_LIBRARIES; the bundled symbols compile
-        # but the final link of a consumer (apps/goodnet, Solas)
+        # but the final link of a consumer (`goodnetd`, Solas)
         # fails with unresolved references unless the host
         # archive itself surfaces the requirement. Listed plugins
         # opt in here by name; new plugins with unique link deps
@@ -299,8 +329,9 @@ if(GOODNET_STATIC_PLUGINS)
         # `goodnet_kernel_shared` is currently built from the same
         # OBJECT lib without the per-plugin TARGET_OBJECTS bundling
         # — operator UIs that need static plugins in a shared
-        # variant should adjust the recipe; in-tree apps/goodnet
-        # and find_package consumers go through the STATIC variant.
+        # variant should adjust the recipe; the downstream daemon
+        # at goodnet-io/goodnetd and find_package consumers go
+        # through the STATIC variant.
         message(STATUS
             "  Static plugins    : ${_goodnet_static_plugin_list}")
     endif()
@@ -313,6 +344,16 @@ endif()
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)
+endif()
+
+# ── Fuzz harness (LibFuzzer / clang only) ────────────────────────────────────
+# Opt-in target tree. The subdirectory probes the active compiler for
+# `-fsanitize=fuzzer` support and skips with a STATUS message when the
+# probe fails (gcc has no libFuzzer), so the configure stays green
+# under the default gcc toolchain.
+option(GOODNET_BUILD_FUZZ "Build LibFuzzer-driven fuzz targets" OFF)
+if(GOODNET_BUILD_FUZZ AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz/CMakeLists.txt")
+    add_subdirectory(tests/fuzz)
 endif()
 
 # ── Benchmark suite ──────────────────────────────────────────────────────────
@@ -367,6 +408,7 @@ message(STATUS "  Build type        : ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Compiler          : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "  C++ standard      : ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Tests             : ${GOODNET_BUILD_TESTS}")
+message(STATUS "  Fuzz harness      : ${GOODNET_BUILD_FUZZ}")
 message(STATUS "  Examples          : ${GOODNET_BUILD_EXAMPLES}")
 message(STATUS "  Bundled plugins   : ${GOODNET_BUILD_BUNDLED_PLUGINS}")
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)

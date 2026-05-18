@@ -64,7 +64,7 @@ typedef struct gn_message_t {
 ### 2.2 Lifetime rules
 
 - `payload` is **borrowed** for the duration of the synchronous handler
-  `handle_message` call (see `handler-registration.md`). Plugins
+  `handle_message` call (see `handler-registration.en.md`). Plugins
   implementing `frame` must guarantee the same on outbound.
 - `gn_message_t` itself lives on the stack of the dispatching thread; its
   pointer **must not** escape `handle_message`.
@@ -83,7 +83,7 @@ flood) and lives inside the plugin, not the kernel.
 A sender **must never** be `ZERO`. Messages with `sender_pk == ZERO` are
 dropped at kernel ingress and counted in `route.outcome.dropped_zero_sender`
 — the rejection lands on the routing-pipeline namespace per
-`metrics.md` §3 because the drop happens after deframe, when the
+`metrics.en.md` §3 because the drop happens after deframe, when the
 router refuses to dispatch the envelope; consumers scrape the same
 prefix as every other "what did the chain do with this envelope"
 counter.
@@ -111,11 +111,12 @@ mapped to the codes listed in §8.
 ### 3.0 `gn_protocol_layer_vtable_t` layout
 
 Begins with `api_size` for size-prefix evolution per
-`abi-evolution.md` §3. The kernel statically links one
-`IProtocolLayer` C++ wrapper rather than this C vtable directly,
-so the `api_size` check runs in the future C-only protocol
-adapter (per §3a) — populating the field today keeps the adapter's
-introduction non-breaking.
+`abi-evolution.en.md` §3. The kernel admits both C++ layers (direct
+`IProtocolLayer` registration through `protocol_layers().register_layer`)
+and C vtables (wrapped through `VtableProtocolLayer` by
+`gn_core_register_protocol`). The `api_size` gate runs inside that
+adapter — populating the field at producer build time keeps
+forward-compatible adapters non-breaking.
 
 ```c
 typedef struct gn_protocol_layer_vtable_s {
@@ -151,21 +152,22 @@ Slot ownership and lifetime:
 | `deframe`/`out->messages` | plugin-owned storage; `payload` pointers borrow from `bytes` for the dispatch cycle |
 | `frame`/`out_bytes` + `out_free` | plugin allocates; kernel calls `out_free(out_bytes)` once the bytes commit to the security layer |
 | `protocol_id` returned `const char*` | outlives the plugin |
-| `allowed_trust_mask` | bitmap of `1u << GN_TRUST_<X>` per `security-trust.md` §4 |
-| `gn_deframe_result_t::_reserved[4]` | NULL on init; value-type evolution per `abi-evolution.md` §4 |
+| `allowed_trust_mask` | bitmap of `1u << GN_TRUST_<X>` per `security-trust.en.md` §4 |
+| `gn_deframe_result_t::_reserved[4]` | NULL on init; value-type evolution per `abi-evolution.en.md` §4 |
 
 ### 3.1 `ConnectionContext`
 
 Per-connection state is passed to every `deframe` / `frame` call as
 `gn_connection_context_t`, declared in `sdk/connection.h`. The
-struct is opaque; plugins read it through five accessors:
+struct is opaque; plugins read it through six accessors:
 
 | Accessor | Returns |
 |---|---|
 | `gn_ctx_local_pk(ctx)` | borrowed pointer to the 32-byte local Ed25519 public key |
 | `gn_ctx_remote_pk(ctx)` | borrowed pointer to the 32-byte peer key; all-zero before the handshake completes |
 | `gn_ctx_conn_id(ctx)` | `gn_conn_id_t` allocated by the kernel |
-| `gn_ctx_trust(ctx)` | `gn_trust_class_t` per `security-trust.md` |
+| `gn_ctx_trust(ctx)` | `gn_trust_class_t` per `security-trust.en.md` |
+| `gn_ctx_allows_relay(ctx)` | `int` — non-zero when the kernel admits the conn as a relay edge (`link.en.md` §3a) |
 | `gn_ctx_plugin_state(ctx)` / `gn_ctx_set_plugin_state(ctx, p)` | plugin-private scratch slot; kernel never inspects |
 
 For mesh-native direct connections the plugin reads
@@ -223,9 +225,10 @@ The kernel maintains a `ProtocolLayerRegistry` keyed by
 be registered concurrently:
 
 - `gnet-v1` (`plugins/protocols/gnet/`) — canonical mesh-framing,
-  registered by `gn_core_init`. The kernel default
-  (`kDefaultProtocolId`) when a link plugin doesn't declare
-  otherwise.
+  registered by the host program through `gn_core_register_protocol`
+  between `gn_core_init` and `gn_core_start`. The kernel's
+  `kDefaultProtocolId` constant names this layer as the fallback id
+  when a link plugin registers without declaring one.
 - `raw-v1` (`plugins/protocols/raw/`) — opaque-payload passthrough
   for simulation harnesses, PCAP replay, and foreign-protocol
   bridges. Deframes only on `GN_TRUST_LOOPBACK` /
@@ -317,7 +320,7 @@ that backs `decrypt_stream`. A transport may deliver any chunk size
 to `notify_inbound_bytes` — the chunk crosses zero or more frame
 boundaries — and the security session emits one plaintext per
 complete frame. Partial bytes accumulate across calls; the buffer
-is bounded per `backpressure.md` §9. The 2-byte length prefix on
+is bounded per `backpressure.en.md` §9. The 2-byte length prefix on
 the wire is set by the security session before handing bytes to
 the transport, and consumed by the security session before handing
 plaintext to the protocol layer; the transport sees opaque bytes
@@ -347,7 +350,7 @@ Handlers are scoped to a `(protocol_id, msg_id)` pair. The same `msg_id`
 under different protocols is independent. The per-protocol namespace
 prevents collisions between unrelated protocols and lets plugins evolve
 their ID space without cross-protocol coordination. See
-`handler-registration.md` for the full registration semantics.
+`handler-registration.en.md` for the full registration semantics.
 
 ---
 
@@ -379,7 +382,7 @@ budget — only the kernel may interpret them.
 - Wire details for the canonical mesh-framing implementation:
   `plugins/protocols/gnet/docs/wire-format.md`.
 - Noise security: `plugins/security/noise/docs/handshake.md`.
-- Transport ABI: `link.md`.
-- Handler registration: `handler-registration.md`.
-- Trust-class policy: `security-trust.md`.
+- Transport ABI: `link.en.md`.
+- Handler registration: `handler-registration.en.md`.
+- Trust-class policy: `security-trust.en.md`.
 - Architectural roadmap: `docs/ROADMAP.md`.

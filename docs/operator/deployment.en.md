@@ -84,7 +84,7 @@ A production install plants files in five locations.
 
 | Path | Owner | Mode | What |
 |---|---|---|---|
-| `/usr/bin/goodnet` | root | 0755 | Multicall binary — `run`, `config validate`, `plugin hash`, `manifest gen`, `identity gen`, `identity show`, `version` |
+| `/usr/bin/goodnetd` | root | 0755 | Multicall binary — `run`, `config validate`, `plugin hash`, `manifest gen`, `identity gen`, `identity show`, `version` |
 | `/usr/lib/goodnet/lib*.so` | root | 0644 | Plugin shared objects: transports, security providers, protocol layers, handlers |
 | `/etc/goodnet/node.json` | root | 0644 | Kernel config (limits, log shape, profile selector) |
 | `/etc/goodnet/plugins.json` | root | 0644 | Plugin manifest — `{ path, sha256 }` per loadable .so. Trust root for `dlopen` |
@@ -109,7 +109,7 @@ Logs flow through journald, not any path above. See §8.
 
 ## 3. systemd unit reference
 
-The shipped unit `dist/systemd/goodnet.service` applies a
+The shipped unit `dist/systemd/goodnetd.service` applies a
 defence-in-depth sandbox. Each flag restricts a specific kernel
 surface; together they reduce the blast radius of a hypothetical
 plugin RCE to roughly "read the plugin's state directory and emit
@@ -141,14 +141,14 @@ The unit also pins three lifecycle behaviours:
 - `Restart=no` — a node failure is a configuration or plugin error
   surfaced loudly. Operators wanting auto-restart drop in
   `Restart=on-failure` plus `RestartSec=5s` via a unit override.
-- `ExecStartPre=/usr/bin/goodnet config validate` — catches malformed
+- `ExecStartPre=/usr/bin/goodnetd config validate` — catches malformed
   config at unit-start time rather than mid-handshake.
 
 Two situations call for an override: a JIT plugin (future scripting,
 embedded WASM runtime) needs `MemoryDenyWriteExecute=` cleared; a
 host where journald is not the log sink needs `StandardOutput=` /
 `StandardError=` overridden. Both go in
-`/etc/systemd/system/goodnet.service.d/override.conf` so package
+`/etc/systemd/system/goodnetd.service.d/override.conf` so package
 upgrades do not stomp on local edits.
 
 ---
@@ -165,7 +165,7 @@ Each node owns its identity. Generate it on the host that will run
 the node — secret seeds never leave the box.
 
 ```sh
-sudo -u goodnet goodnet identity gen \
+sudo -u goodnet goodnetd identity gen \
     --out /etc/goodnet/identity.bin
 ```
 
@@ -173,7 +173,7 @@ The file lands at mode `0600`. The command prints the public surface
 to stdout:
 
 ```
-goodnet identity gen: wrote /etc/goodnet/identity.bin (mode 0600)
+goodnetd identity gen: wrote /etc/goodnet/identity.bin (mode 0600)
 address:    7f3c...d219    (52-character base32 in operator UI; hex shown here)
 user_pk:    ...
 device_pk:  ...
@@ -186,7 +186,7 @@ peers' catalogues.
 To inspect an existing identity without rewriting it:
 
 ```sh
-sudo -u goodnet goodnet identity show /etc/goodnet/identity.bin
+sudo -u goodnet goodnetd identity show /etc/goodnet/identity.bin
 ```
 
 Secret seeds are never printed, even when the file is readable.
@@ -215,7 +215,7 @@ shape:
 
 Field semantics:
 
-- `pk` — the peer's address from `goodnet identity show`. 52
+- `pk` — the peer's address from `goodnetd identity show`. 52
   characters base32 in the operator-facing form; the kernel
   accepts both base32 and hex.
 - `name` — operator-facing label for logs and dashboards. Not
@@ -225,8 +225,8 @@ Field semantics:
   for the full URI scheme registry; transports register their own
   schemes (`tcp://`, `udp://`, `ipc://`, `tls://`, etc.).
 
-The catalogue is edited by hand — no auto-discovery in v1 by
-design; operators keep full control over which peers their node
+The catalogue is edited by hand — no auto-discovery by design;
+operators keep full control over which peers their node
 considers known.
 
 ### 4.3 Bootstrapping a mesh
@@ -247,9 +247,22 @@ source of truth via Ansible / salt / a config repo. The format is
 small enough that templating works cleanly.
 
 NAT traversal between nodes unable to dial each other directly
-lands with the relay / DHT plugins; in v1, a NAT'd peer reaches
-out to a publicly-routable peer first (which caches the address)
-or ships through a well-known relay. See the project ROADMAP.
+rides on the `plugins/links/ice` plugin: host / server-reflexive
+(STUN) / relay (TURN) candidates, prioritised connectivity checks,
+and pair-promotion nomination. Configure STUN / TURN servers
+through `ice.stun_servers` / `ice.turn_servers` in
+[`config`](../contracts/config.en.md); pair the ICE link with
+the heartbeat plugin so RTT informs the multi-path scheduler.
+The `ice://` URI shape in §4.2 above is the canonical addressing
+form; ICE rendez-vous still requires an exchange path for the
+candidate set (heartbeat extension, a signaling handler, or a
+bridge) per `plugins/links/ice/README.md`.
+
+Per-deployment-shape recipes for the `ice.*` namespace (home
+network, enterprise UDP-blocked, multi-TURN HA, mDNS-only LAN,
+ICE-lite gateway, symmetric NAT, PMTU, mobile reconnect) are in
+[ice-recipes](./ice-recipes.en.md). The recipes doc carries the
+full default + range matrix for every `ice.*` key.
 
 ---
 
@@ -267,7 +280,7 @@ After installing or upgrading plugin .so files, regenerate the
 manifest:
 
 ```sh
-sudo goodnet manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
+sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
 sudo install -m 0644 /tmp/plugins.json /etc/goodnet/plugins.json
 ```
 
@@ -287,7 +300,7 @@ not write manifests by hand; `manifest gen` is the supported path.
 To verify a single plugin's hash without regenerating the manifest:
 
 ```sh
-goodnet plugin hash /usr/lib/goodnet/libgoodnet_security_noise.so
+goodnetd plugin hash /usr/lib/goodnet/libgoodnet_security_noise.so
 ```
 
 Output is lowercase hex SHA-256, comparable directly against a
@@ -311,14 +324,14 @@ intended outcome.
 
 To add a new plugin to a running deployment:
 
-1. Stop the unit: `sudo systemctl stop goodnet`.
+1. Stop the unit: `sudo systemctl stop goodnetd`.
 2. Install the new .so: `sudo install -m 0644 new-plugin.so /usr/lib/goodnet/`.
 3. Regenerate the manifest as in §5.1 above.
-4. Validate the resulting config: `sudo goodnet config validate
+4. Validate the resulting config: `sudo goodnetd config validate
    /etc/goodnet/node.json`.
-5. Start the unit: `sudo systemctl start goodnet`.
+5. Start the unit: `sudo systemctl start goodnetd`.
 
-No hot-load path in v1: plugins join the kernel through
+No hot-load path today: plugins join the kernel through
 `PluginManager::load` once at startup. Subsequent additions
 require a restart.
 
@@ -358,20 +371,19 @@ namespace:
 | `links.tls.*` | TLS transport plugin | `cert_path`, `key_path` |
 | `links.ipc.*` | IPC transport plugin | `socket_path` |
 | `heartbeat.*` | Heartbeat handler | `interval_ms`, `timeout_ms` |
-| `relay.*` | Relay plugin (post-v1) | `dedup_capacity` |
-| `dht.*` | DHT plugin (post-v1) | bucket parameters |
+| `relay.*` | Relay plugin (planned) | `dedup_capacity` |
+| `dht.*` | DHT plugin (planned) | bucket parameters |
 
 The kernel does not parse plugin namespaces; it returns values
 verbatim through `config_get`. Each plugin documents its keys in
 its own README. A typo silently maps to `GN_ERR_NOT_FOUND` and the
 plugin falls through to its default; v1 does not warn on unknown
-keys (lands in v1.1 with a `reads_config` whitelist).
+keys. A `reads_config` whitelist that surfaces typos is planned.
 
 ### 6.4 Hot reload
 
-v1 ships a one-shot config load. `systemctl reload goodnet`
-executes `Config::reload_config(text)` and re-derives limits (per
-[config](../contracts/config.en.md) §3a).
+`systemctl reload goodnetd` executes `Kernel::reload_config(text)`
+and re-derives limits (per [config](../contracts/config.en.md) §3a).
 
 Picked up by reload:
 
@@ -390,7 +402,7 @@ Requires full restart:
 - Identity rotation (new `--identity` path).
 - Adding or removing a plugin (see §5.4).
 
-When in doubt, `systemctl restart goodnet`. The 30-second
+When in doubt, `systemctl restart goodnetd`. The 30-second
 TimeoutStopSec drains in-flight async cleanly; downtime is seconds,
 not minutes.
 
@@ -404,7 +416,7 @@ process, ordered by After= chains".
 
 ### 7.1 Kernel unit
 
-`goodnet.service` (§3) is the foundation. Dependent units bind to
+`goodnetd.service` (§3) is the foundation. Dependent units bind to
 it through ordering directives.
 
 ### 7.2 gssh listen
@@ -444,8 +456,8 @@ own units. Standard pattern:
 ```ini
 [Unit]
 Description=Custom GoodNet app
-After=network-online.target goodnet.service
-Requires=goodnet.service
+After=network-online.target goodnetd.service
+Requires=goodnetd.service
 
 [Service]
 ExecStart=/usr/local/bin/my-app --config /etc/my-app/config.json
@@ -460,12 +472,42 @@ Restart=on-failure
 WantedBy=multi-user.target
 ```
 
-`After=goodnet.service` orders start; `Requires=` propagates
+`After=goodnetd.service` orders start; `Requires=` propagates
 stops. Apps talking to the kernel through IPC (e.g., goodnet-panel)
 need `Requires=`; apps running their own kernel in-process do not.
 
 Hardening flags from §3 are good defaults to copy; drop them
 per-flag in a unit override when an app needs an exception.
+
+### 7.4 Container and embedded deployments
+
+The default `release` build (§2.1 of [install](../install.en.md))
+produces a dynamically-linked binary that depends on the host
+glibc + nixpkgs-resolved OpenSSL / libsodium / spdlog closures.
+Two cases call for a different shape:
+
+- **Container base layer.** Shipping the dynamic build means the
+  container image must carry the full glibc + dependency closure
+  (~80-150 MiB even with `dockerTools.buildLayeredImage` dedup).
+  The `static` variant — `nix run .#build -- static`, routed
+  through `nix build .#goodnet-core-static` — emits a musl-static
+  binary with no runtime dependencies (`ldd` reports "not a
+  dynamic executable"). Drop it straight into a `scratch` or
+  `distroless` image; resulting layer hits the single-MiB range.
+  `nix build .#docker-static` packages the same artefact into a
+  ready-to-load OCI tarball.
+- **Embedded / stripped rootfs.** Targets without a `/nix/store`,
+  without a host libc, or with a libc version older than what the
+  release build was linked against. The static variant runs
+  unchanged on any kernel that supports the ELF interpreter (none,
+  in this case) — useful for incident-response USB sticks, factory
+  recovery images, or air-gapped deployment rigs.
+
+The static variant bundles every plugin into the kernel binary
+(`-DGOODNET_STATIC_PLUGINS=ON` is implied), so there is no
+neighbouring `lib/goodnet/plugins/*.so` directory to ship. The
+plugin set is fixed at build time; deployments that need to swap
+plugins per-host stay on the dynamic build.
 
 ---
 
@@ -477,15 +519,15 @@ ties stderr to the journal; operators read via `journalctl`.
 ### 8.1 Live tail
 
 ```sh
-journalctl -u goodnet -f
+journalctl -u goodnetd -f
 ```
 
 Filters work as expected:
 
 ```sh
-journalctl -u goodnet --since "1 hour ago"
-journalctl -u goodnet -p warning            # WARN+
-journalctl -u goodnet | grep "plugin"
+journalctl -u goodnetd --since "1 hour ago"
+journalctl -u goodnetd -p warning           # WARN+
+journalctl -u goodnetd | grep "plugin"
 ```
 
 ### 8.2 Log levels
@@ -508,10 +550,11 @@ while the journal stays at INFO.
 
 ### 8.3 Format
 
-v1 ships `console` (human, optionally colored) and `json` (one
-record per line). JSON is the format for Loki / Elasticsearch /
-any aggregator consuming structured events. Console is the default
-for journald — `journalctl` renders timestamps itself.
+Two formats are defined: `console` (human, optionally colored)
+and `json` (one record per line). JSON is the format for Loki /
+Elasticsearch / any aggregator consuming structured events.
+Console is the default for journald — `journalctl` renders
+timestamps itself.
 
 ```json
 "log": {
@@ -549,13 +592,13 @@ The shipped unit does not pin specific ceilings; relevant knobs:
 | `LimitNOFILE=` | inherits | File descriptors. Set to `max_connections * 2 + 256` as a baseline; one fd per conn plus headroom for listeners and timers |
 | `MemoryMax=` | unlimited | Hard memory cap. Set to twice the steady-state RAM figure from §1 to give the kernel headroom under burst load |
 | `MemoryHigh=` | unlimited | Soft memory cap; kernel slows allocations under pressure rather than killing the process |
-| `TasksMax=` | inherits | Thread count cap. The kernel runs one service-executor thread plus a per-link plugin worker pool — TCP scales to `max(1, hardware_concurrency()/2)` workers, UDP / WS / IPC / TLS each pin one. On a 16-core box that adds up to ~9 link threads plus the service executor; 256 covers any v1 deployment with headroom |
+| `TasksMax=` | inherits | Thread count cap. The kernel runs one service-executor thread plus a per-link plugin worker pool — TCP scales to `max(1, hardware_concurrency()/2)` workers, UDP / WS / IPC / TLS / ICE / QUIC each pin one. On a 16-core box that adds up to ~11 link threads plus the service executor; 256 covers any v1 deployment with headroom |
 | `CPUQuota=` | unlimited | CPU cap as a percentage. Set to `<percent>%` on shared hosts where the kernel must not starve neighbours |
 
 A typical override file pinning these:
 
 ```ini
-# /etc/systemd/system/goodnet.service.d/limits.conf
+# /etc/systemd/system/goodnetd.service.d/limits.conf
 [Service]
 LimitNOFILE=8192
 MemoryMax=2G
@@ -592,9 +635,9 @@ Two `gn_limits_t` fields govern per-plugin behaviour:
   ID. Default 8. Combined with `max_relay_ttl`, caps amplification
   on relay paths.
 
-No per-plugin memory or CPU cap in v1. A plugin's footprint is
+No per-plugin memory or CPU cap today. A plugin's footprint is
 transitively bounded by the kernel limits above; tighter per-plugin
-sandboxing is v1.1+.
+sandboxing is a planned extension.
 
 ---
 
@@ -611,3 +654,5 @@ sandboxing is v1.1+.
 - [security-trust](../contracts/security-trust.en.md) — trust class policy for limit application
 - [metrics](../contracts/metrics.en.md) — drop-reason metrics surface and cardinality cap
 - [gssh](./gssh.ru.md) — SSH-over-GoodNet sibling guide (modes, peers.json, listen unit)
+- [ice-recipes](./ice-recipes.en.md) — `plugins/links/ice` config recipes by deployment shape; full `ice.*` key matrix
+- [transport-layers](../architecture/transport-layers.en.md) — TLS / DTLS / QUIC / WSS / ICE plugin and scheme map plus operator-facing choice matrix

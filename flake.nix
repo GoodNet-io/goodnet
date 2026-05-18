@@ -15,8 +15,9 @@
       #   `plugin_manager.cpp` falls back from `openat2` to the
       #   `O_NOFOLLOW` integrity gate behind `__linux__`. Only the
       #   IPC plugin currently carries the `LOCAL_PEERCRED` port;
-      #   other plugins (tcp/udp/ws/ice/quic/tls/heartbeat/noise/
-      #   null/strategies) live in their own gits and gate
+      #   other plugins (link-{tcp,udp,ws,ice,quic,tls},
+      #   handler-{heartbeat,store,dns}, security-{noise,null},
+      #   strategy-float_send_rtt) live in their own gits and gate
       #   themselves via `meta.platforms` — they simply don't appear
       #   in the per-plugin flake's output set on Darwin until each
       #   is ported. The composed-node derivation here keeps
@@ -40,11 +41,12 @@
       # `/etc/goodnet`, so the wrapper script in `bin/goodnet-node`
       # invokes the real binary against the bundled paths.
       #
-      # **Daemon binary source** — the kernel repo no longer ships
-      # `goodnetd` since the apps/ tree extraction (2026-05-17). The
-      # `kernel` parameter below now expects a derivation that
-      # provides `bin/goodnetd` — typically pulled as a flake input
-      # from `github:GoodNet-io/goodnetd`. Passing the bare kernel
+      # **Daemon binary source** — the kernel repo does not ship
+      # `goodnetd`; the daemon lives at
+      # `github:GoodNet-io/goodnetd` and produces `bin/goodnetd`
+      # in its own derivation. The `kernel` parameter below
+      # expects a derivation that provides that path — typically
+      # pulled as a flake input. Passing the bare kernel
       # output (which only ships libraries + plugin .sos) fails the
       # build with a clear "no such file" pointing at the missing
       # binary. An operator's flake threads both inputs:
@@ -136,10 +138,11 @@
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
             # External bench baselines — iperf3 for raw TCP/UDP
-            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
-            # All three stage cleanly in the dev shell so
-            # bench/comparison/runners/run_all.sh works out of the
-            # box; libwebrtc / nginx-quic remain Docker-only.
+            # throughput, socat for AF_UNIX echo. Both stage cleanly
+            # in the dev shell so bench/comparison/runners/run_all.sh
+            # works out of the box. libp2p / iroh Rust baselines come
+            # in through their own `cargo build` under
+            # bench/comparison/setup/{06_libp2p_rs,07_iroh}.sh.
             iperf3 socat
             # SQLite for handler-store's optional SqliteStore
             # backend. Kernel itself never links sqlite; propagated
@@ -196,7 +199,60 @@
           # plugin set.
           default = goodnet-core;
           inherit goodnet-core;
+
+          # Header-only redistribution channel for language bindings
+          # (`GoodNet-io/bridges-rust`, `GoodNet-io/bridges-python`,
+          # etc.) and other not-kernel consumers that need the SDK
+          # surface without dragging the full kernel build closure.
+          # Ships only `sdk/*.h` + `sdk/extensions/` + `sdk/remote/` +
+          # `sdk/cpp/*.hpp` + `docs/contracts/*.en.md` + LICENSE.
+          # The header-only model means a language binding pins a
+          # specific `v*` tag of the kernel flake and gets a stable
+          # ABI snapshot — same canonical source as the kernel's own
+          # in-tree build consumes.
+          sdk-headers = pkgs.stdenvNoCC.mkDerivation {
+            pname   = "goodnet-sdk-headers";
+            version = "1.0.0-rc4";
+            src     = pkgs.lib.cleanSourceWith {
+              src    = ./.;
+              filter = path: type:
+                let
+                  rel = pkgs.lib.removePrefix (toString ./. + "/")
+                                                (toString path);
+                  topLevel = builtins.head
+                    (pkgs.lib.splitString "/" rel);
+                in
+                  builtins.elem topLevel [ "sdk" "docs" "LICENSE" ];
+            };
+            dontBuild = true;
+            installPhase = ''
+              mkdir -p $out/include/sdk
+              cp -r sdk/*.h sdk/extensions sdk/remote sdk/cpp $out/include/sdk/
+              if [ -d sdk/test ]; then
+                cp -r sdk/test $out/include/sdk/
+              fi
+              mkdir -p $out/share/doc/goodnet-sdk
+              cp -r docs/contracts $out/share/doc/goodnet-sdk/
+              cp LICENSE $out/share/doc/goodnet-sdk/
+            '';
+            meta = {
+              description = "GoodNet SDK headers — C ABI + C++ bridges + normative contracts.";
+              license     = pkgs.lib.licenses.mit;
+            };
+          };
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
+          # Truly-static kernel + bundled plugin set against musl +
+          # `pkgsStatic` versions of openssl, libsodium, spdlog, fmt,
+          # libstdc++, libgcc. The resulting `bin/goodnet` has no
+          # dynamic dependencies (ldd reports "not a dynamic
+          # executable") and runs unchanged inside a `scratch`
+          # container, a chroot, or a stripped embedded rootfs.
+          # Linux-only because pkgsStatic targets the musl Linux
+          # cross; Darwin static builds use a different toolchain.
+          goodnet-core-static = import ./nix/goodnet-static.nix {
+            inherit pkgs;
+          };
+
           # Reproducible Docker image around the static kernel.
           # Linux-only because dockerTools.buildLayeredImage emits a
           # Linux container; building from a Darwin host requires a
@@ -223,22 +279,65 @@
           # the full `CMAKE_PREFIX_PATH` / `PKG_CONFIG_PATH` that the
           # dev shell wires from `inputsFrom = [ goodnet-core ]`.
 
-          # `nix run .#build [-- release|debug]` — single build app
-          # with subarg-driven variant select. Default debug. Each
-          # variant lives in its own \`build-<variant>/\` so debug
-          # and release coexist without pin-ponging the cache.
+          # `nix run .#build [-- release|debug|static]` — single
+          # build app with subarg-driven variant select. Default
+          # debug.
+          #
+          # `debug` and `release` re-enter the dev shell and run a
+          # plain CMake build under the dynamic gcc15 toolchain;
+          # each variant lives in its own `build-<variant>/` so the
+          # two coexist without pin-ponging the cache.
+          #
+          # `static` is the truly-static cut: rather than running a
+          # second CMake under the dev shell (which would inherit
+          # the host's dynamic OpenSSL / libsodium / libstdc++ and
+          # produce a "static plugins, dynamic libc" hybrid), it
+          # dispatches to `nix build .#goodnet-core-static`. That
+          # derivation rebuilds the kernel under `pkgsStatic` against
+          # musl + statically-archived dependencies, then mirrors the
+          # resulting tree at `build-static/` so the rest of the
+          # repo's tooling (smoke tests, packaging scripts) keeps
+          # finding the binary at the same path as the other
+          # variants. The Nix store path is the source of truth; the
+          # `build-static/` copy is a convenience.
           gn-build = pkgs.writeShellScriptBin "gn-build" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-debug}"
               shift || true
-              static_flag=""
+              if [ "$variant" = "static" ]; then
+                # `nix build .#goodnet-core-static` produces a result
+                # symlink with `lib/libgoodnet_kernel.a` + worker
+                # binaries at `bin/`. Mirror the layout at
+                # `build-static/` so external tooling (Docker
+                # packaging, smoke scripts) reads the same path the
+                # debug / release variants populate. The nix store
+                # tree is read-only; `chmod -R u+w` after copy so a
+                # subsequent run can prune the mirror.
+                flake_dir="''${FLAKE_DIR:-.}"
+                echo ">>> static: nix build $flake_dir#goodnet-core-static"
+                ${pkgs.nix}/bin/nix build "$flake_dir#goodnet-core-static" \
+                  -o "$flake_dir/result-static" "$@"
+                if [ -d "$flake_dir/build-static" ]; then
+                  chmod -R u+w "$flake_dir/build-static"
+                  rm -rf "$flake_dir/build-static/bin" \
+                         "$flake_dir/build-static/lib"
+                fi
+                mkdir -p "$flake_dir/build-static"
+                cp -rL "$flake_dir/result-static/bin" \
+                       "$flake_dir/build-static/bin"
+                cp -rL "$flake_dir/result-static/lib" \
+                       "$flake_dir/build-static/lib"
+                chmod -R u+w "$flake_dir/build-static"
+                echo ""
+                echo "static build complete:"
+                echo "  $flake_dir/build-static/bin/  (statically linked ELFs)"
+                echo "  $flake_dir/build-static/lib/  (.a archives)"
+                exit 0
+              fi
               tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
                 debug)   build_type=Debug   ; build_dir=build         ;;
                 release) build_type=Release ; build_dir=build-release ;;
-                static)  build_type=Release ; build_dir=build-static
-                         static_flag="-DGOODNET_STATIC_PLUGINS=ON"
-                         tests_flag="-DGOODNET_BUILD_TESTS=OFF"      ;;
                 *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
@@ -246,7 +345,7 @@
                 echo ">>> Configuring $build_type build in $build_dir..."
                 cmake -B "$build_dir" -G Ninja \
                   -DCMAKE_BUILD_TYPE=$build_type \
-                  $tests_flag $static_flag
+                  $tests_flag
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"
@@ -317,26 +416,32 @@
 
           # Opt-in: wire `.githooks/` into the local clone so
           # `git commit` runs `clang-tidy --warnings-as-errors=*` on
-          # staged C++ files. Mirrors the CI strict lint gate at
-          # commit time so PR feedback never trips on a diagnostic
-          # the author already had in front of them.
+          # staged C++ files (pre-commit) and `git push` to
+          # `refs/heads/main` re-runs the cheap CI subset
+          # (livedoc --check + pytest + vanilla ctest) before the
+          # push leaves the machine (pre-push). Both hooks live in
+          # `.githooks/`; `core.hooksPath` picks the directory up
+          # wholesale, so a new file in `.githooks/` is auto-wired
+          # without touching this script.
           gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
             set -euo pipefail
             git config core.hooksPath .githooks
             echo ">>> hooks installed: .githooks/"
-            echo "    bypass any single commit with: git commit --no-verify"
+            echo "    pre-commit  : clang-tidy on staged C++"
+            echo "    pre-push    : test gate on push to main"
+            echo "    bypass once : git commit/push --no-verify"
           '';
 
-          # `nix run .#run -- <demo|node|goodnet> [args]` — single
-          # umbrella over the three runnable artefacts. Builds the
-          # corresponding target into a Release tree and execs it
-          # with the trailing args. \`demo\` self-contained two-node
-          # quickstart; \`node\` = \`goodnet run\` alias; \`goodnet\`
-          # = the operator multicall CLI direct.
+          # `nix run .#run -- <demo|node|goodnetd> [args]` — single
+          # umbrella. \`demo\` builds + runs the self-contained
+          # two-node quickstart from `examples/two_node/`; \`node\`
+          # and \`goodnetd\` redirect the operator to the standalone
+          # `GoodNet-io/goodnetd` repo since the daemon binary no
+          # longer ships from this monorepo.
           gn-run = pkgs.writeShellScriptBin "gn-run" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               if [ $# -lt 1 ]; then
-                echo "run: usage: nix run .#run -- <demo|node|goodnet> [args]" >&2
+                echo "run: usage: nix run .#run -- <demo|node|goodnetd> [args]" >&2
                 exit 1
               fi
               kind="$1"; shift
@@ -352,7 +457,7 @@
                   cmake --build "$build_dir" --target goodnet_demo -j"$(nproc)"
                   exec "$build_dir/bin/goodnet-demo" "$@"
                   ;;
-                goodnet|node)
+                goodnet|goodnetd|node)
                   echo "run: the goodnetd daemon binary now ships from" >&2
                   echo "  github.com/GoodNet-io/goodnetd" >&2
                   echo "" >&2
@@ -360,42 +465,30 @@
                   echo "    nix build github:GoodNet-io/goodnetd" >&2
                   echo "    ./result/bin/goodnetd $@" >&2
                   exit 1
-                  build_dir=build-release
-                  if [ ! -f "$build_dir/CMakeCache.txt" ]; then
-                    cmake -B "$build_dir" -G Ninja \
-                      -DCMAKE_BUILD_TYPE=Release \
-                      -DGOODNET_BUILD_TESTS=OFF
-                  fi
-                  cmake --build "$build_dir" --target goodnetd -j"$(nproc)"
-                  if [ "$kind" = "node" ]; then
-                    exec "$build_dir/bin/goodnetd" run "$@"
-                  else
-                    exec "$build_dir/bin/goodnetd" "$@"
-                  fi
                   ;;
                 *)
-                  echo "run: unknown kind $kind (demo|node|goodnet)" >&2
+                  echo "run: unknown kind $kind (demo|node|goodnetd)" >&2
                   exit 1
                   ;;
               esac
             ' _ "$@"
           '';
 
-          # `nix run .#new-plugin -- <kind> <name>` — scaffold a fresh
+          # `nix run .#plugin -- new <kind> <name>` — scaffold a fresh
           # plugin under `plugins/<kind>/<name>/` with the standalone
           # CMakeLists branch, default.nix, standalone flake, source
           # skeleton, placeholder gtest, README, and a TODO LICENSE.
           gn-new-plugin = import ./nix/new-plugin.nix { inherit pkgs; };
 
-          # `nix run .#pull-plugin -- <repo-name>` — clone a loadable
+          # `nix run .#plugin -- pull <repo-name>` — clone a loadable
           # plugin's git into `plugins/<kind>/<name>/` so the kernel
-          # build picks it up. Defaults to a local mirror under
-          # `~/Desktop/projects/GoodNet-io/` pre-rc1 and falls back
-          # to `github:goodnet-io/<repo-name>` once the org repos
-          # are public.
+          # build picks it up. Defaults to a local bare mirror under
+          # `${XDG_DATA_HOME}/goodnet-mirrors/` (overridable via
+          # `GOODNET_PLUGIN_MIRROR_DIR`) and falls back to
+          # `github:GoodNet-io/<repo-name>` if no mirror is set up.
           gn-pull-plugin = import ./nix/pull-plugin.nix { inherit pkgs; };
 
-          # `nix run .#install-plugins` — pull every canonical
+          # `nix run .#plugin -- install` — pull every canonical
           # loadable plugin in one shot. The single command a new
           # contributor (or a CI runner) runs after `git clone` to
           # materialise the full loadable set under `plugins/<kind>
@@ -416,8 +509,10 @@
 
           # `nix run .#plugin -- <new|pull|install|update> [args]`
           # — single dispatch over the plugin lifecycle. Replaces
-          # the flat new-plugin / pull-plugin / install-plugins
-          # triplet (those stay exposed for compat until cleanup).
+          # the flat `new-plugin` / `pull-plugin` / `install-plugins`
+          # triplet — the underlying derivations stay built (used by
+          # `gn-setup`) but are not exposed as top-level apps; reach
+          # them through this umbrella.
           gn-plugin = import ./nix/plugin.nix {
             inherit pkgs;
             new-plugin      = gn-new-plugin;
@@ -450,13 +545,14 @@
             '';
           };
 
-          # `nix run .#init-mirrors` — bare-clone each plugin's
-          # nested working git into `${MIRROR_DIR}/<repo>.git` and
-          # wire `origin` in the working clone so subsequent
+          # Mirror builder (invoked from `gn-setup`) — bare-clone each
+          # plugin's nested working git into `${MIRROR_DIR}/<repo>.git`
+          # and wire `origin` in the working clone so subsequent
           # `git push` / `git pull` flow against the mirror.
           # Single-call setup that turns each in-tree plugin into
           # something `install-plugins` can re-clone for a fresh
-          # checkout.
+          # checkout. Not exposed as a top-level app; the bootstrap
+          # path is `nix run .#setup`.
           gn-init-mirrors =
             import ./nix/init-mirrors.nix { inherit pkgs; };
 
@@ -491,10 +587,11 @@
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
             # External bench baselines — iperf3 for raw TCP/UDP
-            # throughput, socat for AF_UNIX echo, libuv for DX LOC.
-            # All three stage cleanly in the dev shell so
-            # bench/comparison/runners/run_all.sh works out of the
-            # box; libwebrtc / nginx-quic remain Docker-only.
+            # throughput, socat for AF_UNIX echo. Both stage cleanly
+            # in the dev shell so bench/comparison/runners/run_all.sh
+            # works out of the box. libp2p / iroh Rust baselines come
+            # in through their own `cargo build` under
+            # bench/comparison/setup/{06_libp2p_rs,07_iroh}.sh.
             iperf3 socat
             # SQLite for handler-store's optional SqliteStore
             # backend. Kernel itself never links sqlite; propagated
@@ -544,8 +641,9 @@
               # python3 — graphviz drives diagram rendering; libclang
               # parses sdk/*.h for the livedoc fact extractor; pyyaml
               # serialises the fact files that gen_diagrams + canvas
-              # consume; pytest runs the livedoc unit suite under
-              # tests/livedoc/.
+              # consume; pytest runs the python suites under
+              # tests/livedoc/ (livedoc parser tests) and
+              # tests/tools/ (bench_compare regression-gate smoke).
               (python3.withPackages (ps: [
                 ps.graphviz
                 ps.libclang
@@ -562,13 +660,15 @@
             # Auto-pull missing loadable plugins. Each shell entry
             # (interactive `nix develop` and the `--command` apps
             # the operator-facing scripts re-enter) runs a fast
-            # idempotent check; if any of the eight loadable
-            # plugin slots is empty, dispatch to `install-plugins`
-            # so a fresh kernel checkout becomes a fully-wired
-            # workspace without a separate manual setup step.
-            # `|| true` keeps shell entry usable when no mirror /
-            # remote is reachable — the operator sees the warning
-            # `install-plugins` printed and can act on it.
+            # idempotent check; if any loadable plugin slot is
+            # empty, dispatch to `install-plugins` so a fresh kernel
+            # checkout becomes a fully-wired workspace without a
+            # separate manual setup step. The slot list mirrors
+            # `nix/install-plugins.nix` — keep both in sync when a
+            # new plugin lands. `|| true` keeps shell entry usable
+            # when no mirror / remote is reachable — the operator
+            # sees the warning `install-plugins` printed and can
+            # act on it.
             shellHook = ''
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
@@ -576,13 +676,17 @@
 
               _gn_plugin_slots="\
                 plugins/handlers/heartbeat \
+                plugins/handlers/store \
+                plugins/handlers/dns \
                 plugins/links/tcp \
                 plugins/links/udp \
                 plugins/links/ws \
                 plugins/links/ipc \
                 plugins/links/tls \
+                plugins/links/ice \
                 plugins/security/noise \
-                plugins/security/null"
+                plugins/security/null \
+                bridges/cpp"
               _gn_missing=0
               for _gn_slot in $_gn_plugin_slots; do
                 if [ ! -d "$_gn_slot/.git" ]; then

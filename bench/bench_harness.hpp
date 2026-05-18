@@ -380,10 +380,16 @@ make_payload(std::size_t size) {
 /// wrappers below funnel quantile + resource numbers through this so
 /// the per-bench code stays one-liners.
 inline void report_latency(::benchmark::State& s, RoundTripMeter& m) {
-    s.counters["lat_p50_ns"]  = static_cast<double>(m.quantile(0.50));
-    s.counters["lat_p95_ns"]  = static_cast<double>(m.quantile(0.95));
-    s.counters["lat_p99_ns"]  = static_cast<double>(m.quantile(0.99));
-    s.counters["lat_p999_ns"] = static_cast<double>(m.quantile(0.999));
+    s.counters["lat_p50_ns"]   = static_cast<double>(m.quantile(0.50));
+    s.counters["lat_p95_ns"]   = static_cast<double>(m.quantile(0.95));
+    s.counters["lat_p99_ns"]   = static_cast<double>(m.quantile(0.99));
+    s.counters["lat_p999_ns"]  = static_cast<double>(m.quantile(0.999));
+    /// P99.99 surfaces the *very* long tail (1-in-10k samples).
+    /// Cases with fewer than 10k samples land effectively the same
+    /// number as P99.9 due to linear interpolation against the
+    /// sorted vector — that's the honest answer for short runs.
+    s.counters["lat_p9999_ns"] = static_cast<double>(m.quantile(0.9999));
+    s.counters["lat_samples"]  = static_cast<double>(m.size());
 }
 
 inline void report_resources(::benchmark::State& s, const ResourceCounters& r) {

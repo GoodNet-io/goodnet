@@ -5,7 +5,7 @@
 plugins that push bytes through `host_api->send`
 **Last verified:** 2026-04-28
 **Stability:** v1.x; watermark thresholds are configuration-driven
-and additive event kinds extend `conn-events.md` at the tail.
+and additive event kinds extend `conn-events.en.md` at the tail.
 
 ---
 
@@ -29,7 +29,7 @@ Three observable layers, in order from immediate to advisory:
 2. **Soft watermark.** When the queue crosses
    `pending_queue_bytes_high`, the kernel publishes a
    `GN_CONN_EVENT_BACKPRESSURE_SOFT` event on the
-   connection-event channel (`conn-events.md` §2). The signal is
+   connection-event channel (`conn-events.en.md` §2). The signal is
    advisory — `send` keeps succeeding — but producers that ignore
    it walk into the hard cap.
 3. **Clear watermark.** When the queue drops back below
@@ -38,10 +38,10 @@ Three observable layers, in order from immediate to advisory:
    `low` and `high` keeps the signal from oscillating on a busy
    connection.
 
-The default thresholds (`limits.md` §2) are 256 KiB low /
+The default thresholds (`limits.en.md` §2) are 256 KiB low /
 1 MiB high / 4 MiB hard. Operators tune the trio per deployment;
 the cross-field invariant `0 < low < high ≤ hard` is enforced at
-`Config::validate` (`limits.md` §3). `low == 0` is rejected
+`Config::validate` (`limits.en.md` §3). `low == 0` is rejected
 because the falling-edge `BACKPRESSURE_CLEAR` publisher fires on
 `bytes_buffered < low` — with `low == 0` the inequality is never
 satisfied and subscribers stay paused after the first soft
@@ -63,8 +63,8 @@ consumed by `async_write`. The accounting rules are:
 
 The counter is thread-local to the transport's strand and
 published through the per-transport extension's `get_stats`
-(`link.md` §8) **and** through the connection-event payload
-(`conn-events.md` §2 `pending_bytes` field) when a watermark
+(`link.en.md` §8) **and** through the connection-event payload
+(`conn-events.en.md` §2 `pending_bytes` field) when a watermark
 event fires.
 
 ---
@@ -105,7 +105,7 @@ Hard-cap enforcement and the rising-edge `BACKPRESSURE_SOFT` /
 falling-edge `BACKPRESSURE_CLEAR` events live on the
 **kernel-side `SendQueueManager`**, not on the transport. The link
 plugin owns the actual writev under `send_batch` (see
-[`link.md` §4](./link.en.md)) but does not maintain its own
+[`link.en.md` §4](./link.en.md)) but does not maintain its own
 application-visible queue: `PerConnQueue::pending_bytes` is the
 single byte-counter the watermark logic gates on, and
 `drain_scheduled` is the CAS that gives every connection a
@@ -157,7 +157,7 @@ A plugin pushing bytes through `host_api->send` **must**:
 - Treat `GN_ERR_LIMIT_REACHED` as a real failure, not a transient
   retry — a busy queue means the peer or the network is slow.
   Looping on retry without backoff is a §8 violation in
-  `plugin-lifetime.md`.
+  `plugin-lifetime.en.md`.
 - Subscribe to `subscribe(GN_SUBSCRIBE_CONN_STATE)` and react to
   `GN_CONN_EVENT_BACKPRESSURE_SOFT` by pausing fresh enqueues
   for that connection until `BACKPRESSURE_CLEAR` arrives. The
@@ -193,23 +193,23 @@ through it; that lands as a separate spec.
 ## 6. Resource bounds
 
 The watermark trio comes from `gn_limits_t::pending_queue_*`
-(`limits.md` §2). The kernel reads them once at startup and the
+(`limits.en.md` §2). The kernel reads them once at startup and the
 transport copies them to its session state on accept / connect.
 Reload requires kernel restart; transports do not re-read mid-life.
 
 Per-process aggregate caps (e.g. summed `bytes_buffered` across
-every connection) are not part of v1.0. A transport that needs a
-process-level governor adds it in its own
+every connection) are not part of this contract. A transport that
+needs a process-level governor adds it in its own
 `gn.link.<scheme>` extension surface.
 
 ---
 
 ## 7. Cross-references
 
-- Watermark trio + cross-field validation: `limits.md` §2-§3.
-- Event kinds + subscription: `conn-events.md` §2-§3.
-- Transport ownership of the write queue: `link.md` §4.
-- Quiescence anchor on event subscriptions: `plugin-lifetime.md`
+- Watermark trio + cross-field validation: `limits.en.md` §2-§3.
+- Event kinds + subscription: `conn-events.en.md` §2-§3.
+- Transport ownership of the write queue: `link.en.md` §4.
+- Quiescence anchor on event subscriptions: `plugin-lifetime.en.md`
   §4.
 
 ---
@@ -218,7 +218,7 @@ process-level governor adds it in its own
 
 Application data submitted through `host_api->send` while the
 connection's `SecuritySession` is still in `Handshake` phase
-(`security-trust.md` §3) cannot be encrypted yet — the transport
+(`security-trust.en.md` §3) cannot be encrypted yet — the transport
 keys have not been derived. The kernel buffers each framed
 plaintext on a per-session pending queue and drains it once the
 session reaches `Transport`.
@@ -229,7 +229,7 @@ session reaches `Transport`.
 the sum of buffered plaintext per connection. Once the cap would
 be exceeded, `host_api->send` returns `GN_ERR_LIMIT_REACHED`. A
 zero value disables the cap; the reference build wires
-`Config::limits` through `limits.md` §2.
+`Config::limits` through `limits.en.md` §2.
 
 ### Drain
 
@@ -278,7 +278,7 @@ recover from.
 `SecuritySession::close()` clears the pending queue. A connection
 that disconnects mid-handshake drops every buffered plaintext;
 the producer observes the loss through
-`GN_CONN_EVENT_DISCONNECTED` (`conn-events.md` §2) and is
+`GN_CONN_EVENT_DISCONNECTED` (`conn-events.en.md` §2) and is
 responsible for retry semantics at its own layer.
 
 ### Why not the transport's queue
@@ -287,7 +287,7 @@ Routing handshake-phase plaintext through the transport's write
 queue would require encrypting before keys exist — impossible —
 or buffering raw application data on the transport, which is the
 wrong layer (the transport must remain crypto-agnostic per
-`link.md` §1). The pending queue lives on the security
+`link.en.md` §1). The pending queue lives on the security
 session because it is the only kernel object that observes both
 phase transitions and the encryption primitives.
 
@@ -300,7 +300,7 @@ that do not align with security-frame boundaries: one
 `notify_inbound_bytes` call may cross zero, one, or many frames.
 The security session accumulates partial bytes in a per-connection
 buffer and emits one plaintext per complete frame to the protocol
-layer (`protocol-layer.md` §6).
+layer (`protocol-layer.en.md` §6).
 
 ### Cap
 
@@ -311,7 +311,7 @@ prefix). A peer that streams bytes which never resolve to a frame
 boundary — adversarial or broken — eventually crosses the cap.
 Crossing returns `GN_ERR_INVALID_ENVELOPE` to the link plugin,
 which trips the existing per-session failure threshold
-(`link.md` §3 — 16 consecutive `notify_inbound_bytes` failures
+(`link.en.md` §3 — 16 consecutive `notify_inbound_bytes` failures
 disconnect the connection). Defence-in-depth: two independent
 guards, the buffer cap and the failure threshold, both terminate
 the conn.

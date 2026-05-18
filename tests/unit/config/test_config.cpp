@@ -1,9 +1,9 @@
 /// @file   tests/unit/config/test_config.cpp
 /// @brief  GoogleTest unit tests for `gn::core::Config`.
 ///
-/// Pins the contract from `docs/contracts/limits.md` §3 (cross-field
+/// Pins the contract from `docs/contracts/limits.en.md` §3 (cross-field
 /// invariants on `gn_limits_t`) plus the dotted-path lookup surface
-/// described in `host-api.md` §2 (config slots): JSON load is atomic;
+/// described in `host-api.en.md` §2 (config slots): JSON load is atomic;
 /// parse failure preserves prior state; `validate` rejects every
 /// invariant violation; lookups distinguish missing-key from
 /// type-mismatch.
@@ -170,7 +170,7 @@ TEST(Config_LoadJson, ValidationFailurePreservesPriorState) {
     EXPECT_EQ(s, "ok");
 }
 
-// ── validate: cross-field invariants from limits.md §3 ───────────────────
+// ── validate: cross-field invariants from limits.en.md §3 ───────────────────
 
 TEST(Config_Validate, DefaultsPass) {
     Config c;
@@ -578,7 +578,7 @@ TEST(Config_Merge, OverlayReplacesArrays) {
 }
 
 TEST(Config_Merge, ProfileSwitchSnapsUnsetLimitsToNewBaseline) {
-    /// `config.md` §3a — merging an overlay that names a different
+    /// `config.en.md` §3a — merging an overlay that names a different
     /// `profile` re-evaluates every limits.* field that the
     /// overlay does not pin against the new baseline. The caller
     /// who only meant to override `max_timers` ends up with the

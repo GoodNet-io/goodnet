@@ -78,7 +78,7 @@ if (r == GN_OK) {
 
 ## Шаг 3. Default fallback
 
-`config_get` отсутствующего ключа возвращает `GN_ERR_NOT_FOUND`. Это normal case: плагин-default значение остаётся в коде, операторская конфигурация только переопределяет. Никакого warning'а ядро при этом не пишет — schema discovery ляжет в v1.1 (`config.md` §7).
+`config_get` отсутствующего ключа возвращает `GN_ERR_NOT_FOUND`. Это normal case: плагин-default значение остаётся в коде, операторская конфигурация только переопределяет. Никакого warning'а ядро при этом не пишет — schema discovery запланирован как расширение (`config.en.md` §7).
 
 ```c
 #define MY_PLUGIN_DEFAULT_INTERVAL_MS  30000
@@ -95,7 +95,7 @@ static int64_t resolve_interval(const host_api_t* api) {
 }
 ```
 
-Если у плагина есть hard-bound по каким-то limit'ам (max payload, max storage value), сверка с `host_api->limits` идёт сразу после чтения. Сами cross-field инварианты ядро уже проверило при `load_json` (`config.md` §3): на момент `config_get` `gn_limits_t` уже консистентен.
+Если у плагина есть hard-bound по каким-то limit'ам (max payload, max storage value), сверка с `host_api->limits` идёт сразу после чтения. Сами cross-field инварианты ядро уже проверило при `load_json` (`config.en.md` §3): на момент `config_get` `gn_limits_t` уже консистентен.
 
 ---
 
@@ -129,7 +129,7 @@ gn_result_t gn_plugin_register(void* self) {
 
 Callback запускается на kernel-side reload thread'е *синхронно* перед возвратом из `Kernel::reload_config` — payload отсутствует. Плагин внутри callback'а ре-читает свои ключи через `config_get` и обновляет local state.
 
-Subscriber должен быть дешёвым; долгая работа постится через `host_api->set_timer(0, …)` на service executor (`timer.md`).
+Subscriber должен быть дешёвым; долгая работа постится через `host_api->set_timer(0, …)` на service executor (`timer.en.md`).
 
 ---
 
@@ -213,8 +213,8 @@ Operator кладёт в JSON:
 
 ## Cross-refs
 
-- [config.md](../contracts/config.en.md) — schema, validation, reload semantics.
-- [host-api.md §2.1](../contracts/host-api.en.md) — `config_get` typed read, out_free contract.
-- [limits.md](../contracts/limits.en.md) — kernel-side `gn_limits_t` поля, cross-field инварианты.
-- [conn-events.md §3](../contracts/conn-events.en.md) — semantics для `subscribe_config_reload` (та же subscription model).
-- [timer.md §3](../contracts/timer.en.md) — куда постить долгую reload-side работу.
+- [config.en.md](../contracts/config.en.md) — schema, validation, reload semantics.
+- [host-api.en.md §2.1](../contracts/host-api.en.md) — `config_get` typed read, out_free contract.
+- [limits.en.md](../contracts/limits.en.md) — kernel-side `gn_limits_t` поля, cross-field инварианты.
+- [conn-events.en.md §3](../contracts/conn-events.en.md) — semantics для `subscribe_config_reload` (та же subscription model).
+- [timer.en.md §3](../contracts/timer.en.md) — куда постить долгую reload-side работу.

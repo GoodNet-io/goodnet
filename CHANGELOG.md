@@ -6,6 +6,478 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.0.0-rc5] — 2026-05-19
+
+### Subprocess plugin runtime — LINK / SECURITY / HANDLER host-call slots
+
+The subprocess runtime now hosts the same vtable surface that
+static and dynamic plugins see. `RemoteHost::handle_host_call_`
+decodes six host-call opcodes that previously fell through the
+default branch: `NOTIFY_CONNECT` (0x13), `NOTIFY_DISCONNECT`
+(0x14), `REGISTER_VTABLE` (0x15), `UNREGISTER_VTABLE` (0x16),
+`REGISTER_SECURITY` (0x17), `UNREGISTER_SECURITY` (0x18). The
+worker-side library (`sdk/cpp/remote_plugin.cpp`) ships the
+matching `host_api_t` thunks wired into `g_state.synth_api` so a
+LINK / SECURITY / HANDLER subprocess worker drives the host
+surface a static or dynamic plugin would see.
+
+`RemoteHost::security_vtable_proxy()` returns a synthesised
+`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
+frames at pinned ids 0x300..0x308 (handshake_open, step,
+complete, export_transport_keys, encrypt, decrypt, rekey,
+handshake_close). `allowed_trust_mask` rides on slot 0x300; the
+provider_id itself comes from the HELLO descriptor and needs no
+wire round trip. `RemoteHost::handler_vtable_proxy()` is the
+analogue for HANDLER plugins at 0x400..0x405 (protocol_id,
+supported_msg_ids, handle_message, on_result, on_init,
+on_shutdown). The `supported_msg_ids` thunk caches the worker's
+reply per-RemoteHost so the borrowed pointer stays valid for the
+lifetime of the registration. The remote LINK vtable proxy's
+`send_batch` slot is synthesised in the same shape — it loops over
+each frame, issuing one `link_send_thunk` PLUGIN_CALL per frame.
+
+`RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
+the host caller dial different reply deadlines per wire slot. A
+fast slot (`PLUGIN_REGISTER`, `LINK_DISCONNECT`) typically runs
+in milliseconds; a custom handler-call slot may legitimately need
+seconds. The single global `set_reply_timeout` value remains the
+fallback for any slot without an explicit override.
+`clear_reply_timeout_overrides()` drops the map back to the
+unscoped default. The `round_trip_` dispatcher consults the
+override map before falling back to `reply_timeout_`.
+
+Worker-side stub library: `WorkerConfig` carries
+`security_vtable` / `security_self` and `handler_vtable` /
+`handler_self` so the worker declares its real vtables once.
+The PLUGIN_CALL dispatcher routes 0x300..0x308 into the worker's
+`gn_security_provider_vtable_t` and 0x400..0x405 into its
+`gn_handler_vtable_t`. Per-handshake `void*` state pointers are
+stashed in a worker-side handle map so the wire only sees u64
+tokens. Synthetic `host_api_t` gains `register_security` and
+`unregister_security` thunks for the 0x17 / 0x18 round trips.
+
+Four in-tree workers cover regression:
+`plugins/workers/remote_echo` round-trips notify_connect,
+send_batch via the proxy, and register/unregister via call_register
+(three gtest cases under `test_remote_echo_slots.cpp`);
+`plugins/workers/remote_noise_stub` exposes a deterministic
+3-step XX-shaped security script and an encrypt/decrypt
+round-trip; `plugins/workers/remote_handler_stub` exposes a
+deterministic envelope-dispatch handler;
+`plugins/workers/remote_slow_stub` is a pathological worker that
+sleeps in `on_init` / `on_register` per `GOODNET_SLOW_STUB_*_MS`
+env vars so the per-slot timeout regression fires deterministically.
+Integration suites `test_remote_host_security.cpp` (4 tests),
+`test_remote_host_handler.cpp` (5 tests), and
+`RemoteHostTimeoutOverride` (`OverrideAppliedToSlot`,
+`OverrideDoesNotAffectOtherSlots`, `ClearRemovesOverride`) drive
+the proxies and overrides end-to-end.
+
+### Public C ABI — unload_plugin + query_extension_checked surface tests
+
+The C ABI entry point `gn_core_unload_plugin(name)` now drives a
+real per-name teardown through a new `PluginManager::unload(name)`
+path. The existing `shutdown` / `rollback` walks were factored into
+a shared `teardown_one()` helper so the per-name path reuses the
+quiescence-gated unregister → shutdown → close chain without
+duplicating it. Idempotent on unknown name (`GN_ERR_NOT_FOUND`);
+NULL argument is rejected with `GN_ERR_INVALID_ARGUMENT`.
+`docs/contracts/plugin-lifetime.en.md` §6.1 documents the
+host-driven hot-reload contract: after `unload(name)` returns
+`GN_OK`, the host may re-prime with a fresh
+`gn_core_load_plugins`. Two new integration tests exercise the
+reload (`CoreUnloadReload`) and multi-protocol coexistence
+(`RegisterSecondProtocol`) paths.
+
+Three new tests under `CoreC.Query*` exercise
+`gn_core_query_extension_checked(core, name, version)` — the
+public C-ABI entry that external clients (raw-socket adapters,
+FFI bindings, the planned C-inject demo) use to consume the
+kernel's extension registry. Previously the surface was only
+covered against NULL handles. Happy path queries
+`gn.link.capability` and exercises its `get` vtable slot; the
+two negative paths confirm an unknown name returns NULL and a
+producer-version pin fails the lookup rather than silently
+returning a partial vtable.
+
+`gn_ctx_make_for_test(...)` and `gn_ctx_destroy(...)` on
+`sdk/connection.h` allocate and release a synthetic
+`gn_connection_context_t` for plugin test fixtures. Production
+code never calls them — the kernel manages context lifecycle
+itself — but the entry points let protocol-layer / security-layer
+plugin tests fixture a real kernel-shaped context without
+including kernel-internal headers (which the ABI hermeticity
+gate forbids for plugin TUs).
+
+### Security — recv-side parallel decrypt + recycled plaintext pool
+
+The send path has fanned encrypt jobs through `CryptoWorkerPool`
+since rc1; the recv path stayed single-threaded inside
+`SecuritySession::decrypt_transport_stream`. Three new primitives
+close the asymmetry.
+
+`InlineCrypto::reserve_recv_nonces(k)` atomically grabs the next
+K recv nonces in one shot so K parallel decrypt jobs can fold
+their results back in delivery order without contention. The
+per-conn single-writer inbound-strand invariant keeps the
+reservation race-free.
+
+`InlineCrypto::make_decrypt_job(ciphertext, nonce, out)` builds a
+`CryptoWorkerPool::Job` that runs the AEAD decrypt at a given
+nonce into a caller-sized plaintext span. `result_len` encodes
+success (plaintext length) vs AEAD failure (0).
+
+`SecuritySession::decrypt_batch_transport` and its streaming
+wrapper `decrypt_batch_transport_stream` split N already-deframed
+ciphertext spans into N jobs through the pool and coalesce
+results. A batch of one falls through to the scalar
+`decrypt_transport_stream` path to skip the pool's latch +
+condvar overhead. Available only when `fast_crypto_active()`
+holds; otherwise the session defers to the provider's vtable
+decrypt slot.
+
+`notify_inbound_bytes` routes the Transport-phase drain through
+`decrypt_batch_transport_stream`; multi-frame ticks fan out,
+single-frame ticks fall through transparently. At end-of-call
+routed plaintexts are reclaimed back into the session's
+`recycled_plaintext_pool_` (free-list capped at 16 entries) via
+`recycle_plaintext_buffers` so steady-state inbound traffic
+reuses buffer capacity instead of heap-churning one
+`std::vector<std::uint8_t>` per frame.
+
+The bench-only downgrade seam
+`SecuritySession::_test_clear_inline_crypto` is declared and
+defined only when `-DGOODNET_BENCH_SHOWCASE=ON`; the
+`bench_showcase` binary called the helper unconditionally,
+producing an LTO link failure on the default build. The showcase
+target now returns early with a skip message when the option is
+OFF, mirroring the existing skips for `GOODNET_BENCH_STRATEGIES`
+and `GOODNET_STATIC_PLUGINS`. Default `nix run .#build` is clean;
+opting into the showcase propagates the macro kernel-wide so both
+ends of the seam see the symbol.
+
+Seven new tests pin the recv-side behaviour: three under
+`InlineCrypto` (`ReserveRecvNoncesAdvancesAtomically`,
+`MakeDecryptJobAuthenticatesMatchingCipher`,
+`MakeDecryptJobReportsAeadFailure`) and four under
+`SecuritySessionBatchDecrypt` (`RoundTripThroughPool`,
+`AeadFailureClearsOutput`, `StreamRoundTripBatchOfMany`,
+`RecyclePlaintextBuffersCapsAtMax`).
+
+### Plugin manager + manifest
+
+`DynamicRuntime::load` resolves every `gn_plugin_*` symbol once
+via `dlsym` and stores the function pointers on the owning
+`PluginInstance` (a new `DynamicPluginSymbols` aggregate). The
+init / register / unregister / shutdown entry points dereference
+the cached pointers instead of re-issuing `dlsym` per call —
+measurable on hot paths that load and tear down many plugins
+back-to-back (test harnesses, hot-reload). `close()` resets the
+symbol cache alongside `dlclose` so a reused `PluginInstance`
+never holds a dangling pointer. A diagnostic
+`dlsym_call_count()` counter on `DynamicRuntime` lets white-box
+tests assert the cache holds: three new cases in
+`test_dynamic_runtime_dlsym_cache.cpp` cover resolve-on-load,
+no-re-resolve across 64 register/unregister cycles, and
+cache-clear on dlclose.
+
+`ManifestEntry::required` (parsed from the JSON `required` key,
+default `false`) pins critical plugins for the loader. After every
+load `PluginManager::load` walks the manifest and rejects with
+`GN_ERR_INVALID_STATE` if any required entry has no registered
+instance, naming the missing paths in the diagnostic. Operators
+pin `gn.link.tcp` + `gn.link.tls` so a misconfigured deploy never
+silently runs without the minimum carrier set.
+
+`ManifestEntry` carries an optional `quiescence_timeout_s` field
+parsed from JSON; the rollback path consults the per-plugin value
+first and falls back to the global default. Long-running handlers
+declare longer drain windows without inflating the global timeout
+for every plugin. The override is documented in
+`docs/contracts/plugin-manifest.en.md` §2.
+
+`PluginManifest::find(path)` is O(1) — a sibling
+`std::unordered_map<std::string, std::size_t>` index keyed on the
+canonicalised path runs alongside the order-preserving vector,
+rebuilt on every `add_entry` / `parse`. Remote-heavy deployments
+with hundreds of subprocess entries see find drop from O(N) to
+hash-lookup cost.
+
+`set_manifest` and `set_manifest_required` assert `!active_` —
+those setters are bootstrap-only and racing them against an
+active session is a programming error the comment already
+promised to catch.
+
+### Wire codec — decode-failure error code
+
+`sdk/types.h` adds `GN_ERR_WIRE_DECODE = -17` distinguishing CBOR
+decode failures (type-tag mismatch, truncated payload, bad tag)
+from numeric range violations (`GN_ERR_OUT_OF_RANGE`, kept for
+actual overflow into a smaller target type). The
+`wire_codec::Reader` accepts an optional `std::string* diag`
+output parameter — the offset + decoder's expectation lands in
+`diag` on failure, matching the diagnostic shape
+`PluginManifest::parse` already exposes. `gn_strerror` learns the
+new code. Existing `!= GN_OK` call sites in `remote_host.cpp` and
+the worker library are unaffected.
+
+### Link capability — host-side bind probe + extension surface
+
+`core/kernel/link_capability.{cpp,hpp}` adds a host-side bind probe
+for UDP / TCP on IPv4 and IPv6. `gn::host_link_capability()`
+probes once on first call, caches the four-bool snapshot, and
+re-probes on `refresh_host_link_capability()`. Plugin code
+consults the cached snapshot through the new
+`GN_EXT_LINK_CAPABILITY` extension (registered by the kernel
+constructor) instead of every UDP plugin retrying its bind in a
+log-spamming loop. A graceful-degradation host (corporate
+firewall, mobile carrier with UDP blocked, container without
+IPv6) gets one summary WARN at probe time naming the disabled
+carrier families.
+
+Four tests under `LinkCapability*` and
+`PluginManager_ManifestRequired` cover the probe surface and the
+manifest-pin gate end-to-end. The `required` field pinning
+`gn.link.tcp` + `gn.link.tls` (described under "Plugin manager +
+manifest" above) is the operator-facing complement that turns the
+capability probe into a deploy-time invariant.
+
+### IPluginRuntime polymorphic-loader abstraction
+
+PluginManager dispatches every plugin-lifecycle step
+(load / init / register / unregister / shutdown / close) through
+a runtime registry keyed by the manifest entry's `kind` string.
+The kernel ships three built-in runtimes — `dynamic` (dlopen),
+`static` (gn_plugin_static_registry walk), `remote` (subprocess
+worker over `sdk/remote/wire.h`) — each owning its kind-specific
+entry-symbol resolution and load-state teardown.
+
+Host programs that bundle a custom linkage (WebAssembly host,
+FFI-over-IPC bridge, per-process sandbox manager) implement the
+`IPluginRuntime` interface in `core/plugin/plugin_runtime.hpp`
+and register an instance through
+`PluginManager::register_runtime(kind, std::unique_ptr<...>)`
+before `load`. Manifest entries whose `kind` field matches
+dispatch through the custom runtime; PluginManager itself stays
+unchanged. The kernel-internal abstraction is the keystone for
+the future SDK `gn_core_register_runtime` slot — that addition
+is non-breaking once it lands.
+
+### host_api notify_rtt_sample slot + multi-strategy chain dispatch
+
+A new size-prefixed slot `notify_rtt_sample` is appended before
+`host_api_t._reserved`. The struct grows from 488 to 496 B; the
+`_reserved` array stays at its design size of 8 entries. Link
+plugins and the heartbeat handler push observed RTT samples
+through the slot; the kernel folds each sample into a per-conn
+EWMA(α = 1/8) per RFC 6298 and republishes the smoothed value to
+every registered strategy through
+`on_path_event(GN_PATH_EVENT_RTT_UPDATE)`. The strategy chain
+ranks conns by latency without each strategy maintaining its own
+probe. LINK / HANDLER / UNKNOWN (host embedding) kinds can
+publish; other kinds get `GN_ERR_NOT_IMPLEMENTED`. Zero is the
+"no-sample" sentinel and silently dropped; unknown conn id
+returns `GN_ERR_NOT_FOUND`. The heartbeat handler forwards every
+matched PONG-driven sample to the kernel after recording its own
+raw `last_rtt_us` for the gn.heartbeat extension's get_rtt slot.
+
+The kernel admits multiple `gn.strategy.*` plugins concurrently
+and walks the registered chain in registration order on each
+`host_api->send_to`. The first strategy that returns a real
+conn wins; a strategy with no opinion on the candidate set
+returns `GN_ERR_NOT_FOUND` and the chain advances to the next.
+The previous single-strategy gate (`GN_ERR_LIMIT_REACHED` on a
+second registration) is removed. Single-strategy deployments
+work unchanged; the chain is the natural admission of composite
+setups (`rtt-optimal` + a `cost-aware` fallback).
+`ExtensionRegistry::query_prefix` sorts results by the monotonic
+registration sequence so the strategy walk is deterministic
+regardless of the underlying hash-map iteration order.
+`(GN_OK, GN_INVALID_ID)` from a strategy is treated as
+`GN_ERR_NOT_FOUND` for chain advancement, mirroring the
+documented lenient interpretation on
+`gn_strategy_api_t::pick_conn`. A non-NOT_FOUND error aborts
+the chain. The kernel auto-fires `on_path_event` with
+`GN_PATH_EVENT_CONN_UP` and `GN_PATH_EVENT_CONN_DOWN` to every
+registered strategy so the chain reflects live connection
+state without manual injection.
+
+`register_vtable` and `register_security` now gate on
+plugin-kind match — a HANDLER plugin cannot register a LINK
+vtable, a LINK plugin cannot register a SECURITY provider, and
+the rejection surfaces as `GN_ERR_INVALID_ARGUMENT` with a
+diagnostic naming the mismatch. Five unit tests in
+`tests/unit/registry/test_update_rtt_sample.cpp` and the
+`tests/send_to/` suite cover the RTT-sample + chain-fallthrough
++ kind-gate paths.
+
+### Security registry — multi-provider StackRegistry documentation
+
+The kernel's security registry has admitted multiple distinct
+`provider_id`s since the StackRegistry contract; the surface was
+previously documented as "single active provider total" in
+several places. The `docs/contracts/security-trust.en.md` §6
+multi-provider paragraph and the `register_security` docstrings
+in `sdk/host_api.h` and `docs/host-api.en.md` now describe the
+multi-provider shape. `find_for_trust` selection is registration-
+order policy.
+
+### Bench infrastructure — bytes-processed metering + parody/real fence + CI smoke gate
+
+`bench/plugins/bench_real_e2e.cpp` and `bench/plugins/bench_tcp.cpp`
+both reported `bytes_per_second` as `meter.size() × payload` or
+`sent_ok × payload` — counts that excluded iterations where the
+arrival deadline was missed or backpressure forced a continue.
+A bring-up transient could silently zero the row and the
+aggregator would drop it from the report entirely. Both helpers
+now use `state.iterations() × payload`, matching
+`bench_udp.cpp::EchoRoundtrip`. All `RealFixture*Echo` rows and
+`TcpFixture/Throughput` rows now emit non-zero throughput.
+
+`bench/comparison/reports/aggregate.py` tags every row with a
+`mode` field (`"real"` for libp2p / iroh / `RealFixture*`,
+`"parody"` for iperf3 / socat / synthetic) and refuses to mix
+shapes inside the same pivot cell via a new `ModeMismatchError`.
+The aggregator exits non-zero if a mis-tagged parody row sneaks
+into a real-mode column.
+
+`docs/perf/methodology.en.md` §2.6 documents the send/recv
+asymmetry as a structural property of the data plane: send fans
+out through `CryptoWorkerPool::run_batch` via
+`reserve_send_nonces` + `encrypt_batch_transport`; recv walks
+`decrypt_transport` single-threaded inside `notify_inbound_bytes`
+(the recv-side parallel path described under "Security" closes
+this asymmetry).
+
+A new `bench-smoke` job in `.github/workflows/ci.yml` builds
+`bench_real_e2e`, `bench_tcp`, and `bench_udp` in Release mode,
+runs each for ~0.3 s with `--benchmark_format=json`, and either
+compares against a committed baseline JSON via
+`tools/bench_compare.py --threshold-pct 15` (failing on
+regression beyond the threshold) or — when no baseline file is
+present — runs in smoke mode via the new
+`tools/bench_summary.py` helper that just logs the per-benchmark
+numbers. Gated by the `bench` label on PRs or push to main so
+PRs that don't touch perf-relevant code skip the Release-build
+tax. JSON artefacts upload on every run for post-hoc review.
+`bench/baselines/README.md` documents the ratchet workflow: the
+baseline is intentionally manual, refreshed in the same commit
+that legitimately changes performance. Auto-rolling baselines
+would mask unintentional regressions, so the gate is the review
+mechanism.
+
+`tools/bench_compare.py` ships as a standalone per-commit
+regression-gate driver with a `--threshold-pct` CLI flag that
+widens the regression band and an exit code 2 for missing-file
+errors. Eight pytest cases under `tests/tools/` pin the
+regression-gate contract; CI's livedoc-check job extends to run
+the `tests/tools/` and `tests/livedoc/` pytest suites.
+
+### RFC coverage + attestation freeze
+
+`tools/livedoc/rfc_coverage.yaml` and the rendered
+`docs/_facts/rfc_coverage.yaml` declare RFC 7692
+(permessage-deflate WebSocket compression) explicitly
+`not-implemented`: a client offering
+`Sec-WebSocket-Extensions: permessage-deflate` in the handshake
+gets a response with no `Sec-WebSocket-Extensions` echo, so per
+RFC 7692 §5.1 the extension never activates and the connection
+falls back to uncompressed frames. RFC 6455 entry gains a §5.4
+fragmentation-reassembly detail (max 16 MiB merged, 64 KiB
+single-frame cap) matching the WS plugin's actual ceiling. The
+catalogue also gains RFC 6762 (multicast DNS) and the
+draft-mdns-ice-candidates entry covering the ICE plugin's mDNS
+host-candidate obfuscation surface, and the RFC 9000 entry
+corrects its implementation note from "ngtcp2-backed" to
+"OpenSSL 3.6 native QUIC".
+
+`docs/contracts/attestation.en.md` adds a §Stability paragraph
+declaring the current Ed25519 / 232-byte / msg_id 0x11 layout as
+the canonical v1 schema. Future attestation schemes register
+under a new extension namespace; the kernel-side
+`AttestationDispatcher` is the kept-stable shim for this format.
+The dispatcher's file-header comment and
+`docs/architecture/security-flow.ru.md` §attestation
+cross-reference the new contract paragraph.
+
+### Plugin-lifetime + remote-plugin contract prose
+
+`docs/contracts/plugin-lifetime.en.md` §2a notes that
+`IPluginRuntime` is a C++ interface today; a C ABI version is the
+natural development when WASM / eBPF runtimes arrive (the runtime
+itself can be a loadable module). `docs/contracts/remote-plugin.en.md`
+calls out that the subprocess trust model is operator-vetted
+manifest + sha256, not runtime isolation, and documents the
+`descriptor_name_storage_` runtime-mirrored pattern as the price
+of supporting HELLO-payload names. The same contract is normalized
+with `Stability: active · v1` headers alongside `dns`, `store`,
+and `plugin-linkage`.
+
+### Build + tooling
+
+`flake.nix` exposes a new `packages.sdk-headers` derivation —
+header-only redistribution of `sdk/` for downstream consumers
+that build against the C ABI without pulling the kernel build
+graph. `.githooks/pre-commit` gates on livedoc drift when the
+changed files touch livedoc inputs, complementing the
+`ci`-side livedoc-check job that runs pytest over
+`tests/livedoc/` + `tests/tools/`.
+
+### Sub-repo work referenced
+
+`plugins/links/ice` is a separate git that ships its own
+CHANGELOG. Six substantive landings in this cycle that
+operators reading the kernel CHANGELOG should be aware of:
+
+- **Multi-TURN fallback** — sequential walk through
+  `IceConfig::turn_servers` in `gather_relay`; backup probing
+  via `turn_backup_timer_` (default 30 s); failover when a
+  backup ALLOCATE succeeds and the primary is degraded per
+  `TurnClient::is_healthy()`; rate-limited to one failover per
+  `turn_failover_min_interval_s` (default 60 s).
+- **IPv6 mDNS dual-stack** — `mdns.{cpp,hpp}` binds both
+  `224.0.0.251` (IPv4) and `ff02::fb` (IPv6) multicast groups
+  via `SO_REUSEPORT`; per-interface `IPV6_JOIN_GROUP` for every
+  AF_INET6 address from `getifaddrs`; AAAA queries route to the
+  new IPv6 socket; `ice.mdns_obfuscate_host_candidates` now
+  covers AF_INET6 host candidates.
+- **DPLPMTUD active path-MTU probing** — `PathMtuProbe` state
+  machine implementing RFC 8899 (Packetization Layer Path MTU
+  Discovery for Datagram Transports); fires padded STUN binding
+  requests at sizes from the configurable ladder (default
+  `{1200, 1400, 1500, 4000, 9000}`); correlates responses by
+  transaction id; binary-search bisects on consecutive loss.
+  Replaces the static `ice.path_mtu` floor with a live
+  `effective_path_mtu()` queryable through the new
+  `gn.link.ice.path_mtu` extension slot.
+- **ICE-lite mode (RFC 8445 §2.7)** — `ice.lite_mode = true` on
+  one side pins controlling=false, makes `begin_checks` a no-op,
+  and accepts whatever the controlling peer nominates. Triggered
+  checks still respond per §7.3.1.4. Wire flag
+  `ICE_SIGNAL_FLAG_LITE` advertises the mode on the offer;
+  lite-vs-lite is rejected because no one would drive checks.
+  Use case: media gateways, IoT responders, minimal-state
+  endpoints.
+- **RTM_NEWLINK network-mobility hook (Linux)** — netlink
+  `RTM_LINK / RTM_IPV4_IFADDR / RTM_IPV6_IFADDR` subscription
+  re-gathers host candidates when interfaces come up/down
+  (cable unplug, wifi switch, suspend→wake). Trickle path emits
+  candidate updates; non-trickle falls back to
+  `restart_session()`. Config knob
+  `ice.reactive_interface_change` (default on); no-op on non-
+  Linux.
+- **Symmetric-NAT port prediction** — when ICE gather observes
+  a symmetric NAT (different external ports per destination
+  from the same local port), connectivity checks fire an EXTRA
+  salvo at `(peer.ip, peer.port + step * k)` for k in 1..N. Wire
+  flag `ICE_SIGNAL_FLAG_SYMMETRIC` advertises the detected
+  stride to the peer. Cooperative-ISP symmetric NATs typically
+  allocate sequential ports — prediction increases connect-rate
+  ~30–50% on those paths. WebRTC doesn't do this by default;
+  this is the "more than WebRTC" item.
+
+See `plugins/links/ice/CHANGELOG.md` for the full ICE entry.
+
 ## [1.0.0-rc3] — 2026-05-13
 
 ### Real-mode round-trip bench cases for comparable libp2p / iroh side-by-side
@@ -56,17 +528,15 @@ kernel-driven architecture:
   AEAD state. Subsequent `encrypt_transport` /
   `decrypt_transport` fall through to the provider vtable
   (copy-through for `gn.security.null`), dropping per-frame AEAD
-  cost while the handshake hash stays alive. The seam is gated
-  at runtime through the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`
-  environment variable; without the var the method returns
-  `GN_ERR_INVALID_STATE` so production binaries that accidentally
-  link the showcase header fail closed.
+  cost while the handshake hash stays alive. The seam is
+  compile-gated through the `GOODNET_BENCH_SHOWCASE` macro;
+  default builds do not compile the method at all, so production
+  binaries cannot link the showcase header.
   `tests/unit/security/test_inline_downgrade_gate.cpp` pins the
-  contract — refuses without env var, refuses outside
-  `SecurityPhase::Transport`, refuses on string values other than
-  literal `1`. v1.x followup exposes a kernel-driven
-  `SessionRegistry::downgrade_*` API; the bench's PoC suffices
-  to surface the latency-step number now.
+  in-bench phase-guard contract — the method refuses outside
+  `SecurityPhase::Transport`. The kernel-driven
+  `SessionRegistry::downgrade_*` API is a followup; the bench's
+  PoC suffices to surface the latency-step number now.
 * `FanoutFixture/Producers` — N producer threads on bob spam
   `api.send_to(alice_pk)` in parallel; the kernel's
   strand-per-conn + crypto worker pool absorb the load. Throughput
@@ -74,10 +544,9 @@ kernel-driven architecture:
   `PerConnQueue::drain_scheduled` becomes the bottleneck.
 * `FailoverFixture/IpcDrop` — picker drives between three
   synthetic carriers, mid-iteration `CONN_DOWN` is injected on
-  the IPC slot, next pick routes to TCP. Stand-in for the
-  Slice-9-KERNEL auto-emit hook on `notify_disconnect` that is
-  still pending; the bench fires `on_path_event` manually so the
-  shape is testable now.
+  the IPC slot, next pick routes to TCP. The kernel-side
+  auto-emit hook on `notify_disconnect` is not wired; the bench
+  fires `on_path_event` manually so the shape is testable now.
 * `MobilityFixture/LanShortcut` — one carrier starts as the
   active path (synthetic TURN-relayed, RTT 60µs); mid-iteration
   a second carrier appears with RTT 2µs (synthetic LAN host
@@ -222,7 +691,7 @@ source tree fronts both client and server side.
 
 ### Tests as plugin-owned units
 
-Each loadable plugin owns its own conformance tests. `link.md` §9
+Each loadable plugin owns its own conformance tests. `link.en.md` §9
 shutdown contract lives in `sdk/test/conformance/link_teardown.hpp`
 (typed-test fixture exported from the SDK); each link plugin's
 own `tests/test_<link>_conformance.cpp` instantiates the suite
@@ -281,8 +750,8 @@ nix run .#plugin -- <new|pull|install|update> [args]
   (see https://github.com/NixOS/nix/issues/12281). Each plugin's
   `flake.lock` therefore needs `--allow-dirty-locks` to refresh.
   Workaround stays in place until each plugin extracts to its
-  `goodnet-io/<repo>` GitHub URL post-rc1.
-- **No per-plugin GitHub repositories yet.** The `goodnet-io`
+  `GoodNet-io/<repo>` GitHub URL post-rc1.
+- **No per-plugin GitHub repositories yet.** The `GoodNet-io`
   organisation is empty; bundled plugins ship in-tree until
   rc1 cuts and the per-plugin repos go live.
 - **No registered domain.** Documentation references the GitHub
@@ -290,7 +759,7 @@ nix run .#plugin -- <new|pull|install|update> [args]
 
 ### Teardown protocol pinned
 
-`link.md` §9 now spells out the full caller-thread emit invariant:
+`link.en.md` §9 now spells out the full caller-thread emit invariant:
 shutdown latches the flag inside the sessions lock, drains an
 append-only published-ids list rather than the live session map,
 and emits one `notify_disconnect` per id on the caller thread. The
@@ -319,8 +788,8 @@ single teardown-race surface.
   is interpreted on the kernel side, so a compromised plugin
   cannot smuggle `%n` writes or `%s`-without-arg dereferences
   across the C ABI. Substruct shape is gated through
-  `GN_API_HAS_LOG` per `abi-evolution.md` §3a. Per
-  `host-api.md` §11.
+  `GN_API_HAS_LOG` per `abi-evolution.en.md` §3a. Per
+  `host-api.en.md` §11.
 - **Kernel logger** — the named `"gn"` spdlog logger in
   `core/util/log.hpp` carries a console sink (always present)
   and an optional rotating file sink. Custom `%Q` flag renders
@@ -338,7 +807,7 @@ single teardown-race surface.
   kernel re-applies the block on every successful
   `reload_config` / `reload_config_merge` so operators flip
   detail mode, file path, or pattern without restarting.
-  Schema in `config.md` §3; semantics in `host-api.md` §11.4.
+  Schema in `config.en.md` §3; semantics in `host-api.en.md` §11.4.
 - **Hot config reload** — `Kernel::reload_config(text)` and
   `reload_config_merge(overlay)` swap the live state atomically,
   propagate the new `gn_limits_t` to every kernel-owned registry
@@ -375,7 +844,7 @@ single teardown-race surface.
   `gn_config_get_array_size`, `gn_config_get_array_int64`,
   `gn_config_get_array_string` — expand to the LAYER-tagged call,
   so plugin code keeps the typed shape it had before. Per
-  `host-api.md` §2 and `config.md` §3.
+  `host-api.en.md` §2 and `config.en.md` §3.
 - **`Config::load_file(path)` + JSON5 comments** — the kernel itself
   remains library-linkable without a filesystem dependency, but the
   common single-binary deployment now has a one-call entry to read
@@ -393,7 +862,7 @@ single teardown-race surface.
   rejects a burst below half the refill rate. `Config::load_json`
   now auto-validates: a parsed limits set that violates any
   invariant fails the load with `GN_ERR_LIMIT_REACHED` and rolls
-  the kernel state back to the prior load. Per `limits.md` §2.
+  the kernel state back to the prior load. Per `limits.en.md` §2.
 
 - **Counter surface for kernel and plugin metrics** —
   `host_api->emit_counter(name)` and `iterate_counters(visitor)`
@@ -404,7 +873,7 @@ single teardown-race surface.
   `<subsystem>.<event>.<reason>` names. Wire format / scrape
   protocol live in an exporter plugin — the kernel never carries
   HTTP serving or Prometheus rendering code. New header
-  `sdk/metrics.h`. Per `metrics.md` (new contract).
+  `sdk/metrics.h`. Per `metrics.en.md` (new contract).
 - **Plugin integrity manifest** — `PluginManager::set_manifest`
   installs a SHA-256 allowlist that gates every `dlopen`. An empty
   manifest is the developer-mode default (every plugin loads); a
@@ -414,7 +883,7 @@ single teardown-race surface.
   reach the kernel. Manifest format: JSON
   `{"plugins":[{"path":...,"sha256":<64-hex>},...]}`. Streaming
   SHA-256 via libsodium, 64 KiB chunks. New error code
-  `GN_ERR_INTEGRITY_FAILED`. Per `plugin-manifest.md`.
+  `GN_ERR_INTEGRITY_FAILED`. Per `plugin-manifest.en.md`.
 - **Cooperative cancellation for plugins** — every plugin owns a
   `PluginAnchor` carrying an in-flight counter and a
   `shutdown_requested` flag. Async dispatch sites (timer fire,
@@ -426,8 +895,8 @@ single teardown-race surface.
   from inside long-running async work and exit cooperatively
   before the kernel's drain timeout. Drain logs the in-flight
   count alongside the timeout warning, attributing leaked work to
-  the misbehaving plugin. Per `plugin-lifetime.md` §4 + §8 and
-  `host-api.md` §10.
+  the misbehaving plugin. Per `plugin-lifetime.en.md` §4 + §8 and
+  `host-api.en.md` §10.
 - **`nix run .#demo` quickstart** — `examples/two_node` ships a
   single-process binary, `goodnet-demo`, that owns both ends of a
   conversation: two `Kernel` instances each with a fresh
@@ -441,12 +910,12 @@ single teardown-race surface.
 - **URI parser** — header-only `sdk/cpp/uri.hpp` with `parse_uri`
   and `uri_query_value`, plus libsodium-backed
   `core/util/uri_query.hpp` for `?peer=<hex>` decode. Contract
-  `docs/contracts/uri.md`.
+  `docs/contracts/uri.en.md`.
 - **Kernel injection API** — `host_api->inject_external_message`
   and `inject_frame` for bridge plugins to push foreign-system
   payloads into the mesh under their own identity. Per-source
   token-bucket rate limit (`core/util/token_bucket.hpp`) with
-  explicit `Clock` injection per `clock.md` §2.
+  explicit `Clock` injection per `clock.en.md` §2.
 - **Kernel security pipeline** — per-connection `SecuritySession`
   plus `Sessions` registry that drive the handshake from
   `notify_connect` through encrypt / decrypt at the Transport
@@ -458,11 +927,12 @@ single teardown-race surface.
   XX + IK state machines, dlopen-tested through a two-session
   handshake.
 - **TCP transport** — Boost.Asio strand-per-session writes per
-  `link.md` §4 single-writer, IPv6 dual-stack with
+  `link.en.md` §4 single-writer, IPv6 dual-stack with
   `IPV6_V6ONLY=false` on `::` wildcard.
 - **IPC transport** — Boost.Asio `local::stream_protocol` with
   the same strand shape as TCP; `chmod 0700` on the parent
-  directory before bind closes the TR-C6 TOCTOU window.
+  directory before bind closes the bind-vs-permissions TOCTOU
+  window.
 - **UDP transport** — single-strand datagram path, MTU-gated send
   with all-or-nothing `send_batch` precheck, per-source
   `RateLimiterMap` on new-conn allocation, `notify_disconnect` on
@@ -527,7 +997,7 @@ single teardown-race surface.
   `GN_CONN_EVENT_BACKPRESSURE_CLEAR` when it drops below
   `pending_queue_bytes_low`. Per-Session `soft_signaled_` atomic
   enforces the rising / falling edge model from
-  `backpressure.md` §3, so a queue oscillating inside the
+  `backpressure.en.md` §3, so a queue oscillating inside the
   hysteresis band never floods the channel. The publisher slot
   is the new `host_api->notify_backpressure(conn, kind, bytes)`,
   guarded by the kind-based transport role gate so only
@@ -535,7 +1005,7 @@ single teardown-race surface.
 - **Backpressure hard cap** — TCP / IPC / WS / TLS transports now
   refuse fresh sends once the per-connection write queue holds
   more than `gn_limits_t::pending_queue_bytes_hard` bytes per
-  `backpressure.md` §3. Each Session carries an atomic
+  `backpressure.en.md` §3. Each Session carries an atomic
   `bytes_buffered_` counter incremented on enqueue, drained on
   the matching `async_write` completion. `host_api->send` /
   `send_batch` return `GN_ERR_LIMIT_REACHED` past the cap; the
@@ -559,7 +1029,7 @@ single teardown-race surface.
 - **Handshake-phase pending queue** — `host_api->send` buffers
   application data while the connection's `SecuritySession` is
   in `Handshake`. Each framed plaintext sits on the session's
-  pending queue (per `backpressure.md` §8), capped at
+  pending queue (per `backpressure.en.md` §8), capped at
   `gn_limits_t::pending_handshake_bytes` (default 256 KiB,
   `GN_ERR_LIMIT_REACHED` past the cap). The phase check, cap
   check, and queue insert all run under one mutex so a
@@ -581,7 +1051,7 @@ single teardown-race surface.
   short-circuit. The TCP / UDP / WS / TLS transports now route
   every outbound `connect()` through the helper so the
   registry's URI index keys and the on-connect callback URI
-  always carry an IP literal. Per `docs/contracts/dns.md` §1
+  always carry an IP literal. Per `docs/contracts/dns.en.md` §1
   (new). Seven new unit tests cover IP-literal passthrough,
   IPv6 brackets, path-style URIs, query preservation,
   unparseable inputs, the `localhost` lookup, and `*.invalid`
@@ -589,7 +1059,7 @@ single teardown-race surface.
 - **Capability TLV codec** — `sdk/cpp/capability_tlv.hpp` ships
   a header-only encode / parse pair against the
   `[type:u16 BE][length:u16 BE][value]*` blob format described
-  in `docs/contracts/capability-tlv.md` (new). Used by the
+  in `docs/contracts/capability-tlv.en.md` (new). Used by the
   post-Noise capability handshake — peers exchange the supported
   transport and protocol names in a single GNET frame.
   Unknown record types are skipped on parse so the format stays
@@ -608,7 +1078,7 @@ single teardown-race surface.
   caller's quiescence sentinel so a callback whose plugin
   unloaded is dropped silently. `for_each_connection` walks the
   registry under per-shard read locks. New
-  `docs/contracts/conn-events.md` and `sdk/conn_events.h`.
+  `docs/contracts/conn-events.en.md` and `sdk/conn_events.h`.
   SDK_VERSION_MINOR bumped to 1.5.
 - **Service executor** — `core/kernel/timer_registry`. The kernel
   owns a single-thread executor reserved for plugin service tasks.
@@ -616,10 +1086,10 @@ single teardown-race surface.
   callback after `delay_ms`), `cancel_timer` (idempotent), and
   `post_to_executor` (run-now task). Every scheduled entry holds
   a `weak_ptr<void>` of the calling plugin's quiescence sentinel
-  (`plugin-lifetime.md` §4); a callback whose plugin already
+  (`plugin-lifetime.en.md` §4); a callback whose plugin already
   unloaded is dropped silently. `gn_limits_t::max_timers` and
   `max_pending_tasks` (default `4096`) cap the queue. New
-  `docs/contracts/timer.md`. SDK_VERSION_MINOR bumped to 1.4.
+  `docs/contracts/timer.en.md`. SDK_VERSION_MINOR bumped to 1.4.
 - **TLS transport** — `goodnet_link_tls.so` registers `tls://`
   and the `gn.link.tls` extension. Asio-on-OpenSSL
   `ssl::stream<tcp::socket>` with TLS 1.2 minimum, sslv2/sslv3/
@@ -627,7 +1097,7 @@ single teardown-race surface.
   key from kernel config (`links.tls.cert_path` /
   `links.tls.key_path`); client defaults to `verify_none`
   because the kernel's identity / Noise pipeline is the
-  authentication gate (`security-trust.md` §3 single source).
+  authentication gate (`security-trust.en.md` §3 single source).
   Capability descriptor adds `EncryptedPath`.
 
 ### Changed
@@ -645,7 +1115,7 @@ single teardown-race surface.
   registry (`LinkRegistry`, `LinkEntry`, `Kernel::links()`), the
   plugin tree (`plugins/links/{tcp,udp,ipc,ws,tls}/`), the
   `gn.transport.*` extension namespace (now `gn.link.*`), and the
-  contract `docs/contracts/link.md`. The Noise plugin's
+  contract `docs/contracts/link.en.md`. The Noise plugin's
   Noise-protocol "transport phase" naming is preserved — that is
   the cipherstate term from the spec, not the wire-channel layer.
 - **TLS and WS plugins reuse the canonical URI parser.** The
@@ -695,7 +1165,7 @@ single teardown-race surface.
   option leaves the connection on the default scheduler instead
   of failing the accept.
 - **Per-peer device-key pinning across sessions
-  (`registry.md` §8a).** ConnectionRegistry exposes
+  (`registry.en.md` §8a).** ConnectionRegistry exposes
   `pin_device_pk` / `get_pinned_device_pk` /
   `clear_pinned_device_pk`. The map keys on `peer_pk` and outlives
   connection records, so a peer that disconnects and reconnects
@@ -706,7 +1176,7 @@ single teardown-race surface.
   tests pin the API edges; an integration regression on the
   cross-session disconnect path is wired through the dispatcher.
 - **PluginManager `set_manifest_required(true)` knob
-  (`plugin-manifest.md` §7).** The flag turns the empty-manifest
+  (`plugin-manifest.en.md` §7).** The flag turns the empty-manifest
   case into a hard error: `load` returns
   `GN_ERR_INTEGRITY_FAILED` with a diagnostic that names "manifest
   required but empty" followed by the rejected path. The dev-mode
@@ -723,7 +1193,7 @@ single teardown-race surface.
   mode accordingly. The regression suite asserts the handshake
   fails when the client opts in (the default) and the peer
   presents a self-signed cert that chains to nothing trusted.
-- **FFI spec: subscriber failure modes (`signal-channel.md` §6).**
+- **FFI spec: subscriber failure modes (`signal-channel.en.md` §6).**
   `SignalChannel::subscribe` now rejects an empty `std::function`
   and returns the invalid-token sentinel; the subscriber list is
   unchanged. `SignalChannel::fire` wraps each handler invocation
@@ -734,7 +1204,7 @@ single teardown-race surface.
   contract that callbacks may raise. Tests cover the null-handler
   path and the multi-subscriber-with-thrower path.
 - **FFI spec: kernel-side validation of plugin-provided vtables
-  (`abi-evolution.md` §3a).** `LinkRegistry::register_link`
+  (`abi-evolution.en.md` §3a).** `LinkRegistry::register_link`
   and `SecurityRegistry::register_provider` now reject vtables
   whose `api_size` is smaller than the minimum the kernel knows
   about; the rejection returns `GN_ERR_VERSION_MISMATCH` before
@@ -742,7 +1212,7 @@ single teardown-race surface.
   not carry `api_size` (documented in §3a). Tests cover the
   zero-`api_size`, truncated, and exactly-minimum cases.
 - **Registry-wide caps from `gn_limits_t` are now enforced
-  (`limits.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
+  (`limits.en.md` §4 + new §4a).** `ConnectionRegistry::insert_with_index`,
   `ExtensionRegistry::register_extension`, `PluginManager::load`, and
   `HandlerRegistry::register_handler` reject registrations that
   would push the live count past `max_connections`,
@@ -756,13 +1226,13 @@ single teardown-race surface.
   promised "every check-site reads from live `gn_limits_t`" no
   longer overpromises — the new §4a enumerates exactly which
   registries enforce which cap.
-- **Registry contract honesty (`registry.md` §4).** The §4 paragraph
+- **Registry contract honesty (`registry.en.md` §4).** The §4 paragraph
   that promised a deletion-generation increment on a
   `gn_endpoint_t` snapshot stream is replaced with a description
   of what the registry actually offers: `get_endpoint` returns the
   view by value, no cache-invalidation channel exists, consumers
   re-read or prune their cache on the `DISCONNECTED` event from
-  `conn-events.md` §2a. The previous wording named a stream the
+  `conn-events.en.md` §2a. The previous wording named a stream the
   kernel never exposed; the rewrite removes the lie.
 - **Standalone Asio.** The networking dependency now ships as
   the `asio` package (Christopher Kohlhoff's standalone build,
@@ -772,7 +1242,7 @@ single teardown-race surface.
   mechanical `boost::asio::` → `asio::` rename. Build is
   header-only end-to-end.
 - **Connection registry — atomic snapshot variant
-  (`registry.md` §4a).** `ConnectionRegistry` exposes a
+  (`registry.en.md` §4a).** `ConnectionRegistry` exposes a
   snapshot-and-erase primitive that captures the pre-erase
   record (the `gn_endpoint_t` view plus `§8` per-connection
   counters) and removes the entry from all three indexes
@@ -780,7 +1250,7 @@ single teardown-race surface.
   pk bytes; kernel-side storage holds no reference past the
   call.
 - **`notify_disconnect` — DISCONNECTED ordering and at-most-once
-  semantics (`conn-events.md` §2a).** The thunk drops the
+  semantics (`conn-events.en.md` §2a).** The thunk drops the
   security session, then runs the atomic snapshot+erase, then
   publishes one DISCONNECTED whose payload is the captured
   pre-removal record state. A call against an absent or
@@ -799,11 +1269,11 @@ single teardown-race surface.
   `crypto_sign_ed25519_pk_to_curve25519` /
   `crypto_sign_ed25519_sk_to_curve25519`), and the conversion
   lives inside the security provider. The kernel and handlers
-  see only the Ed25519 representation. `identity.md` §7
+  see only the Ed25519 representation. `identity.en.md` §7
   cross-reference updated to point at the curve-conversion
   paragraph rather than the file as a whole.
 - **Capability TLV: `protocol-set` and `protocol-list` types
-  (`capability-tlv.md` §2).** Type `0x0001` `protocol-set` is a
+  (`capability-tlv.en.md` §2).** Type `0x0001` `protocol-set` is a
   bitmap of supported `gn.protocol.<name>` slugs in declaration
   order; type `0x0002` `protocol-list` carries the canonical
   UTF-8 newline-separated ordering. Generic TLV codec
@@ -818,12 +1288,12 @@ single teardown-race surface.
   minimum is enforced by exclusion. Existing loopback test
   passes — both ends negotiate 1.3.
 - **Attestation gate for `Untrusted → Peer` upgrade
-  (`attestation.md`, `security-trust.md` §3,
-  `handler-registration.md` §2a).** Trust no longer promotes
+  (`attestation.en.md`, `security-trust.en.md` §3,
+  `handler-registration.en.md` §2a).** Trust no longer promotes
   automatically when a Noise session reaches Transport phase.
   The kernel-internal `AttestationDispatcher` exchanges a
   232-byte payload on system msg_id `0x11` over the secured
-  channel — 136-byte attestation cert (per `identity.md` §4) +
+  channel — 136-byte attestation cert (per `identity.en.md` §4) +
   32-byte session `handshake_hash` binding + 64-byte Ed25519
   signature pinning the cert to this session. Both peers must
   send their own and verify the other's before
@@ -856,7 +1326,7 @@ single teardown-race surface.
   the wipe rule. The regression suite asserts the observable
   flips from non-zero to zero across the listen call.
 - **WebSocket transport gates every control-frame path through
-  the per-connection hard cap (`backpressure.md` §3.1).** Pong
+  the per-connection hard cap (`backpressure.en.md` §3.1).** Pong
   replies to peer-initiated pings, graceful-close echoes, and
   host-initiated close frames share the same budget that
   `host_api->send` already respects. A peer flooding pings cannot
@@ -901,7 +1371,7 @@ upgrade-fires-once contract under both flags, the no-upgrade
 paths under each flag alone, the `Loopback`-class no-upgrade
 case, and the `on_disconnect` state-clear claim. The
 `HandlerRegistry_Args.RejectsReservedAttestationMsgId` test
-covers `handler-registration.md` §2a's plugin-side rejection.
+covers `handler-registration.en.md` §2a's plugin-side rejection.
 
 ## [0.1.0] — 2026-04-28
 
@@ -921,7 +1391,7 @@ security pipeline that drives the handshake land in v0.2.0; see
 - **SDK** — C ABI plugin boundary (`gn_message_t`, `gn_endpoint_t`,
   `host_api_t`, vtable types for handler / transport / security /
   protocol), C++ convenience wrappers, ABI evolution rules
-  (`abi-evolution.md`).
+  (`abi-evolution.en.md`).
 - **Crypto** — full Noise XX and IK state machines on libsodium
   primitives: X25519 (`crypto_scalarmult`), ChaCha20-Poly1305 IETF AEAD,
   BLAKE2b, RFC-2104 HMAC-BLAKE2b, Noise §4.3 HKDF. CipherState,

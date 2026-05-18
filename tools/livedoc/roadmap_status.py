@@ -60,6 +60,7 @@ def _grep_repo(pattern: str, *, paths: list[str]) -> str | None:
         "--include=*.yaml", "--include=*.nix",
         "--exclude-dir=.git", "--exclude-dir=build*",
         "--exclude-dir=build-release", "--exclude-dir=node_modules",
+        "--exclude-dir=.claude",
         pattern, *paths,
     ]
     try:
@@ -190,7 +191,9 @@ def compute() -> dict:
     return {"features": features}
 
 
-def write(path: Path = FACTS_PATH) -> Path:
+def write(path: Path | None = None) -> Path:
+    if path is None:
+        path = FACTS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = compute()
     path.write_text(yaml.safe_dump(payload, sort_keys=False,

@@ -260,7 +260,7 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         /// `low == 0` makes the falling-edge `BACKPRESSURE_CLEAR`
         /// publisher in every transport unable to fire — `post >= 0`
         /// is always true, so subscribers stay paused forever after
-        /// the first `BACKPRESSURE_SOFT`. Per `backpressure.md` §3
+        /// the first `BACKPRESSURE_SOFT`. Per `backpressure.en.md` §3
         /// the threshold is positive.
         note("limits.pending_queue_bytes_low must be > 0");
         return GN_ERR_LIMIT_REACHED;
@@ -282,7 +282,7 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
-    /// `limits.md §3` invariant: a payload plus the fixed 14-byte
+    /// `limits.en.md §3` invariant: a payload plus the fixed 14-byte
     /// GNET header must fit in one wire frame; otherwise a max-size
     /// payload accepted at the inject path produces a frame that
     /// the deframer rejects.
@@ -446,7 +446,7 @@ gn_result_t Config::merge_json(std::string_view overlay,
         return rc;
     }
 
-    /// Profile re-evaluation per `config.md` §3a — an overlay that
+    /// Profile re-evaluation per `config.en.md` §3a — an overlay that
     /// carries `profile` switches the baseline that the limits
     /// derive from. Surface the change at warn level so an
     /// operator who only meant to nudge one field sees the
@@ -463,7 +463,7 @@ gn_result_t Config::merge_json(std::string_view overlay,
         SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
             "config.merge_json: profile changed '{}' -> '{}'; every "
             "limits.* field that the overlay does not set snaps to "
-            "the new baseline (config.md §3a)",
+            "the new baseline (config.en.md §3a)",
             prior_profile, merged_profile);
     }
 

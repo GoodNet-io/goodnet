@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# Pre-push hook: when the push moves `refs/heads/main` on a remote,
+# re-run the minimum test gate locally so the author can't push a
+# regression that the CI would catch a few minutes later.
+#
+# `pre-merge-commit` fires only for non-fast-forward in-place merges
+# and skips ff updates; `pre-push` is the choke point that sees both
+# `git push` of a merge commit AND a ff push of the local branch.
+# Bypass with `git push --no-verify` when the user knows they want
+# to skip (release tag scaffolding, doc-only push). The escape hatch
+# is Git's standard one and lives in the README + operator docs.
+#
+# The gate is the cheap subset of CI:
+#   1. `tools/livedoc.py --check` — repo artefacts vs source facts.
+#   2. `pytest` for `tests/livedoc` + `tests/tools` — python suites.
+#   3. `ctest` over `build/` (vanilla debug) — kernel unit + integ.
+# Sanitisers, fuzz, Release bench, and plugin-verify stay in CI; the
+# local gate is the smoke check, not the full matrix.
+set -euo pipefail
+
+remote="${1:-origin}"
+url="${2:-}"
+
+# Decision about whether the push moves `refs/heads/main` is made
+# once, on the outer pass, from stdin. The inner re-entry into the
+# dev shell sees an empty stdin (git pipes the ref list to the hook
+# process group only on the outer call), so we must not re-parse;
+# instead the outer pass exports `_GN_PREPUSH_PUSHING_MAIN` for the
+# inner pass to consult.
+if [ -z "${_GN_PREPUSH_INSIDE:-}" ]; then
+    pushing_main=0
+    zero='0000000000000000000000000000000000000000'
+    while read -r local_ref local_sha remote_ref remote_sha; do
+        [ -z "${local_ref:-}" ] && continue
+        case "$remote_ref" in
+            refs/heads/main)
+                # Deletion (`local_sha == 0…0`) is allowed without the
+                # gate — pushing nothing can't ship a regression.
+                if [ "$local_sha" != "$zero" ]; then
+                    pushing_main=1
+                fi
+                ;;
+        esac
+    done
+
+    if [ "$pushing_main" -eq 0 ]; then
+        exit 0
+    fi
+
+    echo "pre-push: push targets refs/heads/main — running local test gate"
+    echo "pre-push: bypass with \`git push --no-verify\` if you must"
+
+    # Re-enter the dev shell exactly like `pre-commit` does — git
+    # strips most of the environment when running hooks and the
+    # build expects the nix-injected toolchain. Empty heredoc
+    # detaches stdin so the inner pass can't deadlock on a read.
+    export _GN_PREPUSH_INSIDE=1
+    exec nix develop "${FLAKE_DIR:-.}" --command bash -- "$0" "$remote" "$url" <<EOF
+EOF
+fi
+
+# ── 1. livedoc drift ────────────────────────────────────────────────
+if [ -f tools/livedoc.py ]; then
+    echo ">>> pre-push: tools/livedoc.py --check"
+    if ! python3 tools/livedoc.py --check; then
+        echo "" >&2
+        echo "pre-push: livedoc drift — run \`python3 tools/livedoc.py --all\`" >&2
+        echo "pre-push: bypass with \`git push --no-verify\` if intentional" >&2
+        exit 1
+    fi
+fi
+
+# ── 2. python suites (livedoc + tools) ──────────────────────────────
+if [ -f pytest.ini ]; then
+    echo ">>> pre-push: pytest tests/livedoc tests/tools"
+    if ! pytest tests/livedoc tests/tools; then
+        echo "" >&2
+        echo "pre-push: python suites failed" >&2
+        echo "pre-push: bypass with \`git push --no-verify\` if intentional" >&2
+        exit 1
+    fi
+fi
+
+# ── 3. kernel ctest (vanilla debug) ─────────────────────────────────
+# Build dir must exist with a debug configure; the local dev flow
+# always populates `build/` through `nix run .#build` or `nix run
+# .#test`. If it's missing, surface the actionable error rather
+# than silently skipping the C++ gate.
+if [ ! -f build/CMakeCache.txt ]; then
+    echo "" >&2
+    echo "pre-push: build/CMakeCache.txt missing — run \`nix run .#test\` once" >&2
+    echo "pre-push: to populate the vanilla debug tree, then retry the push" >&2
+    echo "pre-push: bypass with \`git push --no-verify\` if intentional" >&2
+    exit 1
+fi
+
+echo ">>> pre-push: ctest --test-dir build"
+# Re-build first so a stale `build/` against fresher sources still
+# exercises the current code path. `cmake --build` is a no-op when
+# everything is up to date.
+if ! cmake --build build -j"$(nproc)"; then
+    echo "" >&2
+    echo "pre-push: kernel build failed" >&2
+    exit 1
+fi
+if ! ctest --test-dir build --output-on-failure; then
+    echo "" >&2
+    echo "pre-push: ctest failed" >&2
+    echo "pre-push: bypass with \`git push --no-verify\` if intentional" >&2
+    exit 1
+fi
+
+echo ""
+echo "pre-push: gate green"
+exit 0

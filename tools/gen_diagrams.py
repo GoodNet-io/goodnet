@@ -74,7 +74,7 @@ def base_attrs():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 1. Architecture overview — kernel ABI table + 4 vtable kinds + 8 plugin gits
+# 1. Architecture overview — kernel ABI table + 4 vtable kinds + 13 plugin gits
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_architecture():
@@ -150,16 +150,21 @@ def gen_architecture():
             k.edge("host_api", n, color=BORDER, arrowhead="none",
                    style="dashed")
 
-    # ── 8 loadable plugin gits around the kernel ─────────────────────────
+    # ── 13 loadable plugin gits around the kernel ────────────────────────
     plugins = [
         ("p_heartbeat", "handler-heartbeat",      PEACH),
+        ("p_store",     "handler-store",          PEACH),
+        ("p_dns",       "handler-dns",            PEACH),
         ("p_tcp",       "link-tcp",               PEACH),
         ("p_udp",       "link-udp",               PEACH),
         ("p_ws",        "link-ws",                PEACH),
         ("p_ipc",       "link-ipc",               PEACH),
         ("p_tls",       "link-tls",               PEACH),
+        ("p_ice",       "link-ice",               PEACH),
+        ("p_quic",      "link-quic",              PEACH),
         ("p_noise",     "security-noise",         PEACH),
         ("p_null",      "security-null",          PEACH),
+        ("p_fsr",       "strategy-float_send_rtt",PEACH),
     ]
     for nid, label, clr in plugins:
         g.node(nid, f"{label}\n.so  ·  own .git",
@@ -188,7 +193,7 @@ def gen_architecture():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 2. Kernel FSM — 8 phases per docs/contracts/fsm-events.md §2
+# 2. Kernel FSM — 8 phases per docs/contracts/fsm-events.en.md §2
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_kernel_fsm():
@@ -230,7 +235,7 @@ def gen_kernel_fsm():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 3. Connection FSM — per docs/contracts/conn-events.md, registry.md
+# 3. Connection FSM — per docs/contracts/conn-events.en.md, registry.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_connection_fsm():
@@ -284,7 +289,7 @@ def gen_connection_fsm():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 4. Inbound message path — per protocol-layer.md, handler-registration.md
+# 4. Inbound message path — per protocol-layer.en.md, handler-registration.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_message_path_inbound():
@@ -390,7 +395,7 @@ def gen_message_path_outbound():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 6. Noise XX handshake — per security-trust.md, attestation.md
+# 6. Noise XX handshake — per security-trust.en.md, attestation.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_noise_handshake():
@@ -490,7 +495,7 @@ def gen_noise_handshake():
     g.node("attest",
            "Attestation exchange\n"
            "232-byte payload over secured channel\n"
-           "(per attestation.md)",
+           "(per attestation.en.md)",
            shape="box", color=MAUVE, fontcolor=MAUVE,
            style="filled,rounded", fillcolor=SURFACE1, fontsize="9")
     g.edge("split", "attest", color=YELLOW)
@@ -515,7 +520,7 @@ def gen_noise_handshake():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 7. Dispatch chain — per handler-registration.md §3
+# 7. Dispatch chain — per handler-registration.en.md §3
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_dispatch_chain():
@@ -584,7 +589,7 @@ def gen_dispatch_chain():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 8. Sharded ConnectionRegistry — per registry.md
+# 8. Sharded ConnectionRegistry — per registry.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_sharded_registry():
@@ -658,7 +663,7 @@ def gen_sharded_registry():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 9. Backpressure — per backpressure.md, conn-events.md
+# 9. Backpressure — per backpressure.en.md, conn-events.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_cas_backpressure():
@@ -742,7 +747,7 @@ def gen_cas_backpressure():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 10. dlopen pipeline — per plugin-lifetime.md, plugin-manifest.md
+# 10. dlopen pipeline — per plugin-lifetime.en.md, plugin-manifest.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_dlopen_pipeline():
@@ -1016,7 +1021,7 @@ def gen_nonce_window():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 13. Signal bus — per signal-channel.md, conn-events.md
+# 13. Signal bus — per signal-channel.en.md, conn-events.en.md
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_signal_bus():
@@ -1098,7 +1103,7 @@ def gen_signal_bus():
     # Lifetime + threading note
     g.node("note",
            "Each subscription pairs with a weak observer of the\n"
-           "calling plugin's lifetime anchor (plugin-lifetime.md §4):\n"
+           "calling plugin's lifetime anchor (plugin-lifetime.en.md §4):\n"
            "callback whose plugin already unloaded is dropped silently.\n"
            "\n"
            "Subscribers run on the publishing thread —\n"
@@ -1290,7 +1295,7 @@ def gen_extension_query():
 
         c.node("cons_call",
                "auto* api = static_cast<const my_ext_v1_vtable_t*>(vt);\n"
-               "if (GN_API_HAS(api, do_thing))\n"
+               "if (GN_API_HAS(my_ext_v1_vtable_t, api, do_thing))\n"
                "    api->do_thing(arg);",
                color=PEACH, fontcolor=PEACH,
                style="filled,rounded", fillcolor=SURFACE1, fontsize="8")
@@ -1334,7 +1339,7 @@ def gen_extension_query():
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# 16. Plugin separation — kernel + 8 plugins + integration-tests, each own git
+# 16. Plugin separation — kernel + 13 plugins + integration-tests + bridges-cpp
 # ═════════════════════════════════════════════════════════════════════════════
 
 def gen_plugin_separation():
@@ -1368,21 +1373,27 @@ def gen_plugin_separation():
            lhead="cluster_kernel_git",
            color=YELLOW, arrowhead="none")
 
-    # 8 plugin gits + integration-tests git
+    # 13 plugin gits + integration-tests git + bridges-cpp git
     plugins = [
         ("git_heartbeat", "handler-heartbeat",      PEACH),
+        ("git_store",     "handler-store",          PEACH),
+        ("git_dns",       "handler-dns",            PEACH),
         ("git_tcp",       "link-tcp",               PEACH),
         ("git_udp",       "link-udp",               PEACH),
         ("git_ws",        "link-ws",                PEACH),
         ("git_ipc",       "link-ipc",               PEACH),
         ("git_tls",       "link-tls",               PEACH),
+        ("git_ice",       "link-ice",               PEACH),
+        ("git_quic",      "link-quic",              PEACH),
         ("git_noise",     "security-noise",         PEACH),
         ("git_null",      "security-null",          PEACH),
+        ("git_fsr",       "strategy-float_send_rtt",PEACH),
         ("git_intg",      "integration-tests",      MAUVE),
+        ("git_bridges",   "bridges-cpp",            MAUVE),
     ]
 
     with g.subgraph(name="cluster_plugins") as p:
-        p.attr(label="9 sibling repos — each own .git, own flake (kernel-only subflake), own bare mirror",
+        p.attr(label="15 sibling repos — each own .git, own flake (kernel-only subflake), own bare mirror",
                labelloc="t", fontsize="11", fontcolor=GREEN,
                style="rounded,filled", fillcolor=BG,
                color=GREEN, penwidth="1.2")
@@ -1413,13 +1424,14 @@ def gen_plugin_separation():
     # Workflow note
     g.node("workflow",
            "Workflow:\n"
-           "  · kernel .gitignore blocks plugins/handlers,\n"
-           "    plugins/links, plugins/security/{noise,null}\n"
-           "    so nested plugin .git/ are not auto-submodules.\n"
+           "  · kernel .gitignore blocks each plugin slot leaf\n"
+           "    (plugins/handlers/{heartbeat,store,dns},\n"
+           "    plugins/links/{tcp,udp,ws,ipc,tls,ice,quic},\n"
+           "    plugins/security/{noise,null}, plugins/strategies/,\n"
+           "    bridges/cpp/, tests/integration/) so nested\n"
+           "    plugin .git/ are not auto-submodules.\n"
            "  · `nix run .#setup` clones every plugin from its mirror\n"
-           "    into the slot; `nix run .#plugin -- pull` updates.\n"
-           "  · post-rc1: each plugin pushed to org repo;\n"
-           "    plugin's flake URL switches local-mirror → github.",
+           "    into the slot; `nix run .#plugin -- pull` updates.",
            shape="note", color=SURFACE2, fontcolor=BORDER,
            style="filled", fillcolor="#181825", fontsize="9")
     g.edge("git_intg", "workflow", style="invis")
@@ -1571,9 +1583,8 @@ def gen_host_api_kinds():
            "  · KIND enum (or channel id, or type tag) selects routing\n"
            "  · adding a new kind = enum value + kernel side; ABI stable\n"
            f"  · {_n} functional slots on host_api_t today + {_r} reserved\n"
-           "History: pre-RC dedupe 41 → 21 KIND-tagged; post-RC growth\n"
-           "re-introduced notify_*, key/sign, cap-blob and send_to\n"
-           f"families → {_n} today.",
+           "  · KIND-tagged primitives + notify_*, key/sign, cap-blob,\n"
+           "    send_to families",
            shape="note", color=SURFACE2, fontcolor=BORDER,
            style="filled", fillcolor="#181825", fontsize="9")
     g.edge("k_config", "discipline", style="invis")
@@ -1903,7 +1914,7 @@ def gen_link_carriers():
         "tcp":  "byte stream; TURN-over-TCP framing (16-bit BE len)",
         "ws":   "RFC 6455 WebSocket framing; mask handling per spec",
         "tls":  "stream framed like tcp; TURNS:// over TLS 1.3",
-        "quic": "ngtcp2-backed; carrier scheme detect:\n"
+        "quic": "OpenSSL-3.6-native QUIC; carrier scheme detect:\n"
                 "  · 64 hex chars → gn.link.ice\n"
                 "  · else → gn.link.udp",
         "ipc":  "AF_UNIX stream / datagram; Loopback trust",

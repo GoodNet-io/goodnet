@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every operator
 **Last verified:** 2026-04-29
-**Stability:** v1.x; signed manifests land additively in v1.1
+**Stability:** v1.x; the format is append-only.
 
 ---
 
@@ -53,6 +53,10 @@ A schema-compatible reading:
 | `plugins` | array of objects | yes | one entry per plugin path |
 | `plugins[].path` | string | yes | absolute or relative to the kernel's working directory |
 | `plugins[].sha256` | 64-character lowercase hex | yes | SHA-256 of the file at `path` at distribution time |
+| `plugins[].kind` | `"dynamic"` or `"remote"` | no | linkage mode; defaults to `"dynamic"` |
+| `plugins[].args` | array of strings | no | argv tail handed to a `remote` worker; ignored for `dynamic` |
+| `plugins[].quiescence_timeout_s` | non-negative integer | no | per-plugin override of `PluginManager::set_quiescence_timeout`; zero (the default) selects the manager-wide value. Units: seconds. Useful for handlers that legitimately run long-tail async work (slow disk flush, large key derivation) and would otherwise leak their dlclose handle under the fast-quiescing default. |
+| `plugins[].required` | boolean | no | when `true`, `PluginManager::load` refuses to complete unless this entry's plugin registered successfully — returns `GN_ERR_INVALID_STATE` with the missing path in the diagnostic. Default `false` preserves the historical behaviour (any single entry may be absent without failing the whole load). Operators pin `gn.link.tcp` / `gn.link.tls` with `required: true` so a misconfigured deploy never silently runs without the kernel's minimum carrier set. |
 
 Parse rules:
 
@@ -61,6 +65,11 @@ Parse rules:
 - Every entry must be an object with `path` (non-empty string) and
   `sha256` (64 lowercase hex characters). Any deviation fails
   parse.
+- `kind`, `args`, and `quiescence_timeout_s` are optional; when
+  present they must match the type column above. A negative,
+  fractional, or `uint32`-overflowing `quiescence_timeout_s` fails
+  parse rather than collapsing to zero so an operator typo does
+  not silently degrade to the global default.
 - Duplicate `path` entries fail parse — the manifest is the trust
   root, so an ambiguous binding is worse than no binding.
 - Empty `plugins` array parses successfully and yields an empty
@@ -112,7 +121,7 @@ The full sequence per plugin:
    true/false based on path presence + on-disk SHA-256;
 2. **dlopen** — only reached when `verify` returned true;
 3. symbol resolution, SDK-version check, descriptor read;
-4. two-phase activation per `plugin-lifetime.md` §5.
+4. two-phase activation per `plugin-lifetime.en.md` §5.
 
 Step 1 is short-circuited entirely in developer mode.
 
@@ -164,7 +173,7 @@ guard ships on the target platform.
 3. **Distribute manifest with binaries.** Manifest and binaries
    travel together. An attacker who can replace a binary without
    replacing the manifest is detected at next load; an attacker
-   who can replace both is the threat scope of v1.1's signed
+   who can replace both is the threat scope of the planned signed
    manifest (see §7).
 4. **Install at runtime.** The operator parses the manifest into
    `PluginManifest::parse`, hands it to
@@ -195,25 +204,27 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
 
 ---
 
-## 7. Out of scope for v1
+## 7. Out of scope for this contract
 
-- **Signed manifests.** The v1 manifest is unsigned. An operator
-  who wants tamper-evidence at rest signs the manifest file with
-  Ed25519 outside the kernel and verifies the signature before
-  calling `parse`. v1.1 will land an in-kernel verifier so the
-  signed-manifest path is built in.
+- **Signed manifests.** The manifest defined here is unsigned. An
+  operator who wants tamper-evidence at rest signs the manifest
+  file with Ed25519 outside the kernel and verifies the signature
+  before calling `parse`. An in-kernel verifier for the
+  signed-manifest path is planned.
 - **Live re-verification.** The manifest is consulted at load
   time; the kernel does not re-hash already-mapped plugins on a
   schedule. Tampering with a `.so` after `dlopen` does not change
   the running kernel — it changes what would happen at the next
   load.
-- **Manifest reload.** v1 has no `update_manifest` API. An
-  operator who needs to permit a new plugin restarts the kernel
-  with the extended manifest. v1.1 may add hot manifest reload if
-  a deployment needs it.
-- **Capability manifest.** A separate manifest will pin per-plugin
-  capabilities (filesystem, network, syscall) once the sandbox
-  layer lands. v1 ships only the integrity manifest.
+- **Manifest reload.** This contract surface defines no
+  `update_manifest` API. An operator who needs to permit a new
+  plugin restarts the kernel with the extended manifest. Hot
+  manifest reload may surface as a planned extension if a
+  deployment drives it.
+- **Capability manifest.** This contract surface covers only the
+  integrity manifest. A separate manifest pinning per-plugin
+  capabilities (filesystem, network, syscall) may land once the
+  sandbox layer is in place.
 - **Empty-manifest dev-mode.** The default surface is permissive:
   in-tree fixtures and the demo run with an empty manifest and
   every `dlopen` succeeds. Production deployments install a
@@ -226,8 +237,8 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
   are both bootstrap-only — the host calls
   `set_manifest_required` and `set_manifest` from the bootstrap
   thread before `load`. A config-key reader that wires the flag
-  from a kernel-managed config sits outside the v1 surface; the
-  embedding host maps the config to the setter call directly.
+  from a kernel-managed config is out of scope for this contract;
+  the embedding host maps the config to the setter call directly.
 
 ---
 
@@ -263,11 +274,11 @@ The build infrastructure emits `<libfile>.json` next to each
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `meta.name` | string | yes | canonical plugin identifier, matches the binary's `gn_plugin_descriptor::name` |
-| `meta.type` | string | yes | one of `security`, `link`, `handler`, `protocol` |
+| `meta.type` | string | yes | one of `security`, `link`, `handler`, `strategy` (the loadable plugin kinds — protocols compile statically into the kernel and have no per-package JSON) |
 | `meta.version` | string | yes | semver triple (`MAJOR.MINOR.PATCH`) of the plugin distribution |
 | `meta.description` | string | yes | short single-line plugin summary; may be empty |
 | `meta.timestamp` | ISO-8601 UTC string | yes | when the manifest was generated |
-| `integrity.alg` | string | yes | hash algorithm; v1 ships `sha256` only |
+| `integrity.alg` | string | yes | hash algorithm; the contract surface accepts `sha256` only |
 | `integrity.hash` | 64-character lowercase hex | yes | SHA-256 of the `<libfile>.so` bytes |
 
 ### 8.2 Relation to the operator manifest (§2)
@@ -277,12 +288,12 @@ manifest is — the kernel reads the operator manifest at load and
 ignores the per-package JSON entirely.
 
 The per-package JSON is for downstream tooling:
-- `goodnet manifest gen <so>...` reads each `<so>` and the
+- `goodnetd manifest gen <so>...` reads each `<so>` and the
   adjacent `<so>.json` to assemble the operator manifest;
 - distribution tarballs ship `<so>` + `<so>.json` paired so the
   receiver can rebuild the operator manifest without re-hashing
   every binary;
-- `goodnet plugin hash <so>` corroborates the per-package
+- `goodnetd plugin hash <so>` corroborates the per-package
   integrity field independently of the operator manifest.
 
 ### 8.3 Failure modes
@@ -303,9 +314,9 @@ no diagnostic trail.
 ### 8.4 Out of scope for v1
 
 - **Capability declarations.** Per-plugin `ext_provides` /
-  `ext_requires` / `capabilities` arrays land with the sandbox /
-  manifest-v2 work in v1.x; the v1 per-package JSON carries only
-  meta + integrity.
+  `ext_requires` / `capabilities` arrays are planned together with
+  the sandbox / manifest-v2 work; the v1 per-package JSON carries
+  only meta + integrity.
 - **Signed per-package manifests.** The per-package JSON is
   unsigned at v1. Tampered per-package metadata is detected at
   the operator-manifest layer (§2) when the operator regenerates
@@ -315,10 +326,11 @@ no diagnostic trail.
 
 ## 9. Cross-references
 
-- Loader semantics: `plugin-lifetime.md` §5 (two-phase activation).
-- Resource limits: `limits.md` §4a (`max_plugins`).
+- Loader semantics: `plugin-lifetime.en.md` §5 (two-phase activation).
+- Resource limits: `limits.en.md` §4a (`max_plugins`).
 - Error codes: `sdk/types.h` `GN_ERR_INTEGRITY_FAILED`.
 - Implementation: `core/plugin/plugin_manifest.{hpp,cpp}` and
   `core/plugin/plugin_manager.cpp::open_one`.
 - Per-package emission: `nix/buildPlugin.nix` (build infrastructure).
-- Aggregate manifest CLI: `apps/goodnetd/subcommands/manifest_gen.cpp`.
+- Aggregate manifest CLI: shipped by the `goodnetd` daemon in
+  `GoodNet-io/goodnetd` (`goodnetd manifest gen ...`).

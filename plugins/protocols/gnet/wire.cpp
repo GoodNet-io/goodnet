@@ -28,13 +28,14 @@ gn_result_t parse_header(std::span<const std::uint8_t> bytes,
 
     const std::uint8_t raw_flags = bytes[kOffsetFlags];
 
-    /// Reserved bits are forward-compatible slots — v1.1+ flags
-    /// land in them. Mask the unknown bits off so a frame from a
-    /// v1.1 sender survives parsing on a v1 reader instead of
-    /// dropping the connection. The deframe path stays
-    /// strict on the bits it understands; the rest are
-    /// invisible. Operator surface stays in `metrics.md` once the
-    /// v1.1 spec lands a per-flag counter.
+    /// Reserved bits are forward-compatible slots — a future
+    /// protocol revision can land new flags in them. Mask the
+    /// unknown bits off so a frame from a newer sender survives
+    /// parsing on a v1 reader instead of dropping the connection.
+    /// The deframe path stays strict on the bits it understands;
+    /// the rest are invisible. Operator surface lives in
+    /// `metrics.en.md` and will pick up a per-flag counter when a
+    /// revision lands new flags.
     const std::uint8_t flags = raw_flags & ~kReservedBitsMask;
 
     /// Broadcast frames must declare EXPLICIT_SENDER and must NOT

@@ -1,9 +1,9 @@
-/// @file   tests/integration/test_metrics_thunks.cpp
+/// @file   tests/unit/integration/test_metrics_thunks.cpp
 /// @brief  `host_api->emit_counter` + `iterate_counters` slot wiring.
 ///
 /// Drives the metrics surface through the public host_api the same
 /// way a plugin would: emit a counter, then iterate to read it
-/// back. Pins the contract from `metrics.md` end-to-end through
+/// back. Pins the contract from `metrics.en.md` end-to-end through
 /// `build_host_api` rather than against the in-process
 /// `MetricsRegistry` directly.
 
@@ -70,10 +70,10 @@ TEST(HostApiMetrics, EmitCounterIncrementsThroughThunk) {
     Bag bag;
     const auto visited = api.iterate_counters(
         api.host_ctx, &collect, &bag);
-    /// `metrics.cardinality_rejected` is pre-created (Wave 9.1)
-    /// and surfaces in iteration even when zero — the exporter
-    /// always sees `=0` rather than missing-on-healthy. Drop it
-    /// before counting the test's own contribution.
+    /// `metrics.cardinality_rejected` is pre-created and surfaces
+    /// in iteration even when zero — the exporter always sees
+    /// `=0` rather than missing-on-healthy. Drop it before
+    /// counting the test's own contribution.
     bag.seen.erase("metrics.cardinality_rejected");
     EXPECT_EQ(visited, 3u)
         << "iterate sees the test's two counters + the pre-created "
@@ -102,7 +102,7 @@ TEST(HostApiMetrics, NullNameIsDroppedSilently) {
 
 TEST(HostApiMetrics, FrameTooLargeBumpsDropCounter) {
     /// `notify_inbound_bytes` rejects frames above `max_frame_bytes`
-    /// per `host-api.md`. Per `metrics.md` §3 the rejection is paired
+    /// per `host-api.en.md`. Per `metrics.en.md` §3 the rejection is paired
     /// with both a counter increment (`drop.frame_too_large`) and a
     /// structured warn line carrying `(conn, observed, configured)`.
     /// This test covers the counter half so dashboards see the rate.

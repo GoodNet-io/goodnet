@@ -67,6 +67,23 @@ def test_write_emits_yaml(inventory_repo):
     assert "kernel" in text
 
 
+def test_write_honours_monkeypatched_facts_path(inventory_repo):
+    """`write()` resolves FACTS_PATH at call time, so the conftest
+    fixture's monkeypatch reaches the writer. A bug in the
+    function signature (default argument capturing the original
+    FACTS_PATH at module-load time) would silently write to the
+    real `docs/_facts/test_inventory.yaml` instead — regressed
+    once before (commit 2474cd7) and tracked down to the default-
+    argument trap. Pins the behaviour now."""
+    expected = inventory_repo / "docs" / "_facts" / "test_inventory.yaml"
+    returned = test_inventory.write()
+    assert returned == expected, (
+        f"write() must write to the monkeypatched FACTS_PATH "
+        f"({expected}), got {returned}"
+    )
+    assert expected.exists(), "monkeypatched path was not written"
+
+
 def test_kernel_skeleton_count_is_three(inventory_repo):
     """Kernel skeleton has TEST + TEST + TEST_F == 3 cases."""
     out = test_inventory.collect()

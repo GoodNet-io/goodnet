@@ -1,7 +1,7 @@
-/// @file   tests/integration/test_backpressure_role.cpp
+/// @file   tests/unit/integration/test_backpressure_role.cpp
 /// @brief  Role gate on `host_api->notify_backpressure`.
 ///
-/// Per `docs/contracts/host-api.md` §2 and `backpressure.md` §3, only
+/// Per `docs/contracts/host-api.en.md` §2 and `backpressure.en.md` §3, only
 /// transport-kind plugins own write queues, so only they may publish
 /// `BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR`. Other plugin kinds are
 /// rejected with `GN_ERR_NOT_IMPLEMENTED`. The `kind` field is

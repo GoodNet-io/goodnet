@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <unistd.h>
+#include <unordered_map>
 #include <vector>
 #include <sys/uio.h>
 
@@ -33,6 +34,12 @@ struct WorkerState {
     std::uint64_t             host_ctx_handle = 0;
     host_api_t                synth_api      = {};
     bool                      stopping       = false;
+
+    /// Map from u64 state handle to the void* the worker's vtable
+    /// returned from `handshake_open`. Kept inside the worker so the
+    /// wire never sees a raw pointer.
+    std::unordered_map<std::uint64_t, void*> security_states;
+    std::uint64_t next_state_handle = 1;
 };
 
 WorkerState g_state{};
@@ -216,6 +223,174 @@ gn_result_t thunk_notify_inbound_bytes(void* /*host_ctx*/,
     return static_cast<gn_result_t>(code);
 }
 
+gn_result_t thunk_notify_connect(void* /*host_ctx*/,
+                                 const uint8_t remote_pk[GN_PUBLIC_KEY_BYTES],
+                                 const char* uri,
+                                 gn_trust_class_t trust,
+                                 gn_handshake_role_t role,
+                                 gn_conn_id_t* out_conn) {
+    namespace wire = ::gn::core::wire;
+    if (out_conn == nullptr || remote_pk == nullptr || uri == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+    std::vector<std::uint8_t> args;
+    wire::encode_bytes(args,
+        std::span<const std::uint8_t>(remote_pk, GN_PUBLIC_KEY_BYTES));
+    wire::encode_text(args, std::string_view(uri));
+    wire::encode_u64(args, static_cast<std::uint64_t>(trust));
+    wire::encode_u64(args, static_cast<std::uint64_t>(role));
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_NOTIFY_CONNECT,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::uint64_t conn = 0;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_u64(r, conn) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    *out_conn = static_cast<gn_conn_id_t>(conn);
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t thunk_notify_disconnect(void* /*host_ctx*/,
+                                    gn_conn_id_t conn,
+                                    gn_result_t reason) {
+    namespace wire = ::gn::core::wire;
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, conn);
+    wire::encode_i64(args, static_cast<std::int64_t>(reason));
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_NOTIFY_DISCONNECT,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_OUT_OF_RANGE;
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t thunk_register_vtable(void* /*host_ctx*/,
+                                  gn_register_kind_t kind,
+                                  const gn_register_meta_t* meta,
+                                  const void* /*vtable*/,
+                                  void* /*self*/,
+                                  uint64_t* out_id) {
+    namespace wire = ::gn::core::wire;
+    if (meta == nullptr || meta->name == nullptr || out_id == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, static_cast<std::uint64_t>(kind));
+    wire::encode_text(args, std::string_view(meta->name));
+    wire::encode_u64(args, static_cast<std::uint64_t>(meta->msg_id));
+    wire::encode_u64(args, static_cast<std::uint64_t>(meta->priority));
+    wire::encode_text(args, meta->protocol_id
+                              ? std::string_view(meta->protocol_id)
+                              : std::string_view());
+    wire::encode_text(args, meta->namespace_id
+                              ? std::string_view(meta->namespace_id)
+                              : std::string_view());
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_REGISTER_VTABLE,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 2) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    std::uint64_t id = 0;
+    if (wire::decode_i64(r, code) != GN_OK ||
+        wire::decode_u64(r, id) != GN_OK) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    *out_id = id;
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t thunk_register_security(void* /*host_ctx*/,
+                                    const char* provider_id,
+                                    const gn_security_provider_vtable_t* /*vtable*/,
+                                    void* /*security_self*/) {
+    namespace wire = ::gn::core::wire;
+    if (provider_id == nullptr) return GN_ERR_NULL_ARG;
+    std::vector<std::uint8_t> args;
+    wire::encode_text(args, std::string_view(provider_id));
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_REGISTER_SECURITY,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_OUT_OF_RANGE;
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t thunk_unregister_security(void* /*host_ctx*/,
+                                      const char* provider_id) {
+    namespace wire = ::gn::core::wire;
+    if (provider_id == nullptr) return GN_ERR_NULL_ARG;
+    std::vector<std::uint8_t> args;
+    wire::encode_text(args, std::string_view(provider_id));
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_UNREGISTER_SECURITY,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_OUT_OF_RANGE;
+    return static_cast<gn_result_t>(code);
+}
+
+gn_result_t thunk_unregister_vtable(void* /*host_ctx*/, uint64_t id) {
+    namespace wire = ::gn::core::wire;
+    std::vector<std::uint8_t> args;
+    wire::encode_u64(args, id);
+    std::vector<std::uint8_t> reply;
+    std::uint32_t flags = 0;
+    if (auto rc = do_host_call(GN_WIRE_HOST_SLOT_UNREGISTER_VTABLE,
+                                args, reply, flags);
+        rc != GN_OK) return rc;
+    if (flags & GN_WIRE_FLAG_ERROR) return GN_ERR_INTERNAL;
+    wire::Reader r{reply, 0};
+    std::size_t n = 0;
+    if (wire::decode_array_header(r, n) != GN_OK || n != 1) {
+        return GN_ERR_OUT_OF_RANGE;
+    }
+    std::int64_t code = 0;
+    if (wire::decode_i64(r, code) != GN_OK) return GN_ERR_OUT_OF_RANGE;
+    return static_cast<gn_result_t>(code);
+}
+
 // ── Lifecycle replies ─────────────────────────────────────────────
 
 void encode_lifecycle_reply(std::vector<std::uint8_t>& out,
@@ -250,7 +425,7 @@ void encode_code_reply(std::vector<std::uint8_t>& out, gn_result_t code) {
         return write_frame(g_state.fd, GN_WIRE_PLUGIN_REPLY, request_id, 0, err);
     }
     std::vector<std::uint8_t> reply;
-    switch (static_cast<gn_wire_plugin_slot_t>(slot_id)) {
+    switch (slot_id) {
         case GN_WIRE_SLOT_PLUGIN_INIT: {
             gn_result_t rc = GN_OK;
             if (g_state.cfg->on_init != nullptr) {
@@ -367,6 +542,358 @@ void encode_code_reply(std::vector<std::uint8_t>& out, gn_result_t code) {
             encode_code_reply(reply, GN_OK);
             break;
         }
+        case GN_WIRE_SLOT_SECURITY_PROVIDER_ID: {
+            // Worker reply carries the trust mask; provider id text is
+            // already in HELLO so the wire does not repeat it here.
+            std::uint64_t worker_self = 0;
+            (void)wire::decode_u64(r, worker_self);
+            std::uint32_t mask = 0;
+            if (g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->allowed_trust_mask) {
+                mask = g_state.cfg->security_vtable->allowed_trust_mask(
+                    g_state.cfg->security_self);
+            }
+            wire::encode_array_header(reply, 1);
+            wire::encode_u64(reply, mask);
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_HANDSHAKE_OPEN: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t conn = 0;
+            std::uint64_t trust = 0;
+            std::uint64_t role = 0;
+            std::span<const std::uint8_t> sk, lpk, rpk;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, conn) != GN_OK ||
+                wire::decode_u64(r, trust) != GN_OK ||
+                wire::decode_u64(r, role) != GN_OK ||
+                wire::decode_bytes(r, sk) != GN_OK ||
+                wire::decode_bytes(r, lpk) != GN_OK ||
+                wire::decode_bytes(r, rpk) != GN_OK) {
+                wire::encode_array_header(reply, 2);
+                wire::encode_i64(reply, GN_ERR_OUT_OF_RANGE);
+                wire::encode_u64(reply, 0);
+                break;
+            }
+            if (sk.size() != GN_PRIVATE_KEY_BYTES ||
+                lpk.size() != GN_PUBLIC_KEY_BYTES) {
+                wire::encode_array_header(reply, 2);
+                wire::encode_i64(reply, GN_ERR_OUT_OF_RANGE);
+                wire::encode_u64(reply, 0);
+                break;
+            }
+            void* state = nullptr;
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->handshake_open) {
+                const std::uint8_t* rpk_ptr =
+                    rpk.size() == GN_PUBLIC_KEY_BYTES ? rpk.data() : nullptr;
+                rc = g_state.cfg->security_vtable->handshake_open(
+                    g_state.cfg->security_self,
+                    static_cast<gn_conn_id_t>(conn),
+                    static_cast<gn_trust_class_t>(trust),
+                    static_cast<gn_handshake_role_t>(role),
+                    sk.data(), lpk.data(), rpk_ptr, &state);
+            }
+            std::uint64_t handle = 0;
+            if (rc == GN_OK && state != nullptr) {
+                handle = g_state.next_state_handle++;
+                g_state.security_states[handle] = state;
+            }
+            wire::encode_array_header(reply, 2);
+            wire::encode_i64(reply, rc);
+            wire::encode_u64(reply, handle);
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_HANDSHAKE_STEP: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            std::span<const std::uint8_t> incoming;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK ||
+                wire::decode_bytes(r, incoming) != GN_OK) {
+                wire::encode_array_header(reply, 2);
+                wire::encode_i64(reply, GN_ERR_OUT_OF_RANGE);
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                break;
+            }
+            auto it = g_state.security_states.find(state_handle);
+            if (it == g_state.security_states.end()) {
+                wire::encode_array_header(reply, 2);
+                wire::encode_i64(reply, GN_ERR_NOT_FOUND);
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                break;
+            }
+            gn_secure_buffer_t out{};
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            if (g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->handshake_step) {
+                rc = g_state.cfg->security_vtable->handshake_step(
+                    g_state.cfg->security_self, it->second,
+                    incoming.data(), incoming.size(), &out);
+            }
+            wire::encode_array_header(reply, 2);
+            wire::encode_i64(reply, rc);
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(
+                    out.bytes ? out.bytes : nullptr,
+                    out.bytes ? out.size : 0));
+            if (out.bytes && out.free_fn) {
+                out.free_fn(out.free_user_data, out.bytes);
+            }
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_HANDSHAKE_COMPLETE: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK) {
+                wire::encode_array_header(reply, 1);
+                wire::encode_i64(reply, 0);
+                break;
+            }
+            auto it = g_state.security_states.find(state_handle);
+            int v = 0;
+            if (it != g_state.security_states.end() &&
+                g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->handshake_complete) {
+                v = g_state.cfg->security_vtable->handshake_complete(
+                    g_state.cfg->security_self, it->second);
+            }
+            wire::encode_array_header(reply, 1);
+            wire::encode_i64(reply, v);
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_EXPORT_KEYS: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK) {
+                wire::encode_array_header(reply, 7);
+                wire::encode_i64(reply, GN_ERR_OUT_OF_RANGE);
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                wire::encode_u64(reply, 0);
+                wire::encode_u64(reply, 0);
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                break;
+            }
+            gn_handshake_keys_t keys{};
+            keys.api_size = sizeof(gn_handshake_keys_t);
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            auto it = g_state.security_states.find(state_handle);
+            if (it != g_state.security_states.end() &&
+                g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->export_transport_keys) {
+                rc = g_state.cfg->security_vtable->export_transport_keys(
+                    g_state.cfg->security_self, it->second, &keys);
+            }
+            wire::encode_array_header(reply, 7);
+            wire::encode_i64(reply, rc);
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(keys.send_cipher_key, GN_CIPHER_KEY_BYTES));
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(keys.recv_cipher_key, GN_CIPHER_KEY_BYTES));
+            wire::encode_u64(reply, keys.initial_send_nonce);
+            wire::encode_u64(reply, keys.initial_recv_nonce);
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(keys.handshake_hash, GN_HASH_BYTES));
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(keys.peer_static_pk, GN_PUBLIC_KEY_BYTES));
+            // Zeroise the local copy; the wire takes a snapshot above.
+            std::memset(&keys, 0, sizeof(keys));
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_ENCRYPT:
+        case GN_WIRE_SLOT_SECURITY_DECRYPT: {
+            const bool is_encrypt =
+                (slot_id == GN_WIRE_SLOT_SECURITY_ENCRYPT);
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            std::span<const std::uint8_t> in_bytes;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK ||
+                wire::decode_bytes(r, in_bytes) != GN_OK) {
+                wire::encode_array_header(reply, 2);
+                wire::encode_i64(reply, GN_ERR_OUT_OF_RANGE);
+                wire::encode_bytes(reply, std::span<const std::uint8_t>{});
+                break;
+            }
+            gn_secure_buffer_t out{};
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            auto it = g_state.security_states.find(state_handle);
+            if (it != g_state.security_states.end() && g_state.cfg->security_vtable) {
+                auto fn = is_encrypt
+                    ? g_state.cfg->security_vtable->encrypt
+                    : g_state.cfg->security_vtable->decrypt;
+                if (fn != nullptr) {
+                    rc = fn(g_state.cfg->security_self, it->second,
+                            in_bytes.data(), in_bytes.size(), &out);
+                }
+            }
+            wire::encode_array_header(reply, 2);
+            wire::encode_i64(reply, rc);
+            wire::encode_bytes(reply,
+                std::span<const std::uint8_t>(
+                    out.bytes ? out.bytes : nullptr,
+                    out.bytes ? out.size : 0));
+            if (out.bytes && out.free_fn) {
+                out.free_fn(out.free_user_data, out.bytes);
+            }
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_REKEY: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            gn_result_t rc = GN_ERR_NOT_IMPLEMENTED;
+            auto it = g_state.security_states.find(state_handle);
+            if (it != g_state.security_states.end() &&
+                g_state.cfg->security_vtable &&
+                g_state.cfg->security_vtable->rekey) {
+                rc = g_state.cfg->security_vtable->rekey(
+                    g_state.cfg->security_self, it->second);
+            }
+            encode_code_reply(reply, rc);
+            break;
+        }
+        case GN_WIRE_SLOT_SECURITY_HANDSHAKE_CLOSE: {
+            std::uint64_t worker_self = 0;
+            std::uint64_t state_handle = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_u64(r, state_handle) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            auto it = g_state.security_states.find(state_handle);
+            if (it != g_state.security_states.end()) {
+                if (g_state.cfg->security_vtable &&
+                    g_state.cfg->security_vtable->handshake_close) {
+                    g_state.cfg->security_vtable->handshake_close(
+                        g_state.cfg->security_self, it->second);
+                }
+                g_state.security_states.erase(it);
+            }
+            encode_code_reply(reply, GN_OK);
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_PROTOCOL_ID: {
+            // Worker-side handler ships protocol_id text inline. The
+            // kernel proxy already serves descriptor->name without a
+            // round-trip, so this slot is currently a no-op; reserved
+            // for parity with the LINK pattern.
+            wire::encode_array_header(reply, 1);
+            wire::encode_i64(reply, GN_OK);
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_SUPPORTED_MSG_IDS: {
+            std::uint64_t worker_self = 0;
+            (void)wire::decode_u64(r, worker_self);
+            const std::uint32_t* ids = nullptr;
+            std::size_t count = 0;
+            if (g_state.cfg->handler_vtable &&
+                g_state.cfg->handler_vtable->supported_msg_ids) {
+                g_state.cfg->handler_vtable->supported_msg_ids(
+                    g_state.cfg->handler_self, &ids, &count);
+            }
+            wire::encode_array_header(reply, 2);
+            wire::encode_i64(reply, GN_OK);
+            wire::encode_array_header(reply, count);
+            for (std::size_t i = 0; i < count; ++i) {
+                wire::encode_u64(reply, ids != nullptr ? ids[i] : 0u);
+            }
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_HANDLE_MESSAGE: {
+            std::uint64_t worker_self = 0;
+            std::span<const std::uint8_t> sender_pk, receiver_pk, body;
+            std::uint64_t msg_id = 0;
+            std::uint64_t conn_id = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_bytes(r, sender_pk) != GN_OK ||
+                wire::decode_bytes(r, receiver_pk) != GN_OK ||
+                wire::decode_u64(r, msg_id) != GN_OK ||
+                wire::decode_bytes(r, body) != GN_OK ||
+                wire::decode_u64(r, conn_id) != GN_OK ||
+                sender_pk.size() != GN_PUBLIC_KEY_BYTES ||
+                receiver_pk.size() != GN_PUBLIC_KEY_BYTES) {
+                wire::encode_array_header(reply, 1);
+                wire::encode_u64(reply, GN_PROPAGATION_CONTINUE);
+                break;
+            }
+            gn_message_t env{};
+            env.api_size = sizeof(gn_message_t);
+            std::memcpy(env.sender_pk, sender_pk.data(), GN_PUBLIC_KEY_BYTES);
+            std::memcpy(env.receiver_pk, receiver_pk.data(), GN_PUBLIC_KEY_BYTES);
+            env.msg_id = static_cast<std::uint32_t>(msg_id);
+            env.payload = body.empty() ? nullptr : body.data();
+            env.payload_size = body.size();
+            env.conn_id = static_cast<gn_conn_id_t>(conn_id);
+            gn_propagation_t rc = GN_PROPAGATION_CONTINUE;
+            if (g_state.cfg->handler_vtable &&
+                g_state.cfg->handler_vtable->handle_message) {
+                rc = g_state.cfg->handler_vtable->handle_message(
+                    g_state.cfg->handler_self, &env);
+            }
+            wire::encode_array_header(reply, 1);
+            wire::encode_u64(reply, static_cast<std::uint64_t>(rc));
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_ON_RESULT: {
+            std::uint64_t worker_self = 0;
+            std::span<const std::uint8_t> sender_pk;
+            std::uint64_t msg_id = 0;
+            std::uint64_t conn_id = 0;
+            std::uint64_t result = 0;
+            if (wire::decode_u64(r, worker_self) != GN_OK ||
+                wire::decode_bytes(r, sender_pk) != GN_OK ||
+                wire::decode_u64(r, msg_id) != GN_OK ||
+                wire::decode_u64(r, conn_id) != GN_OK ||
+                wire::decode_u64(r, result) != GN_OK) {
+                encode_code_reply(reply, GN_ERR_OUT_OF_RANGE);
+                break;
+            }
+            if (g_state.cfg->handler_vtable &&
+                g_state.cfg->handler_vtable->on_result) {
+                gn_message_t env{};
+                env.api_size = sizeof(gn_message_t);
+                if (sender_pk.size() == GN_PUBLIC_KEY_BYTES) {
+                    std::memcpy(env.sender_pk, sender_pk.data(), GN_PUBLIC_KEY_BYTES);
+                }
+                env.msg_id = static_cast<std::uint32_t>(msg_id);
+                env.conn_id = static_cast<gn_conn_id_t>(conn_id);
+                g_state.cfg->handler_vtable->on_result(
+                    g_state.cfg->handler_self, &env,
+                    static_cast<gn_propagation_t>(result));
+            }
+            encode_code_reply(reply, GN_OK);
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_ON_INIT: {
+            std::uint64_t worker_self = 0;
+            (void)wire::decode_u64(r, worker_self);
+            if (g_state.cfg->handler_vtable &&
+                g_state.cfg->handler_vtable->on_init) {
+                g_state.cfg->handler_vtable->on_init(g_state.cfg->handler_self);
+            }
+            encode_code_reply(reply, GN_OK);
+            break;
+        }
+        case GN_WIRE_SLOT_HANDLER_ON_SHUTDOWN: {
+            std::uint64_t worker_self = 0;
+            (void)wire::decode_u64(r, worker_self);
+            if (g_state.cfg->handler_vtable &&
+                g_state.cfg->handler_vtable->on_shutdown) {
+                g_state.cfg->handler_vtable->on_shutdown(g_state.cfg->handler_self);
+            }
+            encode_code_reply(reply, GN_OK);
+            break;
+        }
         default:
             encode_code_reply(reply, GN_ERR_NOT_IMPLEMENTED);
             break;
@@ -389,6 +916,12 @@ int run_worker(const WorkerConfig& cfg) {
     g_state.synth_api.log.emit = &thunk_log_emit;
     g_state.synth_api.is_shutdown_requested = &thunk_is_shutdown_requested;
     g_state.synth_api.notify_inbound_bytes  = &thunk_notify_inbound_bytes;
+    g_state.synth_api.notify_connect        = &thunk_notify_connect;
+    g_state.synth_api.notify_disconnect     = &thunk_notify_disconnect;
+    g_state.synth_api.register_vtable       = &thunk_register_vtable;
+    g_state.synth_api.unregister_vtable     = &thunk_unregister_vtable;
+    g_state.synth_api.register_security     = &thunk_register_security;
+    g_state.synth_api.unregister_security   = &thunk_unregister_security;
 
     // HELLO frame.
     std::vector<std::uint8_t> hello;

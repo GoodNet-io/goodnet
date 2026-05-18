@@ -14,12 +14,11 @@ namespace gn::core::identity {
 ::gn::PublicKey derive_address(
     const ::gn::PublicKey& device_pk) noexcept {
 
-    /// HKDF-SHA256 extract+expand keyed on `device_pk` only. The
-    /// user_pk used to mix into the IKM in v1; rotating user_pk
-    /// then renamed every live conn out from under the application,
-    /// breaking long-term graph state. Decouple keeps mesh-address
-    /// device-stable and routes user identity through attestation
-    /// + `host_api->get_peer_user_pk` instead.
+    /// HKDF-SHA256 extract+expand keyed on `device_pk` only — the
+    /// mesh address is device-stable across user_pk rotations so
+    /// long-term graph state survives identity churn. User identity
+    /// flows through attestation + `host_api->get_peer_user_pk`,
+    /// not through this derivation.
     std::array<std::uint8_t, crypto_kdf_hkdf_sha256_KEYBYTES> prk{};
     ::crypto_kdf_hkdf_sha256_extract(
         prk.data(),

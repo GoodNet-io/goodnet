@@ -2,8 +2,7 @@
 /// @brief  Throughput benchmark — two GoodNet kernels in one process,
 ///         talking over TCP under a Noise XX handshake. Bob loops
 ///         `host_api->send(...)` against Alice as fast as the kernel
-///         accepts. Reports payload Gbps; intended as the rebuild's
-///         baseline measurement vs the legacy 11 Gbit/s reference.
+///         accepts. Reports payload Gbps.
 ///
 /// Usage:
 ///         goodnet-bench [count] [size_kb] [conns]
@@ -193,7 +192,7 @@ int main(int argc, char** argv) {
     /// info, Debug = debug) and a Release-only console floor of WARN.
     /// The demo wants the kernel's INFO startup markers visible in
     /// either build, so push the console sink to `info` and lift the
-    /// logger level to match. Operators running `goodnet run` get the
+    /// logger level to match. Operators running `goodnetd run` get the
     /// same behaviour through the `log.console_level = "info"` knob in
     /// `dist/example/node.json`.
     {
@@ -370,7 +369,7 @@ int main(int argc, char** argv) {
                 /// surfaces the failure as `notify_disconnect`, which
                 /// surfaces here as NOT_FOUND on the next send.
                 /// Remove once TCP plugin has its own kernel-side
-                /// SendQueueManager (Phase 2 of the perf parity plan).
+                /// SendQueueManager.
                 if ((workers[i].sent.load() & 0xFF) == 0) {
                     std::this_thread::yield();
                 }

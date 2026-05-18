@@ -12,7 +12,7 @@ Stability: v1.x
 не транспорт. Эта глава фиксирует, почему граница нарисована
 именно так и какие повторяющиеся ошибки она ловит.
 
-Контракт от ядра: [`link.md`](../../contracts/link.en.md). Этот
+Контракт от ядра: [`link.en.md`](../../contracts/link.en.md). Этот
 документ — сопровождающий гид: что транспорт обязан выдать на
 своей стороне границы, как threading-модель ядра пересекает
 плагиновую, и какие паттерны спасают от типичных race'ов и
@@ -39,10 +39,10 @@ silent-fail'ов.
 
 | Поле | Что в нём |
 |---|---|
-| `meta->name` | scheme — `"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`. Один scheme = один plugin. |
+| `meta->name` | scheme — `"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`, `"ice"`, `"quic"`. Один scheme = один plugin. |
 | `vtable` | `gn_link_vtable_t*` — primary surface (см. [`sdk/link.h`](../../../sdk/link.h)). |
 | `self` | per-plugin state (типично `*Link` C++ объект). |
-| `lifetime_anchor` | `shared_ptr<void>` для quiescence wait per [`plugin-lifetime.md` §4](../../contracts/plugin-lifetime.en.md). |
+| `lifetime_anchor` | `shared_ptr<void>` для quiescence wait per [`plugin-lifetime.en.md` §4](../../contracts/plugin-lifetime.en.md). |
 
 Vtable несёт `listen`, `connect`, `send`, `send_batch`, `disconnect`,
 `extension_name`, `extension_vtable`, `destroy`. Дополнительно
@@ -95,7 +95,7 @@ Worker'ы все вызывают `ioc_.run()` на одном `io_context`. Asi
 | UDP | один общий strand на сокет | Только один FD; recvfrom/sendto на нём не interleave'ятся. |
 
 **Single-writer invariant** на сокете
-([`link.md §4`](../../contracts/link.en.md)) держится strand'ом:
+([`link.en.md §4`](../../contracts/link.en.md)) держится strand'ом:
 любой `async_write_some` всегда post'ится на strand сессии,
 поэтому два worker'а никогда не пересекаются на одном FD.
 
@@ -158,7 +158,7 @@ host_api->send(conn, msg_id, payload, size)
    обязан позвать `host_api->notify_backpressure(SOFT)` (rising
    edge). Когда drain опускает её ниже `_low` — `CLEAR`
    (falling edge). Гистерезис между low/high удерживает
-   осцилляции. См. [`backpressure.md §3`](../../contracts/backpressure.en.md).
+   осцилляции. См. [`backpressure.en.md §3`](../../contracts/backpressure.en.md).
 
 4. **Control-flood — disconnect, не LIMIT_REACHED.** Peer
    inundated сторону с ping'ами, локальный сокет не успевает
@@ -166,7 +166,7 @@ host_api->send(conn, msg_id, payload, size)
    `bytes_buffered`, и когда он переходит hard-cap, link
    обязан **разорвать соединение**, не пытаться вернуть
    `LIMIT_REACHED` peer'у через wire. Это структурное abuse
-   detection per [`backpressure.md §3.1`](../../contracts/backpressure.en.md).
+   detection per [`backpressure.en.md §3.1`](../../contracts/backpressure.en.md).
 
 5. **Borrowed bytes.** `bytes` в `send(self, conn, bytes, size)`
    валидны только до возврата из этой функции. Link обязан
@@ -252,7 +252,8 @@ link primary vtable играет вспомогательную роль.
 API и зовёт его `listen` — silently получает NOT_IMPLEMENTED, и
 никакого binding'а к порту не происходит. Лекарство — звать
 `kernel.links().find_by_scheme(scheme)->vtable->listen()`, не
-extension's listen. См. реальный fix в `apps/gssh/mode_listen.cpp`.
+extension's listen. См. реальный fix в `GoodNet-io/gssh` repo
+(`mode_listen.cpp`).
 
 ## Teardown protocol
 
@@ -283,7 +284,7 @@ Plugin `A` зарегистрировал scheme `tcp` и получил для 
 peer'а `conn_id = 42`. Если plugin `B` попытается позвать
 `host_api->notify_inbound_bytes(host_ctx, 42, …)`, ядро
 возвращает `GN_ERR_NOT_FOUND` per
-[`security-trust.md §6a`](../../contracts/security-trust.en.md) — не
+[`security-trust.en.md §6a`](../../contracts/security-trust.en.md) — не
 `GN_ERR_PERMISSION_DENIED`, потому что error code равен тому, что
 получил бы plugin `B` для несуществующего id. Сам факт
 существования чужого conn id не leak'ится через error code.
@@ -300,7 +301,7 @@ chain.
 Плагин живёт в собственном git'е c flake'ом. Полный test cycle:
 
 ```sh
-nix run .#test            # vanilla — 7-13 unit тестов
+nix run .#test            # vanilla — per-plugin suite (links сейчас 8–79 cases)
 nix run .#test -- asan    # AddressSanitizer
 nix run .#test -- tsan    # ThreadSanitizer
 nix run .#test -- all     # все три варианта по очереди
@@ -323,7 +324,7 @@ INSTANTIATE_TYPED_TEST_SUITE_P(
 caller thread (см. [`concurrency.ru.md`](./concurrency.ru.md)).
 Если этот тест падает в plugin's own gate, никакая другая
 проверка не имеет значения — link нарушает базовый contract
-[`link.md §9`](../../contracts/link.en.md).
+[`link.en.md §9`](../../contracts/link.en.md).
 
 ### Kernel-level integration
 
@@ -356,7 +357,7 @@ PluginTeardown (multiplugin shutdown ordering). Эти тесты гонятся
    этот event, висят. Лекарство — unblock на CONNECTED если
    `trust != UNTRUSTED`.
 
-4. **expiry=0 sentinel в attestation cert.** `goodnet identity gen`
+4. **expiry=0 sentinel в attestation cert.** `goodnetd identity gen`
    без `--expiry` ставит 0 = «no expiry». Naive verify path
    проверяет `expiry_unix_ts <= now_unix_ts` — true когда оба
    ноль — fail'ит как «attestation signature mismatch» (хотя
@@ -386,13 +387,13 @@ PluginTeardown (multiplugin shutdown ordering). Эти тесты гонятся
 
 ## Cross-references
 
-- [`contracts/link.md`](../../contracts/link.en.md) — формальный contract
+- [`contracts/link.en.md`](../../contracts/link.en.md) — формальный contract
   vtable + API
-- [`contracts/host-api.md`](../../contracts/host-api.en.md) — все ABI
+- [`contracts/host-api.en.md`](../../contracts/host-api.en.md) — все ABI
   slot'ы, которые link использует
-- [`contracts/backpressure.md`](../../contracts/backpressure.en.md) — send
+- [`contracts/backpressure.en.md`](../../contracts/backpressure.en.md) — send
   queue, watermark events, control-reply path
-- [`contracts/security-trust.md`](../../contracts/security-trust.en.md) — conn-id
+- [`contracts/security-trust.en.md`](../../contracts/security-trust.en.md) — conn-id
   ownership gate, trust class transitions
 - [`impl/cpp/concurrency.ru.md`](./concurrency.ru.md) — teardown
   invariants, claim_disconnect pattern, single-emit гарантия

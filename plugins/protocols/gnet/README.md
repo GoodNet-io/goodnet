@@ -31,13 +31,15 @@ cmake --build build
 
 ## Load
 
-Statically registered at kernel construction: a host program
-(`apps/goodnetd/subcommands/run.cpp`, `examples/two_node/main.cpp`)
-calls `kernel.set_protocol_layer(std::make_shared<GnetProtocol>())`.
-There is no dlopen path for protocol layers in v1; out-of-tree
-custom protocols ship as host programs that wrap the kernel.
+Registered by the host program before `gn_core_start`. C ABI hosts
+call `gn_core_register_protocol(core, &vt, self)` (see
+`docs/contracts/core-c.en.md`). C++ hosts may call
+`kernel.protocol_layers().register_layer(std::make_shared<GnetProtocol>(), &id)`
+directly. There is no dlopen path for protocol layers in v1;
+out-of-tree custom protocols ship as host programs that wrap
+the kernel.
 
 ## Contract
 
 - Wire format spec: [`docs/wire-format.md`](docs/wire-format.md)
-- Kernel-side protocol-layer contract: `docs/contracts/protocol-layer.md`
+- Kernel-side protocol-layer contract: `docs/contracts/protocol-layer.en.md`

@@ -23,7 +23,7 @@
 /// of its own; what arrived is what the next handler sees.
 ///
 /// Trust policy: `raw` is permitted only on `GN_TRUST_LOOPBACK`
-/// and `GN_TRUST_INTRA_NODE` per `security-trust.md` §4. `deframe`
+/// and `GN_TRUST_INTRA_NODE` per `security-trust.en.md` §4. `deframe`
 /// rejects on any other trust class with `GN_ERR_INVALID_ENVELOPE`
 /// — there is no scenario where opaque-passthrough on a public
 /// network is safe.

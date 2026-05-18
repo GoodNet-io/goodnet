@@ -1,7 +1,13 @@
 # Remote plugin wire protocol
 
-Status: **active, single-threaded reference implementation landed on
-dev**. The proof-of-concept binary is `plugins/workers/remote_echo`;
+**Status:** active · v1
+**Implements:** `sdk/remote/{wire,slots}.h` + a single-threaded
+reference runtime.
+**Stability:** stable for v1.x; new opcodes append at the tail
+of `gn_wire_op_t`, slot ids land per the reserved blocks in
+`sdk/remote/slots.h`.
+
+The proof-of-concept binary is `plugins/workers/remote_echo`;
 the kernel-side runtime lives in `core/plugin/remote_host.{hpp,cpp}`;
 the worker stub library lives in `sdk/cpp/remote_plugin.{hpp,cpp}` +
 `sdk/remote/{wire,slots}.h`. This document specifies the wire
@@ -26,6 +32,37 @@ envelope is a packed struct, the payload is CBOR. Python `cbor2`,
 Rust `ciborium`, Zig `std.cbor`, Go `fxamacker/cbor` all decode the
 subset documented in §5.
 
+## §1a — Subprocess trust model
+
+Remote linkage runs the plugin as an OS-level subprocess but the
+trust model is the same as in-process plugins: **operator-vetted
+manifest plus SHA-256 of the worker binary**. There is no runtime
+isolation — `RemoteHost::spawn` (`core/plugin/remote_host.cpp`
+around the `fork` + `execve` block) performs a plain `fork` +
+`execve` with no Linux user-namespace, seccomp filter, or cgroup
+applied. A worker the kernel spawned runs with the kernel's own
+uid, fd table (minus the IPC socket end the parent closes), and
+filesystem view. The kernel trusts the worker binary the same way
+it trusts an in-process plugin: the manifest pin and the
+build-time vetting of the source it came from.
+
+The asymmetry with in-process plugins is purely about address
+space — a crashing remote worker does not pull the kernel down,
+whereas a crashing in-process plugin does. It is **not** about
+defending the kernel against a malicious worker. A worker that
+has been substituted between manifest pinning and `execve` can do
+everything an in-process plugin can do, plus a few subprocess-
+specific tricks (signal storms, fd-table exhaustion through the
+inherited table, etc.).
+
+Sandboxing — Linux user namespaces, seccomp-bpf syscall filter,
+cgroup-based resource ceilings — is a planned extension when
+third-party untrusted workers become a use case (a marketplace
+where the operator's vetting cannot extend to every published
+worker). The wire protocol itself does not change; isolation
+primitives wrap the `spawn` call, the running worker continues
+to talk to the kernel over the same `gn_wire_frame_t` codec.
+
 ## §2 — Frame header
 
 Every frame is a 16-byte header followed by a CBOR payload. The
@@ -45,10 +82,11 @@ payload. No streaming codec.
 
 ## §3 — Fragmentation
 
-Not supported in v1. A worker that needs to ship more than 1 MiB in
-a single host_api call breaks the payload into multiple
-`HOST_CALL`s with the application-level continuation flag carried
-inside the CBOR. The wire codec stays trivial in every binding.
+Not part of this wire contract. A worker that needs to ship more
+than 1 MiB in a single host_api call breaks the payload into
+multiple `HOST_CALL`s with the application-level continuation flag
+carried inside the CBOR. The wire codec stays trivial in every
+binding.
 
 ## §4 — Opcodes & state machine
 
@@ -126,34 +164,34 @@ Plugin slots (carried by `PLUGIN_CALL`):
 |   0x202 | `LINK_SEND`                | implemented   |
 |   0x203 | `LINK_DISCONNECT`          | implemented   |
 |   0x204 | `LINK_DESTROY`             | implemented   |
-|   0x300 | `SECURITY_PROVIDER_ID`     | contract only |
-|   0x301 | `SECURITY_HANDSHAKE_OPEN`  | contract only |
-|   0x302 | `SECURITY_HANDSHAKE_STEP`  | contract only |
-|   0x303 | `SECURITY_HANDSHAKE_COMPLETE` | contract only |
-|   0x304 | `SECURITY_EXPORT_KEYS`     | contract only |
-|   0x305 | `SECURITY_ENCRYPT`         | contract only |
-|   0x306 | `SECURITY_DECRYPT`         | contract only |
-|   0x307 | `SECURITY_REKEY`           | contract only |
-|   0x308 | `SECURITY_HANDSHAKE_CLOSE` | contract only |
-|   0x400 | `HANDLER_PROTOCOL_ID`      | contract only |
-|   0x401 | `HANDLER_SUPPORTED_MSG_IDS`| contract only |
-|   0x402 | `HANDLER_HANDLE_MESSAGE`   | contract only |
-|   0x403 | `HANDLER_ON_RESULT`        | contract only |
-|   0x404 | `HANDLER_ON_INIT`          | contract only |
-|   0x405 | `HANDLER_ON_SHUTDOWN`      | contract only |
+|   0x300 | `SECURITY_PROVIDER_ID`     | implemented   |
+|   0x301 | `SECURITY_HANDSHAKE_OPEN`  | implemented   |
+|   0x302 | `SECURITY_HANDSHAKE_STEP`  | implemented   |
+|   0x303 | `SECURITY_HANDSHAKE_COMPLETE` | implemented |
+|   0x304 | `SECURITY_EXPORT_KEYS`     | implemented   |
+|   0x305 | `SECURITY_ENCRYPT`         | implemented   |
+|   0x306 | `SECURITY_DECRYPT`         | implemented   |
+|   0x307 | `SECURITY_REKEY`           | implemented   |
+|   0x308 | `SECURITY_HANDSHAKE_CLOSE` | implemented   |
+|   0x400 | `HANDLER_PROTOCOL_ID`      | implemented   |
+|   0x401 | `HANDLER_SUPPORTED_MSG_IDS`| implemented   |
+|   0x402 | `HANDLER_HANDLE_MESSAGE`   | implemented   |
+|   0x403 | `HANDLER_ON_RESULT`        | implemented   |
+|   0x404 | `HANDLER_ON_INIT`          | implemented   |
+|   0x405 | `HANDLER_ON_SHUTDOWN`      | implemented   |
 
-"contract only" means the slot id is pinned in `sdk/remote/slots.h`
-but neither `RemoteHost` (kernel) nor `goodnet_remote_plugin_stub`
-(worker) currently dispatch it. A future commit can wire the proxy
-on either side without renumbering; bindings in other languages
-can lock against the IDs today.
-
-Security-vtable wiring in particular needs careful `gn_secure_buffer_t`
-zero-on-drop handling at every wire boundary — encode the bytes,
-zeroise the source slice; decode the bytes, hand to the worker /
-kernel, zeroise the receive buffer. The contract is stable; the
-implementation lands when a real workload (Python Noise IK worker,
-sandboxed identity-only provider) asks for it.
+The 0x300 slot doubles as `allowed_trust_mask` since the
+provider_id itself is published in the HELLO descriptor and does
+not need a wire round trip. Security-vtable wiring honours
+`gn_secure_buffer_t` zero-on-drop semantics at every boundary —
+the kernel zeroises the source slice after encoding and the
+receive buffer after handing the plaintext to the worker /
+kernel. Encrypt/decrypt and handshake-step payloads ride opaque
+byte spans; per-handshake `void*` state pointers stash in a
+worker-side handle map so the wire only ever carries u64 tokens.
+The handler's `supported_msg_ids` reply is cached per-RemoteHost
+so the borrowed pointer stays valid for the lifetime of the
+registration.
 
 Host slots (carried by `HOST_CALL`) — kernel exposes the minimum
 useful subset for the v1 proof:
@@ -167,8 +205,24 @@ useful subset for the v1 proof:
 |    0x14 | `NOTIFY_DISCONNECT`           |
 |    0x15 | `REGISTER_VTABLE`             |
 |    0x16 | `UNREGISTER_VTABLE`           |
+|    0x17 | `REGISTER_SECURITY`           |
+|    0x18 | `UNREGISTER_SECURITY`         |
 
-Adding a new slot uses a fresh integer; existing values never shift.
+`REGISTER_VTABLE` accepts both `GN_REGISTER_LINK` and
+`GN_REGISTER_HANDLER` kinds and routes through the matching
+proxy synthesis. `REGISTER_SECURITY` is the dedicated entry for
+SECURITY providers — the kernel synthesises a
+`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
+frames at 0x300..0x308. Adding a new slot uses a fresh integer;
+existing values never shift.
+
+Per-slot timeout overrides — the kernel-side
+`RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
+the host caller dial different deadlines per slot. Fast slots
+(REGISTER, UNREGISTER, LISTEN, CONNECT, DISCONNECT) typically run
+in milliseconds; slow custom handler calls may legitimately need
+seconds. The unscoped `set_reply_timeout` value remains the
+fallback for any slot without an explicit override.
 
 ## §7 — Handle translation
 
@@ -217,16 +271,16 @@ Workers must not call `host_api` slots after observing `GOODBYE`.
 The reference stub library raises a single-threaded contract: a
 worker may only call `host_api` while servicing a `PLUGIN_CALL`
 the kernel sent (the reader loop is the only thread). Multi-
-threaded workers add a response demultiplexer keyed by
-`request_id`; deferred to a follow-up plan.
+threaded workers would add a response demultiplexer keyed by
+`request_id`; not wired in the reference stub.
 
 ## §10 — Reference implementations
 
 - **Kernel side**: `core/plugin/remote_host.{hpp,cpp}` — spawns the
   worker, drives the framing reader thread, exposes `call_init /
   call_register / call_unregister / call_shutdown` to the
-  `PluginManager` (integration is a follow-up; the proof currently
-  drives `RemoteHost` directly).
+  `PluginManager` through the `RemoteRuntime` polymorphic runtime
+  (`core/plugin/runtimes/remote.{hpp,cpp}`).
 - **Worker stub (C++)**: `sdk/cpp/remote_plugin.{hpp,cpp}` plus
   `goodnet_remote_plugin_stub` static library. Workers fill in a
   `WorkerConfig` and hand control to `gn::sdk::remote::run_worker`.
@@ -238,3 +292,31 @@ threaded workers add a response demultiplexer keyed by
 - **Tests**: `tests/unit/plugin/test_wire_codec.cpp` (codec
   round-trip), `tests/unit/plugin/test_remote_host.cpp` (kernel
   side against the real `remote_echo` worker; 5 cases).
+
+## §11 — Kernel-side descriptor storage
+
+The plugin descriptor `gn_plugin_descriptor_t` exposes a
+`const char* name` field; `PluginManager` reads it through the
+runtime registry and keeps the pointer for the duration of the
+plugin's lifetime. With static linkage the pointer addresses a
+compile-time string literal (the plugin's own `.rodata`); with
+dynamic linkage it addresses a `dlsym`-resolved string baked into
+the loaded `.so`. Either way the lifetime of the storage is
+covered by the binary that supplied the symbol.
+
+Remote linkage is asymmetric here. The worker's HELLO payload
+carries the descriptor name as a CBOR text string — a transient
+slice of the read buffer, not a stable address. `RemoteHost`
+mirrors the name into a `std::string descriptor_name_storage_`
+member and points `descriptor_.name` at `descriptor_name_storage_
+.c_str()`. The buffer lives as long as the `RemoteHost` itself,
+which spans the worker's entire lifetime, so `PluginManager`'s
+descriptor pointer stays valid until unload.
+
+This is the price of accepting HELLO-payload names: a remote
+runtime cannot inherit a literal from the worker's address space
+the way the in-process runtimes do, so the kernel-side runtime
+allocates the storage instead. The asymmetry is intentional —
+without it, remote workers could not supply a name at all without
+re-introducing a wire-protocol mechanism for shared-string
+interning, which would buy nothing of value.

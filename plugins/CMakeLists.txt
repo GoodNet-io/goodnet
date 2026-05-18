@@ -27,9 +27,9 @@
 # OpenSSL mingw (TLS, QUIC, WS) or rely on POSIX-only resolver
 # subsystems (handler/dns via c-ares). ICE and store/strategies stay
 # off the first cut until their CI smoke is wired. The lean Windows
-# bundle is kernel + gnet + Noise + Null + TCP + UDP + Heartbeat;
-# the rest will lift in a follow-up cut once each plugin's mingw
-# build is verified.
+# bundle is kernel + gnet + Noise + Null + TCP + UDP + IPC +
+# Heartbeat; the rest will lift in a follow-up cut once each plugin's
+# mingw build is verified.
 set(_GOODNET_WINDOWS_SKIP FALSE)
 if(WIN32)
     set(_GOODNET_WINDOWS_SKIP TRUE)
@@ -65,6 +65,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/raw_inject/CMakeLists.txt")
+    add_subdirectory(links/raw_inject)
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/udp/CMakeLists.txt")
     add_subdirectory(links/udp)
 endif()
@@ -89,12 +93,24 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/ice)
 endif()
 
-# QUIC requires OpenSSL 3.5+ for OSSL_QUIC_*_method; the build will
-# fail at compile time on older OpenSSL — kept after udp/tls/ice so
-# its composer test fixture can see all three carrier object libraries.
+# QUIC requires OpenSSL 3.6+ for OSSL_QUIC_*_method + SSL_new_listener
+# (the server side landed in 3.6 — see plugins/links/quic/CMakeLists.txt
+# for the exact API set the plugin uses); the build fails at compile
+# time on older OpenSSL. Kept after udp/tls/ice so its composer test
+# fixture can see all three carrier object libraries.
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
     add_subdirectory(links/quic)
+endif()
+
+# PortMap surfaces the `gn.link.portmap` extension (NAT-PMP / PCP /
+# UPnP IGD) consumed by ICE before host-candidate gathering. Added
+# before strategies so the in-tree ICE composer fixture can resolve
+# the extension at conditional time when the integration tests link
+# it.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
+    add_subdirectory(links/portmap)
 endif()
 
 # Strategy plugins consume `sdk/extensions/strategy.h`.

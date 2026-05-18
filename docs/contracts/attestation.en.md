@@ -19,7 +19,7 @@ the user secret.
 
 The attestation step closes that gap. After every security session
 reaches `Transport` phase, both peers exchange a 136-byte attestation
-cert (per `identity.md` §4) bound to the current session through the
+cert (per `identity.en.md` §4) bound to the current session through the
 channel-binding `handshake_hash`. The kernel gates the trust upgrade
 `Untrusted → Peer` on a successful mutual exchange — either side that
 fails to verify the other's attestation stays at `Untrusted` and the
@@ -35,11 +35,11 @@ modification — the dispatcher is provider-agnostic.
 ## 2. Wire payload
 
 Total **232 bytes**. Multi-byte integers within the embedded
-attestation cert are big-endian per `identity.md` §4. Layout:
+attestation cert are big-endian per `identity.en.md` §4. Layout:
 
 | Offset | Size | Field |
 |---|---|---|
-| 0      | 136  | attestation cert (per `identity.md` §4) |
+| 0      | 136  | attestation cert (per `identity.en.md` §4) |
 | 136    | 32   | binding — current session's `handshake_hash` |
 | 168    | 64   | Ed25519 signature over `attestation || binding`, signed by the local device secret key |
 
@@ -54,7 +54,7 @@ consumer rejects.
 `msg_id = 0x11` is reserved for the kernel-internal attestation
 dispatcher. Plugin registration through `register_vtable(GN_REGISTER_HANDLER)` against
 `(any protocol_id, msg_id == 0x11)` is rejected with
-`GN_ERR_INVALID_ENVELOPE` per `handler-registration.md` §2a.
+`GN_ERR_INVALID_ENVELOPE` per `handler-registration.en.md` §2a.
 
 The kernel intercepts envelopes carrying `msg_id == 0x11` after the
 protocol layer's `deframe` step and before regular dispatch chain
@@ -67,14 +67,14 @@ lookup. Plugins do not see attestation traffic at any point.
 Both peers, on every connection where:
 
 - the security session has just transitioned to `Transport` phase
-  (`security-trust.md` §3 timing), and
+  (`security-trust.en.md` §3 timing), and
 - the connection's trust class is `Untrusted` (the only class
-  subject to the upgrade gate per `security-trust.md` §3),
+  subject to the upgrade gate per `security-trust.en.md` §3),
 
 the kernel-internal attestation dispatcher composes the 232-byte
 payload:
 
-1. Serialise the local attestation cert (per `identity.md` §4) to
+1. Serialise the local attestation cert (per `identity.en.md` §4) to
    its 136-byte form.
 2. Read the current session's exported `handshake_hash` from the
    security session's transport-keys block — 32 bytes.
@@ -86,7 +86,7 @@ payload:
 
 `Loopback` and `IntraNode` connections skip the producer step —
 their trust class is final at `notify_connect` (per
-`security-trust.md` §3), and the attestation gate is not consulted.
+`security-trust.en.md` §3), and the attestation gate is not consulted.
 A null-security stack on `Loopback` exchanges no attestation.
 
 The kernel emits the producer payload automatically on phase
@@ -110,7 +110,7 @@ and the connection is closed:
    the current session's exported `handshake_hash`; metric
    `drop.attestation_replay`.
 4. **Cert parse.** Drop and disconnect if the 136-byte attestation
-   does not parse per `identity.md` §4; metric
+   does not parse per `identity.en.md` §4; metric
    `drop.attestation_parse_failed`.
 5. **Signature verify.** Drop and disconnect if the Ed25519
    signature does not verify against the parsed attestation's
@@ -133,7 +133,7 @@ and the connection is closed:
    `peer_pk` is rejected before per-conn state has a chance to
    record the new value. The check is skipped while `peer_pk` is
    all-zero (responder-side pre-Noise placeholder). See
-   `registry.md` §8a.
+   `registry.en.md` §8a.
 8. **Per-session identity stability.** If a prior attestation has
    already verified on this connection, compare the new
    `device_pk` against the per-conn cached one:
@@ -171,7 +171,7 @@ and passes the enum through `disconnect_on_consumer_failure`, which
 bumps the matching `drop.attestation_*` counter on `MetricsRegistry`.
 Sharing the `drop.*` namespace with every other rejection class —
 `drop.queue_hard_cap`, `drop.frame_too_large`, `drop.rate_limited` —
-is intentional per `metrics.md` §3: operators scrape one prefix and
+is intentional per `metrics.en.md` §3: operators scrape one prefix and
 see every kernel drop class together, instead of correlating across
 a per-subsystem namespace per cause.
 
@@ -188,13 +188,13 @@ The dispatcher tracks two flags per connection:
 
 When **both** flags are true, the dispatcher promotes the connection
 through `connections.upgrade_trust(conn, GN_TRUST_PEER)` and fires
-`GN_CONN_EVENT_TRUST_UPGRADED` (per `conn-events.md` §2). Order is
+`GN_CONN_EVENT_TRUST_UPGRADED` (per `conn-events.en.md` §2). Order is
 irrelevant — concurrent send and receive on the two halves of the
 duplex stream both reach the dual-flag state regardless of which
 races first; the upgrade fires exactly once per connection.
 
 The "exactly once" guarantee comes from the connection registry's
-`upgrade_trust` policy gate (`security-trust.md` §3): after the
+`upgrade_trust` policy gate (`security-trust.en.md` §3): after the
 first successful promotion, every subsequent attempt returns
 `GN_ERR_LIMIT_REACHED` (the gate refuses `Peer → Peer`) and the
 dispatcher exits without firing a duplicate event. Concurrent
@@ -203,7 +203,7 @@ callers race through the gate, exactly one wins.
 If only `our_sent` is true and the peer never sends a valid
 attestation, the connection stays at `Untrusted` indefinitely.
 Plugins that gate behaviour on trust class observe `Untrusted` and
-apply their own policy (`security-trust.md` §7). The kernel does
+apply their own policy (`security-trust.en.md` §7). The kernel does
 not enforce a wait-time bound at v1; consumers that need bounded
 waiting close the connection through `host_api->disconnect`.
 
@@ -214,7 +214,7 @@ waiting close the connection through `host_api->disconnect`.
 The dispatcher allocates per-connection state on the first call to
 either §4 or §5. State is released when `notify_disconnect`
 invokes the dispatcher's `on_disconnect(conn)` entry directly from
-the kernel thunk (per `conn-events.md` §2a) — the call runs
+the kernel thunk (per `conn-events.en.md` §2a) — the call runs
 before the `DISCONNECTED` event publish, so subscribers never
 observe stale flags during their callback.
 
@@ -231,7 +231,7 @@ Every consumer-side failure (§5 steps 1–7) results in:
 1. The envelope is dropped — not forwarded to any handler.
 2. The metric named in the failing step is incremented.
 3. The connection is closed via `notify_disconnect(conn, reason)`
-   per `conn-events.md` §2a.
+   per `conn-events.en.md` §2a.
 
 The peer observes the disconnect through
 `GN_CONN_EVENT_DISCONNECTED`. Subscribers apply their own retry
@@ -263,7 +263,7 @@ on a fresh session.
   reconnects on a fresh session.
 - **Attestation chains / multi-CA.** The cert is a single
   user-key signature over the device key. Hierarchical CA
-  delegation (cf. SSH certs, X.509 chains) is post-v1.
+  delegation (cf. SSH certs, X.509 chains) is a planned extension.
 
 ---
 
@@ -297,11 +297,11 @@ The attack surface is bounded:
   path (§4) and do not surface the attestation flow at all, so
   the local-only deployment is unaffected.
 
-v1 ships without revocation. Operators rotate the leaked
-identity by reissuing a fresh `user_sk` outside the kernel and
-distributing the new `user_pk` to peers; until the rotation
-propagates the leaked `device_sk` is trusted up to the cert's
-expiry.
+The current contract surface defines no revocation channel.
+Operators rotate the leaked identity by reissuing a fresh
+`user_sk` outside the kernel and distributing the new `user_pk`
+to peers; until the rotation propagates the leaked `device_sk`
+is trusted up to the cert's expiry.
 
 Cross-session device-key pinning at the `ConnectionRegistry` level
 limits the leaked-key window to a single `remote_pk` value. The
@@ -311,9 +311,9 @@ that carries a different `device_pk` for the same peer with
 `GN_DROP_ATTESTATION_IDENTITY_CHANGE` — the persistent map
 outlives `notify_disconnect`, so a reconnect cannot quietly
 introduce a different signing key under the same identity.
-`registry.md` §8a holds the registry-side specification.
+`registry.en.md` §8a holds the registry-side specification.
 
-A v1.1 release adds an explicit revocation registry the operator
+A future revision adds an explicit revocation registry the operator
 publishes alongside their identity rotation.
 
 Operators who need stronger isolation today shorten the cert's
@@ -323,10 +323,41 @@ more frequent re-attestation.
 
 ---
 
-## 11. Cross-references
+## 11. Stability
 
-- Attestation cert format and verification: `identity.md` §4.
-- Trust upgrade gate fired by §6: `security-trust.md` §3.
+The attestation format defined here — Ed25519 signature over a
+232-byte payload carried on system `msg_id = 0x11`, with the
+136-byte cert / 32-byte binding / 64-byte signature layout of §2 —
+is the canonical v1 schema and is **frozen**. The wire payload
+size, layout, hash algorithm, signature algorithm, and reserved
+msg_id are not subject to amendment under this contract surface;
+the `_reserved` slot in the embedded cert is the sole extension
+point and grows only at the tail per the frontmatter `Stability`
+note.
+
+Future attestation schemes — alternative signature suites, post-
+quantum experiments, hierarchical CA delegation (per §9), longer
+or shorter payload shapes — register under a separate
+`gn.security.attestation.*` extension namespace and do not
+displace the v1 dispatcher. The kernel-side
+`AttestationDispatcher` (`core/kernel/attestation_dispatcher.{hpp,
+cpp}`) is the kept-stable shim for this format and is **not
+extracted to a plugin** within this contract surface: the gate
+between `Untrusted` and `Peer` runs in kernel code so that the
+trust upgrade cannot be subverted by replacing or unloading a
+plugin, and the v1 payload shape is small enough that an
+extension-namespace registration is the right tool for new
+schemes rather than a plugin-side rewrite of the existing one.
+
+A future attestation scheme is a peer of v1 under a fresh
+extension namespace, not a replacement for it.
+
+---
+
+## 12. Cross-references
+
+- Attestation cert format and verification: `identity.en.md` §4.
+- Trust upgrade gate fired by §6: `security-trust.en.md` §3.
 - Channel-binding `handshake_hash` carrier: `plugins/security/noise/docs/handshake.md` §2.
-- System msg_id range: `handler-registration.md` §2a.
-- Per-connection event surface for state cleanup: `conn-events.md` §2a.
+- System msg_id range: `handler-registration.en.md` §2a.
+- Per-connection event surface for state cleanup: `conn-events.en.md` §2a.

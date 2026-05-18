@@ -31,8 +31,13 @@ NAT_MODE="${NAT_MODE:-full_cone}"
 
 echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFACE}"
 
-# Enable IP forwarding regardless of mode.
-sysctl -w net.ipv4.ip_forward=1 >/dev/null
+# Enable IP forwarding regardless of mode. compose `sysctls:` block
+# already toggles `net.ipv4.ip_forward=1` per namespace, but write
+# directly to /proc/sys for belt-and-braces (and to keep the
+# container layer independent of the `procps` package being
+# installed — debian-slim ships `iptables` / `iproute2` but not
+# `sysctl(8)`).
+echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 
 # Wipe any rules from a previous run.
 iptables -t nat -F
@@ -75,6 +80,32 @@ esac
 
 echo "[init-nat] iptables -t nat -L -nv:"
 iptables -t nat -L -nv
+
+# Optional: drop ALL UDP between the LAN and a target subnet
+# (typically the peer's LAN reachable via the WAN bridge). Used
+# by the no-UDP-fallback scenario to force the stack onto the
+# TURN-over-TLS-TCP path. BLOCK_UDP_TO empty = no drop.
+BLOCK_UDP_TO="${BLOCK_UDP_TO:-}"
+if [ -n "${BLOCK_UDP_TO}" ]; then
+    echo "[init-nat] dropping UDP forward to ${BLOCK_UDP_TO}"
+    iptables -A FORWARD -p udp -d "${BLOCK_UDP_TO}" -j DROP
+    iptables -A FORWARD -p udp -s "${BLOCK_UDP_TO}" -j DROP
+fi
+
+# Optional: clip the WAN-side egress MTU via netem so DPLPMTUD
+# probing has something to discover. PATH_MTU=0 (default) leaves
+# the link untouched.
+PATH_MTU="${PATH_MTU:-0}"
+if [ "${PATH_MTU}" -gt 0 ]; then
+    echo "[init-nat] clipping ${WAN_IFACE} MTU to ${PATH_MTU} via netem"
+    tc qdisc add dev "${WAN_IFACE}" root netem mtu "${PATH_MTU}" \
+        2>/dev/null || \
+        echo "[init-nat] WARN: tc netem mtu unsupported, " \
+             "falling back to interface MTU"
+    ip link set dev "${WAN_IFACE}" mtu "${PATH_MTU}" || true
+    echo "[init-nat] tc qdisc show:"
+    tc qdisc show dev "${WAN_IFACE}"
+fi
 
 # Keep the container alive after rules install.
 exec sleep infinity

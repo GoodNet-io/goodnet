@@ -34,7 +34,7 @@ typedef struct gn_byte_span_s {
  * @brief Vtable for an `ILink` implementation.
  *
  * Begins with `api_size` for size-prefix evolution per
- * `abi-evolution.md` §3.
+ * `abi-evolution.en.md` §3.
  */
 typedef struct gn_link_vtable_s {
     uint32_t api_size;          /**< sizeof(gn_link_vtable_t) at producer build time */
@@ -81,7 +81,7 @@ typedef struct gn_link_vtable_s {
      * The kernel calls this when the send queue holds multiple ready
      * frames; link may use `writev`-style multiplexing internally.
      *
-     * The single-writer invariant (`link.md` §4) covers batches: the
+     * The single-writer invariant (`link.en.md` §4) covers batches: the
      * batch must not interleave with other sends on the same connection.
      */
     gn_result_t (*send_batch)(void* self,
@@ -99,7 +99,7 @@ typedef struct gn_link_vtable_s {
      *
      * Returns NULL if the link exposes no extension. Otherwise
      * returns a stable name like `"gn.link.tcp"` and the matching
-     * vtable through @ref extension_vtable. See `link.md` §8.
+     * vtable through @ref extension_vtable. See `link.en.md` §8.
      *
      * @return @borrowed name pointer; valid for the lifetime of the
      *         plugin.

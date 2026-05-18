@@ -15,3 +15,10 @@ add_subdirectory(unit)
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/integration/CMakeLists.txt")
     add_subdirectory(integration)
 endif()
+# `docker/` carries small harness binaries used by the
+# docker-compose driven integration topologies. Each suite's
+# orchestrator copies the built binary into the docker build
+# context before `compose up`.
+if(NOT WIN32 AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/docker/CMakeLists.txt")
+    add_subdirectory(docker)
+endif()

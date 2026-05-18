@@ -92,15 +92,15 @@ commit.
 
 | Version | Window |
 |---|---|
-| `v1.0.0-rc1` | C ABI freeze, public surface complete |
-| `v1.0.0` | After rc1 + soak time, no rc-blocker bugs |
-| `v1.x.y` | Append-only ABI evolution, plugin ecosystem grows |
+| `v1.0.0-rcN` | Integration checkpoints. Public surface still mutable per [`abi-evolution.en.md`](docs/contracts/abi-evolution.en.md) §3b — reshape window stays open through the entire rc cycle. |
+| `v1.0.0` | C ABI freeze. After this tag every reshape rule from §3 of `abi-evolution.en.md` applies without exception. Lands when the public surface is complete and rc-cycle bugs are out. |
+| `v1.x.y` | Append-only ABI evolution, plugin ecosystem grows. |
 | `v2.0` | Breaking changes — wire-protocol revision, post-quantum, etc. |
 
-Rc1 is **not** a date-driven release; it lands when the public
-surface is complete and the contracts have settled. The closure
-list is the Reachability / Address routing / Persistence /
-Stable platform sections in [`docs/ROADMAP.en.md`](docs/ROADMAP.en.md).
+Neither the rc cycle nor `v1.0.0` is date-driven; they land when
+the public surface settles. The closure list is the Reachability
+/ Address routing / Persistence / Stable platform sections in
+[`docs/ROADMAP.en.md`](docs/ROADMAP.en.md).
 
 ## Plugin admission criteria
 

@@ -1,7 +1,7 @@
 /// @file   tests/unit/kernel/test_kernel.cpp
 /// @brief  Tests for `gn::core::Kernel` FSM.
 ///
-/// Pins the contract from `docs/contracts/fsm-events.md`:
+/// Pins the contract from `docs/contracts/fsm-events.en.md`:
 ///   §3 commit-then-notify on every transition,
 ///   §5 compare-and-exchange on idempotent `stop()`,
 ///   §7 weak-observer subscription with auto-prune at fire time.

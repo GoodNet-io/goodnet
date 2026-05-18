@@ -2,8 +2,8 @@
 /// @brief  `host_api->register_vtable` / `unregister_vtable`
 ///         argument validation, enum-tag rejection, and
 ///         kind-tag tampering on the returned id. Per
-///         `host-api.md` §2 / `handler-registration.md` §2 /
-///         `link.md` §6.
+///         `host-api.en.md` §2 / `handler-registration.en.md` §2 /
+///         `link.en.md` §6.
 
 #include <gtest/gtest.h>
 
@@ -116,7 +116,7 @@ TEST(RegisterVtable, RejectsNullMeta) {
 TEST(RegisterVtable, RejectsApiSizeTooSmall) {
     /// An older SDK that built `gn_register_meta_t` with a smaller
     /// shape than the current kernel's view fails the size-prefix
-    /// check from `abi-evolution.md` §3a.
+    /// check from `abi-evolution.en.md` §3a.
     Harness h;
     auto vt   = h.make_handler_vtable();
     auto meta = h.make_handler_meta();

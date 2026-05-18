@@ -1,6 +1,6 @@
 /// @file   core/plugin/plugin_manager.hpp
 /// @brief  Loads plugin shared objects, version-checks, and orchestrates
-///         the two-phase activation per `plugin-lifetime.md` §5.
+///         the two-phase activation per `plugin-lifetime.en.md` §5.
 ///
 /// Discovery happens via an explicit path list. Each plugin is
 /// dlopened, version-checked against the kernel SDK triple, mapped
@@ -9,7 +9,7 @@
 /// reordering), and run through the two-phase activation pipeline.
 ///
 /// The reference-counted ownership invariant from
-/// `plugin-lifetime.md` §4 is enforced here: every loaded plugin
+/// `plugin-lifetime.en.md` §4 is enforced here: every loaded plugin
 /// owns a `std::shared_ptr<PluginAnchor>` lifetime anchor that
 /// registry entries copy at registration time. The anchor carries
 /// the `shutdown_requested` flag and the `in_flight` counter that
@@ -19,7 +19,7 @@
 ///
 /// SHA-256 manifest verification and hot-reload land as additive
 /// features once the dispatch generation-counter quiescence wait is
-/// wired (per `plugin-lifetime.md` §6).
+/// wired (per `plugin-lifetime.en.md` §6).
 
 #pragma once
 
@@ -37,7 +37,11 @@
 #include <core/kernel/plugin_context.hpp>
 #include <core/kernel/service_resolver.hpp>
 #include <core/plugin/plugin_manifest.hpp>
+#include <core/plugin/plugin_runtime.hpp>
+#include <core/plugin/runtimes/dynamic.hpp>
 #include <core/plugin/static_registry.hpp>
+
+#include <map>
 
 namespace gn::core {
 
@@ -53,6 +57,11 @@ class RemoteHost;
 struct PluginInstance {
     std::string                       path;        ///< absolute .so path or `static://<name>` for the static-linkage path
     void*                             so_handle{nullptr};   ///< dlopen result; opaque to plugin
+    /// Function pointers resolved from `so_handle` at load time.
+    /// Empty for static and remote linkage; populated for the
+    /// dlopen path so register / unregister / shutdown skip the
+    /// per-call `dlsym`.
+    DynamicPluginSymbols              symbols{};
     int                               integrity_fd{-1};     ///< /proc/self/fd path source — kept open until shutdown so glibc dlopen does not reuse the path string across plugins
     std::unique_ptr<PluginContext>    ctx;         ///< handed via api->host_ctx
     host_api_t                        api{};       ///< per-plugin instance of the public table
@@ -74,6 +83,24 @@ struct PluginInstance {
     /// dtor calls `terminate()` so a leaked instance still reaps
     /// its child process.
     std::unique_ptr<RemoteHost>       remote;
+
+    /// Borrowed pointer to the runtime that loaded this instance.
+    /// PluginManager owns the runtime singletons (kept alive for
+    /// the manager's lifetime); the instance is dispatched through
+    /// `runtime->init(*this)` etc. instead of switching on the
+    /// linkage fields above. The pointer is set when the instance
+    /// is loaded and remains valid until the instance is destroyed
+    /// during rollback.
+    IPluginRuntime*                   runtime{nullptr};
+
+    /// Per-plugin quiescence-wait override copied from the manifest
+    /// entry at load time. Zero means "use the manager-wide
+    /// default" — the manifest field is optional and most plugins
+    /// quiesce well within the global ceiling. Resolved once at
+    /// load time because `path` is cleared during the post-resolve
+    /// reorder, so the rollback path cannot re-key the manifest
+    /// lookup by path. Seconds.
+    std::uint32_t                     quiescence_timeout_s{0};
 };
 
 class PluginManager {
@@ -87,7 +114,7 @@ public:
     /// Load every shared object in @p paths, version-check each,
     /// build descriptors via the optional `gn_plugin_descriptor`
     /// symbol, run the ServiceResolver, then two-phase activate
-    /// the ordered set per `plugin-lifetime.md` §5. Returns the
+    /// the ordered set per `plugin-lifetime.en.md` §5. Returns the
     /// first failing step's `gn_result_t` and triggers rollback so
     /// no half-state survives.
     ///
@@ -111,6 +138,18 @@ public:
     /// Reverse the activation: unregister every plugin, then
     /// shutdown, then dlclose. Idempotent — second call no-ops.
     void shutdown();
+
+    /// Unload a single plugin identified by its descriptor name
+    /// (`gn_plugin_descriptor->plugin_name`). Walks the same
+    /// `unregister → quiescence-wait → shutdown → close` chain
+    /// `rollback()` uses, but limited to the one matching
+    /// instance — the rest stay live so the kernel does not pay
+    /// a full teardown to drop one .so. Returns `GN_ERR_NOT_FOUND`
+    /// when no instance matches @p name; the call is idempotent
+    /// past that point (calling again with the same name returns
+    /// the same code). `plugin-lifetime.en.md` §6 covers the
+    /// hot-reload contract this entry implements.
+    [[nodiscard]] gn_result_t unload(std::string_view name);
 
     /// Number of currently-active plugins (post-init, pre-shutdown).
     [[nodiscard]] std::size_t size() const noexcept { return instances_.size(); }
@@ -142,7 +181,7 @@ public:
     /// and the demo. A non-empty manifest puts the loader in
     /// production mode: every path must appear in the manifest with
     /// a matching SHA-256, or `load` fails with
-    /// `GN_ERR_INTEGRITY_FAILED`. See `plugin-manifest.md`.
+    /// `GN_ERR_INTEGRITY_FAILED`. See `plugin-manifest.en.md`.
     void set_manifest(PluginManifest manifest) noexcept;
 
     [[nodiscard]] const PluginManifest& manifest() const noexcept {
@@ -155,7 +194,7 @@ public:
     /// Production deployments call this on the bootstrap thread
     /// before `load` and pair it with a populated manifest; dev
     /// fixtures leave the flag at its default `false`. See
-    /// `plugin-manifest.md` §7. Both `set_manifest_required` and
+    /// `plugin-manifest.en.md` §7. Both `set_manifest_required` and
     /// `set_manifest` are bootstrap-only — the manager does not
     /// guard against concurrent setter calls during an active
     /// session.
@@ -164,6 +203,23 @@ public:
     [[nodiscard]] bool manifest_required() const noexcept {
         return manifest_required_;
     }
+
+    /// Register an additional plugin runtime under @p kind. The
+    /// kernel ships built-in runtimes for "dynamic", "static", and
+    /// "remote"; hosts that bundle their own (Wasm, FFI-via-IPC,
+    /// etc.) register them through this slot. Returns
+    /// `GN_ERR_LIMIT_REACHED` when @p kind is already registered.
+    [[nodiscard]] gn_result_t register_runtime(
+        std::string kind, std::unique_ptr<IPluginRuntime> runtime);
+
+    /// Look up the runtime registered for @p kind. Returns nullptr
+    /// when no runtime is registered under that kind.
+    [[nodiscard]] IPluginRuntime* runtime_for(
+        std::string_view kind) const noexcept;
+
+    /// Kernel reference for runtime impls that need to construct a
+    /// `PluginContext` (every built-in runtime does this in `load`).
+    [[nodiscard]] Kernel& kernel() noexcept { return kernel_; }
 
 private:
     /// Build a ServiceDescriptor from the loaded plugin. Reads the
@@ -177,7 +233,7 @@ private:
     /// Roll back from a partial init or register pass. Releases
     /// every still-live instance in reverse order, draining each
     /// plugin's lifetime_anchor weak_ptr between shutdown and dlclose
-    /// per `plugin-lifetime.md` §4.
+    /// per `plugin-lifetime.en.md` §4.
     void rollback();
 
     /// Drain a single plugin's lifetime anchor before its `dlclose`.
@@ -186,6 +242,28 @@ private:
     [[nodiscard]] bool drain_anchor(PluginInstance& inst,
                                     const std::weak_ptr<PluginAnchor>& watch);
 
+    /// Walk `unregister → cancel-timers → drain → shutdown → close`
+    /// on @p inst, dropping its `ctx` at the end. Shared by `rollback`
+    /// and `unload(name)` — the two callers differ only in which
+    /// instances they pass through and whether they also clear
+    /// `instances_` afterwards. Pre-condition: @p inst was activated
+    /// past `init_one`; failed-init instances do not reach this
+    /// helper because `rollback` only walks the populated vector.
+    void teardown_one(PluginInstance& inst);
+
+    /// Per-instance lifecycle dispatchers. Each branches on the
+    /// instance's linkage state (`remote != nullptr` → subprocess,
+    /// `static_entry != nullptr` → static-registry, otherwise →
+    /// dlopen) so the load / load_static loops and the rollback path
+    /// reach the right entry point without duplicating the
+    /// three-way switch at every site. These wrap the same logic the
+    /// future `IPluginRuntime` registry will dispatch through — the
+    /// extraction here makes that migration mechanical.
+    [[nodiscard]] gn_result_t init_one(PluginInstance& inst);
+    [[nodiscard]] gn_result_t register_one(PluginInstance& inst);
+    void unregister_one(PluginInstance& inst);
+    void shutdown_one(PluginInstance& inst);
+
     Kernel&                         kernel_;
     std::vector<PluginInstance>     instances_;
     bool                            active_{false};
@@ -193,6 +271,16 @@ private:
     std::size_t                     leaked_handles_{0};
     PluginManifest                  manifest_;
     bool                            manifest_required_{false};
+
+    /// Plugin runtimes keyed by manifest "kind" string. Populated
+    /// with the three built-in entries ("dynamic", "static",
+    /// "remote") in the constructor; hosts add custom entries
+    /// through `register_runtime`. The map outlives every
+    /// PluginInstance — instances borrow `IPluginRuntime*` via
+    /// `PluginInstance::runtime`, so the registry must drop after
+    /// `shutdown()` clears `instances_`.
+    std::map<std::string, std::unique_ptr<IPluginRuntime>,
+             std::less<>>           runtimes_;
 };
 
 } // namespace gn::core

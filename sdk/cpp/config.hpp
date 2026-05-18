@@ -2,19 +2,14 @@
 /// @file   sdk/cpp/config.hpp
 /// @brief  Typed C++ wrappers over `host_api->config_get`.
 ///
-/// Plugins currently sprinkle `gn_config_get_bool(api, key, &v)` and
-/// dance around `gn_result_t` to test "key absent" vs "wrong type"
-/// vs "value retrieved". The DX gap from the 2026-05-12 audit:
+/// One-expression typed config pulls returning `std::optional<T>`,
+/// collapsing the C ABI's three-state ("absent" / "wrong type" /
+/// "value retrieved") signal into the option's empty state plus
+/// the C ABI's NULL-argument diagnostics. The C path stays
+/// available for callers that need the raw error code; this
+/// wrapper is for the common branchless pull.
 ///
 /// @code
-/// // before — 3 lines per config pull, typed via macro, no scoping
-/// bool verify = true;
-/// gn_config_get_bool(api, "links.tls.verify_peer", &verify);
-/// // (out value untouched on NOT_FOUND so default must be set first)
-/// @endcode
-///
-/// @code
-/// // after — one expression, std::optional<bool>, explicit default
 /// const bool verify =
 ///     gn::sdk::config_bool(api, "links.tls.verify_peer").value_or(true);
 /// @endcode

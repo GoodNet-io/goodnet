@@ -10,7 +10,15 @@ The framing is Linux. The kernel does not know what TCP is, what
 Noise is, what an application is. It tracks logical connections,
 typed messages, public-key addresses, and registered handlers.
 Every transport, every cipher, every wire format lives in a
-plugin loaded through `dlopen` against a versioned C ABI.
+plugin loaded through one of three built-in runtimes — `dynamic`
+(dlopen the .so), `static` (link the plugin into the kernel
+binary at build time), or `remote` (spawn a subprocess worker
+talking over the wire codec). The `IPluginRuntime` interface
+is open: host programs that bundle a custom runtime
+(WebAssembly host, FFI-over-IPC bridge, per-process sandbox)
+register an instance through `PluginManager::register_runtime`
+and the kernel dispatches future manifest entries through it
+without touching `PluginManager` itself.
 
 ## Quickstart
 
@@ -25,6 +33,49 @@ nix run .#run -- demo          # two-node Noise-over-TCP, one message
 Without Nix: gcc 15, libsodium, OpenSSL, asio, spdlog,
 gtest, rapidcheck, CMake 3.25 — install via your package manager,
 then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
+
+LibFuzzer-driven parser harness (clang only, opt-in): see
+[`docs/operator/fuzzing.en.md`](docs/operator/fuzzing.en.md).
+
+### Local test gate and CI gating
+
+`nix run .#setup` wires `core.hooksPath` to `.githooks/`, installing
+two hooks in the clone:
+
+- **`pre-commit`** — `clang-tidy --warnings-as-errors=*` on every
+  staged C++ file plus the ABI / banlist / livedoc drift checks.
+- **`pre-push`** — when the push targets `refs/heads/main`, re-runs
+  the cheap CI subset locally (`tools/livedoc.py --check`, `pytest
+  tests/livedoc tests/tools`, vanilla debug `ctest`) before the
+  push leaves the machine. The hook is a no-op for any other branch.
+
+Bypass once with the standard Git escape hatch when you know what
+you're doing:
+
+```bash
+git commit --no-verify   # skip pre-commit for one commit
+git push   --no-verify   # skip pre-push for one push
+```
+
+The full CI matrix lives in [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+
+| Gate                | When                                |
+|---------------------|-------------------------------------|
+| `flake-check`       | every PR + push to main             |
+| `livedoc-check`     | every PR + push to main             |
+| `build-and-test`    | every PR + push to main             |
+| `plugin-verify`     | every PR + push to main             |
+| `windows-cross-build` | every PR + push to main           |
+| `bench-smoke`       | push to main OR PR label `bench`    |
+| `ice-3node`         | push to main OR PR label `ice-test` |
+| `fuzz-smoke`        | push to main OR PR label `fuzz`     |
+| `asan-smoke`        | push to main OR PR label `sanitizer` |
+| `tsan-smoke`        | push to main OR PR label `sanitizer` |
+
+`asan-smoke` + `tsan-smoke` previously stayed local-only; they now
+run on every push to main so a race or UAF that slipped past local
+dev surfaces before the next release tag. Tag a PR with `sanitizer`
+when your change touches concurrency-sensitive code.
 
 ## What makes it different
 
@@ -287,12 +338,15 @@ Layout:
 core/        kernel and primitives
 sdk/         public C ABI (host_api, link, security, protocol, handler, ...)
 plugins/     bundled link / security / protocol / handler plugins
-apps/        goodnet daemon binary, gssh, demo
 examples/    bench harness, two-node demo
 docs/        contracts (authoritative), architecture (narrative), operator
 tests/       unit, integration, property, conformance
 dist/        example operator config + systemd unit
 ```
+
+The `goodnetd` daemon binary, the `gssh` SSH tunnel, and any
+other operator-facing app live in their own repos under
+`GoodNet-io/` — the kernel tree stays library-only.
 
 Each plugin under `plugins/<kind>/<name>/` is a self-contained
 unit: own `CMakeLists.txt`, own `default.nix`, own git, own
@@ -301,13 +355,13 @@ against an SHA-256 manifest (`/etc/goodnet/plugins.json`).
 
 ## Running as a daemon
 
-`goodnet` is a multicall binary:
+`goodnetd` is a multicall binary:
 
 ```bash
-goodnet identity gen --out /etc/goodnet/identity.bin
-goodnet manifest gen build/plugins/libgoodnet_*.so > plugins.json
-goodnet config validate dist/example/node.json
-goodnet run --config dist/example/node.json \
+goodnetd identity gen --out /etc/goodnet/identity.bin
+goodnetd manifest gen build/plugins/libgoodnet_*.so > plugins.json
+goodnetd config validate dist/example/node.json
+goodnetd run --config dist/example/node.json \
             --manifest plugins.json \
             --identity /etc/goodnet/identity.bin
 ```
@@ -353,12 +407,14 @@ Russian: see [`README.ru.md`](README.ru.md).
 ## License
 
 GPL-2.0 with linking exception for the strategic baseline:
-kernel, the bundled TCP / UDP / WS / Noise / Heartbeat plugins.
-The linking exception lets out-of-tree plugins ship under any
-license — the boundary is the C ABI, not the license. Periphery
-plugins (raw protocol, null security, IPC link) are MIT for
-ecosystem reach. The TLS plugin is Apache-2.0 for OpenSSL
-compatibility.
+kernel, the gnet protocol layer, and the GPL-2-licensed bundled
+plugins — TCP / UDP / WS / ICE link plugins, Noise security
+provider, Heartbeat / Store / DNS handlers. The linking exception
+lets out-of-tree plugins ship under any license — the boundary is
+the C ABI, not the license. Periphery plugins (raw protocol,
+null security, IPC link) are MIT for ecosystem reach. The
+OpenSSL-tied plugins (TLS link, QUIC link) and the reference
+strategy (float-send-rtt) are Apache-2.0.
 
 The strategic licensing rationale is the same one Linux applied
 in 1991: GPL on the kernel keeps the substrate open, the linking
@@ -402,9 +458,5 @@ methodology + the six measurement axes are documented in
 
 - Pre-built release binaries. Build from source through Nix or
   the standard CMake path above.
-- Per-plugin GitHub repositories. The bundled plugins live
-  in-tree under `plugins/`; the org repos at
-  `goodnet-io/<kind>-<name>` come online when each plugin
-  extracts.
 - A registered domain. Documentation references the GitHub
   organisation directly.

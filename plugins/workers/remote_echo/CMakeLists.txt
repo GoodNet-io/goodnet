@@ -13,3 +13,8 @@ set_target_properties(remote_echo_worker PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/workers"
     OUTPUT_NAME remote_echo
 )
+
+if(GOODNET_BUILD_TESTS AND
+   EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
+    add_subdirectory(tests)
+endif()

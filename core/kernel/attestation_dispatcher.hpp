@@ -13,6 +13,18 @@
 /// The dispatcher is provider-agnostic: any security session that
 /// exports a `gn_handshake_keys_t::handshake_hash` (per
 /// `plugins/security/noise/docs/handshake.md` §2) carries the flow.
+///
+/// This class is the v1-canonical implementation of the
+/// `docs/contracts/attestation.en.md` §11 frozen format (Ed25519,
+/// 232-byte payload, `msg_id == 0x11`) — not the only-possible
+/// shape of an attestation gate. Alternative attestation schemes
+/// (post-quantum signatures, hierarchical CA delegation, different
+/// payload sizes) register under a separate
+/// `gn.security.attestation.*` extension namespace and run
+/// alongside this dispatcher rather than replacing it. The class
+/// is therefore kept in `core/kernel/`, not extracted to a
+/// plugin-side module: the v1 gate must run in kernel code so the
+/// trust upgrade cannot be subverted by plugin replacement.
 
 #pragma once
 
@@ -41,7 +53,7 @@ class SecuritySession;
 /// One instance per kernel (owned by `Kernel`); thread-safe.
 class AttestationDispatcher {
 public:
-    /// Total wire-payload length per `attestation.md` §2:
+    /// Total wire-payload length per `attestation.en.md` §2:
     /// 136 cert + 32 binding + 64 signature.
     static constexpr std::size_t kPayloadBytes =
         identity::kAttestationBytes        // 136
@@ -50,7 +62,7 @@ public:
 
     /// Clock source returning seconds since Unix epoch. Default
     /// reads `std::time(nullptr)`. Tests inject a deterministic
-    /// source per `clock.md` §2.
+    /// source per `clock.en.md` §2.
     using NowSec = std::function<std::int64_t()>;
 
     AttestationDispatcher();
@@ -61,7 +73,7 @@ public:
     /// Replace the wall-clock source. Cleared between tests.
     void set_clock(NowSec clock) noexcept;
 
-    /// Producer step — `attestation.md` §4.
+    /// Producer step — `attestation.en.md` §4.
     ///
     /// Composes the 232-byte payload from the kernel's
     /// `NodeIdentity` and @p session's exported `handshake_hash`,
@@ -72,14 +84,14 @@ public:
     /// (typically by reconnecting on a fresh session).
     ///
     /// Loopback / IntraNode connections are skipped per
-    /// `attestation.md` §4 — the dispatcher exits without
+    /// `attestation.en.md` §4 — the dispatcher exits without
     /// allocating per-connection state when the connection record
     /// reports a non-`Untrusted` trust class.
     void send_self(Kernel&            kernel,
                    gn_conn_id_t       conn,
                    SecuritySession&   session) noexcept;
 
-    /// Consumer step — `attestation.md` §5.
+    /// Consumer step — `attestation.en.md` §5.
     ///
     /// Verifies the 232-byte @p payload against @p session's
     /// `handshake_hash`. On success marks `their_received_valid`
@@ -103,7 +115,7 @@ public:
                    std::span<const std::uint8_t>    payload) noexcept;
 
     /// Drop per-connection state. Called from
-    /// `notify_disconnect` (per `conn-events.md` §2a) so freshly
+    /// `notify_disconnect` (per `conn-events.en.md` §2a) so freshly
     /// allocated ids do not inherit stale flags.
     void on_disconnect(gn_conn_id_t conn) noexcept;
 

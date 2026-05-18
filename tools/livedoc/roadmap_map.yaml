@@ -21,6 +21,7 @@ features:
   "NAT-traversal pipeline":
     rule:
       any:
+        - plugin_exists: plugins/links/ice
         - plugin_exists: plugins/extensions/nat-traversal
         - extension_registered: gn.nat
     partial_if:
@@ -29,14 +30,15 @@ features:
   "Multi-path scheduler":
     rule:
       any:
-        - plugin_exists: plugins/extensions/multipath
-        - extension_registered: gn.multipath
+        - plugin_exists: plugins/strategies/float_send_rtt
+        - extension_registered: gn.strategy.rtt-optimal
     partial_if:
-      symbol_in_kernel: link_switch
+      symbol_in_kernel: pick_conn
 
   "Directed relay → direct upgrade":
     rule:
       any:
+        - file_exists: plugins/links/ice/session.cpp
         - plugin_exists: plugins/extensions/relay-upgrade
         - extension_registered: gn.relay
 
@@ -52,7 +54,9 @@ features:
 
   "KV storage handler":
     rule:
-      plugin_exists: plugins/handlers/kv
+      any:
+        - plugin_exists: plugins/handlers/store
+        - extension_registered: gn.store
 
   "Gossip sync handler":
     rule:
@@ -86,3 +90,207 @@ features:
       any:
         - plugin_exists: tests/vectors
         - plugin_exists: docs/test-vectors
+
+  "Raw inject bridge":
+    rule:
+      plugin_exists: plugins/links/raw_inject
+
+  "DPLPMTUD active path-MTU probing":
+    rule:
+      all:
+        - plugin_exists: plugins/links/ice
+        - file_exists: plugins/links/ice/path_mtu.hpp
+
+  "Multi-TURN fallback":
+    rule:
+      all:
+        - kernel_feature: turn_servers
+        - kernel_feature: turn_backup_interval_s
+
+  "IPv6 mDNS dual-stack":
+    rule:
+      kernel_feature: "ff02::fb"
+
+  "Subprocess SECURITY/HANDLER worker proxy":
+    rule:
+      symbol_in_kernel: security_vtable_proxy
+
+  "Recv-side parallel decrypt":
+    rule:
+      symbol_in_kernel: decrypt_batch_transport
+
+  "Link capability gate":
+    rule:
+      file_exists: core/kernel/link_capability.hpp
+
+  "DynamicRuntime dlsym cache":
+    rule:
+      symbol_in_kernel: DynamicPluginSymbols
+
+  "Required-plugin manifest pinning":
+    rule:
+      any:
+        - symbol_in_kernel: ManifestEntry
+        - file_exists: core/plugin/plugin_manifest.hpp
+
+  "gn_core_unload_plugin hot-reload":
+    rule:
+      symbol_in_kernel: gn_core_unload_plugin
+
+  "Subprocess HOST_CALL slot completion":
+    rule:
+      any:
+        - symbol_in_kernel: GN_WIRE_HOST_SLOT_NOTIFY_CONNECT
+        - file_exists: sdk/remote/slots.h
+
+  "Per-slot reply-timeout override":
+    rule:
+      symbol_in_kernel: set_reply_timeout_for_slot
+
+  "Wire codec GN_ERR_WIRE_DECODE":
+    rule:
+      symbol_in_kernel: GN_ERR_WIRE_DECODE
+
+  "Port mapping (UPnP / PCP / NAT-PMP)":
+    rule:
+      plugin_exists: plugins/links/portmap
+
+  "WASM plugin runtime (sandbox for untrusted plugins)":
+    rule:
+      any:
+        - file_exists: core/plugin/runtimes/wasm.cpp
+        - kernel_feature: wasmtime
+        - kernel_feature: wasmer
+
+  "Full WASM kernel build":
+    rule:
+      any:
+        - file_exists: nix/goodnet-wasm.nix
+        - kernel_feature: EMSCRIPTEN
+
+  "JS SDK + WebSocket bridge":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/web_api_proxy
+        - plugin_exists: bridges/goodnet-js
+        - extension_registered: gn.handler.web-api-proxy
+
+  "C ABI version of `IPluginRuntime`":
+    rule:
+      file_exists: sdk/plugin_runtime.h
+
+  "Subprocess sandbox":
+    rule:
+      any:
+        - kernel_feature: seccomp_load
+        - kernel_feature: setns
+        - kernel_feature: unshare
+
+  "BRIDGE kind first-class plugin taxonomy":
+    rule:
+      any:
+        - kernel_feature: GN_PLUGIN_KIND_BRIDGE
+        - file_exists: core/registry/bridge_registry.hpp
+
+  "io_uring runtime":
+    rule:
+      any:
+        - kernel_feature: io_uring_setup
+        - file_exists: core/plugin/runtimes/io_uring.cpp
+
+  "aarch64 Linux":
+    rule:
+      kernel_feature: aarch64-linux-ci
+
+  "Android build":
+    rule:
+      any:
+        - file_exists: nix/goodnet-android.nix
+        - kernel_feature: ANDROID_NDK
+
+  "MCU port":
+    rule:
+      any:
+        - file_exists: nix/goodnet-mcu.nix
+        - kernel_feature: GOODNET_MCU_TRIM
+
+  "C99 SDK subset":
+    rule:
+      file_exists: sdk/c99/
+
+  "Rust":
+    rule:
+      file_exists: bridges/goodnet-rs/Cargo.toml
+
+  "Python":
+    rule:
+      file_exists: bridges/goodnet-py/setup.py
+
+  "Go":
+    rule:
+      file_exists: bridges/goodnet-go/go.mod
+
+  "Zig":
+    rule:
+      file_exists: bridges/goodnet-zig/build.zig
+
+  "Hardware key store":
+    rule:
+      any:
+        - plugin_exists: plugins/security/tpm
+        - extension_registered: gn.security.tpm
+
+  "Post-quantum security provider":
+    rule:
+      any:
+        - plugin_exists: plugins/security/pq
+        - kernel_feature: ML_KEM
+
+  "OpenTelemetry trace propagation across mesh hops":
+    rule:
+      kernel_feature: otel_span_propagate
+
+  "Concrete exporter plugins":
+    rule:
+      any:
+        - plugin_exists: plugins/metrics/prometheus
+        - plugin_exists: plugins/metrics/otlp
+
+  "File transfer handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/file_transfer
+        - extension_registered: gn.transfer
+
+  "Identity registration handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/identity
+        - extension_registered: gn.identity
+
+  "Group membership handler":
+    rule:
+      any:
+        - plugin_exists: plugins/handlers/group
+        - extension_registered: gn.group
+
+  "Goodnetd binary roadmap":
+    rule:
+      kernel_feature: GOODNETD_TRACKED_IN_KERNEL_ROADMAP
+
+  "CLI introspection tool":
+    rule:
+      file_exists: tools/goodnetctl/
+
+  "Config validator":
+    rule:
+      file_exists: tools/config_validator/
+
+  "TCP-TURN (RFC 6062)":
+    rule:
+      any:
+        - kernel_feature: REQUESTED_TRANSPORT_TCP
+        - kernel_feature: TURN_CONNECTION_BIND_REQUEST
+        - kernel_feature: TURN_CONNECTION_ATTEMPT_INDICATION
+        - kernel_feature: TURN_TCP_ALLOCATE
+        - kernel_feature: turn_tcp_relay

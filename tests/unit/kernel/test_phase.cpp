@@ -1,7 +1,7 @@
 /// @file   tests/unit/kernel/test_phase.cpp
 /// @brief  Tests for the kernel `Phase` enum and its helpers.
 ///
-/// Pins the contract from `docs/contracts/fsm-events.md` §2: phases are
+/// Pins the contract from `docs/contracts/fsm-events.en.md` §2: phases are
 /// linear, the only forward step is "next ordinal", same-phase is a
 /// permitted no-op. `phase_name` returns a stable string for every
 /// enumerator.

@@ -10,8 +10,15 @@ standalone-демон. Стабильна ровно одна граница —
 такое Noise, что такое приложение. Оно ведёт логические
 соединения, типизированные сообщения, адреса-публичные-ключи и
 зарегистрированные обработчики. Каждый транспорт, каждый шифр,
-каждый wire-формат живёт в плагине, загружаемом через `dlopen`
-по версионированному C ABI.
+каждый wire-формат живёт в плагине, загружаемом через один из
+трёх встроенных runtime'ов — `dynamic` (dlopen .so), `static`
+(плагин слинкован в kernel binary на этапе сборки) или `remote`
+(subprocess worker, общается через wire codec). Интерфейс
+`IPluginRuntime` открыт: hosting-программа с собственным runtime
+(WebAssembly host, FFI-IPC bridge, sandbox-менеджер) регистрирует
+его через `PluginManager::register_runtime`, и ядро диспетчит
+дальнейшие записи манифеста через него без правок в
+`PluginManager` самом.
 
 ## Quickstart
 
@@ -113,12 +120,15 @@ Layout:
 core/        ядро и примитивы
 sdk/         публичный C ABI (host_api, link, security, protocol, handler, ...)
 plugins/     bundled link / security / protocol / handler плагины
-apps/        бинарь демона goodnet, gssh, demo
 examples/    bench harness, two-node демо
 docs/        contracts (авторитет), architecture (narrative), operator
 tests/       unit, integration, property, conformance
 dist/        пример operator-конфига + systemd unit
 ```
+
+Бинарь `goodnetd`, SSH-туннель `gssh`, и остальные operator-
+facing apps живут в отдельных репозиториях под `GoodNet-io/` —
+kernel tree остаётся library-only.
 
 Каждый плагин под `plugins/<kind>/<name>/` — самодостаточная
 единица: свой `CMakeLists.txt`, свой `default.nix`, свой git,
@@ -127,13 +137,13 @@ dist/        пример operator-конфига + systemd unit
 
 ## Демон
 
-`goodnet` — multicall-бинарь:
+`goodnetd` — multicall-бинарь:
 
 ```bash
-goodnet identity gen --out /etc/goodnet/identity.bin
-goodnet manifest gen build/plugins/libgoodnet_*.so > plugins.json
-goodnet config validate dist/example/node.json
-goodnet run --config dist/example/node.json \
+goodnetd identity gen --out /etc/goodnet/identity.bin
+goodnetd manifest gen build/plugins/libgoodnet_*.so > plugins.json
+goodnetd config validate dist/example/node.json
+goodnetd run --config dist/example/node.json \
             --manifest plugins.json \
             --identity /etc/goodnet/identity.bin
 ```
@@ -179,13 +189,14 @@ English: see [`README.md`](README.md).
 
 ## Лицензия
 
-GPL-2.0 с linking exception для strategic-базы: ядро,
-bundled-плагины TCP / UDP / WS / Noise / Heartbeat. Linking
+GPL-2.0 с linking exception для strategic-базы: ядро, gnet
+protocol layer, bundled-плагины TCP / UDP / WS / ICE links,
+Noise security, Heartbeat / Store / DNS handlers. Linking
 exception разрешает out-of-tree плагинам жить под любой
 лицензией — граница это C ABI, не лицензия. Periphery-плагины
 (raw protocol, null security, IPC link) — MIT для широты
-экосистемы. TLS-плагин — Apache-2.0 ради совместимости с
-OpenSSL.
+экосистемы. OpenSSL-tied plugins (TLS link, QUIC link) и
+reference-strategy (float-send-rtt) — Apache-2.0.
 
 Стратегический rationale тот же что Linux в 1991: GPL на ядре
 держит субстрат открытым, linking exception оставляет
@@ -197,7 +208,7 @@ OpenSSL.
 - Готовых release-бинарей. Сборка из исходников через Nix или
   стандартный CMake путь выше.
 - Per-plugin GitHub-репозиториев. Bundled-плагины живут в
-  дереве под `plugins/`; org-repos `goodnet-io/<kind>-<name>`
+  дереве под `plugins/`; org-repos `GoodNet-io/<kind>-<name>`
   встанут когда плагин уезжает наружу.
 - Зарегистрированного домена. Документация ссылается на
   GitHub-организацию напрямую.

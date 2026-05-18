@@ -99,6 +99,29 @@ nix run .#test -- asan   # AddressSanitizer + UBSan
 nix run .#test -- tsan   # ThreadSanitizer
 ```
 
+CI now mirrors both as `asan-smoke` and `tsan-smoke` jobs (gated by
+the `sanitizer` label on PRs, unconditional on push to main), and
+`fuzz-smoke` runs each libFuzzer target for 10 s. The local
+sanitiser run stays the tight-loop entrypoint; CI is the backstop.
+
+## Local hook gate
+
+`nix run .#setup` installs two hooks via `core.hooksPath`:
+
+- `pre-commit` — clang-tidy on staged C++ + ABI / banlist / livedoc
+  drift gate.
+- `pre-push` — when the push targets `refs/heads/main`, re-runs the
+  cheap CI subset locally (`tools/livedoc.py --check`, `pytest
+  tests/livedoc tests/tools`, vanilla debug `ctest`) before the
+  push leaves the machine.
+
+Both hooks honour the standard Git escape hatch. Use it rarely:
+
+```bash
+git commit --no-verify
+git push   --no-verify
+```
+
 ## Audit pass
 
 After a non-trivial merge a reviewer reads the diff against the

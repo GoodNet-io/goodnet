@@ -68,7 +68,7 @@ Security provider — это плагин, который терминирует
 ## 3. Шаг 1. Scaffold
 
 ```sh
-nix run .#new-plugin -- security myprov
+nix run .#plugin -- new security myprov
 ```
 
 Скелет — `plugins/security/myprov/` с тем же набором
@@ -102,13 +102,15 @@ static uint32_t myprov_allowed_trust_mask(void* self) {
 ```
 
 Ядро читает маску один раз при `register_security` и проверяет на
-каждом `SessionRegistry::create` (`security-trust.md` §4): trust class
+каждом `SessionRegistry::create` (`security-trust.en.md` §4): trust class
 соединения, отсутствующий в маске, ⇒ `GN_ERR_INVALID_ENVELOPE` ещё до
 первого handshake-байта + bump `metrics.drop.trust_class_mismatch`.
 
-Single-active per-provider invariant: повторный `register_security`
-вернёт `GN_ERR_LIMIT_REACHED`. v1.x StackRegistry разрешит multi-
-provider per trust class.
+Duplicate-id invariant: повторный `register_security` под уже
+зарегистрированным `provider_id` отдаёт `GN_ERR_LIMIT_REACHED`.
+Свежий id присоединяется в `StackRegistry` без выселения
+incumbent'а — kernel admits N distinct providers concurrently и
+выбирает по trust class через `find_for_trust`.
 
 ```c
 GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self_v) {
@@ -270,7 +272,7 @@ static gn_result_t myprov_export_keys(void* self_v, void* state_v,
 ```
 
 `handshake_hash` — channel-binding 32-байт для attestation
-(`attestation.md`); peer'ы подписывают его при формировании 232-
+(`attestation.en.md`); peer'ы подписывают его при формировании 232-
 байтного аттестационного payload'а.
 
 ---
@@ -327,7 +329,7 @@ ciphertext в 2-байт BE length prefix per Noise §7. Plugin не возит�
 ## 9. Шаг 7. Replay protection и rekey
 
 Provider реализует sliding nonce-window per
-[security-trust.md](../contracts/security-trust.en.md) §6 (cross-refs ниже
+[security-trust.en.md](../contracts/security-trust.en.md) §6 (cross-refs ниже
 указывают на noise/docs/handshake.md как канонический wire-spec):
 
 - send-side: монотонный счётчик nonce, инкремент per encrypt;
@@ -355,7 +357,7 @@ static gn_result_t myprov_rekey(void* self_v, void* state_v) {
 ## 10. Шаг 8. Attestation hook
 
 Promotion `Untrusted → Peer` гейтится attestation'ом
-([attestation.md](../contracts/attestation.en.md)), а не успехом Noise.
+([attestation.en.md](../contracts/attestation.en.md)), а не успехом Noise.
 После того как handshake достиг Transport, ядро публикует
 ATTESTATION-события через kernel-internal dispatcher:
 
@@ -422,7 +424,7 @@ GN_PLUGIN_EXPORT void gn_plugin_shutdown(void* self_v) {
 }
 ```
 
-Quiescence-wait (`plugin-lifetime.md` §4) обеспечивает, что после
+Quiescence-wait (`plugin-lifetime.en.md` §4) обеспечивает, что после
 `unregister_security` ни одна in-flight encrypt/decrypt-операция уже
 не входит в plugin'у `.text`.
 
@@ -442,7 +444,7 @@ Quiescence-wait (`plugin-lifetime.md` §4) обеспечивает, что по
   обрабатывает kernel-side `SecuritySession`; provider шифрует
   логический payload.
 - **Не делает attestation сам.** Attestation flow — kernel-internal
-  dispatcher на reserved msg_id `0x11` (см. handler-registration.md
+  dispatcher на reserved msg_id `0x11` (см. handler-registration.en.md
   §2a). Provider только экспортирует `handshake_hash`.
 - **Не вызывает `notify_connect` / `notify_inbound_bytes` /
   `notify_disconnect` / `kick_handshake`.** Это loader-side host_api,
@@ -474,14 +476,14 @@ Quiescence-wait (`plugin-lifetime.md` §4) обеспечивает, что по
 
 ## 14. Cross-refs
 
-- [security-trust.md](../contracts/security-trust.en.md) — TrustClass,
-  per-component admission gates §4, single-active provider §6,
+- [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass,
+  per-component admission gates §4, multi-provider StackRegistry §6,
   conn-id ownership gate §6a, replay protection §6.
-- [attestation.md](../contracts/attestation.en.md) — 232-байтный
+- [attestation.en.md](../contracts/attestation.en.md) — 232-байтный
   payload, kernel-internal dispatcher, gating `Untrusted → Peer`.
-- [plugin-lifetime.md](../contracts/plugin-lifetime.en.md) — фазы,
+- [plugin-lifetime.en.md](../contracts/plugin-lifetime.en.md) — фазы,
   registration window, quiescence wait, shutdown sequence.
-- [host-api.md](../contracts/host-api.en.md) — `register_security`,
+- [host-api.en.md](../contracts/host-api.en.md) — `register_security`,
   `unregister_security`.
 - [security-flow](../architecture/security-flow.ru.md) — общая
   диаграмма handshake → attestation → transport phase.

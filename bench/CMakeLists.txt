@@ -140,6 +140,86 @@ if(TARGET goodnet_ice_objects AND TARGET goodnet_udp_objects)
     )
 endif()
 
+# Failover policies — drives `IceSession` directly so the bench
+# can exercise the consent-loss + restart dispatch path. Needs the
+# ICE plugin's private session headers, so the include path picks
+# the plugin source tree explicitly.
+# Sustained-burn — a 60-second TCP run that surfaces long-tail
+# behaviour (thermal throttle, allocator slowdown, conn-state leak)
+# the 0.3-second windows of the other benches cannot reach.
+if(TARGET goodnet_tcp_objects)
+    add_executable(bench_sustained plugins/bench_sustained.cpp)
+    target_link_libraries(bench_sustained PRIVATE
+        goodnet_bench_harness
+        goodnet_tcp_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_sustained PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
+if(TARGET goodnet_ice_objects)
+    add_executable(bench_failover plugins/bench_failover.cpp)
+    target_link_libraries(bench_failover PRIVATE
+        goodnet_bench_harness
+        goodnet_ice_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    target_include_directories(bench_failover PRIVATE
+        ${CMAKE_SOURCE_DIR}
+    )
+    # LTO on the bench target's link line confuses the LTO inliner —
+    # `goodnet_ice_objects` linked directly as object files (not a
+    # static lib) makes the LTO plugin lose track of cross-TU
+    # references inside session.cpp / turn.cpp. Disable LTO for this
+    # bench specifically; the regression sensitivity we care about
+    # here is dispatch / mutex / atomic cost, not crypto inlining.
+    set_target_properties(bench_failover PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+        INTERPROCEDURAL_OPTIMIZATION OFF
+    )
+endif()
+
+# Subprocess plugin runtime — wire-proxy round-trip cost. Drives
+# the LINK / HANDLER / SECURITY proxies through the same kernel-
+# side RemoteHost the production runtime uses, with the in-tree
+# worker stubs (`remote_echo`, `remote_handler_stub`,
+# `remote_noise_stub`) as the worker process binaries. Each worker
+# target is built independently; missing any of them disables the
+# corresponding fixture set in the bench at runtime (the macro
+# guards refuse to compile without all three paths defined).
+if(TARGET remote_echo_worker
+   AND TARGET remote_handler_stub_worker
+   AND TARGET remote_noise_stub_worker)
+    add_executable(bench_subprocess plugins/bench_subprocess.cpp)
+    target_link_libraries(bench_subprocess PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+        ${CMAKE_DL_LIBS}
+    )
+    add_dependencies(bench_subprocess
+        remote_echo_worker
+        remote_handler_stub_worker
+        remote_noise_stub_worker
+    )
+    target_compile_definitions(bench_subprocess PRIVATE
+        "GOODNET_REMOTE_ECHO_PATH=\"$<TARGET_FILE:remote_echo_worker>\""
+        "GOODNET_REMOTE_HANDLER_STUB_PATH=\"$<TARGET_FILE:remote_handler_stub_worker>\""
+        "GOODNET_REMOTE_NOISE_STUB_PATH=\"$<TARGET_FILE:remote_noise_stub_worker>\""
+    )
+    set_target_properties(bench_subprocess PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
 # Composition stacks — depth-3 WSS-over-TLS-over-TCP measures the
 # overhead of stacking three composer plugins versus the per-layer
 # numbers from bench_tcp / bench_tls / bench_ws.
@@ -244,12 +324,14 @@ endif()
 # layout that drives both GoodNet and reference stacks through the
 # same payload matrix.
 
-# ── Free-kernel showcase bench (track Б) ──────────────────────────────
+# ── Free-kernel showcase bench ────────────────────────────────────────
 #
 # Demonstrates GoodNet-distinctive moves no other stack can reproduce:
 # multi-connect under one identity, runtime strategy-driven carrier
 # pick, post-handshake provider handoff PoC, multi-thread fanout,
 # carrier failover, mobility LAN shortcut. Drives the inline-crypto
-# downgrade seam (`SecuritySession::_test_clear_inline_crypto`) so
-# gated through GOODNET_BENCH_STRATEGIES.
+# downgrade seam (`SecuritySession::_test_clear_inline_crypto`,
+# compile-gated through `GOODNET_BENCH_SHOWCASE`); the subdirectory
+# is also gated through `GOODNET_BENCH_STRATEGIES` for the strategy-
+# plugin sub-checkout.
 add_subdirectory(showcase)

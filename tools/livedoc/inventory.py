@@ -1,5 +1,6 @@
 """Plugin tree walker — discovers link / handler / security /
-extension plugins, returns inventories the renderers can consume.
+strategy / extension plugins, returns inventories the renderers can
+consume.
 
 Each plugin lives in its own standalone git checkout under
 `plugins/<kind>/<name>/`. The walker reads each plugin's
@@ -41,7 +42,10 @@ def _grep_plugin(plugin_dir: Path, pattern: str) -> str | None:
             ["grep", "-rIn", "-m", "1",
              "--include=*.h", "--include=*.hpp",
              "--include=*.c", "--include=*.cpp",
-             "--exclude-dir=.git",
+             "--exclude-dir=.git", "--exclude-dir=.claude",
+             "--exclude-dir=build", "--exclude-dir=build-release",
+             "--exclude-dir=build-asan", "--exclude-dir=build-tsan",
+             "--exclude-dir=build-mdns-test",
              pattern, str(plugin_dir)],
             capture_output=True, text=True, timeout=10,
         )
@@ -106,10 +110,15 @@ def discover_extensions() -> list[dict]:
     return discover_kind("extensions")
 
 
+def discover_strategies() -> list[dict]:
+    return discover_kind("strategies")
+
+
 def discover_all() -> dict[str, list[dict]]:
     return {
         "links":      discover_links(),
         "handlers":   discover_handlers(),
         "security":   discover_security(),
+        "strategies": discover_strategies(),
         "extensions": discover_extensions(),
     }

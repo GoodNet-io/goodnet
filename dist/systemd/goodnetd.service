@@ -1,34 +1,32 @@
-# goodnet.service — systemd unit for the GoodNet node binary.
+# goodnetd.service — systemd unit for the GoodNet daemon binary.
 #
-# Operators install this file at /etc/systemd/system/goodnet.service
-# (or the distro's equivalent), drop a `node.json` and `plugins.json`
-# into /etc/goodnet/, and run:
+# The daemon ships from the `GoodNet-io/goodnetd` repo (the kernel
+# repo carries this unit only as a packaging convenience). Operators
+# install at /etc/systemd/system/goodnetd.service, drop a `node.json`
+# and `plugins.json` into /etc/goodnet/, and run:
 #
-#     systemctl enable --now goodnet
+#     systemctl enable --now goodnetd
 #
-# The unit runs the multicall binary's `run` subcommand. The `run`
-# subcommand orchestrates kernel + plugin load + identity load per
-# the manifest; see `apps/goodnet/subcommands/run.cpp` (ships in
-# Wave 8.1.b). Until then this unit fails fast with «not yet
-# implemented» — the file is here so packagers can pick it up.
+# The unit runs the daemon's `run` subcommand which orchestrates
+# kernel + plugin load + identity load per the manifest.
 
 [Unit]
-Description=GoodNet network kernel
-Documentation=https://github.com/GoodNet-io/GoodNet
+Description=GoodNet network daemon
+Documentation=https://github.com/GoodNet-io/goodnetd
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 # Pre-deploy validation. ExecStartPre cuts a malformed config off at
 # unit-start time rather than letting `run` crash mid-handshake.
-ExecStartPre=/usr/bin/goodnet config validate /etc/goodnet/node.json
+ExecStartPre=/usr/bin/goodnetd config validate /etc/goodnet/node.json
 
 # Production entry. Both files are required; the unit fails fast if
 # either is missing or malformed.
-ExecStart=/usr/bin/goodnet run --config /etc/goodnet/node.json --manifest /etc/goodnet/plugins.json
+ExecStart=/usr/bin/goodnetd run --config /etc/goodnet/node.json --manifest /etc/goodnet/plugins.json
 
 # Cooperative shutdown. The kernel polls `is_shutdown_requested`
-# from inside async callbacks (host-api.md §10) and exits early on
+# from inside async callbacks (host-api.en.md §10) and exits early on
 # SIGTERM; 30s is generous for plugin drain.
 KillSignal=SIGTERM
 TimeoutStopSec=30

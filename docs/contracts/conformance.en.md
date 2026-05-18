@@ -21,8 +21,10 @@
 | [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) | Traversal Using Relays around NAT (TURN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) | Trickle ICE for SDP | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8305](https://datatracker.ietf.org/doc/html/rfc8305) | Happy Eyeballs Version 2 | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
-| [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ○ planned | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8085](https://datatracker.ietf.org/doc/html/rfc8085) | UDP Usage Guidelines | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) | Multicast DNS | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
+| [draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/draft-ietf-mmusic-mdns-ice-candidates/) | Using Multicast DNS to Protect Privacy When Exposing ICE Candidates | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 
 ### Noise / cryptography
 
@@ -35,19 +37,21 @@
 
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
-| [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) | QUIC — A UDP-Based Multiplexed and Secure Transport | 🚧 partial | [`plugins/links/quic`](../../plugins/links/quic) |
+| [RFC 9000](https://datatracker.ietf.org/doc/html/rfc9000) | QUIC — A UDP-Based Multiplexed and Secure Transport | ✓ full | [`plugins/links/quic`](../../plugins/links/quic) |
 
 ### TLS
 
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
 | [RFC 8446](https://datatracker.ietf.org/doc/html/rfc8446) | TLS 1.3 | ✓ full | [`plugins/links/tls`](../../plugins/links/tls) |
+| [RFC 9147](https://datatracker.ietf.org/doc/html/rfc9147) | DTLS 1.3 | ✓ full | [`plugins/links/tls`](../../plugins/links/tls) |
 
 ### WebSocket
 
 | RFC | Title | Status | Implementation |
 |---|---|---|---|
 | [RFC 6455](https://datatracker.ietf.org/doc/html/rfc6455) | The WebSocket Protocol | ✓ full | [`plugins/links/ws`](../../plugins/links/ws) |
+| [RFC 7692](https://datatracker.ietf.org/doc/html/rfc7692) | Compression Extensions for WebSocket (permessage-deflate) | — | [`plugins/links/ws`](../../plugins/links/ws) |
 | [RFC 5389](https://datatracker.ietf.org/doc/html/rfc5389) | STUN — Short-Term Credential (alias) | — out of scope |  |
 <!-- /livedoc:rfc_coverage_table -->
 
@@ -125,9 +129,9 @@ Link-family concept (`LinkPlugin`, declared in `link_teardown.hpp`):
 
 | Requirement | Source |
 |---|---|
-| `t.listen(uri) -> gn_result_t` | `link.md` §2 |
-| `t.connect(uri) -> gn_result_t` | `link.md` §2 |
-| `t.shutdown() -> void` | `link.md` §9 |
+| `t.listen(uri) -> gn_result_t` | `link.en.md` §2 |
+| `t.connect(uri) -> gn_result_t` | `link.en.md` §2 |
+| `t.shutdown() -> void` | `link.en.md` §9 |
 | `t.set_host_api(api) -> void` | host-stub plumbing (see §5) |
 
 The concept lives in the same header as the fixture so the gate and
@@ -195,9 +199,11 @@ A v2 header sits beside v1 as
 `sdk/test/conformance/<topic>-v2.hpp` with its own concept and
 traits names. v1 stays unchanged until every consumer has migrated;
 v1 is then removed in the next `MAJOR` SDK bump per
-`abi-evolution.md` §3b. The pre-rc1 reshape window from the same
-§3b applies here too: before `v1.0.0-rc1` any conformance header
-may be reshaped freely; after the tag the table above governs.
+`abi-evolution.en.md` §3b. The pre-`v1.0.0` reshape window from the
+same §3b applies here too: through the entire rc cycle (`v1.0.0-
+rc1`, `v1.0.0-rc2`, …) any conformance header may be reshaped
+freely; the table above governs only after the plain `v1.0.0`
+tag closes the window.
 
 ---
 
@@ -236,7 +242,7 @@ team coincide.
 - [`recipes/test-plugin.ru.md`](../recipes/test-plugin.ru.md) —
   walkthrough of a fresh plugin's first conformance instantiation
   and the full-ctest no-filter rule.
-- [`abi-evolution.en.md`](./abi-evolution.en.md) §3b — pre-rc1
+- [`abi-evolution.en.md`](./abi-evolution.en.md) §3b — pre-v1.0.0
   reshape window that conformance headers honour, and how new
   conformance contracts ride alongside SDK ABI bumps.
 - [`plugin-lifetime.en.md`](./plugin-lifetime.en.md) — phases at

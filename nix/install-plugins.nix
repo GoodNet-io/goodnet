@@ -1,4 +1,5 @@
-# nix/install-plugins.nix — `nix run .#install-plugins [-- --update]` app.
+# nix/install-plugins.nix — plugin-set installer used by
+# `nix run .#plugin -- install` and `gn-setup`.
 #
 # Pulls the canonical loadable plugin set into the kernel's
 # `plugins/<kind>/<name>/` slots so a fresh clone of the kernel
@@ -7,18 +8,21 @@
 # is the single hook a new contributor or a CI runner uses to
 # materialise them locally.
 #
-# Repo list. The 8 loadable plugins that the kernel binary
-# `dlopen`s at runtime: handler-heartbeat, link-{tcp, udp, ws,
-# ipc, tls}, security-{noise, null}. Statically-linked plugins
-# under `plugins/protocols/` are part of the kernel build and
-# do not need pulling.
+# Repo list. The loadable plugins that the kernel binary
+# `dlopen`s at runtime: handler-{heartbeat, store, dns},
+# link-{tcp, udp, ws, ipc, tls, ice}, security-{noise, null};
+# plus the operator-side bridges-cpp slot at `bridges/cpp/`.
+# Statically-linked plugins under `plugins/protocols/` are part
+# of the kernel build and do not need pulling. The link-quic and
+# strategy-float_send_rtt plugins exist in-tree but have no
+# external mirror yet, so they are not part of the install set.
 #
 # Source lookup (first hit wins):
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo>.git`  (env override)
 #   2. `${XDG_DATA_HOME:-${HOME}/.local/share}/goodnet-mirrors/
 #      <repo>.git`  (default — matches `init-mirrors`'s output
 #      directory)
-#   3. `https://github.com/goodnet-io/<repo>`  (post-rc1 org repo)
+#   3. `https://github.com/GoodNet-io/<repo>`  (GitHub org repo)
 #
 # Modes:
 #   default — skip plugin slots that already exist on disk.
@@ -28,9 +32,9 @@
 #
 # Failure mode. If a plugin is not present and none of the three
 # sources resolve, exit non-zero with a clear message pointing
-# the operator at `nix run .#init-mirrors` (which establishes
-# the local mirrors when at least one operator already has the
-# plugin gits checked out somewhere).
+# the operator at `nix run .#setup` (which establishes the local
+# mirrors as part of the bootstrap when at least one operator
+# already has the plugin gits checked out somewhere).
 
 { pkgs }:
 
@@ -45,7 +49,7 @@ pkgs.writeShellApplication {
       case "$1" in
         --update) update=1 ;;
         *) echo "install-plugins: unknown arg '$1'" >&2
-           echo "  usage: nix run .#install-plugins [-- --update]" >&2
+           echo "  usage: nix run .#plugin -- install [--update]" >&2
            exit 1 ;;
       esac
     fi
@@ -64,13 +68,17 @@ pkgs.writeShellApplication {
     # second pass through the loop body.
     declare -A slot_to_repo=(
       [plugins/handlers/heartbeat]=handler-heartbeat
+      [plugins/handlers/store]=handler-store
+      [plugins/handlers/dns]=handler-dns
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
+      [plugins/links/ice]=link-ice
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [bridges/cpp]=bridges-cpp
       [tests/integration]=integration-tests
     )
 
@@ -102,7 +110,7 @@ pkgs.writeShellApplication {
       mkdir -p "$(dirname "$slot")"
 
       mirror="$mirror_dir/$repo.git"
-      remote_url="https://github.com/goodnet-io/$repo"
+      remote_url="https://github.com/GoodNet-io/$repo"
 
       if [ -d "$mirror" ]; then
         echo "install-plugins: cloning $repo from $mirror"
@@ -116,8 +124,9 @@ pkgs.writeShellApplication {
         echo "install-plugins: $repo not available at" >&2
         echo "  - $mirror" >&2
         echo "  - $remote_url" >&2
-        echo "  Run \`nix run .#init-mirrors\` from a checkout that" >&2
-        echo "  already has the plugin gits, or wait until the org" >&2
+        echo "  Run \`nix run .#setup\` from a checkout that already" >&2
+        echo "  has the plugin gits (it invokes init-mirrors as part" >&2
+        echo "  of the bootstrap), or wait until the org" >&2
         echo "  repo at $remote_url is published." >&2
         failed+=("$repo")
       fi

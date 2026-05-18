@@ -86,8 +86,8 @@ Rules:
   was added after `MINOR` 0.
 - Producers populate `api_size` with `sizeof()` at build time of the
   *producer*. The consumer never trusts a hard-coded constant.
-- Helper macros (`GN_API_HAS(api, field)`) live in `sdk/abi.h` to keep
-  the pattern uniform across plugins.
+- Helper macros (`GN_API_HAS(api_type, api, field)`) live in
+  `sdk/abi.h` to keep the pattern uniform across plugins.
 
 Without size-prefix, adding a single function pointer would force every
 already-compiled plugin to rebuild.
@@ -140,7 +140,7 @@ register thunk and therefore validate consumer-side instead:
 | Vtable | Why no kernel validation | Where it is validated |
 |---|---|---|
 | `gn_protocol_layer_vtable_t` | The kernel holds an `std::shared_ptr<gn::IProtocolLayer>` C++ wrapper rather than the C vtable; a future C-only protocol adapter performs the `api_size` check before constructing the wrapper. | producer-side until the C adapter ships; the field is populated today so adapter introduction is non-breaking |
-| `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(out, slot)` before invoking any slot added after `MINOR` 0 |
+| `gn_heartbeat_api_t` and every other extension vtable | `host_api->register_extension` stores an opaque `const void*`; the kernel cannot interpret the structure layout. | consumer-side — a plugin querying `host_api->query_extension_checked(name, version, &out)` runs `GN_API_HAS(vt_type, out, slot)` before invoking any slot added after `MINOR` 0 |
 
 ---
 
@@ -176,12 +176,13 @@ Tracks every slot promoted during the open window so a future
 contributor reviewing ABI history can see what moved and why
 without `git log`-archaeology.
 
-| Date | Struct | Change | Slice |
+| Date | Struct | Change | Branch |
 |---|---|---|---|
 | 2026-05-08 | `gn_register_meta_t` | additive: new `const char* protocol_id` slot before existing `_reserved[4]` (LINK kind declares mesh-framing layer); reserved tail unchanged | `feat/protocol-layer-registry` |
 | 2026-05-09 | `gn_register_meta_t` | promoted `_reserved[3] → const char* namespace_id` before remaining `_reserved[3]` (HANDLER kind declares tenant scope) | `feat/lifecycle-namespaces` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: two new slots `subscribe_accept` / `unsubscribe_accept` inserted before `ctx` (composer accept-bus); `_reserved[4]` tail unchanged; sizeof grows 120 → 136 bytes — covered by api_size versioning | `feat/link-bus-and-dsl-core` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: new `composer_listen_port` slot inserted before `ctx` so a composer (WS / WSS / ICE) can read back the ephemeral L1 port after `tcp://host:0`-style listen; sizeof grows 136 → 144 bytes — covered by api_size versioning | `feat/ws-on-carrier` |
+| 2026-05-15 | `host_api_t` | additive: new `notify_rtt_sample` slot appended before `_reserved`; LINK / HANDLER / UNKNOWN kinds publish observed RTT samples, kernel folds into per-conn EWMA(α = 1/8) and republishes the smoothed value to every `gn.strategy.*` extension via `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`; sizeof grows 488 → 496 bytes — covered by api_size versioning; `_reserved[8]` tail unchanged | `dev` |
 
 ---
 
@@ -222,7 +223,7 @@ Rules:
   length. No size change → ABI stays binary-compatible.
 - When all four slots are spent, the next addition is a `MAJOR` bump.
 - Slot count is documented per struct; see the contract owning the
-  struct (e.g. `protocol-layer.md` for `gn_message_t`).
+  struct (e.g. `protocol-layer.en.md` for `gn_message_t`).
 
 **Slot-count convention** — pinned project-wide so a future
 contributor adding a struct copies the right number:
@@ -343,8 +344,8 @@ CI runs both on every push.
 
 ## 8. Cross-references
 
-- `host-api.md` — the actual public table that uses size-prefix.
-- `plugin-lifetime.md` — when version negotiation runs (between init
+- `host-api.en.md` — the actual public table that uses size-prefix.
+- `plugin-lifetime.en.md` — when version negotiation runs (between init
   and register).
-- `protocol-layer.md` — the `gn_message_t` envelope and its
+- `protocol-layer.en.md` — the `gn_message_t` envelope and its
   `_reserved[4]`.

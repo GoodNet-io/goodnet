@@ -81,7 +81,7 @@ or the value is removed from the type.**
 | `GN_PROP_CONSUMED` | stop dispatch chain — envelope handled |
 | `GN_PROP_REJECT` | drop envelope; close connection; metrics increment |
 
-Pre-RC review fails on any dispatch invocation whose return is not
+Code review fails on any dispatch invocation whose return is not
 used. Discarding `Propagation` is a contract violation.
 
 ### 4.2 `gn_backpressure_t` (queue-pressure signal — reserved)
@@ -94,10 +94,9 @@ used. Discarding `Propagation` is a contract violation.
 | `GN_BP_DISCONNECT` | connection gone — caller should stop |
 
 `host_api->send` itself returns `gn_result_t`; on a hard-cap drop
-the result is `GN_ERR_LIMIT_REACHED` per `backpressure.md` §1. The
-`gn_backpressure_t` enum is the wire shape reserved for the
-per-connection pressure channel once it ships in a v1.x minor —
-plugins that subscribe to that future channel **must** branch on
+the result is `GN_ERR_LIMIT_REACHED` per `backpressure.en.md` §1. The
+`gn_backpressure_t` enum is the wire shape for the per-connection
+pressure channel — plugins that subscribe **must** branch on
 the value, since `BACKPRESSURE_HARD_LIMIT` arrives as a discrete
 event and ignoring it would tight-loop on `send`.
 
@@ -144,20 +143,20 @@ Kernel phase is observed kernel-internally through
 stored as weak references and pruned at fire time. The kernel
 itself owns these — they are not part of the plugin-facing C ABI;
 plugins that need to react to phase transitions wire through the
-`SignalChannel<PhaseEvent>` (per `signal-channel.md`) the kernel
+`SignalChannel<PhaseEvent>` (per `signal-channel.en.md`) the kernel
 publishes during transitions.
 
 A plugin that forgets to clean up a subscription before
 `gn_plugin_shutdown` does not crash the kernel — the weak observer
 expires automatically when the plugin's liveness probe goes "dead"
-(`plugin-lifetime.md` §4).
+(`plugin-lifetime.en.md` §4).
 
 ---
 
 ## 8. Cross-references
 
-- Plugin lifecycle that reads phases: `plugin-lifetime.md`.
-- Quiescence wait that uses generation counter: `plugin-lifetime.md` §6.
-- Per-call-site error propagation rules: `host-api.md` §5.
+- Plugin lifecycle that reads phases: `plugin-lifetime.en.md`.
+- Quiescence wait that uses generation counter: `plugin-lifetime.en.md` §6.
+- Per-call-site error propagation rules: `host-api.en.md` §5.
 - Backpressure semantics that surface through callback returns:
-  `limits.md` §5.
+  `limits.en.md` §5.

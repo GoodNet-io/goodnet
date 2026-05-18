@@ -1,5 +1,5 @@
 /// @file   tests/unit/util/test_capability_tlv.cpp
-/// @brief  TLV encode / parse round-trip per `capability-tlv.md`.
+/// @brief  TLV encode / parse round-trip per `capability-tlv.en.md`.
 
 #include <gtest/gtest.h>
 

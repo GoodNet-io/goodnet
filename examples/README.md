@@ -10,6 +10,8 @@ or build the example targets directly.
 | Path | Binary | Role |
 |---|---|---|
 | `two_node/` | `goodnet-demo` | Two in-process kernels exchanging one frame over a real TCP socket under a Noise XX handshake |
+| `bench/` | `goodnet-bench` | Throughput benchmark — two kernels in one process, Bob loops `host_api->send` against Alice as fast as the kernel accepts; reports payload Gbps |
+| `hello-echo/` | — (source-only, not built) | DX reference: minimal client + server using the modern SDK sugar (`connect_to`, `listen_to`, `Subscription`), counted by `bench/comparison/runners/dx_loc_count.sh` against upstream "hello echo" samples for libp2p / iroh / etc. |
 
 ## Build
 

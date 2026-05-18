@@ -88,6 +88,19 @@ let
   # build input the plugin derivation needs through `inputsFrom`,
   # then layers ccache + clang-tools + gdb on top. Plugins that need
   # extra tooling (e.g. doxygen for docs) pass it via `extraPackages`.
+  #
+  # CMAKE_PREFIX_PATH precedence: nix surfaces every `inputsFrom`
+  # store path under `NIXPKGS_CMAKE_PREFIX_PATH` but does NOT prepend
+  # it to a user-inherited `CMAKE_PREFIX_PATH`. When the operator has
+  # an older GoodNet install in `~/.nix-profile` (e.g. from a previous
+  # `nix profile install`), that stale path stays first on
+  # `CMAKE_PREFIX_PATH` and CMake's `find_package(GoodNet REQUIRED)`
+  # resolves to the old `GoodNetConfig.cmake` from the profile —
+  # which can still drag in dependencies the current kernel has
+  # since dropped (Boost was the trigger seen in QUIC / WS). Prepend
+  # the flake-built inputs so the kernel-only `goodnet-core` from
+  # this dev shell always wins regardless of what the operator
+  # happens to have under `~/.nix-profile`.
   mkPluginDevShell = pkgs:
     { plugin, extraPackages ? [ ], welcomeText ? "" }:
     let
@@ -103,6 +116,13 @@ let
         export CCACHE_DIR="$HOME/.cache/ccache"
         export CMAKE_C_COMPILER_LAUNCHER=ccache
         export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+        if [ -n "''${NIXPKGS_CMAKE_PREFIX_PATH:-}" ]; then
+          if [ -n "''${CMAKE_PREFIX_PATH:-}" ]; then
+            export CMAKE_PREFIX_PATH="$NIXPKGS_CMAKE_PREFIX_PATH:$CMAKE_PREFIX_PATH"
+          else
+            export CMAKE_PREFIX_PATH="$NIXPKGS_CMAKE_PREFIX_PATH"
+          fi
+        fi
         ${pkgs.lib.optionalString (welcomeText != "") ''
           cat <<'EOF'
 ${welcomeText}

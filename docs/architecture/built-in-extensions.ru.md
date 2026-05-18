@@ -214,7 +214,7 @@ observability.
 | Composer | `subscribe_data` | install receive callback на L1 conn для L2 framing'а; baseline = `NOT_IMPLEMENTED` |
 | Composer | `unsubscribe_data` | снять подписку, idempotent; baseline = `NOT_IMPLEMENTED` |
 
-Steady-слоты функционируют у всех baseline-link'ов в v1.0.x.
+Steady-слоты функционируют у всех baseline-link'ов сегодня.
 Composer-слоты — резерв для L2-семейства (WSS, TLS, ICE).
 До того как первый composer-плагин выйдет и контракт будет
 проверен end-to-end, baseline возвращает `GN_ERR_NOT_IMPLEMENTED`.
@@ -319,8 +319,10 @@ bump'а major'а.
 **Имена.** `gn.strategy.<plugin-name>` — например
 `gn.strategy.rtt-optimal`, `gn.strategy.cost-aware` (last не
 landed). Каждый strategy plugin регистрируется под собственным
-именем; kernel-side dispatch (когда landed, Слайс 9-KERNEL)
-выберет одну активную strategy на узел по operator-config'у.
+именем; kernel-side dispatch (`send_to` в
+`core/kernel/host_api/messaging.cpp`) допускает несколько
+strategy одновременно и обходит цепочку в registration
+order — первая, что возвращает реальный `conn`, выигрывает.
 
 **API-сводка.** vtable `gn_strategy_api_t`:
 
@@ -341,9 +343,10 @@ landed). Каждый strategy plugin регистрируется под соб
 | `gn.strategy.*` | kernel | kernel | простой picker, kernel-mediated routing |
 | `gn.float-send.*` | plugin | plugin | rich behaviours — cache, retry, fallback |
 
-`gn.float-send.*` может построиться поверх `gn.strategy.*` как
-обёртка, добавляющая send pipe + per-peer state. Pre-v1 — только
-`gn.strategy.*` shipped.
+`gn.float-send.*` family может построиться поверх `gn.strategy.*`
+как обёртка, добавляющая send pipe + per-peer state. Сейчас в SDK
+определён только `gn.strategy.*`; kernel walk'ает chain через
+`host_api->send_to`.
 
 **Reference impl.** `plugins/strategies/float_send_rtt/`
 регистрирует `gn.strategy.rtt-optimal` (v1.0). Минимум-RTT picker
@@ -447,7 +450,7 @@ Producer аллоцирует структуру (typically — статичес
 `host_api->register_extension(host_ctx, GN_EXT_<AREA>, GN_EXT_<AREA>_VERSION, &g_<area>_api_instance)`.
 Consumer после `query_extension_checked` cast'ит `*out_vtable`
 обратно к `const gn_<X>_api_t*`, обязательно проверяет
-`GN_API_HAS(vt, slot)` чтобы гейтить slot из более нового minor'а,
+`GN_API_HAS(vt_type, vt, slot)` чтобы гейтить slot из более нового minor'а,
 и зовёт `vt->method(vt->ctx, ...)`.
 
 ---

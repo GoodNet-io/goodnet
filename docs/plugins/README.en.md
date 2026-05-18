@@ -11,7 +11,9 @@ kernel-monorepo's window onto that ecosystem.
 
 ## Handlers
 
+- [handlers-dns](./handlers-dns.en.md)
 - [handlers-heartbeat](./handlers-heartbeat.en.md)
+- [handlers-store](./handlers-store.en.md)
 
 ## Links
 
@@ -27,3 +29,7 @@ kernel-monorepo's window onto that ecosystem.
 
 - [security-noise](./security-noise.en.md)
 - [security-null](./security-null.en.md)
+
+## Strategies
+
+- [strategies-float_send_rtt](./strategies-float_send_rtt.en.md)

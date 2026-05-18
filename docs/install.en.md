@@ -14,7 +14,7 @@ A production install lays down four things on the host:
 
 | Path | Owner | What |
 |---|---|---|
-| `/usr/bin/goodnet` | root | Multicall CLI binary — `goodnet run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
+| `/usr/bin/goodnetd` | root | Multicall CLI binary — `goodnetd run`, `config validate`, `plugin hash`, `manifest gen`, `version` |
 | `/usr/lib/goodnet/lib*.so` | root | Plugin shared objects (transports, security providers, protocol layers, handlers) |
 | `/etc/goodnet/node.json` | root | Kernel config — limits, log shape, profile selector |
 | `/etc/goodnet/plugins.json` | root | Plugin manifest — path + SHA-256 per loadable .so |
@@ -27,7 +27,7 @@ Plus one user account and one state directory the systemd unit creates:
 | `/var/lib/goodnet/` | `goodnet:goodnet`, mode `0750` | Plugin state (DHT routing tables, sync DBs, etc.) |
 
 The kernel does not need root, raw sockets, or the host namespace
-tree. The systemd unit (`dist/systemd/goodnet.service`) drops every
+tree. The systemd unit (`dist/systemd/goodnetd.service`) drops every
 privilege the kernel does not require — see §4 for the hardening
 matrix.
 
@@ -39,7 +39,7 @@ GoodNet uses CMake + a Nix dev shell. From a clone of the repo:
 
 ```sh
 nix run .#build -- release   # release build, populates build-release/
-sudo install -m 0755 build-release/bin/goodnet /usr/bin/goodnet
+sudo install -m 0755 build-release/bin/goodnetd /usr/bin/goodnetd
 sudo install -d /usr/lib/goodnet
 sudo install -m 0644 build-release/plugins/lib*.so /usr/lib/goodnet/
 ```
@@ -61,6 +61,42 @@ cmake -B build-release -S . \
 cmake --build build-release -j
 ```
 
+### 2.1 Truly-static variant
+
+```sh
+nix run .#build -- static    # populates build-static/{bin,lib}/
+```
+
+Routes through `nix build .#goodnet-core-static`, a `pkgsStatic`
+derivation that rebuilds the kernel + bundled plugin set under
+musl + statically-archived OpenSSL, libsodium, spdlog, fmt,
+libstdc++, libgcc. The resulting binaries under `build-static/bin/`
+have **no dynamic dependencies**:
+
+```sh
+$ file build-static/bin/remote_echo
+build-static/bin/remote_echo: ELF 64-bit LSB executable, x86-64,
+  version 1 (SYSV), statically linked, not stripped
+$ ldd build-static/bin/remote_echo
+        not a dynamic executable
+```
+
+Use the static variant when:
+
+- Shipping inside a `scratch` / `distroless` Docker base layer
+  (no glibc closure, image size in the single-MiB range).
+- Deploying onto a stripped embedded rootfs with no `/nix/store`
+  or distro libc.
+- Building a chroot-portable bundle for incident-response /
+  air-gapped sites where the runtime libc cannot be relied upon.
+
+The static cut bundles every plugin into the kernel archive
+(`-DGOODNET_STATIC_PLUGINS=ON`), so there are no neighbouring
+`.so` files — the entire artefact is one ELF. Plugins that need
+POSIX-only subsystems (`handler-store/sqlite`, `handler-dns/c-ares`)
+are dropped from the bundle automatically; deploy those through
+the regular dynamic build.
+
 ---
 
 ## 3. Configuring the node
@@ -77,7 +113,7 @@ sudo install -m 0644 dist/example/plugins.json /etc/goodnet/plugins.json
 
 The example file picks the `server` profile and overrides nothing.
 Every `limits.*` field has a built-in default per the active profile
-— see `docs/contracts/config.md` §3 for the full schema. The two
+— see `docs/contracts/config.en.md` §3 for the full schema. The two
 common knobs:
 
 - `profile` — `embedded` (≤ 64 conns, no relay), `server` (default).
@@ -86,7 +122,7 @@ common knobs:
 Validate the config before loading it:
 
 ```sh
-goodnet config validate /etc/goodnet/node.json
+goodnetd config validate /etc/goodnet/node.json
 ```
 
 The systemd unit's `ExecStartPre=` runs this same check; an
@@ -99,7 +135,7 @@ The example manifest carries placeholder zero hashes. Regenerate
 against your installed plugin .so paths:
 
 ```sh
-sudo goodnet manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
+sudo goodnetd manifest gen /usr/lib/goodnet/lib*.so > /tmp/plugins.json
 sudo install -m 0644 /tmp/plugins.json /etc/goodnet/plugins.json
 ```
 
@@ -111,7 +147,7 @@ the new hash.
 ### 3.4 Generate the node identity
 
 ```sh
-goodnet identity gen --out /etc/goodnet/identity.bin
+goodnetd identity gen --out /etc/goodnet/identity.bin
 ```
 
 The file lands at mode `0600` and carries the magic-prefixed
@@ -123,7 +159,7 @@ to make the kernel pick the new file up on next start.
 Inspect a saved identity without revealing the secret keys:
 
 ```sh
-goodnet identity show /etc/goodnet/identity.bin
+goodnetd identity show /etc/goodnet/identity.bin
 ```
 
 The command prints `address`, `user_pk`, `device_pk`, `expiry`
@@ -134,15 +170,15 @@ and exits 0; secret seeds never reach stdout.
 ## 4. Installing the systemd unit
 
 ```sh
-sudo install -m 0644 dist/systemd/goodnet.service \
-                     /etc/systemd/system/goodnet.service
+sudo install -m 0644 dist/systemd/goodnetd.service \
+                     /etc/systemd/system/goodnetd.service
 sudo useradd --system --no-create-home --shell /usr/sbin/nologin goodnet
 sudo systemctl daemon-reload
 sudo systemctl enable --now goodnet
 ```
 
 The unit applies a hardening sandbox documented in
-`dist/systemd/goodnet.service`:
+`dist/systemd/goodnetd.service`:
 
 | Knob | Effect |
 |---|---|
@@ -163,17 +199,21 @@ file rather than the shipped one.
 ## 5. Operating the running node
 
 ```sh
-systemctl status goodnet               # current state, last log lines
-journalctl -u goodnet -f               # live log tail
-goodnet config validate /etc/goodnet/node.json   # re-validate after edits
-sudo systemctl reload goodnet          # re-read /etc/goodnet/node.json (v1.x)
-sudo systemctl restart goodnet         # full restart with kernel teardown
+systemctl status goodnetd              # current state, last log lines
+journalctl -u goodnetd -f              # live log tail
+goodnetd config validate /etc/goodnet/node.json   # re-validate after edits
+sudo systemctl reload goodnetd         # re-read /etc/goodnet/node.json
+sudo systemctl restart goodnetd        # full restart with kernel teardown
 ```
 
-Hot reload of the kernel config (without process restart) lands in
-v1.x — until then `restart` is the supported path. The unit file's
-`KillSignal=SIGTERM` + `TimeoutStopSec=30` gives plugins 30 seconds
-to drain in-flight async work before `SIGKILL`.
+The kernel exposes `Kernel::reload_config(text)` as a C-API
+(`core/kernel/kernel.cpp:173`) but the shipped `goodnetd` unit does
+not wire a SIGHUP / `ExecReload=` handler; `systemctl reload
+goodnetd` is therefore not supported on the upstream unit and
+`restart` is the operator-facing path until a daemon-side handler
+ships. The unit file's `KillSignal=SIGTERM` + `TimeoutStopSec=30`
+gives plugins 30 seconds to drain in-flight async work before
+`SIGKILL`.
 
 ---
 
@@ -192,7 +232,7 @@ to drain in-flight async work before `SIGKILL`.
   wrappers over `sdk/core.h` for apps consuming the kernel as a
   library. App authors read
   [`architecture/bridges-model.ru.md`](./architecture/bridges-model.ru.md);
-  the binding repo lives at `goodnet-io/bridges-cpp`.
+  the binding repo lives at `GoodNet-io/bridges-cpp`.
 - **Metrics scrape and alerting** — kernel and plugin counter
   catalogue plus SLI mapping in
   [`operator/metrics-catalog.en.md`](./operator/metrics-catalog.en.md).
@@ -204,7 +244,7 @@ to drain in-flight async work before `SIGKILL`.
 - **Reverse-proxy front-end** — operators running on the public
   internet put nginx / HAProxy in front of the TCP listener for
   per-IP rate limiting until a hardening plugin ships per-source
-  bucketing. The reverse proxy is the recommended layer for now.
+  bucketing. The reverse proxy is the recommended layer.
 - **Backup and key rotation** — NodeIdentity rotation policy is
   not yet specified. Operators copy `/etc/goodnet/identity.bin`
   before generating a replacement and update each peer's

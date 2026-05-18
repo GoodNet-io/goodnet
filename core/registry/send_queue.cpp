@@ -2,6 +2,7 @@
 
 #include "send_queue.hpp"
 
+#include <mutex>
 #include <utility>
 
 namespace gn::core {

@@ -1,0 +1,59 @@
+# Scenario: both peers full-cone NAT, dual-stack v4+v6 on the
+# inter-peer path. mDNS obfuscation is on so host candidates
+# travel the wire as `<uuid>.local` instead of raw IPv6
+# addresses; peer A resolves peer B's `.local` via the AAAA
+# answer multicast back over ff02::fb on the shared `net`
+# segment. Assertion: payload reaches peer B and `tcpdump -ni
+# eth0 host <peer_a_ipv6>` on peer B captures zero packets
+# directly addressed to peer A's IPv6 — only mDNS-name traffic.
+#
+# Caveat: docker's default bridge driver does NOT forward
+# link-local IPv6 multicast (ff02::fb) between containers on
+# separate bridges. The scenario therefore joins both peers to
+# the shared `net` segment for the mDNS resolution path (the
+# NAT containers stay on the per-peer LANs but are unused for
+# the dual-stack v6 host pair). Operators wanting true
+# cross-bridge mDNS validation should swap to the `macvlan`
+# driver in a follow-up; the bridge path is sufficient to
+# exercise the mDNS-name plumbing and the AAAA cache hit.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+
+  peer_a:
+    networks:
+      net:
+        ipv4_address: 10.10.0.40
+        ipv6_address: fd00:ce3::40
+      lan_a: !reset {}
+    environment:
+      ICE_ENABLE_IPV6: "true"
+      ICE_MDNS_OBFUSCATE: "true"
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv6.conf.default.disable_ipv6: 0
+
+  peer_b:
+    networks:
+      net:
+        ipv4_address: 10.10.0.41
+        ipv6_address: fd00:ce3::41
+      lan_b: !reset {}
+    environment:
+      ICE_ENABLE_IPV6: "true"
+      ICE_MDNS_OBFUSCATE: "true"
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+      net.ipv6.conf.default.disable_ipv6: 0
+
+networks:
+  net:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+        - subnet: fd00:ce3::/64

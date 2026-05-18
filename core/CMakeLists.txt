@@ -25,6 +25,7 @@ set(_goodnet_kernel_sources
     security/session.cpp
     security/inline_crypto.cpp
     crypto/crypto_worker_pool.cpp
+    kernel/link_capability.cpp
     kernel/router.cpp
     kernel/kernel.cpp
     kernel/core_c.cpp
@@ -42,6 +43,9 @@ set(_goodnet_kernel_sources
     plugin/plugin_manifest.cpp
     plugin/wire_codec.cpp
     plugin/remote_host.cpp
+    plugin/runtimes/dynamic.cpp
+    plugin/runtimes/static.cpp
+    plugin/runtimes/remote.cpp
     # Static-registry stub. Dynamic builds keep this empty array; the
     # static-linkage build replaces this TU with a generated one via
     # `cmake/StaticPlugins.cmake`.
@@ -128,7 +132,19 @@ set_target_properties(goodnet_kernel PROPERTIES EXPORT_NAME kernel)
 # stage stays tractable. The shared-kernel hot-reload story is a
 # Linux-only convenience today; Windows hot-reload waits on a
 # proper named-pipe IPC port.
-if(NOT WIN32)
+#
+# Truly-static builds (`pkgsStatic` against musl + `-static-libgcc
+# -static-libstdc++`) hit the same conflict from a different angle:
+# linking `crtbeginT.o` (the static runtime crt the toolchain
+# selects) into a SHARED output trips `R_X86_64_32 against hidden
+# symbol __TMC_END__ can not be used when making a shared object`.
+# The `.so` has no consumer in that path — the `goodnet` binary
+# links the STATIC archive directly — so skip the shared variant
+# whenever `GOODNET_STATIC_PLUGINS=ON` (the canonical kernel-side
+# signal for "build as if every consumer wants a single self-
+# contained binary"). Hosts that still need the shared kernel
+# build through the dynamic-plugin variant.
+if(NOT WIN32 AND NOT GOODNET_STATIC_PLUGINS)
     add_library(goodnet_kernel_shared SHARED $<TARGET_OBJECTS:goodnet_kernel_objects>)
     target_link_libraries(goodnet_kernel_shared PUBLIC goodnet_kernel_objects)
     set_target_properties(goodnet_kernel_shared PROPERTIES

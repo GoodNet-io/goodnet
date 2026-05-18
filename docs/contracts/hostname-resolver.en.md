@@ -6,21 +6,20 @@
 **Stability:** v1.x; the helper signature is locked, the resolver
 backend may swap.
 
-> Renamed from `dns.md` on 2026-05-13 to disambiguate from the
-> networked DNS handler plugin contract at
-> [`dns.md`](dns.en.md). This file is the **SDK URI rewriter**
+> This file is the **SDK URI rewriter**
 > (`sdk/cpp/dns.hpp::resolve_uri_host`) — a pure-function helper
 > every link plugin uses at `connect()` time to turn a
-> `tcp://example.com:443` URI into an IP-literal form. The
-> networked DNS service (record DB, SRV lookups, cache cascade)
-> is a separate handler-plugin layer; see `dns.md` for that
-> contract.
+> `tcp://example.com:443` URI into an IP-literal form. Kept
+> distinct from the networked DNS handler plugin contract at
+> [`dns.en.md`](dns.en.md), which describes a separate
+> handler-plugin layer carrying the record DB, SRV lookups, and
+> cache cascade.
 
 ---
 
 ## 1. Purpose
 
-`uri.md` §1 declares that the URI parser is pure string work — no
+`uri.en.md` §1 declares that the URI parser is pure string work — no
 DNS lookup, no decoding. The connect path that turns a
 `connect("tcp://example.com:443")` into a `notify_connect` needs
 the hostname turned into an IP literal before it reaches the
@@ -39,7 +38,7 @@ registry, so:
 
 The resolver helper exists to make hostname → IP-literal
 conversion uniform across transports without smuggling DNS into
-either the URI parser (`uri.md`) or the kernel C ABI (`host-api.md`).
+either the URI parser (`uri.en.md`) or the kernel C ABI (`host-api.en.md`).
 
 ---
 
@@ -99,7 +98,7 @@ dependency is shared by every transport already.
 | empty string / unparseable | returns `ResolveError::Kind::UnparseableUri` |
 
 The query string (`?peer=<hex>` etc) is preserved verbatim
-through the canonical-form rewrite — `uri.md` §6 carries the same
+through the canonical-form rewrite — `uri.en.md` §6 carries the same
 guarantee for the parser path.
 
 ### Address family preference
@@ -125,17 +124,18 @@ disable IPv6 in `/etc/gai.conf`) rather than carry a v1 SDK flag.
 ## 3. Caching is not the helper's concern
 
 A naive `connect()` call resolves on every retry; that is fine
-for v1 because hostname-bearing connects are sparse. A future
-caching layer attaches in front of the helper through a transport
-extension or a kernel service; the helper itself remains
-stateless so the contract is observable as a pure function.
+in deployments where hostname-bearing connects are sparse. A
+future caching layer attaches in front of the helper through a
+transport extension or a kernel service; the helper itself
+remains stateless so the contract is observable as a pure
+function.
 
 ---
 
 ## 4. Cross-references
 
-- URI parser this composes with: `uri.md`.
-- Why hostnames cannot reach the registry literally: `uri.md` §4
+- URI parser this composes with: `uri.en.md`.
+- Why hostnames cannot reach the registry literally: `uri.en.md` §4
   (canonical form) — `host` is normalised to a literal before the
   registry sees the URI.
-- Transport ownership of DNS: `link.md` §2.
+- Transport ownership of DNS: `link.en.md` §2.

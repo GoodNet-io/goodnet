@@ -33,11 +33,13 @@ gn_result_t deframe_thunk(void* /*self*/,
 
     /// Trust gate — `raw` is for opaque-passthrough scenarios where
     /// the wire's authenticity is established outside the kernel
-    /// (loopback, intra-process, simulation, replay). Refuse on any
-    /// trust class where unauthenticated bytes would be a security
-    /// hole.
+    /// (loopback, intra-process, simulation, replay, anonymous
+    /// loopback bridges). Refuse on any trust class where
+    /// unauthenticated bytes would be a security hole.
     const auto trust = gn_ctx_trust(ctx);
-    if (trust != GN_TRUST_LOOPBACK && trust != GN_TRUST_INTRA_NODE) {
+    if (trust != GN_TRUST_LOOPBACK
+        && trust != GN_TRUST_INTRA_NODE
+        && trust != GN_TRUST_ANONYMOUS_LOOPBACK) {
         return GN_ERR_INVALID_ENVELOPE;
     }
 
@@ -111,7 +113,9 @@ std::uint32_t allowed_trust_mask_thunk(void* /*self*/) noexcept {
     /// case the kernel ever consults the vtable mask before a
     /// deframe call (a future dlopen'd-protocol path), and the
     /// inline check stays defence-in-depth for direct invocations.
-    return (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+    return (1u << GN_TRUST_LOOPBACK)
+         | (1u << GN_TRUST_INTRA_NODE)
+         | (1u << GN_TRUST_ANONYMOUS_LOOPBACK);
 }
 
 }  // namespace

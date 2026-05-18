@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_inbound_chain.cpp
+/// @file   tests/unit/integration/test_inbound_chain.cpp
 /// @brief  GnetProtocol → Router → IHandler full inbound chain.
 ///
 /// Builds the minimum kernel-side composition that exercises every

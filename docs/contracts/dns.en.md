@@ -1,13 +1,14 @@
 # Contract: DNS handler
 
-**Status:** active · v1.0.0-rc1
+**Status:** active · v1
 **Owner:** `plugins/handlers/dns/`
 **Last verified:** 2026-05-13
-**Stability:** v1.x; wire layout below is locked, the `IDnsBackend`
-              backend interface may grow new methods through
-              size-prefix evolution.
+**Stability:** v1.x; wire layout below is locked. The handler
+              rides the `gn.store` extension for storage today; if
+              an operator-facing `IDnsBackend` split lands later
+              (see §4), it will grow through size-prefix evolution.
 
-> Not to be confused with [`hostname-resolver.md`](hostname-resolver.en.md),
+> Not to be confused with [`hostname-resolver.en.md`](hostname-resolver.en.md),
 > the SDK helper that rewrites `tcp://example.com:443` into an IP
 > literal at connect time. That helper resolves URI hosts; this
 > handler is a networked TTL'd key-value database that nodes use
@@ -28,12 +29,14 @@ small records — peer descriptors, service announcements,
 capability advertisements, metrics — without standing up an
 external DB.
 
-The handler owns a pluggable `IDnsBackend` backend (memory
-reference in slice 1; sqlite reference in slice 2; DHT + Redis
-planned) and a wire dispatcher that maps the seven `DNS_*`
-envelope types onto the backend. Local callers reach the same
-surface through the [`gn.dns`](../../sdk/extensions/dns.h)
-extension vtable — no wire framing, no conn-id needed.
+The handler is wired against the `gn.store` extension as its
+backing store (records ride through the KV / TTL / subscribe /
+sync surface there) and ships a wire dispatcher that maps the
+seven `DNS_*` envelope types onto that store. A future
+`IDnsBackend` split (memory / sqlite / DHT / Redis references)
+is sketched in §4. Local callers reach the same surface through
+the [`gn.dns`](../../sdk/extensions/dns.h) extension vtable — no
+wire framing, no conn-id needed.
 
 ---
 
@@ -42,17 +45,23 @@ extension vtable — no wire framing, no conn-id needed.
 ### 2.1 Extension vtable
 
 ```c
-gn_dns_api_t* api = host_api->query_extension_checked(
-    "gn.dns", GN_EXT_DNS_VERSION, sizeof(gn_dns_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, "gn.dns", GN_EXT_DNS_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_dns_api_t* api = (const gn_dns_api_t*)vt;
 
-api->put(api->ctx, "peer/alice", 11,
-         pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);
+api->resolve(api->ctx, "alice.example", 13,
+             GN_DNS_RR_A, /*max_results*/ 0,
+             on_record, /*emit_user*/ nullptr);
 ```
 
-Eight slots: `put / get / query / del / subscribe / unsubscribe /
-cleanup_expired` plus the `ctx`/`_reserved` ABI footer.
-`query` covers exact / prefix / since-timestamp modes through a
-single record-emitting callback.
+Three slots: `resolve / put_record / delete_record` plus the
+`ctx`/`_reserved` ABI footer. `resolve` walks the cascade
+(local store → cache → upstream via c-ares) and fires the emit
+callback once per record. `put_record` / `delete_record` proxy
+into the backing `gn.store` extension under the
+`<u16 type-byte BE>/<name>` store-key shape.
 
 ### 2.2 Wire surface
 
@@ -69,7 +78,7 @@ Seven envelopes under `protocol_id = "gnet-v1"`:
 | `0x0616` | symmetric | `DNS_SYNC` |
 
 These ids are outside the kernel-reserved `0x10..0x1F` range (see
-[`system-handlers.md`](system-handlers.en.md) §2). The
+[`system-handlers.en.md`](system-handlers.en.md) §2). The
 `0x0610..0x0616` block sits next to the legacy `apps/store`
 range (`0x0600..0x0606`) that `gn.handler.store` keeps, so a
 node hosting both plugins in the same process routes traffic
@@ -185,15 +194,20 @@ Each method is **synchronous and called from a single thread** —
 the handler funnels every call through one mutex so the backend
 sees serialised access. Backends MAY ignore their own locking.
 
-The reference `MemoryDnsBackend` ships in-tree as slice 1.
-`SqliteDnsBackend` lands in slice 2.
+The DNS handler currently uses the `gn.store` extension as its
+backing store (see `plugins/handlers/store/`) — records ride
+through the store's KV / TTL / subscribe / sync surface, and
+the DNS handler adds the typed `RrType` / `name` shape on top.
+A dedicated `IDnsBackend` abstraction with the table below is
+sketched for an eventual split when an operator wants a DNS-
+optimised backing store (file / DHT / clustered cache):
 
 | Backend | Persistence | Notes |
 |---|---|---|
-| `MemoryDnsBackend` (slice 1) | none | hash-map; loses state across restart |
-| `SqliteDnsBackend` (slice 2) | file | prepared stmts; production reference |
-| `DhtDnsBackend` (planned) | distributed | Kademlia over GoodNet itself |
-| `RedisDnsBackend` (planned) | external | clustered, hot failover |
+| `MemoryDnsBackend` | none | hash-map; loses state across restart |
+| `SqliteDnsBackend` | file | prepared stmts; production reference |
+| `DhtDnsBackend` | distributed | Kademlia over GoodNet itself |
+| `RedisDnsBackend` | external | clustered, hot failover |
 
 ---
 
@@ -229,12 +243,12 @@ The reference `MemoryDnsBackend` ships in-tree as slice 1.
 - Extension ABI: [`sdk/extensions/dns.h`](../../sdk/extensions/dns.h)
 - Reference implementation: `plugins/handlers/dns/`
 - Reserved-id semantics:
-  [`handler-registration.md`](handler-registration.en.md) §2a +
-  [`system-handlers.md`](system-handlers.en.md) §1
+  [`handler-registration.en.md`](handler-registration.en.md) §2a +
+  [`system-handlers.en.md`](system-handlers.en.md) §1
 - The DIFFERENT thing called "DNS":
-  [`hostname-resolver.md`](hostname-resolver.en.md) — the SDK
+  [`hostname-resolver.en.md`](hostname-resolver.en.md) — the SDK
   helper for `tcp://example.com:443` → IP-literal rewriting at
   connect time. That is a pure-function URI rewrite, not a
   network service.
-- Legacy origin (archived):
-  `~/Desktop/projects/GoodNet_legacy/apps/store/`
+- Legacy origin: the routing-layer-that-doubled-as-DNS shape
+  predating the kernel/plugin split; archived outside the repo.

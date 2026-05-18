@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <limits>
+#include <string>
 
 namespace gn::core::wire {
 
@@ -37,6 +38,22 @@ inline std::uint8_t make_initial(std::uint8_t major,
                                  std::uint8_t additional) noexcept {
     return static_cast<std::uint8_t>((major << kMajorShift) |
                                      (additional & kMinorMask));
+}
+
+/// Stamp the reader's optional diagnostic sink with a decode-failure
+/// description. Swallows `std::bad_alloc` so the codec stays
+/// effectively `noexcept` from the caller's point of view — the
+/// return code is the load-bearing signal; the diagnostic is a
+/// convenience for the operator-facing log line.
+void note_diag(Reader& r, std::string_view what) noexcept {
+    if (r.diag == nullptr) return;
+    try {
+        r.diag->assign(what);
+        r.diag->append(" at byte ");
+        r.diag->append(std::to_string(r.pos));
+    } catch (...) {
+        // best-effort diagnostic; ignore.
+    }
 }
 
 void emit_head(std::vector<std::uint8_t>& out,
@@ -72,9 +89,10 @@ void emit_head(std::vector<std::uint8_t>& out,
 
 [[nodiscard]] gn_result_t read_head(Reader& r,
                                     std::uint8_t& major,
-                                    std::uint64_t& value) noexcept {
+                                    std::uint64_t& value) {
     if (r.pos >= r.buf.size()) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "unexpected EOF reading CBOR initial byte");
+        return GN_ERR_WIRE_DECODE;
     }
     const std::uint8_t initial = r.buf[r.pos];
     const std::uint8_t additional = initial & kMinorMask;
@@ -91,10 +109,15 @@ void emit_head(std::vector<std::uint8_t>& out,
     } else if (additional == kAdditional8B) {
         need = 9;
     } else {
-        return GN_ERR_OUT_OF_RANGE;
+        // additional ∈ {28..31} are reserved in the CBOR core spec.
+        // Our subset never emits them; receiving one means a peer
+        // produced an unsupported encoding (indefinite-length, etc.).
+        note_diag(r, "CBOR additional-info byte not in supported subset");
+        return GN_ERR_WIRE_DECODE;
     }
     if (r.buf.size() - r.pos < need) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "unexpected EOF reading CBOR head extension");
+        return GN_ERR_WIRE_DECODE;
     }
     if (additional >= kAdditional1B) {
         value = 0;
@@ -165,7 +188,8 @@ gn_result_t decode_u64(Reader& r, std::uint64_t& out) {
         return rc;
     }
     if (major != kMajorUInt) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected unsigned int (major 0)");
+        return GN_ERR_WIRE_DECODE;
     }
     out = value;
     return GN_OK;
@@ -180,6 +204,10 @@ gn_result_t decode_i64(Reader& r, std::int64_t& out) {
     if (major == kMajorUInt) {
         if (value > static_cast<std::uint64_t>(
                         std::numeric_limits<std::int64_t>::max())) {
+            // Actual numeric range violation — keeping
+            // GN_ERR_OUT_OF_RANGE preserves the semantic for callers
+            // (CBOR was well-formed, the value just does not fit).
+            note_diag(r, "CBOR unsigned value exceeds int64_t::max");
             return GN_ERR_OUT_OF_RANGE;
         }
         out = static_cast<std::int64_t>(value);
@@ -190,12 +218,15 @@ gn_result_t decode_i64(Reader& r, std::int64_t& out) {
         // Cap magnitude so `out` stays in range for int64_t.
         if (value > static_cast<std::uint64_t>(
                         std::numeric_limits<std::int64_t>::max())) {
+            note_diag(r, "CBOR negative magnitude exceeds int64_t::max");
             return GN_ERR_OUT_OF_RANGE;
         }
         out = -1 - static_cast<std::int64_t>(value);
         return GN_OK;
     }
-    return GN_ERR_OUT_OF_RANGE;
+    note_diag(r,
+        "CBOR type mismatch: expected int (major 0 or 1)");
+    return GN_ERR_WIRE_DECODE;
 }
 
 gn_result_t decode_bytes(Reader& r,
@@ -206,10 +237,13 @@ gn_result_t decode_bytes(Reader& r,
         return rc;
     }
     if (major != kMajorByteStr) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected byte string (major 2)");
+        return GN_ERR_WIRE_DECODE;
     }
     if (length > r.buf.size() - r.pos) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r,
+            "CBOR byte string length exceeds remaining buffer (truncated)");
+        return GN_ERR_WIRE_DECODE;
     }
     out = r.buf.subspan(r.pos, static_cast<std::size_t>(length));
     r.pos += static_cast<std::size_t>(length);
@@ -223,10 +257,13 @@ gn_result_t decode_text(Reader& r, std::string_view& out) {
         return rc;
     }
     if (major != kMajorTextStr) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected text string (major 3)");
+        return GN_ERR_WIRE_DECODE;
     }
     if (length > r.buf.size() - r.pos) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r,
+            "CBOR text string length exceeds remaining buffer (truncated)");
+        return GN_ERR_WIRE_DECODE;
     }
     out = std::string_view(
         reinterpret_cast<const char*>(r.buf.data() + r.pos),
@@ -242,7 +279,8 @@ gn_result_t decode_array_header(Reader& r, std::size_t& n) {
         return rc;
     }
     if (major != kMajorArray) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected array header (major 4)");
+        return GN_ERR_WIRE_DECODE;
     }
     n = static_cast<std::size_t>(value);
     return GN_OK;
@@ -255,7 +293,8 @@ gn_result_t decode_map_header(Reader& r, std::size_t& n) {
         return rc;
     }
     if (major != kMajorMap) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected map header (major 5)");
+        return GN_ERR_WIRE_DECODE;
     }
     n = static_cast<std::size_t>(value);
     return GN_OK;
@@ -268,11 +307,13 @@ gn_result_t decode_bool(Reader& r, bool& out) {
         return rc;
     }
     if (major != kMajorSimple) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR type mismatch: expected simple value (major 7)");
+        return GN_ERR_WIRE_DECODE;
     }
     if (value == kSimpleFalse) { out = false; return GN_OK; }
     if (value == kSimpleTrue)  { out = true;  return GN_OK; }
-    return GN_ERR_OUT_OF_RANGE;
+    note_diag(r, "CBOR simple value is not bool (true/false)");
+    return GN_ERR_WIRE_DECODE;
 }
 
 gn_result_t decode_null(Reader& r) {
@@ -282,14 +323,18 @@ gn_result_t decode_null(Reader& r) {
         return rc;
     }
     if (major != kMajorSimple || value != kSimpleNull) {
-        return GN_ERR_OUT_OF_RANGE;
+        note_diag(r, "CBOR simple value is not null");
+        return GN_ERR_WIRE_DECODE;
     }
     return GN_OK;
 }
 
 gn_result_t peek_major_type(const Reader& r, std::uint8_t& major) {
     if (r.pos >= r.buf.size()) {
-        return GN_ERR_OUT_OF_RANGE;
+        // `peek_major_type` takes a `const Reader&`; the diagnostic
+        // sink is meant for the mutating decoders, so peek-failure
+        // skips the diag stamp and surfaces only the result code.
+        return GN_ERR_WIRE_DECODE;
     }
     major = static_cast<std::uint8_t>(r.buf[r.pos] >> kMajorShift);
     return GN_OK;

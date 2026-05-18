@@ -64,8 +64,8 @@ bit  mask   name                  meaning
 
 Reserved биты на inbound — frame проходит парсер (биты маскируются), но
 deframer записывает counter `gnet.dropped.reserved_bit` для observability.
-Forward-compatibility: v1.1 расширения садятся в reserved биты без bump
-версии.
+Forward-compatibility: будущие protocol-revision расширения садятся в
+reserved биты без bump версии.
 
 ### Три encoding-режима
 
@@ -98,7 +98,7 @@ payload_size = length - header_size
 
 - `length < header_size` → `GN_ERR_DEFRAME_CORRUPT`
 - `length > kMaxFrameBytes` (default 65536) → `GN_ERR_FRAME_TOO_LARGE`
-  и counter `drop.frame_too_large` ([metrics.md](../contracts/metrics.en.md)
+  и counter `drop.frame_too_large` ([metrics.en.md](../contracts/metrics.en.md)
   §3)
 
 Mismatch первой категории — потенциально hostile peer (overflow probe);
@@ -112,7 +112,7 @@ Mismatch первой категории — потенциально hostile pe
 32 байта Ed25519 raw public key. **Конечный** identifier originator'а:
 relay-узлы не переписывают `sender_pk` при transit'е — это и есть
 end-to-end identity guarantee mesh-framing'а
-([protocol-layer.md](../contracts/protocol-layer.en.md) §5).
+([protocol-layer.en.md](../contracts/protocol-layer.en.md) §5).
 
 Источник на inbound зависит от encoding-режима:
 
@@ -133,7 +133,7 @@ Spoofing предотвращён двумя гейтами:
 с counter `route.outcome.dropped_zero_sender` — drop происходит после
 deframe в routing pipeline'е, поэтому имя шарит namespace с остальными
 route-outcome counter'ами per
-[metrics.md §3](../contracts/metrics.en.md).
+[metrics.en.md §3](../contracts/metrics.en.md).
 
 ---
 
@@ -182,14 +182,14 @@ uint32 BE — per-protocol routing key. Handler регистрируется н�
 
 | msg_id | Owner | Payload |
 |---|---|---|
-| `0x10` | heartbeat (pre-attestation) | `HeartbeatSchema` per `protocol-layer.md` §3.2 |
+| `0x10` | heartbeat (pre-attestation) | `HeartbeatSchema` per `protocol-layer.en.md` §3.2 |
 | `0x11` | attestation dispatcher | 232 байта signed payload, см. [attestation-bytes](attestation-bytes.ru.md) |
-| `0x12` | capability TLV blob | TLV records, см. [capability-tlv.md](../contracts/capability-tlv.en.md) |
+| `0x12` | capability TLV blob | TLV records, см. [capability-tlv.en.md](../contracts/capability-tlv.en.md) |
 
 Регистрация handler'а на любой kernel-canon `msg_id` (через
 `register_vtable(GN_REGISTER_HANDLER)`) отклоняется с
 `GN_ERR_INVALID_ENVELOPE`
-([handler-registration.md](../contracts/handler-registration.en.md) §2a).
+([handler-registration.en.md](../contracts/handler-registration.en.md) §2a).
 
 ---
 
@@ -207,7 +207,7 @@ Default `max_payload_bytes = 65458` ⇒ ~64 KiB payload.
 `payload` указатель внутри `gn_message_t` — **borrowed** на время
 синхронного `handle_message` вызова; handler, которому байты нужны после
 return, обязан скопировать их в свой буфер до yield
-([protocol-layer.md](../contracts/protocol-layer.en.md) §2.2).
+([protocol-layer.en.md](../contracts/protocol-layer.en.md) §2.2).
 
 Plugin handler dispatch — по `msg_id`. Payload format — вотчина handler'а,
 GNET его не парсит.
@@ -249,7 +249,7 @@ Partial header (< 14 байт) → `GN_ERR_DEFRAME_INCOMPLETE`, kernel ждёт.
 ## Backpressure
 
 `host_api->send` возвращает `gn_result_t` per
-[backpressure.md](../contracts/backpressure.en.md) §1. На hard-cap
+[backpressure.en.md](../contracts/backpressure.en.md) §1. На hard-cap
 queue overflow результат — `GN_ERR_LIMIT_REACHED`; sender обязан
 back off'нуть и не tight-loop'ить, иначе все последующие frames
 тоже отвергаются и connection деградирует под собственным напором.
@@ -263,7 +263,7 @@ back off'нуть и не tight-loop'ить, иначе все последую�
 Per-connection soft watermark (`pending_queue_bytes_low/high`) и
 теряемое-соединение-на-горизонте сурфачатся ОТДЕЛЬНЫМ событийным
 каналом — `GN_SUBSCRIBE_CONN_STATE` доставляет
-`BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` (см. [conn-events.md](../contracts/conn-events.en.md) §2).
+`BACKPRESSURE_SOFT` / `BACKPRESSURE_CLEAR` (см. [conn-events.en.md](../contracts/conn-events.en.md) §2).
 Тип `gn_backpressure_t` в [types.h](../../sdk/types.h) — wire shape
 для этого канала, не возврат `send`'а; отдельный канал нужен
 потому что hard-cap reject'ы дискретны (один frame, один error
@@ -298,17 +298,17 @@ listener'е raw не работает — kernel не админит транс�
 
 ## Cross-refs
 
-- [protocol-layer.md](../contracts/protocol-layer.en.md) — kernel-side
+- [protocol-layer.en.md](../contracts/protocol-layer.en.md) — kernel-side
   envelope semantics (`gn_message_t` lifetime, identity sourcing)
 - [routing](../architecture/routing.ru.md) — что kernel делает между
   `deframe` и handler dispatch
 - [wire-protocol](../architecture/wire-protocol.ru.md) — почему
   mesh-framing мандаторен
-- [limits.md](../contracts/limits.en.md) §2 — `max_frame_bytes`,
+- [limits.en.md](../contracts/limits.en.md) §2 — `max_frame_bytes`,
   `max_payload_bytes`
-- [handler-registration.md](../contracts/handler-registration.en.md) §2a —
+- [handler-registration.en.md](../contracts/handler-registration.en.md) §2a —
   reserved msg_id ranges, kernel-canon allocation
-- [capability-tlv.md](../contracts/capability-tlv.en.md) — TLV-blob,
+- [capability-tlv.en.md](../contracts/capability-tlv.en.md) — TLV-blob,
   едущий по `msg_id == 0x12`
 - [noise-handshake](noise-handshake.ru.md) — security-слой, который
   обнимает GNET frame с обеих сторон

@@ -174,7 +174,7 @@ Reserved msg_id values недоступны для регистрации: `0x00
 
 ## Transport (link) vtable
 
-Link перевозит байты. Не интерпретирует payload, не аутентифицирует peer'ов, не маршрутизирует messages. Регистрируется через `register_vtable(GN_REGISTER_LINK, meta, vt, self, &id)` где `meta->name` — URI scheme (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`).
+Link перевозит байты. Не интерпретирует payload, не аутентифицирует peer'ов, не маршрутизирует messages. Регистрируется через `register_vtable(GN_REGISTER_LINK, meta, vt, self, &id)` где `meta->name` — URI scheme (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, `"tls"`, `"ice"`, `"quic"`).
 
 ```c
 typedef struct gn_link_vtable_s {
@@ -227,7 +227,7 @@ Vtable layout: `provider_id` отдаёт стабильный identifier (`"noi
 
 `allowed_trust_mask()` возвращает bitmap из `1u << GN_TRUST_<X>`. Noise provider declares `Untrusted | Peer | Loopback | IntraNode`. Null provider declares `Loopback | IntraNode`. Connection чей trust class не в mask'е rejected at `SessionRegistry::create` до того, как handshake byte рideт.
 
-Stack policy: один default provider per trust class. v1 simplification держит ровно одного active provider total — second `register_security` call отдаёт `GN_ERR_LIMIT_REACHED`, incumbent остаётся active. Multi-provider per-trust-class selection приходит со StackRegistry в v1.x.
+Stack policy: kernel admits N security providers concurrently через StackRegistry — одну entry per distinct `provider_id`. Дубликат id (повторный `register_security` под тем же именем) отдаёт `GN_ERR_LIMIT_REACHED`; свежий id принимается и присоединяется к per-trust-class admission set. `find_for_trust(trust)` подбирает первый registered provider, чей `allowed_trust_mask` admits заявленный класс — кэрнел запускает null для `Loopback` / `IntraNode` и noise для `Untrusted` / `Peer` в одном процессе без operator config switch.
 
 Provider plugin живёт собственным git'ом. `plugins/security/noise/` — отдельный standalone Nix flake, GPL-2 licensed (relicensed для anti-enclosure ground), pull'ится из bare mirror в kernel monorepo при `nix run .#setup`. Тот же source распространяется как static archive (linked в kernel binary) или dynamic .so (loaded через manifest verification + dlopen). Two deployment modes без source duplication.
 
@@ -307,7 +307,7 @@ Bridge plugin'ы — типичная композиция «link + handler»: l
 
 Не каждый плагин — loadable. `plugins/protocols/gnet/` и `plugins/protocols/raw/` — STATIC linked прямо в kernel binary. Не проходят dlopen pathway, не нуждаются в manifest verification, не участвуют в dynamic load order'е.
 
-Используют тот же registration API, но в Wire phase напрямую: kernel вызывает их `gn_protocol_layer_vtable_t::deframe` / `frame` через статически прорисованный pointer, не через registry lookup. `protocol-layer.md` обозначает протокольный слой как «single mandatory plugin slot» — kernel binary линкует ровно одну реализацию vtable.
+Используют тот же registration API, но в Wire phase напрямую: kernel вызывает их `gn_protocol_layer_vtable_t::deframe` / `frame` через статически прорисованный pointer, не через registry lookup. `protocol-layer.en.md` обозначает протокольный слой как «single mandatory plugin slot» — kernel binary линкует ровно одну реализацию vtable.
 
 Причина статической линковки. Protocol layer прибит к wire format'у kernel'а; смена protocol implementation ≈ смена ABI всех handler'ов. Это не runtime knob, это compile-time choice. GoodNet ships gnet-v1 как default; raw-v1 — minimal protocol для loopback / intra-node, где framing magic + version избыточны.
 
@@ -317,15 +317,15 @@ Loadable plugins под `plugins/handlers/`, `plugins/links/`, `plugins/security
 
 ## Plugin separation
 
-Каждый loadable plugin — independent unit. Собственный git с remote'ом на bare mirror; собственный `default.nix` с standalone build; собственный LICENSE (GPL-2 для strategic plugins на anti-enclosure ground; MIT для periphery; Apache-2.0 для TLS из соображений OpenSSL compat); собственный per-plugin README; собственные tests.
+Каждый loadable plugin — independent unit. Собственный git с remote'ом на bare mirror; собственный `default.nix` с standalone build; собственный LICENSE (GPL-2 для strategic plugins на anti-enclosure ground; MIT для periphery; Apache-2.0 для OpenSSL-tied plugins TLS / QUIC + reference-strategy float_send_rtt); собственный per-plugin README; собственные tests.
 
 Standalone flake plugin'а pull'ит kernel через slim subflake `nix/kernel-only/` — не root flake. Это разрывает цикл plugin → monorepo → plugin: standalone build плагина не тянет за собой все остальные plugin'ы из monorepo.
 
-Tests тоже plugin-bound. SDK exposes `<sdk/test/conformance/link_teardown.hpp>` — typed-test contract template. Каждый link plugin (tcp/ws/ipc/tls) держит собственный `tests/test_<link>_conformance.cpp` с `INSTANTIATE` для своего type'а. IPC TSan teardown race fail'ит в IPC plugin's own test suite, не в kernel's. Owner plugin'а владеет fix'ом.
+Tests тоже plugin-bound. SDK exposes `<sdk/test/conformance/link_teardown.hpp>` — typed-test contract template. Каждый link plugin (tcp/ws/ipc/tls/ice) держит собственный `tests/test_<link>_conformance.cpp` с `INSTANTIATE` для своего type'а. IPC TSan teardown race fail'ит в IPC plugin's own test suite, не в kernel's. Owner plugin'а владеет fix'ом.
 
 Cross-plugin integration tests, требующие нескольких плагинов плюс kernel (например, noise + tcp + handler), живут в отдельном repo `goodnet-integration-tests`, который pull'ится в `tests/integration/` slot тем же setup механизмом.
 
-После rc1 каждый plugin получает org repo `goodnet-io/<kind>-<name>` (например `goodnet-io/security-noise`, `goodnet-io/link-tcp`). До rc1 mirror'ы локальные, чтобы не публиковать незавершённый surface.
+Каждый plugin после spinoff'а получает org repo `GoodNet-io/<kind>-<name>` (например `GoodNet-io/security-noise`, `GoodNet-io/link-tcp`); до spinoff'а mirror'ы локальные. Процедура spinoff'а — `dist/migrate/spinoff-cookbook.md`.
 
 Two deployment modes из одного source. Static archive — linked в kernel binary, доступен без dlopen, но требует kernel rebuild на каждое plugin change. Dynamic .so — loaded через manifest verification + dlopen pipeline, hot-reload-eligible если `descriptor.hot_reload_safe == 1`. Один `default.nix` экспортирует обе варианты.
 
@@ -349,13 +349,13 @@ Trust class — это explicit ABI parameter at every site, который prod
 
 ## Cross-references
 
-- Контракт: [`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) — phase ordering, two-phase activation, weak-observer pattern, hot-reload, cooperative cancellation.
-- Контракт: [`plugin-manifest.md`](../contracts/plugin-manifest.en.md) — operator manifest, SHA-256 trust root, Linux openat2 race-free verification.
-- Контракт: [`handler-registration.md`](../contracts/handler-registration.en.md) — priority chain, propagation enum, RCU snapshot, reserved msg_id'ы.
-- Контракт: [`link.md`](../contracts/link.en.md) — vtable shape, single-writer invariant, trust-class declaration, handshake role.
-- Контракт: [`security-trust.md`](../contracts/security-trust.en.md) — TrustClass enum, mask gating, attestation upgrade.
-- Контракт: [`protocol-layer.md`](../contracts/protocol-layer.en.md) — single mandatory plugin slot, `deframe` / `frame` shape.
-- Контракт: [`abi-evolution.md`](../contracts/abi-evolution.en.md) — size-prefix evolution, ownership tags.
+- Контракт: [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — phase ordering, two-phase activation, weak-observer pattern, hot-reload, cooperative cancellation.
+- Контракт: [`plugin-manifest.en.md`](../contracts/plugin-manifest.en.md) — operator manifest, SHA-256 trust root, Linux openat2 race-free verification.
+- Контракт: [`handler-registration.en.md`](../contracts/handler-registration.en.md) — priority chain, propagation enum, RCU snapshot, reserved msg_id'ы.
+- Контракт: [`link.en.md`](../contracts/link.en.md) — vtable shape, single-writer invariant, trust-class declaration, handshake role.
+- Контракт: [`security-trust.en.md`](../contracts/security-trust.en.md) — TrustClass enum, mask gating, attestation upgrade.
+- Контракт: [`protocol-layer.en.md`](../contracts/protocol-layer.en.md) — single mandatory plugin slot, `deframe` / `frame` shape.
+- Контракт: [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — size-prefix evolution, ownership tags.
 - Архитектура: [`host-api-model`](host-api-model.ru.md) — KIND-tagged primitives, slot families.
 - Архитектура: [`extension-model`](extension-model.ru.md) — plugin↔plugin координация.
 - Архитектура: [`security-flow`](security-flow.ru.md) — handshake → attestation → trust upgrade trace.

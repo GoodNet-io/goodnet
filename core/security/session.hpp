@@ -9,7 +9,7 @@
 ///
 /// The session is *not* thread-safe by itself — the kernel routes
 /// every call through the connection's strand (single-writer
-/// invariant per `link.md` §4), so internal locking would only
+/// invariant per `link.en.md` §4), so internal locking would only
 /// add overhead. Concurrent sessions on different connections are
 /// independent and may run in parallel.
 
@@ -90,7 +90,7 @@ public:
     ///                         span otherwise
     /// @param recv_buffer_cap_bytes ceiling on the per-conn inbound
     ///                              partial-frame buffer per
-    ///                              `backpressure.md` §9. The caller
+    ///                              `backpressure.en.md` §9. The caller
     ///                              passes
     ///                              `2 * gn_limits_t::max_frame_bytes
     ///                              + kFramePrefixBytes` so an
@@ -147,8 +147,8 @@ public:
     /// kernel-side fast crypto seeded (`InlineCrypto`). The
     /// `drain_send_queue` path routes plaintext through
     /// `encrypt_batch_transport` only on this fast path; otherwise
-    /// a single-frame `encrypt_transport` runs synchronously per
-    /// the legacy path.
+    /// a single-frame `encrypt_transport` runs synchronously
+    /// through the provider's per-call API.
     [[nodiscard]] bool fast_crypto_active() const noexcept;
 
     /// Encrypt a batch of N plaintext frames in parallel through
@@ -173,17 +173,45 @@ public:
     /// Drain zero or more complete transport-phase frames from the
     /// per-conn inbound buffer. The kernel feeds raw transport bytes
     /// (a single TCP read may carry partial, exact, or coalesced
-    /// frames per `link.md` §4); the session accumulates them in
+    /// frames per `link.en.md` §4); the session accumulates them in
     /// `recv_buffer_`, slices each `length`-byte ciphertext range
     /// off the head per the noise §7 wire format, decrypts it
     /// (InlineCrypto fast path or vtable fallback), and pushes one
     /// plaintext per frame onto @p out_plaintexts. The buffer is
-    /// bounded per `backpressure.md` §9; the call returns
+    /// bounded per `backpressure.en.md` §9; the call returns
     /// `GN_ERR_LIMIT_REACHED` if growth would exceed the cap and the
     /// link plugin's failure threshold tears the conn down.
     [[nodiscard]] gn_result_t decrypt_transport_stream(
         std::span<const std::uint8_t> wire_bytes,
         std::vector<std::vector<std::uint8_t>>& out_plaintexts);
+
+    /// Drain like `decrypt_transport_stream` but dispatch the AEAD
+    /// pass K-way through @p pool when enough complete frames are
+    /// available in one tick. A batch of one falls through to the
+    /// scalar path to skip the pool's latch+cv overhead. The fast
+    /// path is only taken when `fast_crypto_active()` is true;
+    /// otherwise this defers to `decrypt_transport_stream`.
+    [[nodiscard]] gn_result_t decrypt_batch_transport_stream(
+        CryptoWorkerPool&                       pool,
+        std::span<const std::uint8_t>           wire_bytes,
+        std::vector<std::vector<std::uint8_t>>& out_plaintexts);
+
+    /// Decrypt a batch of N already-deframed ciphertext spans in
+    /// parallel through @p pool. Each entry of @p ciphertexts is a
+    /// raw `[cipher+tag]` span (no wire prefix); each output buffer
+    /// holds the recovered plaintext for the matching index. The
+    /// session reserves K recv nonces atomically before dispatch,
+    /// so the per-frame nonce sequence stays gap-free under the
+    /// single-writer inbound-strand invariant.
+    ///
+    /// @pre `fast_crypto_active() == true`.
+    /// @return `GN_OK` on success. `GN_ERR_INVALID_ENVELOPE` when
+    ///         any frame fails AEAD authentication; partial results
+    ///         in @p out_plaintexts are cleared.
+    [[nodiscard]] gn_result_t decrypt_batch_transport(
+        CryptoWorkerPool&                              pool,
+        std::span<const std::span<const std::uint8_t>> ciphertexts,
+        std::vector<std::vector<std::uint8_t>>&        out_plaintexts);
 
     /// Single-frame decrypt — kept for tests and the rare callers
     /// that already split on the security boundary. Production
@@ -214,7 +242,7 @@ public:
     /// already-buffered byte count would exceed @p hard_cap_bytes,
     /// `GN_ERR_INVALID_STATE` when called outside `Handshake` (the
     /// `Transport` path encrypts directly; a `Closed` session has
-    /// nothing to drain into). Per `backpressure.md` §8.
+    /// nothing to drain into). Per `backpressure.en.md` §8.
     [[nodiscard]] gn_result_t enqueue_pending(
         std::vector<std::uint8_t>&& bytes,
         std::uint64_t hard_cap_bytes);
@@ -232,29 +260,29 @@ public:
         return pending_bytes_.load(std::memory_order_relaxed);
     }
 
+#ifdef GOODNET_BENCH_SHOWCASE
     /// Bench-only seam: zero `inline_crypto_` keys + flip its
     /// `seeded_` flag so subsequent `encrypt_transport` /
     /// `decrypt_transport` fall through to the provider vtable
-    /// (`gn.security.null` is copy-through). This emulates the
-    /// production post-handshake Noise→Null handoff that v1.x will
-    /// expose through a kernel-driven `SessionRegistry::downgrade_*`
-    /// API; the bench needs the number now to ship the showcase
-    /// section.
+    /// (`gn.security.null` is copy-through). Emulates the
+    /// post-handshake Noise→Null handoff that a kernel-driven
+    /// `SessionRegistry::downgrade_*` API exposes.
     ///
-    /// **Fails closed** at runtime unless the environment variable
-    /// `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` is set. Production
-    /// code never sets that env var — accidental link of the
-    /// bench's showcase binary into a production runner is
-    /// observable and refuses to mutate session state. The unit
-    /// test `tests/unit/security/test_inline_downgrade_gate.cpp`
-    /// pins this contract.
+    /// Compiled in only when the build defines `GOODNET_BENCH_SHOWCASE`
+    /// (driven by the CMake option of the same name). Default builds
+    /// do not compile this method at all, so accidental link of a
+    /// bench helper into a production runner fails at link time
+    /// rather than letting a runtime caller mutate session state.
+    /// The unit test `tests/unit/security/test_inline_downgrade_gate.cpp`
+    /// pins the contract under the same macro.
     ///
-    /// Returns `GN_ERR_INVALID_STATE` when the env var is absent or
-    /// the session isn't in `Transport` phase, `GN_OK` on success.
-    /// Idempotent — calling twice on a session whose inline crypto
-    /// is already cleared is a no-op `GN_OK` (the second call sees
-    /// `seeded_=false` and just returns).
+    /// Returns `GN_ERR_INVALID_STATE` when the session isn't in
+    /// `Transport` phase, `GN_OK` on success. Idempotent — calling
+    /// twice on a session whose inline crypto is already cleared is
+    /// a no-op `GN_OK` (the second call sees `seeded_=false` and
+    /// just returns).
     [[nodiscard]] gn_result_t _test_clear_inline_crypto();
+#endif  // GOODNET_BENCH_SHOWCASE
 
 private:
     /// Borrowed; the strong reference in `security_anchor_` keeps
@@ -266,7 +294,7 @@ private:
     /// `unregister_security` and `dlclose`; while at least one
     /// session holds this anchor, the kernel keeps the provider's
     /// `.so` mapped past every in-flight encrypt/decrypt call
-    /// (per `plugin-lifetime.md` §4).
+    /// (per `plugin-lifetime.en.md` §4).
     std::shared_ptr<void> security_anchor_;
     /// Owned (allocated by provider in handshake_open, freed in
     /// handshake_close).
@@ -281,12 +309,12 @@ private:
     /// by `take_pending` once the session reaches `Transport`. Guarded
     /// by `pending_mu_` because `enqueue_pending` (kernel send path)
     /// and `take_pending` (kernel inbound path) may run on different
-    /// threads — see the contract note in §8 of `backpressure.md`.
+    /// threads — see the contract note in §8 of `backpressure.en.md`.
     mutable std::mutex pending_mu_;
     std::vector<std::vector<std::uint8_t>> pending_;
     std::atomic<std::uint64_t>             pending_bytes_{0};
 
-    /// Per-conn inbound partial-frame buffer per `backpressure.md`
+    /// Per-conn inbound partial-frame buffer per `backpressure.en.md`
     /// §9. Stream-class transports deliver any chunk size; the
     /// buffer accumulates bytes that don't yet form a complete
     /// frame and shrinks as `decrypt_transport_stream` slices
@@ -305,13 +333,45 @@ private:
     /// stays unseeded and the session falls back to the vtable
     /// encrypt/decrypt slots.
     InlineCrypto                             inline_crypto_;
+
+public:
+    /// Free-list cap on `recycled_plaintext_pool_`. Sized to absorb
+    /// one steady-state inbound batch plus headroom.
+    static constexpr std::size_t             kRecycledPlaintextPoolMax = 16;
+
+private:
+    /// Free-list of reusable plaintext byte buffers for the inbound
+    /// hot path. The kernel allocates one `std::vector<std::uint8_t>`
+    /// per decrypted frame in `notify_inbound_bytes`; the recycled
+    /// pool caps that at `kRecycledPlaintextPoolMax` slots so steady
+    /// state reuses capacity instead of heap-churning. The session
+    /// is single-writer on the inbound strand, so the pool needs no
+    /// lock. The send / handshake paths never touch it.
+    std::vector<std::vector<std::uint8_t>>   recycled_plaintext_pool_;
+
+    /// Pop one plaintext buffer off `recycled_plaintext_pool_` (or
+    /// allocate fresh when empty). Inbound-strand only.
+    [[nodiscard]] std::vector<std::uint8_t> take_plaintext_buffer() noexcept;
+    /// Return a plaintext buffer to `recycled_plaintext_pool_` if
+    /// there is room; otherwise drop it. Inbound-strand only.
+    void release_plaintext_buffer(std::vector<std::uint8_t>&& buf) noexcept;
+
+public:
+    /// Reclaim plaintext buffers from a consumed batch back into the
+    /// session's free list. The caller passes the same vector it
+    /// received from `decrypt_*_transport` after every plaintext has
+    /// been routed. Each buffer is cleared (size → 0, capacity kept)
+    /// and stored up to `kRecycledPlaintextPoolMax`; excess slots
+    /// drop naturally. Inbound-strand only.
+    void recycle_plaintext_buffers(
+        std::vector<std::vector<std::uint8_t>>& buffers) noexcept;
 };
 
 /// Wire-side framing constants used by `SecuritySession` and the
 /// kernel inbound thunk. The prefix is one big-endian uint16; the
 /// per-session inbound buffer cap is computed at `open()` time
 /// from the kernel's `gn_limits_t::max_frame_bytes` per
-/// `backpressure.md` §9. The default ceiling here is the absolute
+/// `backpressure.en.md` §9. The default ceiling here is the absolute
 /// wire-format limit and serves as the open() default when no
 /// caller-supplied value is provided.
 inline constexpr std::size_t   kFramePrefixBytes    = 2;

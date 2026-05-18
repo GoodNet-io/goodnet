@@ -2,7 +2,7 @@
 /// @brief  Toposort plugin descriptors over the ext_requires graph.
 ///
 /// Plugin descriptors carry `ext_requires` and `ext_provides` arrays
-/// per `plugin-lifetime.md` §3 and the corresponding C ABI surface
+/// per `plugin-lifetime.en.md` §3 and the corresponding C ABI surface
 /// in `sdk/plugin.h`. The kernel sorts the descriptors so providers
 /// come before consumers, then runs the two-phase activation
 /// (`init_all` then `register_all`) on the ordered set.

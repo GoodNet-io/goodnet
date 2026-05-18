@@ -39,7 +39,7 @@ attestation, остаётся `Untrusted` и handler'ы это видят чер
 ## Формат на проводе
 
 Total **232 байта** signed payload. Все multi-byte поля внутри cert'а —
-big-endian per [identity.md](../contracts/identity.en.md) §4.
+big-endian per [identity.en.md](../contracts/identity.en.md) §4.
 
 | Offset | Bytes | Field |
 |---|---|---|
@@ -150,7 +150,7 @@ session'е».
 |---|---|
 | Attacker украл cert (общий, длинный) | outer sig fail'ит — не имеет device_sk |
 | Attacker украл device_sk | inner sig fail'ит при cert verify (если cert не от него) — не имеет user_sk |
-| Attacker украл оба | leaked-key attack, см. [attestation.md](../contracts/attestation.en.md) §10 |
+| Attacker украл оба | leaked-key attack, см. [attestation.en.md](../contracts/attestation.en.md) §10 |
 
 ---
 
@@ -168,7 +168,7 @@ connection torn down:
 3. **Binding match.** `binding != current session's handshake_hash`
    → `GN_DROP_ATTESTATION_REPLAY`.
 4. **Cert parse.** 136-байт cert не парсится per
-   [identity.md](../contracts/identity.en.md) §4 →
+   [identity.en.md](../contracts/identity.en.md) §4 →
    `GN_DROP_ATTESTATION_PARSE_FAILED`.
 5. **Outer signature verify.** Ed25519 detached verify
    `(sig, payload[0..168], cert.device_pk)` fail'ит →
@@ -181,7 +181,7 @@ connection torn down:
    inbound `device_pk` → `GN_DROP_ATTESTATION_IDENTITY_CHANGE`. Если
    pin'а нет — write through `pin_device_pk(peer_pk, device_pk)`. Pin
    переживает `notify_disconnect` (см.
-   [registry.md](../contracts/registry.en.md) §8a).
+   [registry.en.md](../contracts/registry.en.md) §8a).
 8. **Per-session identity stability.** Если на этой conn уже
    verified attestation, и new device_pk отличается → тот же
    `IDENTITY_CHANGE`. Same device_pk — duplicate, drop envelope без
@@ -194,7 +194,7 @@ promot'ит connection через
 `connections.upgrade_trust(conn, GN_TRUST_PEER)` и fire'ит
 `GN_CONN_EVENT_TRUST_UPGRADED`. Order irrelevant; upgrade fires exactly
 once per connection (`upgrade_trust` policy gate — см.
-[security-trust.md](../contracts/security-trust.en.md) §3).
+[security-trust.en.md](../contracts/security-trust.en.md) §3).
 
 ---
 
@@ -205,7 +205,7 @@ once per connection (`upgrade_trust` policy gate — см.
 1. Envelope dropped — handler chain не видит.
 2. `gn_drop_reason_t` counter инкрементируется ([types.h](../../sdk/types.h)).
 3. Connection close через `notify_disconnect(conn, reason)`
-   ([conn-events.md](../contracts/conn-events.en.md) §2a).
+   ([conn-events.en.md](../contracts/conn-events.en.md) §2a).
 
 Producer-side fail (compose payload, frame через protocol layer,
 encrypt через session, transport write) abort'ит §4 sequence без
@@ -241,27 +241,28 @@ session'е. Не emit'ит metric — operator видит warn line per session 
 
 В `compose(user, device, expiry)` варианте user_kp загружается из
 backup'а на новой machine, а device_kp минтится свежим — так выглядит
-device replacement scenario. Address (per [identity.md](../contracts/identity.en.md) §3) меняется,
+device replacement scenario. Address (per [identity.en.md](../contracts/identity.en.md) §3) меняется,
 но `user_pk` тот же, и peer'ы могут принять или отклонить новый
 device per local policy.
 
 Future: `cert.user_pk` ≠ `cert.issuer_pk` — external CA через
 capability bitmap, multi-CA chains. v1 — single user-key signature
-over device key; hierarchical делегирование post-v1.
+over device key; иерархическое делегирование запланировано как
+расширение.
 
 ---
 
 ## Cross-refs
 
-- [attestation.md](../contracts/attestation.en.md) — kernel-side dispatcher
+- [attestation.en.md](../contracts/attestation.en.md) — kernel-side dispatcher
   spec, mutual-exchange flow, leaked-key model
-- [identity.md](../contracts/identity.en.md) — `KeyPair`, `NodeIdentity`,
+- [identity.en.md](../contracts/identity.en.md) — `KeyPair`, `NodeIdentity`,
   cert layout source
-- [security-trust.md](../contracts/security-trust.en.md) — TrustClass
+- [security-trust.en.md](../contracts/security-trust.en.md) — TrustClass
   upgrade gate, gated на этом protocol'е
 - [security-flow](../architecture/security-flow.ru.md) —
   attestation_dispatcher в kernel'ной FSM
 - [noise-handshake](noise-handshake.ru.md) — где `handshake_hash`
   binding'а формируется
-- [registry.md](../contracts/registry.en.md) §8a — cross-session pin
+- [registry.en.md](../contracts/registry.en.md) §8a — cross-session pin
   semantics

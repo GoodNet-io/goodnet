@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_core_c.cpp
+/// @file   tests/unit/integration/test_core_c.cpp
 /// @brief  Host-embedding C ABI surface — drives `sdk/core.h` exactly
 ///         as a non-C++ host would. Asserts lifecycle ordering, NULL
 ///         handle defenses, double-init latch, identity availability
@@ -210,11 +210,13 @@ TEST(CoreC, GetStatsZeroedAfterStart) {
     ASSERT_EQ(gn_core_get_stats(core, &stats), GN_OK);
 
     /// No traffic, no plugins, no providers — every counter is zero
-    /// at this point in the kernel's life.
+    /// at this point in the kernel's life, except `extensions_registered`
+    /// which carries the kernel-internal `gn.link.capability` surface
+    /// the constructor registers for plugin consumption.
     EXPECT_EQ(stats.connections_active,    0u);
     EXPECT_EQ(stats.handlers_registered,   0u);
     EXPECT_EQ(stats.links_registered,      0u);
-    EXPECT_EQ(stats.extensions_registered, 0u);
+    EXPECT_EQ(stats.extensions_registered, 1u);
     EXPECT_EQ(stats.bytes_in,              0u);
     EXPECT_EQ(stats.bytes_out,             0u);
     EXPECT_EQ(stats.frames_in,             0u);
@@ -225,7 +227,7 @@ TEST(CoreC, GetStatsZeroedAfterStart) {
 }
 
 TEST(CoreC, GetStatsRejectsNonZeroReserved) {
-    /// `abi-evolution.md` §4: producer-side `_reserved` slots MUST be
+    /// `abi-evolution.en.md` §4: producer-side `_reserved` slots MUST be
     /// zero on entry. A non-zero slot signals stack garbage and the
     /// thunk rejects with `GN_ERR_INVALID_ENVELOPE` rather than
     /// proceeding with an ABI-mismatched struct.
@@ -398,6 +400,66 @@ TEST(CoreC, HostApiAccessorReturnsBuiltTable) {
     gn_core_destroy(core);
 }
 
+// ── gn_core_query_extension_checked — public C ABI extension lookup ────────
+
+#include <sdk/extensions/link_capability.h>
+
+TEST(CoreC, QueryLinkCapabilityViaPublicCABI) {
+    /// External clients (raw-socket adapters, FFI bindings) consume
+    /// `gn.link.capability` through the public C ABI lookup, not the
+    /// internal `Kernel::extensions()` accessor. This test pins that
+    /// the kernel registers the surface during `gn_core_create` and
+    /// the public lookup returns a working vtable that produces a
+    /// usable snapshot.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    const void* raw = gn_core_query_extension_checked(
+        core, GN_EXT_LINK_CAPABILITY, GN_EXT_LINK_CAPABILITY_VERSION);
+    ASSERT_NE(raw, nullptr);
+
+    const auto* api =
+        static_cast<const gn_link_capability_api_t*>(raw);
+    ASSERT_EQ(api->api_size, sizeof(gn_link_capability_api_t));
+    ASSERT_NE(api->get, nullptr);
+
+    gn_link_capability_t cap{};
+    EXPECT_EQ(api->get(api->ctx, &cap), 0);
+    /// Any sane test host can bind at least one socket family.
+    EXPECT_TRUE(cap.can_bind_udp_v4 || cap.can_bind_udp_v6 ||
+                cap.can_bind_tcp_v4 || cap.can_bind_tcp_v6);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, QueryUnknownExtensionReturnsNull) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_query_extension_checked(
+                  core, "gn.does.not.exist", 1u),
+              nullptr);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, QueryWrongVersionReturnsNull) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    /// A producer-version bump beyond the consumer's pin must surface
+    /// as a NULL lookup; the consumer cannot safely read fields the
+    /// older producer did not emit.
+    EXPECT_EQ(gn_core_query_extension_checked(
+                  core, GN_EXT_LINK_CAPABILITY, 0xFFFFFFFFu),
+              nullptr);
+
+    gn_core_destroy(core);
+}
+
 // ── gn_core_register_protocol — C ABI host-side protocol registration ──────
 
 #include <sdk/protocol.h>
@@ -471,7 +533,7 @@ TEST(CoreC, RegisterProtocolApiSizeMismatchRejected) {
 
     /// api_size below the producer's `sizeof(gn_protocol_layer_vtable_t)`
     /// means the consumer's struct is older than the producer's —
-    /// `abi-evolution.md` §3a says the kernel refuses the registration
+    /// `abi-evolution.en.md` §3a says the kernel refuses the registration
     /// instead of letting a partial vtable through.
     gn_protocol_layer_vtable_t vt = make_stub_vtable();
     vt.api_size = 4;
@@ -480,3 +542,184 @@ TEST(CoreC, RegisterProtocolApiSizeMismatchRejected) {
 
     gn_core_destroy(core);
 }
+
+// ── Multi-protocol coexistence ─────────────────────────────────────────────
+
+#include <core/kernel/kernel.hpp>
+#include <core/kernel/core_c_internal.hpp>
+#include <core/registry/protocol_layer.hpp>
+
+namespace {
+
+/// Stub vtable B — second `protocol_id` used to prove the registry
+/// admits two layers in parallel. Returns its own id so the by-id
+/// lookup distinguishes it from the default `gnet-v1` layer the
+/// host adds in-tree.
+const char* stub_b_protocol_id(void*) noexcept { return "stub-second-v1"; }
+std::size_t stub_b_max_payload(void*) noexcept { return 2048; }
+std::uint32_t stub_b_trust_mask(void*) noexcept { return 0xFu; }
+void stub_b_destroy(void*) noexcept { /* no-op */ }
+gn_result_t stub_b_deframe(void*, gn_connection_context_t*,
+                            const std::uint8_t*, std::size_t,
+                            gn_deframe_result_t* out) noexcept {
+    if (out) {
+        out->messages       = nullptr;
+        out->count          = 0;
+        out->bytes_consumed = 0;
+    }
+    return GN_OK;
+}
+gn_result_t stub_b_frame(void*, gn_connection_context_t*,
+                          const gn_message_t*,
+                          std::uint8_t**, std::size_t*,
+                          void**, void(**)(void*, std::uint8_t*)) noexcept {
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
+gn_protocol_layer_vtable_t make_stub_b_vtable() {
+    gn_protocol_layer_vtable_t v{};
+    v.api_size           = sizeof(v);
+    v.protocol_id        = &stub_b_protocol_id;
+    v.deframe            = &stub_b_deframe;
+    v.frame              = &stub_b_frame;
+    v.max_payload_size   = &stub_b_max_payload;
+    v.destroy            = &stub_b_destroy;
+    v.allowed_trust_mask = &stub_b_trust_mask;
+    return v;
+}
+
+}  // namespace
+
+TEST(CoreC, RegisterSecondProtocol) {
+    /// Two `gn_core_register_protocol` calls install two coexisting
+    /// `IProtocolLayer` adapters. The dispatch path
+    /// (`notify_inbound_bytes` in `core/kernel/host_api/notifications.cpp`)
+    /// keys its lookup by `ConnectionRecord::protocol_id`, so a connection
+    /// stamped with one id must route to its own layer regardless of the
+    /// other layer's presence. The cross-protocol envelope isolation
+    /// invariant in `protocol-layer.en.md` §4 depends on this: the
+    /// registry must hold both adapters by their declared id and the
+    /// per-protocol_id lookup must return each one's adapter without
+    /// confusion.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    /// Capture the baseline so we tolerate static-plugin registrations
+    /// that may have landed during `gn_core_init` under
+    /// `-DGOODNET_STATIC_PLUGINS=ON`.
+    const std::size_t baseline = core->kernel.protocol_layers().size();
+
+    gn_protocol_layer_vtable_t vt_a = make_stub_vtable();
+    gn_protocol_layer_vtable_t vt_b = make_stub_b_vtable();
+
+    /// Both registrations succeed — the registry keys by `protocol_id`
+    /// and the two vtables advertise distinct strings.
+    ASSERT_EQ(gn_core_register_protocol(core, &vt_a, /*self*/ nullptr),
+              GN_OK);
+    ASSERT_EQ(gn_core_register_protocol(core, &vt_b, /*self*/ nullptr),
+              GN_OK);
+
+    EXPECT_EQ(core->kernel.protocol_layers().size(), baseline + 2u);
+
+    /// Per-protocol_id lookup recovers each adapter independently. The
+    /// dispatch path runs the same `find_by_protocol_id(rec.protocol_id)`
+    /// call against its connection record — if either lookup returned
+    /// the wrong adapter, an envelope arriving on a `stub-test-v1`
+    /// connection would be deframed by `stub-second-v1`'s parser and
+    /// vice-versa.
+    auto layer_a =
+        core->kernel.protocol_layers().find_by_protocol_id("stub-test-v1");
+    auto layer_b =
+        core->kernel.protocol_layers().find_by_protocol_id("stub-second-v1");
+    ASSERT_NE(layer_a, nullptr);
+    ASSERT_NE(layer_b, nullptr);
+    EXPECT_NE(layer_a.get(), layer_b.get());
+    EXPECT_EQ(layer_a->protocol_id(), "stub-test-v1");
+    EXPECT_EQ(layer_b->protocol_id(), "stub-second-v1");
+
+    /// Re-registering an already-present `protocol_id` is rejected
+    /// with `GN_ERR_LIMIT_REACHED` — the registry treats the id as
+    /// a unique key, not a stack.
+    gn_protocol_layer_vtable_t vt_a_dup = make_stub_vtable();
+    EXPECT_EQ(gn_core_register_protocol(core, &vt_a_dup, /*self*/ nullptr),
+              GN_ERR_LIMIT_REACHED);
+
+    gn_core_destroy(core);
+}
+
+// ── Plugin unload / hot-reload smoke ───────────────────────────────────────
+
+#include <core/plugin/plugin_manifest.hpp>
+
+#ifdef GOODNET_NULL_PLUGIN_PATH
+
+TEST(CoreC, CoreUnloadReload) {
+    /// Drive `gn_core_load_plugin` against the in-tree null security
+    /// provider, then `gn_core_unload_plugin` by descriptor name, then
+    /// load the same .so again. The second load must succeed — proving
+    /// the first round walked the full `unregister → drain → shutdown
+    /// → close` chain (an unfinished close would leave `instances_`
+    /// non-empty and the second `load()` call would fail with
+    /// `GN_ERR_LIMIT_REACHED`).
+    auto hash = gn::core::PluginManifest::sha256_of_file(
+        GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(hash.has_value())
+        << "could not hash null plugin at " << GOODNET_NULL_PLUGIN_PATH;
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    ASSERT_EQ(gn_core_load_plugin(core,
+                                   GOODNET_NULL_PLUGIN_PATH,
+                                   hash->data()),
+              GN_OK);
+
+    /// The plugin's descriptor `name` from `plugins/security/null/null.cpp`
+    /// is the key `gn_core_unload_plugin` looks up by.
+    EXPECT_EQ(gn_core_unload_plugin(core, "goodnet_security_null"),
+              GN_OK);
+
+    /// Idempotency: a second unload of the same name reports
+    /// `GN_ERR_NOT_FOUND` without crashing.
+    EXPECT_EQ(gn_core_unload_plugin(core, "goodnet_security_null"),
+              GN_ERR_NOT_FOUND);
+
+    /// Reload — the `PluginManager::active_` flag the manager cleared
+    /// at the end of `unload()` admits a fresh `load()` call. The
+    /// re-loaded `.so` runs its `gn_plugin_init` + `gn_plugin_register`
+    /// against the same kernel handle, so the host can swap the
+    /// plugin's code path without dropping any other in-process state.
+    ASSERT_EQ(gn_core_load_plugin(core,
+                                   GOODNET_NULL_PLUGIN_PATH,
+                                   hash->data()),
+              GN_OK);
+
+    /// Unknown names continue to report `NOT_FOUND` rather than
+    /// silently succeed.
+    EXPECT_EQ(gn_core_unload_plugin(core, "no-such-plugin"),
+              GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreC, UnloadPluginNullArgRejected) {
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_unload_plugin(core, /*name*/ nullptr),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_unload_plugin(/*core*/ nullptr, "anything"),
+              GN_ERR_NULL_ARG);
+
+    /// Empty name: a string with no chance of matching any
+    /// descriptor's `plugin_name`, reported as NOT_FOUND so the
+    /// idempotency contract holds for the edge case.
+    EXPECT_EQ(gn_core_unload_plugin(core, ""),
+              GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+#endif  // GOODNET_NULL_PLUGIN_PATH

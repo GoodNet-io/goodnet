@@ -1,5 +1,5 @@
 /// @file   tests/abi/test_cross_version.cpp
-/// @brief  Cross-version compatibility pin per `abi-evolution.md` §7.
+/// @brief  Cross-version compatibility pin per `abi-evolution.en.md` §7.
 ///
 /// The kernel admits a plugin when:
 ///   - `plugin_major == kernel_major` (exact match)

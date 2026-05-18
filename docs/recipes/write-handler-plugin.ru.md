@@ -63,7 +63,7 @@ GoodNet поставляет генератор скелета — он раск
 `default.nix`, плейсхолдер-тест и stub'ы README/LICENSE:
 
 ```sh
-nix run .#new-plugin -- handlers echo
+nix run .#plugin -- new handlers echo
 ```
 
 После запуска появляется `plugins/handlers/echo/` со следующим
@@ -91,7 +91,7 @@ mirror в `~/.local/share/goodnet-mirrors/handler-echo.git` до тех пор,
 ## 4. Шаг 2. Манифест распространения
 
 Каждый собранный `.so` сопровождается per-package JSON-манифестом
-`<libfile>.json` (см. [plugin-manifest.md](../contracts/plugin-manifest.en.md) §8).
+`<libfile>.json` (см. [plugin-manifest.en.md](../contracts/plugin-manifest.en.md) §8).
 Для echo он выглядит так:
 
 ```json
@@ -110,11 +110,11 @@ mirror в `~/.local/share/goodnet-mirrors/handler-echo.git` до тех пор,
 }
 ```
 
-Per-package JSON собирается из `<so>` инструментом `goodnet plugin hash`
+Per-package JSON собирается из `<so>` инструментом `goodnetd plugin hash`
 автоматически. Trust root — operator-manifest со списком
 `(path, sha256)` пар (§2 plugin-manifest). Подпись Ed25519 поверх
-operator-manifest — отдельный шаг, выполняется снаружи ядра до v1.1
-(§7).
+operator-manifest — отдельный шаг, выполняется снаружи ядра; in-kernel
+verifier для signed-manifest path запланирован (§7 plugin-manifest).
 
 ---
 
@@ -123,7 +123,7 @@ operator-manifest — отдельный шаг, выполняется снар
 `gn_plugin_init` получает `host_api*`, у которого уже выставлен
 `api->host_ctx`. Плагин сохраняет указатель в свою `self` и больше
 ничего не регистрирует — registration живёт в фазе 5
-(`plugin-lifetime.md` §5).
+(`plugin-lifetime.en.md` §5).
 
 ```c
 #include <stdlib.h>
@@ -174,7 +174,7 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_init(const host_api_t* api,
 ```
 
 `api` валиден до возврата из `gn_plugin_shutdown` — захватывать его в
-process-global запрещено (`plugin-lifetime.md` §9): плагин может быть
+process-global запрещено (`plugin-lifetime.en.md` §9): плагин может быть
 hot-reload'нут.
 
 ---
@@ -236,7 +236,7 @@ static void echo_supported_msg_ids(void* self_v,
 `msg_id == 0` зарезервирован под unset sentinel; `0x11` — под
 attestation dispatcher. Регистрация против них вернёт
 `GN_ERR_INVALID_ENVELOPE`. Полная таблица —
-[handler-registration.md](../contracts/handler-registration.en.md) §2a.
+[handler-registration.en.md](../contracts/handler-registration.en.md) §2a.
 
 ---
 
@@ -277,7 +277,7 @@ GN_PLUGIN_EXPORT gn_result_t gn_plugin_register(void* self_v) {
 
 Симметрия фаз 8 → 9. `unregister` снимает handler из цепочки для
 будущих диспетчей; in-flight цепочки доходят до конца на снимке
-старого вектора (`plugin-lifetime.md` §6). После завершения
+старого вектора (`plugin-lifetime.en.md` §6). После завершения
 quiescence-wait ядро вызывает `gn_plugin_shutdown` — теперь можно
 освобождать память, в которую могли смотреть посекундные продолжения.
 
@@ -336,14 +336,14 @@ nix run .#build            # просто сборка, артефакты в ./
 
 ## 12. Cross-refs
 
-- [handler-registration.md](../contracts/handler-registration.en.md) —
+- [handler-registration.en.md](../contracts/handler-registration.en.md) —
   семантика регистрации, priority, цепочка диспетчеризации,
   reserved msg_id'ы, `conn_id` контракт §3a.
-- [plugin-lifetime.md](../contracts/plugin-lifetime.en.md) — фазы 3..10,
+- [plugin-lifetime.en.md](../contracts/plugin-lifetime.en.md) — фазы 3..10,
   два-фазная активация, weak-observer pattern.
-- [plugin-manifest.md](../contracts/plugin-manifest.en.md) — operator
+- [plugin-manifest.en.md](../contracts/plugin-manifest.en.md) — operator
   manifest, per-package JSON, integrity-check ordering.
-- [host-api.md](../contracts/host-api.en.md) — `register_vtable`,
+- [host-api.en.md](../contracts/host-api.en.md) — `register_vtable`,
   `send`, `is_shutdown_requested`.
 - [plugin-model](../architecture/plugin-model.ru.md) — общая
   архитектурная картина: где живут handler/link/security в граф-схеме

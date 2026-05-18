@@ -79,6 +79,44 @@ void* gn_ctx_plugin_state(const gn_connection_context_t* ctx);
 /** Set the plugin-private scratch slot. */
 void gn_ctx_set_plugin_state(gn_connection_context_t* ctx, void* state);
 
+/**
+ * @brief Test-only constructor for a connection context.
+ *
+ * Allocates a fresh `gn_connection_context_t` populated from the
+ * arguments and returns it. Pair with @ref gn_ctx_destroy to free
+ * the allocation. Tests use this so they can hand a real kernel-
+ * shaped context to protocol-layer / security-layer fixtures
+ * without including kernel-internal headers (which the ABI gate
+ * forbids for plugin-tree TUs).
+ *
+ * Production code never calls this — the kernel manages the
+ * context lifecycle itself.
+ *
+ * @param local_pk     local node public key (32 bytes, may be NULL
+ *                     for an all-zero local_pk).
+ * @param remote_pk    peer public key (32 bytes, may be NULL).
+ * @param conn_id      connection id; pass @ref GN_INVALID_ID for
+ *                     "no specific conn".
+ * @param trust        trust class to record.
+ * @param allows_relay non-zero to set the relay-allow flag.
+ *
+ * @return @owned heap-allocated context; the caller releases it
+ *         with @ref gn_ctx_destroy. NULL on allocation failure.
+ */
+gn_connection_context_t* gn_ctx_make_for_test(
+    const uint8_t* local_pk,
+    const uint8_t* remote_pk,
+    gn_conn_id_t conn_id,
+    gn_trust_class_t trust,
+    int allows_relay);
+
+/**
+ * @brief Release a context allocated by @ref gn_ctx_make_for_test.
+ *
+ * Safe to call with NULL; no-op in that case.
+ */
+void gn_ctx_destroy(gn_connection_context_t* ctx);
+
 #ifdef __cplusplus
 } /* extern "C" */
 #endif

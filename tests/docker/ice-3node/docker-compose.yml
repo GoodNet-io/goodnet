@@ -15,7 +15,14 @@
 
 services:
   stun:
-    build: ./stun
+    build:
+      context: ./stun
+      # `network: host` so the apt-get install during image build
+      # resolves the debian mirror DNS. The default buildkit sandbox
+      # network has no DNS forwarding on some daemons; host
+      # networking is harmless in this directory because the
+      # build only fetches packages, no port-bind ambiguity.
+      network: host
     container_name: ice3_stun
     networks:
       net: { ipv4_address: 10.10.0.10 }
@@ -25,7 +32,9 @@ services:
       retries: 10
 
   turn:
-    build: ./turn
+    build:
+      context: ./turn
+      network: host
     container_name: ice3_turn
     networks:
       net: { ipv4_address: 10.10.0.11 }
@@ -39,7 +48,9 @@ services:
       retries: 10
 
   coordinator:
-    build: ./peer
+    build:
+      context: ./peer
+      network: host
     container_name: ice3_coordinator
     networks:
       net: { ipv4_address: 10.10.0.12 }
@@ -51,7 +62,9 @@ services:
       - signal:/var/lib/ice3-signal
 
   peer_a:
-    build: ./peer
+    build:
+      context: ./peer
+      network: host
     container_name: ice3_peer_a
     cap_add: [NET_ADMIN]
     networks:
@@ -71,7 +84,9 @@ services:
       - signal:/var/lib/ice3-signal
 
   peer_b:
-    build: ./peer
+    build:
+      context: ./peer
+      network: host
     container_name: ice3_peer_b
     cap_add: [NET_ADMIN]
     networks:
@@ -91,11 +106,23 @@ services:
       - signal:/var/lib/ice3-signal
 
   nat_a:
-    build: ./nat-a
+    build:
+      context: ./nat-a
+      network: host
     container_name: ice3_nat_a
     cap_add: [NET_ADMIN]
     sysctls:
+      # IP forwarding + permissive rp_filter so traffic from the LAN
+      # peer reaches the WAN-facing eth1 (and vice versa) without
+      # being mistakenly classified as "spoofed" by the kernel
+      # reverse-path check. The default `rp_filter=2` (loose) still
+      # drops ICMP replies on the docker bridge in this topology
+      # because the reply path takes the default route via the
+      # bridge gateway and the source's interface table does not
+      # match. `rp_filter=0` is the docker NAT-router norm.
       net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
       net.ipv6.conf.all.forwarding: 1
     networks:
       lan_a: { ipv4_address: 10.20.0.1 }
@@ -105,11 +132,15 @@ services:
       NAT_MODE: full_cone
 
   nat_b:
-    build: ./nat-b
+    build:
+      context: ./nat-b
+      network: host
     container_name: ice3_nat_b
     cap_add: [NET_ADMIN]
     sysctls:
       net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
       net.ipv6.conf.all.forwarding: 1
     networks:
       lan_b: { ipv4_address: 10.30.0.1 }
@@ -118,21 +149,30 @@ services:
       NAT_MODE: full_cone
 
 networks:
+  # Docker reserves the bridge's gateway IP (the host-side endpoint
+  # on every container subnet); the default is `.1` of the subnet.
+  # Our NAT containers want to live at `10.20.0.1` (LAN A) and
+  # `10.30.0.1` (LAN B) — the typical home-router-style default
+  # gateway — so the bridge gateway is moved to `.254` of each
+  # subnet to free `.1` for the NAT container.
   net:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.10.0.0/24
+        - subnet:  10.10.0.0/24
+          gateway: 10.10.0.254
   lan_a:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.20.0.0/24
+        - subnet:  10.20.0.0/24
+          gateway: 10.20.0.254
   lan_b:
     driver: bridge
     ipam:
       config:
-        - subnet: 10.30.0.0/24
+        - subnet:  10.30.0.0/24
+          gateway: 10.30.0.254
 
 volumes:
   signal:

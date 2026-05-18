@@ -1,6 +1,6 @@
 # Contract: Store handler
 
-**Status:** active · v1.0.0-rc1
+**Status:** active · v1
 **Owner:** `plugins/handlers/store/`
 **Last verified:** 2026-05-13
 **Stability:** v1.x; wire layout below is locked, the `IStore`
@@ -19,12 +19,12 @@ operator can let nodes publish + observe small records (peer
 descriptors, service announcements, capability advertisements,
 metrics) without standing up an external DB.
 
-The handler owns a pluggable `IStore` backend (memory reference
-in slice 1; sqlite + DHT + Redis planned) and a wire dispatcher
-that maps the seven `STORE_*` envelope types onto the backend.
-Local callers reach the same surface through the
-[`gn.store`](../../sdk/extensions/store.h) extension vtable —
-no wire framing, no conn-id needed.
+The handler owns a pluggable `IStore` backend — a memory
+backend and a SQLite backend ship today; DHT and Redis backends
+are planned. A wire dispatcher maps the seven `STORE_*` envelope
+types onto the backend. Local callers reach the same surface
+through the [`gn.store`](../../sdk/extensions/store.h) extension
+vtable — no wire framing, no conn-id needed.
 
 ---
 
@@ -33,17 +33,20 @@ no wire framing, no conn-id needed.
 ### 2.1 Extension vtable
 
 ```c
-gn_store_api_t* api = host_api->query_extension_checked(
-    "gn.store", GN_EXT_STORE_VERSION, sizeof(gn_store_api_t));
+const void* vt = NULL;
+gn_result_t r = host_api->query_extension_checked(
+    host_ctx, "gn.store", GN_EXT_STORE_VERSION, &vt);
+if (r != GN_OK) return r;
+const gn_store_api_t* api = (const gn_store_api_t*)vt;
 
 api->put(api->ctx, "peer/alice", 11,
          pubkey, 32, /*ttl_s*/ 0, /*flags*/ 0);
 ```
 
-Eight slots: `put / get / query / del / subscribe / unsubscribe /
-cleanup_expired` plus the `ctx`/`_reserved` ABI footer.
-`query` covers exact / prefix / since-timestamp modes through a
-single entry-emitting callback.
+Seven slots: `put / get / query / del / subscribe / unsubscribe /
+cleanup_expired` plus the `api_size` size-prefix and `ctx`/`_reserved`
+ABI footer. `query` covers exact / prefix / since-timestamp modes
+through a single entry-emitting callback.
 
 ### 2.2 Wire surface
 
@@ -60,7 +63,7 @@ Seven envelopes under `protocol_id = "gnet-v1"`:
 | `0x0606` | symmetric | `STORE_SYNC` |
 
 These ids are outside the kernel-reserved `0x10..0x1F` range (see
-[`system-handlers.md`](system-handlers.en.md) §2); the allocation
+[`system-handlers.en.md`](system-handlers.en.md) §2); the allocation
 is inherited from the legacy `apps/store` wire layer so existing
 observers keep their decoders.
 
@@ -104,7 +107,7 @@ All multi-byte integers are big-endian. Lengths cap at
 | offset | size | field |
 |---|---|---|
 | 0 | 8 | `request_id` (echoed from the request) |
-| 8 | 1 | `status` (0=ok, 1=bad-size, 2=not-found, 3=backend-error) |
+| 8 | 1 | `status` (0=ok, 1=bad-size, 2=not-found, 3=backend-error, 4=unauthorized) |
 | 9 | 1 | reserved (zero) |
 | 10 | 2 | `entry_count` (0 for PUT/DELETE acks) |
 | 12 | ... | `entry_count` × Entry record (§3.6) |
@@ -180,8 +183,8 @@ The reference `MemoryStore` ships in-tree. Future backends:
 
 | Backend | Persistence | Notes |
 |---|---|---|
-| `MemoryStore` (this slice) | none | hash-map; loses state across restart |
-| `SqliteStore` (planned, slice 2) | file | prepared stmts; production reference |
+| `MemoryStore` (ships today) | none | hash-map; loses state across restart |
+| `SqliteStore` (ships today) | file | prepared stmts; production reference |
 | `DhtStore` (planned) | distributed | Kademlia over GoodNet itself |
 | `RedisStore` (planned) | external | clustered, hot failover |
 
@@ -198,18 +201,29 @@ The reference `MemoryStore` ships in-tree. Future backends:
   records they post-process on read.
 - **`cleanup_expired` is reactive**, not background: callers
   invoke it (typically through a kernel timer) when they want
-  expired entries dropped. Slice 1 ships no automatic cleanup
-  driver.
+  expired entries dropped. The handler ships no automatic
+  cleanup driver.
 - **`get_prefix` is unordered.** The reference backend iterates
   the hash-map; future ordered backends MAY guarantee an order
-  but slice-1 callers cannot rely on it.
+  but callers cannot rely on it.
 - **Subscriptions are per-conn for wire callers**, per-cb for
   in-process callers. Wire subscriptions die with the conn
-  through `PerConnMap`-style cleanup (planned, slice 2).
+  through `PerConnMap`-style cleanup (planned).
 - **The handler is `priority = 200`** — below identity-bearing
   system handlers (240+) but above application handlers (default
   128). Adjust via plugin manifest if a node hosts a handler
   that wants STORE envelopes to land first.
+- **First-writer-wins ACL on wire writes.** Each key binds to the
+  Noise-authenticated `sender_pk` of its initial wire-side PUT
+  (the gnet protocol layer stamps `sender_pk` on every deframed
+  envelope). Subsequent PUT or DELETE from a peer with a
+  different `sender_pk` is rejected with `status=4` /
+  `kStatusUnauthorized`. The original writer can update + delete
+  freely; ownership lapses when the owning peer deletes the key.
+  Envelopes with all-zero `sender_pk` (loopback / kernel-inject /
+  in-process callers via `put_local` / `del_local`) bypass the
+  gate — the kernel is implicitly trusted and the in-process
+  surface has no on-the-wire identity to authenticate.
 
 ---
 
@@ -218,7 +232,7 @@ The reference `MemoryStore` ships in-tree. Future backends:
 - Extension ABI: [`sdk/extensions/store.h`](../../sdk/extensions/store.h)
 - Reference implementation: `plugins/handlers/store/`
 - Reserved-id semantics:
-  [`handler-registration.md`](handler-registration.en.md) §2a +
-  [`system-handlers.md`](system-handlers.en.md) §1
-- Legacy origin (archived):
-  `~/Desktop/projects/GoodNet_legacy/apps/store/`
+  [`handler-registration.en.md`](handler-registration.en.md) §2a +
+  [`system-handlers.en.md`](system-handlers.en.md) §1
+- Legacy origin: the routing-layer-that-doubled-as-KV-DB shape
+  predating the kernel/plugin split; archived outside the repo.

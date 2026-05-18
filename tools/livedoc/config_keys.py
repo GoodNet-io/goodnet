@@ -50,6 +50,8 @@ def _grep_lines() -> list[tuple[str, int, str]]:
         "--include=*.c", "--include=*.h",
         "--exclude-dir=.git", "--exclude-dir=build",
         "--exclude-dir=build-release", "--exclude-dir=tests",
+        "--exclude-dir=.claude", "--exclude-dir=build-asan",
+        "--exclude-dir=build-tsan", "--exclude-dir=build-mdns-test",
         "gn_config_get_",
         *paths,
     ]
@@ -99,7 +101,9 @@ def collect() -> dict:
     return {"keys": keys}
 
 
-def write(path: Path = FACTS_PATH) -> Path:
+def write(path: Path | None = None) -> Path:
+    if path is None:
+        path = FACTS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(collect(), sort_keys=False,
                                     allow_unicode=True))

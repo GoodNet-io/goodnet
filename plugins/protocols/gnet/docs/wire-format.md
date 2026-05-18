@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/protocols/gnet/`
-**Implements:** `IProtocolLayer` per `docs/contracts/protocol-layer.md`
+**Implements:** `IProtocolLayer` per `docs/contracts/protocol-layer.en.md`
 **Last verified:** 2026-04-27
 **Stability:** wire-incompatible changes require `ver` byte bump
 
@@ -76,9 +76,9 @@ bit  mask   name                  meaning
 
 Reserved bits set on inbound → silently masked off; the frame
 parses on the bits the reader understands. Forward-compatibility
-posture: a v1.1 sender that lands a new flag in `0x08`–`0x80`
+posture: a newer sender that lands a new flag in `0x08`–`0x80`
 keeps interoperating with a v1 reader without dropping the
-connection. A future version that needs strict rejection promotes
+connection. A future revision that needs strict rejection promotes
 the flag out of the reserved range and the inbound check on that
 specific bit decides drop-or-accept.
 
@@ -151,7 +151,8 @@ state DECLARED:
     accumulate bytes until 14 received
     if magic != 'GNET' → kErrDeframeCorrupt
     if ver  != 0x01    → kErrDeframeCorrupt (peer ahead of us)
-    if reserved bits set → drop frame, advance, log
+    mask reserved bits off the flags byte (silent forward-compat
+        per §3.1 — keeps frames from newer senders parseable)
     compute cond_pk_size from flags
     require: BROADCAST → EXPLICIT_SENDER && !EXPLICIT_RECEIVER
     transition → READING_BODY
@@ -185,7 +186,7 @@ authors and future format successors:
   packet id of its own.
 - **Wire format is plugin-private.** The 14-byte header is not part
   of `sdk/protocol.h`. Handlers see only the decoded `gn_message_t`
-  envelope (`protocol-layer.md`); they cannot import GNET-specific
+  envelope (`protocol-layer.en.md`); they cannot import GNET-specific
   types.
 - **Conditional PK fields enable relay and broadcast as first-class
   modes.** A direct connection pays no overhead for identity it
@@ -205,9 +206,9 @@ authors and future format successors:
     transport channel was authenticated against a different peer.
   Operators flip the flag on connections that legitimately carry
   forwarded traffic; a future relay handler will own that
-  configuration. Pre-RC the default-deny path applies everywhere,
-  so handlers that authenticate by `sender_pk` can trust the
-  inbound envelope.
+  configuration. By default the default-deny path applies
+  everywhere, so handlers that authenticate by `sender_pk` can
+  trust the inbound envelope.
 
 ---
 
@@ -239,5 +240,5 @@ authors and future format successors:
 
 ## 8. Cross-references
 
-- Kernel-side envelope semantics: `docs/contracts/protocol-layer.md`.
+- Kernel-side envelope semantics: `docs/contracts/protocol-layer.en.md`.
 - Security layer (Noise) wraps GNET frames: `plugins/security/noise/docs/handshake.md`.

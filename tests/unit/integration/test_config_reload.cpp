@@ -1,9 +1,9 @@
-/// @file   tests/integration/test_config_reload.cpp
+/// @file   tests/unit/integration/test_config_reload.cpp
 /// @brief  Hot reload pipeline: Kernel::reload_config →
 ///         on_config_reload signal → plugin re-reads via
 ///         host_api->subscribe(GN_SUBSCRIBE_CONFIG_RELOAD).
 ///
-/// Pins `config.md` §2 (reload lifecycle) end-to-end through the
+/// Pins `config.en.md` §2 (reload lifecycle) end-to-end through the
 /// host_api thunks: a kernel-level reload triggers each subscribed
 /// plugin's callback, which observes the new state via
 /// `config_get_*` and applies the updated knobs to its own

@@ -7,21 +7,27 @@ its `tests/`, and — for plugins with their own contract — its
 `docs/`. Promoting a plugin into its own GitHub repo is purely
 mechanical.
 
-## v1.0 baseline — stays in the monorepo
+## What lives where
 
-The `GoodNet-io/goodnet` repo at v1.0.0-rc1 carries the kernel,
-the SDK, and these baseline plugins:
+The `GoodNet-io/goodnet` repo carries the kernel, the SDK, and
+the two static protocol layers that the kernel cannot run
+without:
 
-| Path | Repo destination at rc1 |
+| Path | Repo destination |
 |---|---|
-| `plugins/protocols/gnet`     | `GoodNet-io/goodnet` (mandatory) |
-| `plugins/protocols/raw`      | `GoodNet-io/goodnet` |
-| `plugins/security/noise`     | `GoodNet-io/goodnet` |
-| `plugins/security/null`      | `GoodNet-io/goodnet` |
-| `plugins/links/{tcp,udp,ws,ipc,tls}` | `GoodNet-io/goodnet` |
-| `plugins/handlers/heartbeat` | `GoodNet-io/goodnet` |
+| `plugins/protocols/gnet`     | `GoodNet-io/goodnet` (mandatory mesh-framing) |
+| `plugins/protocols/raw`      | `GoodNet-io/goodnet` (passthrough opt-in) |
 
-## v1.1+ spinoff candidates
+Every loadable plugin lives in its own `GoodNet-io/<repo>`
+repository — `link-tcp`, `link-udp`, `link-ws`, `link-ipc`,
+`link-tls`, `link-ice`, `link-quic`, `security-noise`,
+`security-null`, `handler-heartbeat`, `handler-store`,
+`handler-dns`, `strategy-float_send_rtt`. Pull them into the
+local checkout with `nix run .#plugin -- install`; each repo
+ships its own `flake.nix`, `default.nix`, `LICENSE`, and
+release cadence.
+
+## Spinoff candidates
 
 When a non-baseline plugin lands in the monorepo and its first
 shipping cycle clears, lift it into `GoodNet-io/<plugin>` so its
@@ -97,7 +103,8 @@ block — the exact same source compiles in either tree.
 - Kernel-side contracts (`docs/contracts/*.md` other than the
   plugin-private ones in `plugins/<x>/docs/`) — they describe the
   SDK boundary the plugin links against. Stay in `GoodNet-io/goodnet`.
-- The `apps/goodnetd/` operator CLI — kernel binary.
+- The `goodnetd` operator CLI — daemon binary shipped from
+  `GoodNet-io/goodnetd`.
 - Integration tests that compose multiple plugins
   (`tests/integration/`) — kernel-side composition suite.
 - Manifest signing keys, deployment recipes — operator concern,

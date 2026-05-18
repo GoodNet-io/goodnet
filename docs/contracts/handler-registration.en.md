@@ -1,7 +1,7 @@
 # Contract: Handler Registration
 
 **Status:** active · v1
-**Owner:** `core/registry/handler.hpp`, `core/signal/pipeline.hpp`
+**Owner:** `core/registry/handler.hpp`, `core/kernel/router.cpp`
 **Last verified:** 2026-05-09
 **Stability:** RC tags do not freeze the public surface; the
 plain `v1.0.0` tag closes the reshape window per
@@ -37,7 +37,7 @@ rules, the chain depth limit, and the pin-handler fast-path.
 ## 2. Registration
 
 Handlers register through the universal `register_vtable` slot in
-`host_api_t`; see `host-api.md` §2 for the canonical signature.
+`host_api_t`; see `host-api.en.md` §2 for the canonical signature.
 The handler-specific shape:
 
 - `kind = GN_REGISTER_HANDLER`
@@ -107,7 +107,7 @@ back during dispatch.
 ### 2.1 `gn_handler_vtable_t` layout
 
 The vtable carried by `register_vtable(GN_REGISTER_HANDLER)`. Begins with `api_size`
-for size-prefix evolution per `abi-evolution.md` §3; the kernel
+for size-prefix evolution per `abi-evolution.en.md` §3; the kernel
 rejects a registration whose `api_size < sizeof(gn_handler_vtable_t)`
 with `GN_ERR_VERSION_MISMATCH` per §3a. Every remaining slot is a
 function pointer that the kernel invokes with the plugin-supplied
@@ -141,11 +141,12 @@ typedef struct gn_handler_vtable_s {
 | `on_result` | no (NULL OK) | called after every `handle_message`; pinned fast-path invokes identically per §6 |
 | `on_init` | no | called once after the kernel admits the registration |
 | `on_shutdown` | no | called once during teardown after every in-flight dispatch returns |
-| `_reserved[4]` | — | NULL on init; size-prefix evolution per `abi-evolution.md` §3a |
+| `_reserved[4]` | — | NULL on init; size-prefix evolution per `abi-evolution.en.md` §3a |
 
-The struct does **not** carry an `api_size` first field (§3a marks
-this vtable as fixed-shape at v1; growth happens through
-`_reserved` slot promotion).
+Growth happens through `_reserved` slot promotion at MINOR
+boundaries per `abi-evolution.en.md` §3a — every new slot lands
+at the tail and bumps `sizeof(gn_handler_vtable_t)`; the existing
+`_reserved[4]` bytes are not reused.
 
 ---
 
@@ -163,9 +164,9 @@ routes them directly to the owning subsystem.
 | msg_id | Reserved for | Specification |
 |---|---|---|
 | `0x00` | unset sentinel | this section |
-| `0x11` | attestation dispatcher | `attestation.md` §3 |
-| `0x12` | identity rotation announce | `identity.md` §10 |
-| `0x13` | capability TLV transport | `identity.md` §9, `capability-tlv.md` |
+| `0x11` | attestation dispatcher | `attestation.en.md` §3 |
+| `0x12` | identity rotation announce | `identity.en.md` §10 |
+| `0x13` | capability TLV transport | `identity.en.md` §9, `capability-tlv.en.md` |
 
 `0x12` and `0x13` ride alongside `0x11` because the kernel
 intercepts them in `notify_inbound_bytes`: the rotation handler
@@ -185,8 +186,8 @@ a connection the calling plugin does not own.
 
 | msg_id | Reserved for | Specification |
 |---|---|---|
-| `0x14` | user-level 2FA challenge | `identity.md` §6/§9 |
-| `0x15` | user-level 2FA response | `identity.md` §6/§9 |
+| `0x14` | user-level 2FA challenge | `identity.en.md` §6/§9 |
+| `0x15` | user-level 2FA response | `identity.en.md` §6/§9 |
 
 The kernel owns the reserved msg_id table; the canonical
 enumeration lives in `core/kernel/system_handler_ids.hpp` and
@@ -221,7 +222,7 @@ the next dispatch). This eliminates races between dispatch and
 
 The lookup itself is RCU-driven: registry mutations publish a new
 read-only chain snapshot, dispatchers read whichever snapshot was current
-when they entered. Per `fsm-events.md` §6, the snapshot generation is
+when they entered. Per `fsm-events.en.md` §6, the snapshot generation is
 64-bit.
 
 A dispatcher that wants the chain alongside the generation counter
@@ -251,7 +252,7 @@ generation no longer wants — never a use-after-free.
 A handler that gates behaviour on the inbound-edge connection MUST
 tolerate `env->conn_id == GN_INVALID_ID` as `CONTINUE` — never
 `REJECT`. The kernel stamps a real conn id on every envelope dispatched
-through `notify_inbound_bytes` (the slot is §2 of `host-api.md`; the
+through `notify_inbound_bytes` (the slot is §2 of `host-api.en.md`; the
 stamping invariant is in §8 alongside `inject`); `GN_INVALID_ID` is
 the contract's escape hatch for envelopes a
 future producer might synthesise without a corresponding edge (none
@@ -259,7 +260,7 @@ exist in v1). A handler that hard-rejects on `INVALID_ID` would close
 the connection on a forward-compatible producer and leak the rejection
 to peers that played by every existing rule.
 
-`plugins/handlers/heartbeat/heartbeat.cpp:212-213` is the canonical
+`plugins/handlers/heartbeat/heartbeat.cpp:172-173` is the canonical
 reference: handler reads `env->conn_id`; on `GN_INVALID_ID` returns
 `CONTINUE` without recording PeerState — the conn-blind branch is a
 no-op, not a fault.
@@ -308,7 +309,7 @@ gn_result_t (*unregister_vtable)(void* host_ctx, uint64_t id);
 - Removes the handler from the chain immediately for **future** dispatches.
 - In-flight dispatches that already materialised a chain snapshot complete
   against the old chain (the handler vtable remains valid because the
-  plugin's `dlclose` has not run yet — `plugin-lifetime.md` §6 quiescence
+  plugin's `dlclose` has not run yet — `plugin-lifetime.en.md` §6 quiescence
   wait).
 - After `unregister`, the kernel reuses the `gn_handler_id_t` value for a
   future registration. Plugin code that retains old ids must not use
@@ -319,8 +320,8 @@ gn_result_t (*unregister_vtable)(void* host_ctx, uint64_t id);
 
 ## 7. Cross-references
 
-- The vtable plugin-side: `protocol-layer.md` §3.
-- The C ABI declaration: `host-api.md` §2 (`register_vtable` family).
-- Quiescence wait between unregister and dlclose: `plugin-lifetime.md` §6.
-- Generation counter: `fsm-events.md` §6.
-- Chain depth limit: `limits.md` §7.
+- The vtable plugin-side: `protocol-layer.en.md` §3.
+- The C ABI declaration: `host-api.en.md` §2 (`register_vtable` family).
+- Quiescence wait between unregister and dlclose: `plugin-lifetime.en.md` §6.
+- Generation counter: `fsm-events.en.md` §6.
+- Chain depth limit: `limits.en.md` §7.

@@ -208,7 +208,7 @@ gn_result_t gn_core_init(gn_core_t* core) {
             // Don't roll back `init_done` — the kernel is otherwise
             // healthy and the host might recover by registering
             // providers in-process; just surface the diagnostic on
-            // stderr the same way `apps/goodnet run` does.
+            // stderr the same way `goodnetd run` does.
             (void)std::fprintf(stderr,
                 "gn_core_init: static plugin load failed — %s\n",
                 diag.c_str());
@@ -362,7 +362,7 @@ gn_result_t gn_core_disconnect(gn_core_t* core, gn_conn_id_t conn) {
 
 gn_result_t gn_core_get_stats(gn_core_t* core, gn_stats_t* out) {
     if (core == nullptr || out == nullptr) return GN_ERR_NULL_ARG;
-    /// Producer must zero-init `_reserved` per `abi-evolution.md` §4.
+    /// Producer must zero-init `_reserved` per `abi-evolution.en.md` §4.
     for (std::size_t i = 0;
          i < sizeof(out->_reserved) / sizeof(out->_reserved[0]); ++i) {
         if (out->_reserved[i] != nullptr) return GN_ERR_INVALID_ENVELOPE;
@@ -423,7 +423,7 @@ gn_propagation_t message_sub_handle(void* self, const gn_message_t* env) {
     if (sub != nullptr && sub->cb != nullptr && env != nullptr) {
         /// Connection id is not on the envelope; we do not surface it
         /// to the C callback today. A future minor adds an envelope
-        /// `_reserved` slot for it (host-api.md §11 evolution path).
+        /// `_reserved` slot for it (host-api.en.md §11 evolution path).
         sub->cb(sub->user, /*conn=*/GN_INVALID_ID, env->msg_id,
                 env->payload, env->payload_size);
     }
@@ -612,14 +612,15 @@ gn_result_t gn_core_load_plugins_batch(gn_core_t* core,
 
 gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name) {
     if (core == nullptr || name == nullptr) return GN_ERR_NULL_ARG;
-    /// PluginManager today only exposes `shutdown()` (full teardown),
-    /// not per-name unload. v1.x roadmap: per-name reload (host-api.md
-    /// §10 hot-reload section). For now the per-name path returns
-    /// `NOT_IMPLEMENTED`; hosts that need full-teardown go through
-    /// `gn_core_destroy` + new `gn_core_create`.
-    (void)name;
-    (void)core;
-    return GN_ERR_NOT_IMPLEMENTED;
+    /// Per-name unload walks the same `unregister → drain → shutdown
+    /// → close` chain `gn_core_destroy` runs, but limited to the one
+    /// matching instance. Quiescence semantics match the full-
+    /// teardown path: the kernel waits up to
+    /// `PluginManager::quiescence_timeout()` for outstanding dispatch
+    /// snapshots to drop their `lifetime_anchor` copies before
+    /// closing the `.so`. Unknown names report `GN_ERR_NOT_FOUND`;
+    /// the call is idempotent past that point.
+    return core->plugins.unload(std::string_view{name});
 }
 
 /* ── Provider registration ───────────────────────────────────────────────── */

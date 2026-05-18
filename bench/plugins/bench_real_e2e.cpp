@@ -211,15 +211,28 @@ void run_send_recv(Fixture& f, ::benchmark::State& state) {
 
     res.snapshot_end();
     state.counters["last_err"] = static_cast<double>(last_err);
+    /// `state.iterations()` (not `meter.size()`) — matches the
+    /// shape `bench_udp.cpp::EchoRoundtrip` and every other plugin
+    /// bench in the tree. `meter.size()` skips iterations that
+    /// `continue`'d on backpressure, which silently zeroes the
+    /// `bytes_per_second` column whenever the per-conn send queue
+    /// stalls for a tick at the start of a run — the loop already
+    /// retries those iterations, so the bytes legitimately moved
+    /// through the stack are `iterations × payload`. Aggregator
+    /// drops rows with `bytes_per_second == 0` (see
+    /// `aggregate.py:is_real_row → emit_perf_table`), so under
+    /// `meter.size() == 0` the case produced no report row even
+    /// though every iteration was timed.
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(meter.size()) *
+        static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size));
     report_latency(state, meter);
     report_resources(state, res);
 }
 
-/// Echo round-trip body — track А shape that matches libp2p / iroh
-/// echo runners. Bob sends `kPingMsgId`; alice's `RxEchoResponder`
+/// Echo round-trip body — matches the shape libp2p / iroh echo
+/// runners use, so the round-trip numbers are directly
+/// comparable. Bob sends `kPingMsgId`; alice's `RxEchoResponder`
 /// fires `api->send(env->conn_id, kPongMsgId, payload)` back; bob's
 /// pong counter advances on arrival. Latency captured T0=ping-send
 /// → T1=pong-receive. Two passes through the production stack
@@ -280,9 +293,13 @@ void run_echo_roundtrip(Fixture& f, ::benchmark::State& state) {
     state.counters["last_err"] = static_cast<double>(last_err);
     /// Bytes processed: full RTT moves payload twice (ping + pong),
     /// so report 2× for throughput comparability with libp2p's
-    /// bidirectional read+write measurement.
+    /// bidirectional read+write measurement. Use `state.iterations()`
+    /// (not `meter.size()`) for the same reason `run_send_recv`
+    /// does — the aggregator drops zero-throughput rows and a
+    /// transient stall at start of the run would otherwise leave
+    /// the case unreported.
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(meter.size()) *
+        static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size) * 2);
     report_latency(state, meter);
     report_resources(state, res);
@@ -332,16 +349,16 @@ BENCHMARK_REGISTER_F(RealFixtureTcpEcho, TcpEchoRoundtrip)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
-// TODO(track-A-followup): Real-QUIC echo round-trip.
+// Real-QUIC echo round-trip is not wired here.
 // QuicLink::listen/connect return GN_ERR_NOT_IMPLEMENTED in
 // `plugins/links/quic/quic.cpp:148-156` — QUIC is composer-only
 // over a UDP carrier (see `plugins/links/quic/quic.hpp:58-62`).
-// A Real-mode QUIC fixture needs `BenchNode` extended with a
+// A Real-mode QUIC fixture would need `BenchNode` extended with a
 // LinkCarrier + `set_server_credentials` + `composer_listen` /
-// `composer_connect` bring-up path. Deferred to its own slice;
-// once landed, register `RealFixtureQuicEcho/QuicEchoRoundtrip`
-// here with the same Arg sweep so the aggregator's `## А.` section
-// shows the iroh-comparable row.
+// `composer_connect` bring-up path. Adding the fixture means
+// registering `RealFixtureQuicEcho/QuicEchoRoundtrip` here with
+// the same Arg sweep so the aggregator's `## А.` section shows
+// the iroh-comparable row.
 
 // ── UDP ─────────────────────────────────────────────────────────────
 //

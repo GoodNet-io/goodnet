@@ -22,7 +22,7 @@ struct Error {
     std::string what;
 };
 
-/// Result-or-error alias used across the SDK. Mirrors `Result<T>` in legacy code.
+/// Result-or-error alias used across the SDK.
 template<class T>
 using Result = std::expected<T, Error>;
 

@@ -4,16 +4,16 @@
 ///
 /// `gn::sdk::Connection` wraps a `(LinkCarrier&, gn_conn_id_t)` pair
 /// and owns the lifecycle: the destructor disconnects the conn and
-/// drops the data subscription. The intent is to close the DX gap
-/// around manual `conn_id` tracking documented in
-/// `docs/architecture/strategies.ru.md` audit (2026-05-12):
+/// drops the data subscription. Callers hold a single owning
+/// handle instead of dragging `gn_conn_id_t` + the carrier
+/// reference through every send site and tracking unsubscribe +
+/// disconnect by hand on every error path:
 ///
-///   ❌ before — caller drags `gn_conn_id_t` + carrier reference
-///       through every send site, must remember to unsubscribe +
-///       disconnect on every error path.
-///
-///   ✅ after — `auto conn = carrier.connect_managed(uri); conn.send(...)`.
-///       Connection goes out of scope, carrier disconnects.
+/// @code
+/// auto conn = carrier.connect_managed(uri);
+/// conn.send(...);
+/// // Connection goes out of scope -> carrier disconnects.
+/// @endcode
 ///
 /// Connection is **move-only**; copying a conn id would let two
 /// owners race the disconnect. Move semantics keep the carrier

@@ -30,7 +30,7 @@ _TURN-over-TCP / TLS 16-bit length-prefix framing path._
 
 В GoodNet протокольный слой — единственная точка, где байты с провода
 становятся типизированными envelope-структурами. Контракт
-[protocol-layer.md](../contracts/protocol-layer.en.md) пинит это:
+[protocol-layer.en.md](../contracts/protocol-layer.en.md) пинит это:
 бинарь ядра статически линкует **ровно одну** реализацию
 `IProtocolLayer`, и `target_link_libraries(kernel PUBLIC <impl>)`
 выбирает её на этапе сборки. Мультипимпл рантайм-выбор не
@@ -85,14 +85,14 @@ broadcast и relay — из wire (см. флаги ниже).
 `receiver_pk = ZERO` означает broadcast. `sender_pk = ZERO`
 запрещён: envelope с нулевым отправителем дропается на ингрессе и
 учитывается в `route.outcome.dropped_zero_sender` per
-[protocol-layer.md §2.3](../contracts/protocol-layer.en.md) —
+[protocol-layer.en.md §2.3](../contracts/protocol-layer.en.md) —
 имя шарит routing-pipeline namespace, operator scrape'ит один префикс
 для всех drop'ов на dispatch chain.
 
 `msg_id` — per-protocol namespace. `0x00` — зарезервированный
 sentinel и отвергается при регистрации хендлера. `0x11` —
 attestation dispatcher per
-[handler-registration.md §2a](../contracts/handler-registration.en.md).
+[handler-registration.en.md §2a](../contracts/handler-registration.en.md).
 
 ---
 
@@ -183,7 +183,7 @@ kFixedHeaderSize + 32 * popcount_explicit(flags) + payload_size`
 Транспорт стрим-класса (TCP, IPC, TLS-over-TCP) доставляет любой
 размер чанка: один `notify_inbound_bytes` может принести половину
 фрейма, целый фрейм или несколько фреймов. Это явно описано в
-[host-api.md §2](../contracts/host-api.en.md): "the transport keeps
+[host-api.en.md §2](../contracts/host-api.en.md): "the transport keeps
 no per-call assumption about byte-to-frame correspondence".
 
 `deframe(self, ctx, bytes, bytes_size, &out)` возвращает
@@ -298,7 +298,7 @@ receiver заполняются из ConnectionContext. Никакого header-
 собственно у `raw-v1` нет — что пришло, то и видит next handler.
 
 Trust policy жёсткая:
-[security-trust.md §4](../contracts/security-trust.en.md) разрешает
+[security-trust.en.md §4](../contracts/security-trust.en.md) разрешает
 `raw-v1` только на `GN_TRUST_LOOPBACK` и `GN_TRUST_INTRA_NODE`.
 Deframe на любом другом trust class отвергается с
 `GN_ERR_INVALID_ENVELOPE`. Opaque-passthrough на публичной сети
@@ -310,7 +310,7 @@ Deframe на любом другом trust class отвергается с
 
 После того, как security-handshake достиг Transport-фазы, peer-ы
 обмениваются списком опциональных возможностей. Контракт
-[capability-tlv.md](../contracts/capability-tlv.en.md) пинит формат
+[capability-tlv.en.md](../contracts/capability-tlv.en.md) пинит формат
 **TLV-of-bitmap**: список type-length-value записей, где value
 каждой записи — компактный bitmap, относящийся к одной категории.
 
@@ -328,7 +328,7 @@ wire-формат. Ядро само blob не парсит — плагины e
 через header-only `sdk/cpp/capability_tlv.hpp` и шлют/принимают
 через два host_api slot'а (`present_capability_blob`,
 `subscribe_capability_blob`). Семантика и hard cap живут в
-[capability-tlv.md](../contracts/capability-tlv.en.md).
+[capability-tlv.en.md](../contracts/capability-tlv.en.md).
 
 Reserved type ranges:
 
@@ -368,7 +368,7 @@ Wire frame несёт собственное `length` поле в 4-байтов
 
 Кроме wire-frame length есть второй length-prefix — 2-байтовый
 big-endian, который ставит security-сессия перед AEAD-цифертекстом
-per [protocol-layer.md §6](../contracts/protocol-layer.en.md). Это
+per [protocol-layer.en.md §6](../contracts/protocol-layer.en.md). Это
 prefix для security-фрейма, не для GNET. Транспорт его не видит:
 security сама собирает байты, выделяет prefix, декриптует, отдаёт
 plaintext в protocol layer. Слой выше protocol layer видит только
@@ -395,7 +395,7 @@ Producer, получивший от `host_api->send` код `GN_ERR_LIMIT_REACHE
 `SendQueueManager` отказал на hard-cap'е, retry до drain'а ring'а
 получит тот же отказ. SOFT-watermark — это event на conn-event
 channel, advisory сигнал о том, что pending bytes прошли high-mark per
-[backpressure.md §3](../contracts/backpressure.en.md).
+[backpressure.en.md §3](../contracts/backpressure.en.md).
 
 Hard cap, soft и clear watermarks — не свойства wire-протокола, а
 свойства транспорта. Wire-фрейм одного размера может пройти через
@@ -406,7 +406,10 @@ write-queue, либо застрять в ней — это вопрос окр�
 
 ## Эволюция wire-протокола
 
-После rc1 wire-формат эволюционирует **только additive**. Три канала:
+После freeze на plain `v1.0.0` wire-формат эволюционирует
+**только additive** (per
+[`abi-evolution.en.md`](../contracts/abi-evolution.en.md) §3b).
+Три канала:
 
 - **Reserved bits во flags** (0x08, 0x10, 0x20, 0x40, 0x80) —
   становятся осмысленными в новой реализации, игнорируются в старой.
@@ -420,7 +423,7 @@ write-queue, либо застрять в ней — это вопрос окр�
   выше).
 - **`gn_message_t::api_size`** — size-prefix для kernel-side
   envelope. Поле добавлений в struct контракт
-  [abi-evolution.md](../contracts/abi-evolution.en.md) разрешает после
+  [abi-evolution.en.md](../contracts/abi-evolution.en.md) разрешает после
   существующих, через гейт
   `api_size >= offsetof(field) + sizeof(field)`.
 
@@ -430,8 +433,8 @@ Kernel, собранный для 0x01, отвергает 0x02-фреймы с
 `GN_ERR_DEFRAME_CORRUPT`. Negotiation версии живёт на capability-
 handshake post-Noise, не в самом wire.
 
-В out-of-scope для v1 явно перечислены: BATCHED frames (несколько
-sub-frame в одном wire-frame; deferred до v2), отдельная
+Out-of-scope для этого wire-формата явно перечислены: BATCHED
+frames (несколько sub-frame в одном wire-frame), отдельная
 header-аутентификация (Noise уже MAC-ает весь ciphertext), флаг
 компрессии (payload-content concern, выше этого слоя), фрагментация
 (transport-уровень: TCP сегментирует естественно, UDP — через
@@ -441,10 +444,10 @@ header-аутентификация (Noise уже MAC-ает весь ciphertext
 
 ## Cross-references
 
-- Контракт mesh-framing-слоя: [protocol-layer.md](../contracts/protocol-layer.en.md).
+- Контракт mesh-framing-слоя: [protocol-layer.en.md](../contracts/protocol-layer.en.md).
 - Wire-format gnet-v1: [plugins/protocols/gnet/docs/wire-format.md](../../plugins/protocols/gnet/docs/wire-format.md).
-- Capability TLV: [capability-tlv.md](../contracts/capability-tlv.en.md).
-- Backpressure: [backpressure.md](../contracts/backpressure.en.md).
-- Идентичность и адресация: [identity.md](../contracts/identity.en.md).
+- Capability TLV: [capability-tlv.en.md](../contracts/capability-tlv.en.md).
+- Backpressure: [backpressure.en.md](../contracts/backpressure.en.md).
+- Идентичность и адресация: [identity.en.md](../contracts/identity.en.md).
 - Routing-сторона того же потока: [routing](routing.ru.md).
-- ABI-эволюция: [abi-evolution.md](../contracts/abi-evolution.en.md).
+- ABI-эволюция: [abi-evolution.en.md](../contracts/abi-evolution.en.md).

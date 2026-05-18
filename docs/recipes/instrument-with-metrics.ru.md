@@ -34,7 +34,7 @@
 | Плохо | Почему |
 |---|---|
 | `heartbeat_miss` | underscore вместо dot — exporter'у труднее парсить |
-| `drop.queue_hard_cap` | `drop.*` зарезервирован за ядром (`metrics.md` §3) |
+| `drop.queue_hard_cap` | `drop.*` зарезервирован за ядром (`metrics.en.md` §3) |
 | `route.outcome.relay` | `route.outcome.*` тоже kernel-only |
 | `MyPluginMissCount` | CamelCase ломает скрипты scrape'а |
 
@@ -81,7 +81,7 @@ static inline void bump_if(const host_api_t* api,
 1. **Не генерируй имена per-conn / per-peer / per-message-id**. `link_tcp.dial_fail.<peer_pk>` обронит cap за минуты под нагрузкой — pk имеет 2^256 значений.
 2. **Используй закрытое множество reason'ов**. `<plugin>.dial_fail.timeout`, `<plugin>.dial_fail.refused`, `<plugin>.dial_fail.unreachable` — это конечный список, который operator покажет на dashboard'е.
 
-Для high-cardinality диагностики правильный канал — log entries (`host-api.md` §11), не counter'ы. Один log-line на dial-fail с peer_pk внутри сообщения наблюдаем через grep, и не давит на counter store.
+Для high-cardinality диагностики правильный канал — log entries (`host-api.en.md` §11), не counter'ы. Один log-line на dial-fail с peer_pk внутри сообщения наблюдаем через grep, и не давит на counter store.
 
 ```c
 /* Right: closed set of reasons */
@@ -146,6 +146,6 @@ link_tcp.dial_fail.refused  ->  link_tcp_dial_fail{reason="refused"}
 
 ## Cross-refs
 
-- [metrics.md](../contracts/metrics.en.md) — kernel-side counter store, cardinality cap, drop counter discipline.
-- [host-api.md §2 + §11](../contracts/host-api.en.md) — `emit_counter` / `iterate_counters` slot signatures + log surface.
-- [limits.md](../contracts/limits.en.md) — `max_counter_names` and other caps плагин consume'ит.
+- [metrics.en.md](../contracts/metrics.en.md) — kernel-side counter store, cardinality cap, drop counter discipline.
+- [host-api.en.md §2 + §11](../contracts/host-api.en.md) — `emit_counter` / `iterate_counters` slot signatures + log surface.
+- [limits.en.md](../contracts/limits.en.md) — `max_counter_names` and other caps плагин consume'ит.

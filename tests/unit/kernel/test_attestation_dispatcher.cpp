@@ -6,7 +6,7 @@
 /// kernel's transport, security, and protocol-layer machinery; those
 /// flows are exercised in the integration suite. The tests here
 /// pin the wire-layout invariants and the per-step rejection logic
-/// per `docs/contracts/attestation.md` §2 / §5.
+/// per `docs/contracts/attestation.en.md` §2 / §5.
 
 #include <gtest/gtest.h>
 
@@ -206,7 +206,7 @@ gn_conn_id_t insert_test_record(gn::core::Kernel& kernel,
 TEST(AttestationDispatcher_Mutual, FiresUpgradeWhenBothFlagsSet) {
     /// Both halves of the mutual exchange completed: the dispatcher
     /// promotes the connection to `Peer` and fires
-    /// `GN_CONN_EVENT_TRUST_UPGRADED` per `attestation.md` §6.
+    /// `GN_CONN_EVENT_TRUST_UPGRADED` per `attestation.en.md` §6.
     gn::core::Kernel kernel;
     gn::PublicKey peer_pk{};
     peer_pk.fill(0xAB);
@@ -297,7 +297,7 @@ TEST(AttestationDispatcher_Mutual, NoUpgradeWhenOnlyTheirReceived) {
 
 TEST(AttestationDispatcher_Mutual, OnDisconnectClearsState) {
     /// `on_disconnect` drops per-conn flags so a fresh connection
-    /// reusing the numeric id starts clean (per `attestation.md` §7).
+    /// reusing the numeric id starts clean (per `attestation.en.md` §7).
     gn::core::Kernel kernel;
     gn::core::AttestationDispatcher dispatcher;
     const gn_conn_id_t conn = 42;
@@ -315,7 +315,7 @@ TEST(AttestationDispatcher_Mutual, OnDisconnectClearsState) {
 TEST(AttestationDispatcher_Mutual, DuplicateAttestationSameDevicePkSilentlyDropped) {
     /// A second attestation arriving on the same session with the
     /// same device_pk is dropped — no disconnect, no second
-    /// upgrade event (per `attestation.md` §5 step 7 same-pk
+    /// upgrade event (per `attestation.en.md` §5 step 7 same-pk
     /// branch + §9 live re-attestation note).
     gn::core::Kernel kernel;
     gn::core::AttestationDispatcher dispatcher;
@@ -334,7 +334,7 @@ TEST(AttestationDispatcher_Mutual, DuplicateAttestationSameDevicePkSilentlyDropp
 TEST(AttestationDispatcher_Mutual, LoopbackTrustNotUpgraded) {
     /// `Loopback` is not a target the gate accepts as input; the
     /// dispatcher's promotion call returns LIMIT_REACHED and no
-    /// upgrade event fires (per `attestation.md` §4 / §6 — the
+    /// upgrade event fires (per `attestation.en.md` §4 / §6 — the
     /// dispatcher's no-op path on non-Untrusted classes).
     gn::core::Kernel kernel;
     gn::PublicKey peer_pk{};

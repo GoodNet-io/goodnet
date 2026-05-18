@@ -11,13 +11,13 @@
  *
  * Storage is delegated — this extension never carries `put` / `get`
  * slots for raw bytes. Those live on `gn.store` if a caller needs
- * untyped KV access. See `docs/contracts/dns.md` for the wire
- * surface, `docs/contracts/store.md` for the storage primitive.
+ * untyped KV access. See `docs/contracts/dns.en.md` for the wire
+ * surface, `docs/contracts/store.en.md` for the storage primitive.
  *
  * @par Not the SDK hostname resolver
  * `sdk/cpp/dns.hpp` is an unrelated header — that one rewrites
  * `tcp://example.com:443` URIs into IP literals at connect time
- * (see `docs/contracts/hostname-resolver.md`). Same word, different
+ * (see `docs/contracts/hostname-resolver.en.md`). Same word, different
  * concept: this header is the networked record-DB surface; that
  * one is a pure-function URI rewrite. Both keep the name because
  * the legacy `goodnetd-dns` binary covered the same conceptual
@@ -29,7 +29,7 @@
  * block sits next to the legacy `0x0600..0x0606` range that
  * `gn.handler.store` keeps so a node hosting both plugins routes
  * unambiguously by `msg_id`. These ids are outside the kernel-
- * reserved `0x10..0x1F` range (see `system-handlers.md` §2).
+ * reserved `0x10..0x1F` range (see `system-handlers.en.md` §2).
  */
 #ifndef GOODNET_SDK_EXTENSIONS_DNS_H
 #define GOODNET_SDK_EXTENSIONS_DNS_H
@@ -118,7 +118,7 @@ typedef void (*gn_dns_emit_cb_t)(void* user, const gn_dns_record_t* record);
  * @brief Vtable surfaced as the `gn.dns` extension.
  *
  * Versioned with @ref GN_EXT_DNS_VERSION. Begins with `api_size`
- * for size-prefix evolution per `abi-evolution.md` §3.
+ * for size-prefix evolution per `abi-evolution.en.md` §3.
  *
  * The `ctx` field carries the handler's `self` pointer; every
  * entry receives it as its first argument.

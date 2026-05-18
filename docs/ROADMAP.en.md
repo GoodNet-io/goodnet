@@ -20,18 +20,57 @@ to refresh the table.
 
 | Feature | Status | Evidence |
 |---|---|---|
-| NAT-traversal pipeline | ✗ missing | plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered in plugins/ |
-| Multi-path scheduler | ✗ missing | plugins/extensions/multipath/ absent; extension id 'gn.multipath' not registered in plugins/ |
-| Directed relay → direct upgrade | ✗ missing | plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not registered in plugins/ |
+| NAT-traversal pipeline | ✓ done | plugins/links/ice/ present |
+| Multi-path scheduler | ✓ done | plugins/strategies/float_send_rtt/ present |
+| Directed relay → direct upgrade | ✓ done | plugins/links/ice/session.cpp present |
+| DPLPMTUD active path-MTU probing | ✓ done | plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present |
+| Multi-TURN fallback | ✓ done | token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...) |
+| IPv6 mDNS dual-stack | ✓ done | token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...) |
+| Port mapping (UPnP / PCP / NAT-PMP) | ✓ done | plugins/links/portmap/ present |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
 | Address-based forwarding | ✗ missing | plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/ |
-| KV storage handler | ✗ missing | plugins/handlers/kv/ absent |
+| KV storage handler | ✓ done | plugins/handlers/store/ present |
 | Gossip sync handler | ✗ missing | plugins/handlers/gossip/ absent |
 | Offline outbound queue | ✗ missing | token 'outbound_queue' absent; token 'offline_queue' absent |
-| Fuzz harness | ✗ missing | tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent |
+| Subprocess SECURITY/HANDLER worker proxy | ✓ done | symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...) |
+| Recv-side parallel decrypt | ✓ done | symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...) |
+| Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
+| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {) |
+| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...) |
+| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
+| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
+| Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...) |
+| Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
+| Fuzz harness | ✓ done | tests/fuzz/CMakeLists.txt present |
 | Coverage gating | ✗ missing | token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
+| Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
+| Full WASM kernel build | ✗ missing | nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent |
+| JS SDK + WebSocket bridge | ✗ missing | plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension id 'gn.handler.web-api-proxy' not registered in plugins/ |
+| C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
+| Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
+| BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
+| io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
+| aarch64 Linux | ✗ missing | token 'aarch64-linux-ci' absent |
+| Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
+| MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
+| C99 SDK subset | ✗ missing | sdk/c99/ absent |
+| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
+| Python | ✗ missing | bridges/goodnet-py/setup.py absent |
+| Go | ✗ missing | bridges/goodnet-go/go.mod absent |
+| Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
+| Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
+| Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
+| OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
+| Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
+| File transfer handler | ✗ missing | plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not registered in plugins/ |
+| Identity registration handler | ✗ missing | plugins/handlers/identity/ absent; extension id 'gn.identity' not registered in plugins/ |
+| Group membership handler | ✗ missing | plugins/handlers/group/ absent; extension id 'gn.group' not registered in plugins/ |
+| Goodnetd binary roadmap | ✗ missing | token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent |
+| CLI introspection tool | ✗ missing | tools/goodnetctl/ absent |
+| Config validator | ✗ missing | tools/config_validator/ absent |
+| TCP-TURN (RFC 6062) | ✗ missing | token 'TURN_TCP_ALLOCATE' absent; token 'turn_tcp_relay' absent |
 <!-- /livedoc:roadmap_status_table -->
 
 ---
@@ -41,15 +80,32 @@ to refresh the table.
 A pair of nodes finds each other and sustains a path even when neither
 side has a public address.
 
-- **NAT-traversal pipeline** — AutoNAT-style mapping classification,
-  relay candidate selection. Builds on the `gn.heartbeat` extension
-  (RTT measurement) by adding a NAT-mapping classifier on top.
+- **NAT-traversal pipeline** — full ICE agent (host / server-reflexive
+  via STUN / relayed via TURN), mDNS peer discovery, and pair-promotion
+  nomination shipped in `plugins/links/ice`. Builds on the
+  `gn.heartbeat` extension (RTT measurement).
 - **Multi-path scheduler** — TCP, UDP, WebSocket and TLS in parallel
   per connection so a path failure switches over without dropping the
   session.
-- **Directed relay → direct upgrade** — connection opens through a
-  relay, upgrades to a direct path once both ends have discovered each
-  other.
+- **Directed relay → direct upgrade** — TURN-relayed pair becomes the
+  initial path, ICE nomination upgrades to a direct host/srflx pair
+  once connectivity checks pass.
+- **DPLPMTUD active path-MTU probing** — RFC 8899 search through
+  `plugins/links/ice/path_mtu.hpp`, fragment-avoiding probe ladder
+  bounded by the carrier MTU.
+- **Multi-TURN fallback** — `ice.turn_servers` list with primary +
+  backups, periodic re-probe controlled by
+  `ice.turn_backup_interval_s`.
+- **IPv6 mDNS dual-stack** — `ff02::fb` multicast listener alongside
+  the legacy IPv4 `224.0.0.251` socket for `.local.` discovery on
+  v6-only networks.
+- **Port mapping (UPnP / PCP / NAT-PMP)** — explicit NAT mapping
+  through `plugins/links/portmap`. PCP (RFC 6887) and NAT-PMP
+  (RFC 6886) implemented on UDP/5351 with `/proc/net/route` default
+  gateway discovery; UPnP IGD stays a stub until the SSDP + SOAP
+  codec lands. ICE queries the `gn.link.portmap` extension before
+  host-candidate gathering when the host sits behind a symmetric
+  NAT.
 
 These ride on top of the existing link / security / protocol layers
 through plugins; the kernel does not grow new surfaces.
@@ -88,14 +144,42 @@ A frozen kernel ABI, a documented operator surface, an audited
 security boundary.
 
 - Ship the tag that closes the reshape window in
-  [`docs/contracts/abi-evolution.md`](contracts/abi-evolution.en.md) §3b
+  [`docs/contracts/abi-evolution.en.md`](contracts/abi-evolution.en.md) §3b
   and binds the append-only rule of §3 without exception.
 - Per-language SDK guides — proposed.
 - Operator how-tos — proposed.
 - Observability — the counter surface ships through
   `host_api->emit_counter` / `iterate_counters` per
-  [`metrics.md`](contracts/metrics.en.md); Prometheus and OTLP exporters
+  [`metrics.en.md`](contracts/metrics.en.md); Prometheus and OTLP exporters
   that consume it live as plugins, not kernel code.
+- **Subprocess SECURITY/HANDLER worker proxy** — `security_vtable_proxy`
+  in `core/plugin/remote_host.hpp` routes security/handler vtable
+  callbacks through the remote-plugin wire protocol so untrusted
+  plugins run in a subprocess sandbox.
+- **Recv-side parallel decrypt** — `decrypt_batch_transport` in
+  `core/security/session.hpp` decrypts a batch of inbound transport
+  frames per connection without giving up the noise-replay window.
+- **Link capability gate** — `core/kernel/link_capability.hpp`
+  enforces which carriers a plugin is allowed to expose.
+- **DynamicRuntime dlsym cache** — `DynamicPluginSymbols` in
+  `core/plugin/runtimes/dynamic.hpp` resolves every plugin entry
+  point once at load and reuses the cached pointers.
+- **Required-plugin manifest pinning** — `ManifestEntry::required`
+  in `core/plugin/plugin_manifest.hpp` lets a node operator pin a
+  set of plugins as mandatory; missing required plugins fail
+  startup instead of silently degrading.
+- **gn_core_unload_plugin hot-reload** — explicit `core_c.h` entry
+  point for plugin unload, matched against the load path so hot
+  reload is a contract, not a race.
+- **Subprocess HOST_CALL slot completion** — `NOTIFY_CONNECT` and
+  three sibling slots in `sdk/remote/slots.h` complete the four-slot
+  HOST_CALL surface that subprocess workers need.
+- **Per-slot reply-timeout override** — `set_reply_timeout_for_slot`
+  lets a remote-host caller widen the per-slot deadline for slow
+  handlers without inflating the global default.
+- **Wire codec GN_ERR_WIRE_DECODE** — the wire codec returns a
+  distinct error so callers can tell a malformed frame apart from a
+  transport-level failure.
 
 ---
 
@@ -112,6 +196,228 @@ Tracked outside the four directions above; no version gates them.
 - **Test vectors** — byte-precise fixtures for every wire format
   shipped in the tree, so a non-C reimplementation can prove
   compatibility without reading kernel code.
+- **Raw inject bridge** — `plugins/links/raw_inject` accepts plain
+  TCP clients and pipes their bytes through `host_api->inject(MESSAGE)`
+  so legacy services land on the mesh without recompiling against
+  the SDK. Plain-POSIX demo at `tests/demo/c_raw_inject/` proves the
+  client-side surface stays at libc.
+
+---
+
+## WASM / web
+
+Three independent extensions of the kernel into WASM / browser
+territory. Each ships separately — they don't depend on each
+other.
+
+### WASM plugin runtime (sandbox for untrusted plugins)
+
+A **fourth IPluginRuntime variant** alongside Dynamic / Static /
+Remote. WASM modules load through `wasmtime` or `wasmer` and run
+inside the WASM sandbox the runtime provides — no process
+boundary like Remote, no shared address space like Dynamic.
+
+Use case: untrusted third-party plugins (marketplace, user-
+submitted handlers) run with capability-limited host-call surface
+without the IPC overhead of subprocess workers. The
+`IPluginRuntime` interface already abstracts this;
+[`plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) §2a
+documents the C ABI extension that lands when the first WASM
+runtime arrives. Authentication reuses the manifest SHA-256 pin.
+
+This is **orthogonal** to the browser story below — WASM plugins
+run inside a native goodnetd, not in a browser.
+
+### Web — browser integration
+
+The kernel is a native C++23 process. Browsers can't open raw UDP
+sockets, can't drive full ICE without WebRTC, can't load arbitrary
+shared libraries. To make GoodNet usable from a browser app, two
+approaches; neither requires kernel-side changes beyond a new
+handler / a build target.
+
+- **Full WASM kernel build** — compile `core/` + `sdk/` + the
+  in-tree plugin matrix to WASM via Emscripten. A browser tab runs
+  a real GoodNet peer of equal standing to a native one. Link
+  layer adapts: `gn.link.wss` is the canonical carrier (browsers
+  speak WebSockets natively), `gn.link.udp` becomes WebRTC
+  `RTCDataChannel`-shaped when raw UDP is needed. Memory & threading
+  shape constrains plugin choice; the `IPluginRuntime` abstraction
+  already lets us load only a subset (static plugins only — no
+  dlopen in WASM). Heavy work but the kernel ABI doesn't change.
+
+- **JS SDK + WebSocket bridge** — far simpler near-term path. The
+  browser DOES NOT run goodnet code. Instead:
+  - A kernel handler `gn.handler.web-api-proxy` listens on
+    WebSocket (consumes `gn.link.ws` via composer pattern).
+    Exposes the SDK surface — `query_extension`, `send_to`,
+    `register_handler`, `subscribe_data`, etc. — as JSON-RPC
+    messages over the WS frame stream. Authentication via Ed25519
+    public key the JS client presents at handshake.
+  - A JS SDK (`goodnet-js` npm package) wraps the WS connection.
+    Calls look native — `gn.send_to(peer_pk, payload)` — but
+    marshal as JSON-RPC over the bridge. The browser app writes
+    code as if it were a native peer; goodnetd does the heavy
+    network lifting (Noise handshakes, NAT traversal, gossip)
+    and proxies the wire.
+
+  This pattern makes goodnetd a multi-tenant gateway: many browser
+  apps can share one goodnetd instance through their own WS
+  connections. Operator deployment is one goodnetd binary on a
+  public VPS; users hit `wss://goodnet.example.com/api` from any
+  modern browser. Browser API limits stop mattering because the
+  browser is a thin client, not a peer.
+
+The two approaches are not mutually exclusive — full-WASM peer is
+the long road; JS SDK + bridge is what unblocks browser users in
+the near term.
+
+---
+
+## Runtimes & sandboxing
+
+Beyond Dynamic / Static / Remote, additional runtime variants for
+different sandboxing and performance trade-offs.
+
+- **C ABI version of `IPluginRuntime`** — currently a C++ interface.
+  A C ABI extension lets the runtime itself be a loadable plugin
+  (so a WASM or eBPF runtime ships as a `.so` rather than being
+  compiled into the kernel). Documented in
+  [`plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) §2a;
+  lands when the first non-built-in runtime arrives.
+- **Subprocess sandbox** — Linux user-namespaces + seccomp-bpf
+  filter + cgroup resource ceilings around `RemoteHost::spawn`.
+  Wire protocol does not change; only the `fork`+`execve` call
+  site adds the isolation primitives. Required before
+  third-party untrusted workers (marketplace, user-submitted
+  handlers) are a use case. Current trust model documented in
+  [`remote-plugin.en.md`](contracts/remote-plugin.en.md) §1a.
+- **BRIDGE kind first-class plugin taxonomy** — `raw_inject`
+  currently lives as a LINK plugin with workarounds
+  (`raw-v1` protocol, synthetic anonymous pk, `LOOPBACK` trust).
+  A dedicated `GN_PLUGIN_KIND_BRIDGE` with own vtable shape
+  (no listen/connect/send slots, inject-only) + `BridgeRegistry`
+  cleans the taxonomy. Justified when bridges become massive
+  (Slack, MQTT, CGI, etc.) and the LINK-shape workarounds repeat.
+- **io_uring runtime** — Linux async-io framework, faster than
+  epoll on high-fanout (many small connections) deployments.
+  Could ship as an `IPluginRuntime` flavor consumed by io_uring-
+  aware link plugins, or as a kernel-level dispatcher option that
+  any link plugin opts into.
+
+---
+
+## Cross-platform / cross-arch
+
+- **aarch64 Linux** — current CI matrix is x86_64 + Windows mingw.
+  Native ARM Linux builds (server / Raspberry Pi / cloud ARM
+  instances) need a CI runner. Code itself is portable; the
+  matrix is the missing piece.
+- **Android build** — Android NDK toolchain target for the kernel
+  and the static-plugin bundle. Reuses the same `nix run .#build
+  -- static` shape with a cross-compile profile. Use case:
+  Android apps embed goodnet as a JNI-callable library rather
+  than running goodnetd as a separate process. Mobile-reconnect
+  story (RTM_NEWLINK netlink watcher) already lands on Linux —
+  Android inherits it.
+- **MCU port** (ESP32 / RP2040) — heavy SDK trim, no
+  `std::vector` in hot paths, no mold/LTO, possibly no libsodium
+  (use mbedTLS-crypto for size). Mostly a build-and-test
+  exercise; the kernel surface is small enough to fit a 4 MB
+  flash budget.
+- **C99 SDK subset** — for toolchains where C++17 is unavailable.
+  Mirrors `sdk/*.h` shape; plugin authors get the C-ABI surface
+  without the C++ convenience headers.
+
+---
+
+## Language bindings
+
+The kernel ABI is C-ABI clean. Bindings ship as separate repos
+that consume `sdk/*.h` without recompiling the kernel.
+
+- **Rust** — `cbindgen`-generated wrappers around `sdk/*.h` +
+  idiomatic Rust trait for handlers / link plugins.
+- **Python** — synchronous C-extension SDK. Subprocess
+  remote-plugin path already works; in-process C-extension
+  bindings would give a faster path for Python-side handlers.
+- **Go** — cgo wrappers, idiomatic Go API for the most-used SDK
+  surface (`gn_core_query_extension`, `host_api->send`, etc.).
+- **Zig** — Zig's `@cImport` already works against `sdk/*.h`;
+  documented as best-practice with example bindings repo.
+
+---
+
+## Security extensions
+
+- **Hardware key store** — TPM, YubiKey, secure-enclave backing
+  for the Ed25519 identity key. The security-provider abstraction
+  in [`security-trust.en.md`](contracts/security-trust.en.md)
+  already lets a plugin substitute the key source; a `gn.security.tpm`
+  plugin would wire it.
+- **Post-quantum security provider** — ML-KEM (FIPS 203) /
+  ML-DSA (FIPS 204) provider when the standards settle and
+  libsodium / OpenSSL ship vetted implementations. The Noise
+  protocol abstraction can host the PQ handshake without a wire-
+  level change.
+
+---
+
+## Observability
+
+The counter surface ships through `host_api->emit_counter` per
+[`metrics.en.md`](contracts/metrics.en.md). Exporters are plugins,
+not kernel code.
+
+- **OpenTelemetry trace propagation across mesh hops** — span
+  IDs travel in envelope metadata so a multi-hop request shows up
+  as one trace, even when each hop is a different peer.
+- **Concrete exporter plugins** — `gn.metrics.prometheus` (HTTP
+  endpoint scraped by Prometheus) and `gn.metrics.otlp` (OTLP gRPC
+  push to a collector). Both consume the kernel's iterate_counters
+  surface; neither ships in the kernel binary.
+
+---
+
+## Application handlers
+
+Tracked here as the natural plugin tree expansion. Each is a
+self-contained handler / extension that registers through the
+existing kernel surface.
+
+- **File transfer handler** — streaming large objects across
+  multiple connections, resume after disconnect, integrity per
+  chunk.
+- **Identity registration handler** — `pk → human-friendly name`
+  binding, gossip-propagated.
+- **Group membership handler** — CRDT-based group state sync
+  for chat rooms / collaboration apps.
+
+---
+
+## Operations tooling
+
+- **Goodnetd binary roadmap** — `apps/` was extracted from the
+  kernel tree to a separate
+  [`GoodNet-io/goodnetd`](https://github.com/GoodNet-io/goodnetd)
+  repo. Operator-facing binary has its own roadmap there; this
+  doc tracks kernel + plugin tree only.
+- **CLI introspection tool** — `goodnetctl` (or equivalent) for
+  operators: list connections, show metrics, kick a session, dump
+  routing table. Equivalent to `redis-cli` / `etcdctl` in the
+  operator's toolbox.
+- **Config validator** — standalone tool that parses a TOML / JSON
+  config against the schema before deploy, surfaces typos and
+  missing-required errors. Operator runs it as a pre-deploy
+  check.
+
+---
+
+## ICE follow-ups
+
+- **TCP-TURN (RFC 6062)** — TURN relay over TCP transport
+  (currently UDP-only in `plugins/links/ice`). Required for
+  TCP-only network environments that block UDP TURN traffic.
 
 ---
 

@@ -1,4 +1,4 @@
-# tests/abi/ — ABI invariants per `docs/contracts/abi-evolution.md` §7.
+# tests/abi/ — ABI invariants per `docs/contracts/abi-evolution.en.md` §7.
 #
 # Two kinds of pins:
 #

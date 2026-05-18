@@ -17,6 +17,8 @@
 
 #include <core/util/log.hpp>
 
+#include <sdk/extensions/strategy.h>
+
 #include "../connection_context.hpp"
 #include "../safe_invoke.hpp"
 
@@ -153,6 +155,19 @@ gn_result_t register_security(void* host_ctx,
     if (!host_ctx || !provider_id || !vtable) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+    /// Capability gate per `security-trust.en.md`: only plugins that
+    /// declared themselves SECURITY-kind at load time may install
+    /// a security provider. HANDLER, LINK, STRATEGY, BRIDGE, UI,
+    /// PROTOCOL plugins calling this slot have no business minting
+    /// a provider entry — refuse with `NOT_AUTHORISED`-style code
+    /// (`INVALID_STATE`, since we have no dedicated capability
+    /// code yet) and let the loader log the misuse. The
+    /// embedding host (`GN_PLUGIN_KIND_UNKNOWN`) keeps full access
+    /// because it carries the operator's authority directly.
+    if (pc->kind != GN_PLUGIN_KIND_SECURITY &&
+        pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        return GN_ERR_INVALID_STATE;
+    }
     return pc->kernel->security().register_provider(
         provider_id, vtable, security_self, pc->plugin_anchor);
 }
@@ -395,6 +410,50 @@ gn_result_t notify_backpressure(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t notify_rtt_sample(void* host_ctx,
+                                gn_conn_id_t conn,
+                                std::uint64_t rtt_us) {
+    if (!host_ctx) return GN_ERR_NULL_ARG;
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+    if (!rtt_publisher_role(pc)) return GN_ERR_NOT_IMPLEMENTED;
+    /// Zero is the "no sample" sentinel — silently drop instead of
+    /// propagating a polluting observation through the EWMA. The
+    /// kernel returns GN_OK so plugins can publish unconditionally
+    /// without branching on whether their probe produced a value.
+    if (rtt_us == 0) return GN_OK;
+
+    auto rec = pc->kernel->connections().find_by_id(conn);
+    if (!rec) return GN_ERR_NOT_FOUND;
+
+    auto smoothed =
+        pc->kernel->connections().update_rtt_sample(conn, rtt_us);
+    if (!smoothed) return GN_ERR_NOT_FOUND;
+
+    /// Republish the EWMA-smoothed value (not the raw sample) so
+    /// strategy chain models stay stable across outlier samples
+    /// without each strategy maintaining its own probe.
+    auto strategies =
+        pc->kernel->extensions().query_prefix("gn.strategy.");
+    if (!strategies.empty()) {
+        gn_path_sample_t sample{};
+        sample.conn   = conn;
+        sample.rtt_us = *smoothed;
+        for (const auto& entry : strategies) {
+            const auto* sapi =
+                static_cast<const gn_strategy_api_t*>(entry.vtable);
+            if (sapi == nullptr || sapi->on_path_event == nullptr ||
+                sapi->api_size < sizeof(gn_strategy_api_t)) {
+                continue;
+            }
+            (void)sapi->on_path_event(
+                sapi->ctx, rec->remote_pk.data(),
+                GN_PATH_EVENT_RTT_UPDATE, &sample);
+        }
+    }
+    return GN_OK;
+}
+
 // ── Vtable registration ────────────────────────────────────────────
 
 gn_result_t register_vtable(void* host_ctx,
@@ -422,6 +481,24 @@ gn_result_t register_vtable(void* host_ctx,
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    /// Capability gate per `security-trust.en.md`: plugin-kind must
+    /// match the register-kind being requested. HANDLER-kind
+    /// plugins register handler vtables, LINK-kind plugins
+    /// register link vtables, anything else (STRATEGY, BRIDGE,
+    /// UI, SECURITY, PROTOCOL) is refused at the slot. The
+    /// embedding host (UNKNOWN) keeps full access — same
+    /// rationale as `register_security`: operator authority,
+    /// not plugin-author.
+    const bool host_embedding = pc->kind == GN_PLUGIN_KIND_UNKNOWN;
+    if (kind == GN_REGISTER_HANDLER && !host_embedding &&
+        pc->kind != GN_PLUGIN_KIND_HANDLER) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (kind == GN_REGISTER_LINK && !host_embedding &&
+        pc->kind != GN_PLUGIN_KIND_LINK) {
+        return GN_ERR_INVALID_STATE;
+    }
 
     switch (kind) {
     case GN_REGISTER_HANDLER: {

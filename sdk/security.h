@@ -39,7 +39,7 @@ extern "C" {
  */
 typedef struct gn_handshake_keys_s {
     /** sizeof(gn_handshake_keys_t) at producer build time per
-     *  `abi-evolution.md` §3. */
+     *  `abi-evolution.en.md` §3. */
     uint32_t api_size;
     uint8_t  send_cipher_key[GN_CIPHER_KEY_BYTES];
     uint8_t  recv_cipher_key[GN_CIPHER_KEY_BYTES];
@@ -79,8 +79,18 @@ typedef struct gn_secure_buffer_s {
      * @ref free_user_data so non-C language bindings can recover
      * captured destruction state without the C-level
      * `void(*)(uint8_t*)` form leaking. The second argument is
-     * @ref bytes verbatim. NULL when the buffer needs no
-     * destruction (e.g. zero-length).
+     * @ref bytes verbatim.
+     *
+     * Contract: when @ref bytes is non-NULL, `free_fn` MUST be
+     * non-NULL — the consumer is required to release the bytes
+     * exactly once through the producer's free, and a non-NULL
+     * payload without a free function leaks. NULL `free_fn` is
+     * legitimate only when @ref bytes is NULL (zero-length output
+     * has no allocation to release). Kernel-side consumers in
+     * `core/security/session.cpp` guard on `free_fn && bytes` and
+     * skip the free when the producer violates the contract; that
+     * is defensive — leak over crash — not an admission that NULL
+     * `free_fn` with non-NULL `bytes` is valid.
      */
     void  (*free_fn)(void* user_data, uint8_t* bytes);
 } gn_secure_buffer_t;
@@ -88,7 +98,7 @@ typedef struct gn_secure_buffer_s {
 /**
  * @brief Vtable for an `ISecurityProvider` implementation.
  *
- * Per `security-trust.md`, every entry that creates or routes a
+ * Per `security-trust.en.md`, every entry that creates or routes a
  * connection takes @ref gn_trust_class_t explicitly.
  */
 typedef struct gn_security_provider_vtable_s {
@@ -216,7 +226,7 @@ typedef struct gn_security_provider_vtable_s {
      * this once at `register_security` time and enforces the gate on
      * every `SessionRegistry::create`; a connection whose trust class is not
      * in the mask is rejected before any handshake byte rides — per
-     * `security-trust.md` §4.
+     * `security-trust.en.md` §4.
      *
      * Examples:
      *   - NoiseProvider: `1u<<UNTRUSTED | 1u<<PEER | 1u<<LOOPBACK | 1u<<INTRA_NODE`

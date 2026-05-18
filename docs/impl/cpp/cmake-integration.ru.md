@@ -145,9 +145,10 @@ Out-of-tree автор такие плагины **не пишет** — это 
 
 ## Standalone Nix-flake на плагин
 
-В монорепе каждый загружаемый плагин (handler-heartbeat,
-link-{tcp,udp,ws,ipc,tls}, security-{noise,null}) имеет собственный
-`flake.nix` и независимую сборку. Шаблон:
+В монорепе каждый загружаемый плагин (handler-{heartbeat,store,dns},
+link-{tcp,udp,ws,ipc,tls,ice,quic}, security-{noise,null},
+strategy-float-send-rtt) имеет собственный `flake.nix` и независимую
+сборку. Шаблон:
 
 ```nix
 {
@@ -175,7 +176,7 @@ slim-subflake, который экспортирует только `kernel-head
 plugin → monorepo → plugin не возникает.
 
 В release-сборке URL переключается на
-`github:goodnet-io/<plugin-repo>` после публикации в org.
+`github:GoodNet-io/<plugin-repo>` после публикации в org.
 
 ## Перекрёстные ссылки
 

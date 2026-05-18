@@ -5,11 +5,30 @@
 
 #include <cstring>
 
+#include <sdk/cpp/uri.hpp>
 #include <sdk/types.h>
 
 #include "safe_invoke.hpp"
 
 namespace gn::core {
+
+bool is_loopback_scope(std::string_view scheme,
+                       std::string_view uri) noexcept {
+    if (scheme == "ipc") return true;
+    const auto parts = ::gn::parse_uri(uri);
+    if (!parts) return false;
+    if (parts->is_path_style()) {
+        return parts->scheme == "ipc";
+    }
+    const auto& host = parts->host;
+    if (host == "localhost" || host == "::1") return true;
+    if (host.size() >= 4
+        && host[0] == '1' && host[1] == '2' && host[2] == '7'
+        && host[3] == '.') {
+        return true;
+    }
+    return false;
+}
 
 Router::Router(LocalIdentityRegistry& identities, HandlerRegistry& handlers) noexcept
     : identities_(identities), handlers_(handlers) {}
@@ -22,10 +41,28 @@ void Router::set_relay_available(bool v) noexcept {
     relay_available_.store(v, std::memory_order_release);
 }
 
+void Router::set_conn_lookup(ConnLookup fn) {
+    conn_lookup_ = std::move(fn);
+}
+
+bool Router::accept_zero_sender(const gn_message_t& env) const {
+    if (!conn_lookup_) return false;
+    if (env.conn_id == GN_INVALID_ID) return false;
+    ConnInfo info{};
+    if (!conn_lookup_(env.conn_id, info)) return false;
+    if (info.trust != GN_TRUST_ANONYMOUS_LOOPBACK) return false;
+    return info.is_loopback;
+}
+
 RouteOutcome Router::route_inbound(std::string_view    protocol_id,
                                    const gn_message_t& env) const {
-    /// Sender identity must be present.
-    if (gn_pk_is_zero(env.sender_pk))            return RouteOutcome::DroppedZeroSender;
+    /// Sender identity must be present, except for anonymous loopback
+    /// bridges that inject MESSAGE envelopes with no peer pk by
+    /// design (see `docs/contracts/security-trust.en.md` §3 +
+    /// `sdk/trust.h` GN_TRUST_ANONYMOUS_LOOPBACK).
+    if (gn_pk_is_zero(env.sender_pk) && !accept_zero_sender(env)) {
+        return RouteOutcome::DroppedZeroSender;
+    }
     if (env.msg_id == 0)                      return RouteOutcome::DroppedInvalidMsgId;
 
     /// Broadcast is recognised by an all-zero receiver.
@@ -61,7 +98,7 @@ RouteOutcome Router::dispatch_chain(std::string_view    protocol_id,
     /// keeps the recorded generation in scope so a future hot-reload
     /// path can compare against the live counter for stale-chain
     /// observability without a second lookup. Per
-    /// `handler-registration.md` §6 the generation bumps on every
+    /// `handler-registration.en.md` §6 the generation bumps on every
     /// register / unregister; an exporter plugin can surface the
     /// gap between recorded and live counters as a "dispatch on
     /// stale chain" rate.

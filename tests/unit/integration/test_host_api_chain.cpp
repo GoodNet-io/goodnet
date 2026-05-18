@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_host_api_chain.cpp
+/// @file   tests/unit/integration/test_host_api_chain.cpp
 /// @brief  Full kernel data path through the host_api boundary.
 ///
 /// Mirrors `test_inbound_chain.cpp` but drives the kernel through the
@@ -105,7 +105,7 @@ TEST(HostApiChain, NotifyConnectThenDisconnect) {
 }
 
 TEST(HostApiChain, NotifyConnectControlByteUriRejected) {
-    /// uri.md §5 #10 — a URI carrying CR / LF / space cannot reach
+    /// uri.en.md §5 #10 — a URI carrying CR / LF / space cannot reach
     /// the kernel registry index even on the `notify_connect` path
     /// that bypasses `parse_uri`. A downstream caller writing
     /// `rec.uri` into a wire frame (Host header, log line, request
@@ -142,7 +142,7 @@ TEST(HostApiChain, NotifyConnectMissingSchemePrefixRejected) {
     /// `host_api_t::notify_connect` derives the link scheme from the
     /// URI's `scheme://` prefix; the prefix doubles as the
     /// `LinkRegistry` key for the conn-id ownership gate
-    /// (`security-trust.md` §6a). A URI without a scheme prefix has no
+    /// (`security-trust.en.md` §6a). A URI without a scheme prefix has no
     /// route for ownership attribution — reject up front so a hostile
     /// caller cannot register an unattributable conn record.
     KernelHarness h;
@@ -253,7 +253,7 @@ TEST(HostApiChain, NotifyConnectOversizedUriRejected) {
 }
 
 TEST(HostApiChain, NotifyConnectSchemeNotOwnedByCallerRejected) {
-    /// Caller-anchor gate per `security-trust.md` §6a (ingress side).
+    /// Caller-anchor gate per `security-trust.en.md` §6a (ingress side).
     /// A link plugin may only announce conns whose derived scheme it
     /// owns in `LinkRegistry`. Without this gate a TCP plugin could
     /// register an orphan conn under `ws` that no plugin can serve.
@@ -402,8 +402,9 @@ TEST(HostApiChain, NotifyInboundUnknownConnRejected) {
 }
 
 TEST(HostApiChain, NotifyInboundOverFrameLimitRejected) {
-    /// `thunk_notify_inbound_bytes` caps `size` against
-    /// `limits.max_frame_bytes` before any state mutation. A
+    /// `notify_inbound_bytes` (in
+    /// `core/kernel/host_api/notifications.cpp`) caps `size`
+    /// against `limits.max_frame_bytes` before any state mutation. A
     /// misbehaving link plugin that posts an oversized buffer must
     /// surface `GN_ERR_PAYLOAD_TOO_LARGE` without driving the
     /// per-conn `bytes_in` counter or reaching the security

@@ -131,7 +131,7 @@ TEST(PluginManager_Quiescence, TimeoutLeaksHandleSafely) {
     /// Persistent counter on the kernel's metrics surface tracks
     /// the cumulative figure across the kernel's lifetime —
     /// `leaked_handles()` is per-rollback, the metric is total.
-    /// Per `metrics.md` §3.
+    /// Per `metrics.en.md` §3.
     EXPECT_EQ(k.metrics().value("plugin.leak.dlclose_skipped"), 1u)
         << "metric counter must record every leak event";
 
@@ -178,7 +178,7 @@ TEST(PluginManager_Quiescence, MetricCounterAccumulatesAcrossRollbacks) {
            "rate-graph view";
 }
 
-/// `limits.md` §4a: `gn_limits_t::max_plugins` cap blocks loads
+/// `limits.en.md` §4a: `gn_limits_t::max_plugins` cap blocks loads
 /// whose path count exceeds it. Read directly from `kernel.limits()`
 /// inside `PluginManager::load`, the single source of truth.
 TEST(PluginManager_MaxPlugins, RejectsBeyondCap) {
@@ -211,7 +211,7 @@ TEST(PluginManager_MaxPlugins, ZeroPathsAboveCapRejected) {
     EXPECT_EQ(pm.size(), 0u);
 }
 
-/// `plugin-manifest.md`: the manifest is the kernel's only defence
+/// `plugin-manifest.en.md`: the manifest is the kernel's only defence
 /// between an attacker-controlled plugins directory and its own
 /// address space. An empty manifest is the developer-mode path; a
 /// non-empty manifest puts the loader in production mode and every
@@ -270,7 +270,7 @@ TEST(PluginManager_Manifest, HashMismatchRejected) {
 }
 
 TEST(PluginManager_Manifest, RequiredFlagRefusesEmptyManifest) {
-    /// `plugin-manifest.md` §7: the required flag turns the empty-
+    /// `plugin-manifest.en.md` §7: the required flag turns the empty-
     /// manifest case into a hard error, naming "manifest required
     /// but empty: <path>" in the diagnostic. The default flow with
     /// the flag clear continues to permit empty-manifest loads.
@@ -449,3 +449,223 @@ TEST(PluginManager_Remote, MissingManifestEntryRejectedByIntegrity) {
 }
 
 #endif  // GOODNET_REMOTE_ECHO_PATH
+
+// ── Runtime registry — PluginRuntime polymorphism ────────────────────────
+//
+// PluginManager carries a map of `IPluginRuntime` instances keyed by
+// the manifest "kind" string. The kernel ships three built-in
+// runtimes (`dynamic`, `static`, `remote`); hosts can plug in
+// additional runtimes through `register_runtime`. Lifecycle dispatch
+// goes through `PluginInstance::runtime` set at load time, so each
+// runtime owns its kind-specific entry-symbol resolution without
+// any per-call switch.
+
+#include <core/plugin/plugin_runtime.hpp>
+
+namespace {
+
+class FakeRuntime final : public gn::core::IPluginRuntime {
+public:
+    int load_calls{0};
+    int init_calls{0};
+    int register_calls{0};
+    int unregister_calls{0};
+    int shutdown_calls{0};
+    int close_calls{0};
+
+    gn_result_t load(const std::string& /*path*/,
+                      const gn::core::PluginLoadContext& /*ctx*/,
+                      gn::core::PluginInstance& /*out*/,
+                      std::string& /*diag*/) override {
+        ++load_calls;
+        return GN_OK;
+    }
+
+    gn_result_t init(gn::core::PluginInstance& /*inst*/) override {
+        ++init_calls;
+        return GN_OK;
+    }
+    gn_result_t register_plugin(
+        gn::core::PluginInstance& /*inst*/) override {
+        ++register_calls;
+        return GN_OK;
+    }
+    void unregister(gn::core::PluginInstance& /*inst*/) override {
+        ++unregister_calls;
+    }
+    void shutdown(gn::core::PluginInstance& /*inst*/) override {
+        ++shutdown_calls;
+    }
+    void close(gn::core::PluginInstance& /*inst*/,
+               bool /*drained*/) override {
+        ++close_calls;
+    }
+    [[nodiscard]] std::string_view name() const noexcept override {
+        return "fake";
+    }
+};
+
+} // namespace
+
+TEST(PluginRuntime_Registry, BuiltinKindsRegisteredAtConstruction) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_NE(pm.runtime_for("dynamic"), nullptr);
+    EXPECT_NE(pm.runtime_for("static"),  nullptr);
+    EXPECT_NE(pm.runtime_for("remote"),  nullptr);
+    EXPECT_EQ(pm.runtime_for("dynamic")->name(), "dynamic");
+    EXPECT_EQ(pm.runtime_for("static")->name(),  "static");
+    EXPECT_EQ(pm.runtime_for("remote")->name(),  "remote");
+}
+
+TEST(PluginRuntime_Registry, UnknownKindReturnsNullptr) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.runtime_for("nonexistent"), nullptr);
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeAddsToMap) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("fake",
+                                    std::make_unique<FakeRuntime>()),
+              GN_OK);
+    auto* r = pm.runtime_for("fake");
+    ASSERT_NE(r, nullptr);
+    EXPECT_EQ(r->name(), "fake");
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeRejectsDuplicateKind) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("dynamic",
+                                    std::make_unique<FakeRuntime>()),
+              GN_ERR_LIMIT_REACHED)
+        << "dynamic is already registered by the constructor; "
+           "re-registration must be rejected so a host cannot "
+           "silently displace a built-in runtime";
+}
+
+TEST(PluginRuntime_Registry, RegisterRuntimeRejectsNullArgs) {
+    Kernel k;
+    PluginManager pm(k);
+    EXPECT_EQ(pm.register_runtime("", std::make_unique<FakeRuntime>()),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(pm.register_runtime("nullrt", nullptr),
+              GN_ERR_NULL_ARG);
+}
+
+// ── Required-plugin pinning (`ManifestEntry::required`) ────────────────────
+//
+// `plugin-manifest.en.md`: entries tagged `required = true` make
+// `PluginManager::load` refuse to complete without that path among
+// the registered set. Used to pin `gn.link.tcp` + `gn.link.tls` in
+// the kernel's default deployment so a misconfigured operator never
+// silently runs without the minimum carrier set.
+
+TEST(PluginManager_ManifestRequired,
+     ManifestRequiredPluginMissingFailsLoad) {
+    /// Manifest pins a path the load list does not contain, with the
+    /// `required` flag set. Even though the only path the host hands
+    /// to `load` is the null .so and that load succeeds, the
+    /// post-register required-set walk must fail with INVALID_STATE
+    /// and name the absent path in the diagnostic.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    PluginManifest m;
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+    /// Mark a separate, deliberately-absent entry as required.
+    ManifestEntry req{};
+    req.path     = "/some/required/path/libgoodnet_link_tls.so";
+    req.required = true;
+    /// Tunnel the prebuilt entry through the JSON parser so the
+    /// canonicalisation rules apply identically to a real manifest.
+    /// Simpler: use `add_entry` followed by a manual required flag
+    /// edit via re-parse. Here we round-trip through JSON to also
+    /// exercise the `required` parse path.
+    const std::string js = std::string("{\"plugins\":[") +
+        "{\"path\":\"" + GOODNET_NULL_PLUGIN_PATH +
+        "\",\"sha256\":\"" + PluginManifest::encode_hex(*digest) +
+        "\"}," +
+        "{\"path\":\"/some/required/path/libgoodnet_link_tls.so\","
+        "\"sha256\":\"" + std::string(64, '0') +
+        "\",\"required\":true}" +
+        "]}";
+    PluginManifest parsed;
+    std::string parse_diag;
+    ASSERT_EQ(PluginManifest::parse(js, parsed, parse_diag), GN_OK)
+        << parse_diag;
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(parsed));
+
+    std::string diag;
+    const std::vector<std::string> paths = {GOODNET_NULL_PLUGIN_PATH};
+    EXPECT_EQ(pm.load(paths, &diag), GN_ERR_INVALID_STATE);
+    EXPECT_NE(diag.find("required plugin"), std::string::npos) << diag;
+    EXPECT_NE(diag.find("libgoodnet_link_tls"), std::string::npos)
+        << "diag must name the missing required path so the operator "
+           "can fix it: " << diag;
+    EXPECT_EQ(pm.size(), 0u)
+        << "failed required-plugin pin must roll the load back to zero";
+}
+
+TEST(PluginManager_ManifestRequired,
+     RequiredEntryPresentAndRegisteredSucceeds) {
+    /// Same shape as above but the required entry's path is in the
+    /// `load` list. The post-register walk must pass.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    const std::string js = std::string("{\"plugins\":[") +
+        "{\"path\":\"" + GOODNET_NULL_PLUGIN_PATH +
+        "\",\"sha256\":\"" + PluginManifest::encode_hex(*digest) +
+        "\",\"required\":true}" +
+        "]}";
+    PluginManifest parsed;
+    std::string parse_diag;
+    ASSERT_EQ(PluginManifest::parse(js, parsed, parse_diag), GN_OK)
+        << parse_diag;
+    ASSERT_FALSE(parsed.entries().empty());
+    EXPECT_TRUE(parsed.entries().front().required);
+
+    Kernel k;
+    PluginManager pm(k);
+    pm.set_manifest(std::move(parsed));
+
+    std::string diag;
+    EXPECT_EQ(pm.load(just_null_plugin(), &diag), GN_OK) << diag;
+    EXPECT_EQ(pm.size(), 1u);
+    pm.shutdown();
+}
+
+TEST(PluginManager_ManifestRequired, ParserRejectsNonBooleanRequired) {
+    /// Operator typo guard: `"required": "yes"` must fail parse
+    /// rather than collapse to false and silently lose the pin.
+    const std::string js =
+        "{\"plugins\":["
+        "{\"path\":\"/p.so\",\"sha256\":\""
+        + std::string(64, '0') +
+        "\",\"required\":\"yes\"}"
+        "]}";
+    PluginManifest parsed;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(js, parsed, diag),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("required"), std::string::npos) << diag;
+}
+
+TEST(PluginManager_ManifestRequired, DefaultRequiredFlagIsFalse) {
+    /// Entries that omit the `required` key must default to false so
+    /// the existing manifests continue to load every entry without
+    /// rejecting any of them as missing.
+    auto digest = PluginManifest::sha256_of_file(GOODNET_NULL_PLUGIN_PATH);
+    ASSERT_TRUE(digest.has_value());
+
+    PluginManifest m;
+    m.add_entry(GOODNET_NULL_PLUGIN_PATH, *digest);
+    ASSERT_FALSE(m.entries().empty());
+    EXPECT_FALSE(m.entries().front().required);
+}

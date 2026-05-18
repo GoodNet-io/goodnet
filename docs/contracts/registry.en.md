@@ -23,7 +23,7 @@ indexes together, and a corresponding atomic erase.
 ## 2. The C ABI surface
 
 The kernel side of the registry is opaque to plugins. Plugins observe
-records through host-API entries (`host-api.md` §2):
+records through host-API entries (`host-api.en.md` §2):
 
 | Entry | Returns |
 |---|---|
@@ -38,7 +38,7 @@ the most recent snapshot the kernel has published.
 registry's pk index; it is **not** the inbound-edge resolver for an
 envelope. Handlers that gate behaviour on the connection an envelope
 arrived on read `gn_message_t::conn_id` directly per
-`handler-registration.md` §3a — `sender_pk` on a relay-transit
+`handler-registration.en.md` §3a — `sender_pk` on a relay-transit
 envelope is the originating peer, not the receiving conn's remote_pk,
 so a pk-index lookup would either miss or hit the wrong conn.
 
@@ -56,7 +56,7 @@ same key (multi-path, parallel transport, aggregation): they're
 **lookup indexes**, not uniqueness keys. Cross-session identity
 protection (impostor with different `device_pk` claiming an existing
 `peer_pk`) lives on `attestation_dispatcher.peer_pin_map` per
-`attestation.md` §5 step 7-8 — a separate security gate, not a
+`attestation.en.md` §5 step 7-8 — a separate security gate, not a
 registry uniqueness check.
 
 Sequencing rules:
@@ -83,7 +83,7 @@ index entry if it still points at the conn being erased — multi-conn
 last-writer-wins semantics protect a co-resident conn's lookup from
 being orphaned by a sibling's teardown.
 
-The registry honours `gn_limits_t::max_connections` (`limits.md` §4a):
+The registry honours `gn_limits_t::max_connections` (`limits.en.md` §4a):
 when the live record count is already at the cap, the insert returns
 `GN_ERR_LIMIT_REACHED`. The check fires twice — first before any lock
 is taken (fast-path rejection), then again under the triple lock to
@@ -123,18 +123,18 @@ Properties:
 4. Release.
 
 `get_endpoint` returns the `gn_endpoint_t` view by value at call time
-(`host-api.md` §2). The registry exposes no cache-invalidation channel
+(`host-api.en.md` §2). The registry exposes no cache-invalidation channel
 to plugins: a consumer that retains a `gn_endpoint_t` past its
 originating call holds a frozen copy whose source record may have
 been erased. Consumers re-call `get_endpoint` whenever the live state
 matters; long-lived per-conn cached state belongs in plugin-private
 storage indexed by `conn_id` and pruned on the `DISCONNECTED` event
-(`conn-events.md` §2a).
+(`conn-events.en.md` §2a).
 
 The erase primitive also exposes an atomic snapshot variant
 (§4a) for callers that must publish a terminal lifecycle event
 whose payload reflects the just-departed record state — chiefly
-`notify_disconnect` (`conn-events.md` §2a).
+`notify_disconnect` (`conn-events.en.md` §2a).
 
 ---
 
@@ -217,7 +217,7 @@ externally-allocated id, every send through that transport is
 silently dropped because the indexes disagree. The single-source rule
 removes that class of failure by construction.
 
-The two-phase plugin activation (`plugin-lifetime.md` §5) enforces
+The two-phase plugin activation (`plugin-lifetime.en.md` §5) enforces
 this indirectly: only the kernel side of the host API gives out ids.
 
 ---
@@ -261,14 +261,14 @@ typedef struct gn_endpoint_s {
 |---|---|---|
 | `conn_id` | u64 — same as the lookup id | registry insertion |
 | `remote_pk` | 32 bytes — peer's Ed25519 public key | `notify_connect` argument |
-| `trust` | enum — current trust class | live; reflects upgrade state per `security-trust.md` §3 |
+| `trust` | enum — current trust class | live; reflects upgrade state per `security-trust.en.md` §3 |
 | `uri` | NUL-terminated, ≤ 255 bytes | transport-supplied at `notify_connect`; longer URIs truncate at the boundary |
 | `link_scheme` | NUL-terminated, ≤ 15 bytes | scheme provided by the transport plugin (`"tcp"`, `"udp"`, `"ws"`, `"ipc"`, …) |
 | `bytes_in`, `bytes_out` | u64 — atomic snapshot | producer-site atomic update |
 | `frames_in`, `frames_out` | u64 — atomic snapshot | producer-site atomic update |
-| `pending_queue_bytes` | u64 — atomic snapshot | maintained by the send queue (see `limits.md` §6) |
+| `pending_queue_bytes` | u64 — atomic snapshot | maintained by the send queue (see `limits.en.md` §6) |
 | `last_rtt_us` | u64 — atomic snapshot | written by the heartbeat handler |
-| `_reserved[4]` | NULL on call | size-prefix evolution per `abi-evolution.md` §4 |
+| `_reserved[4]` | NULL on call | size-prefix evolution per `abi-evolution.en.md` §4 |
 
 The struct is caller-allocated and held inline; the kernel writes
 the URI into the buffer rather than handing back a pointer into
@@ -362,7 +362,7 @@ The map provides four operations:
 | `pin_peer(peer_pk, device_pk, user_pk, handshake_hash)` | inserts the pin; returns `GN_OK` on first pin or matching repin (refreshing `user_pk` + `handshake_hash`), `GN_ERR_INVALID_ENVELOPE` on `device_pk` mismatch |
 | `get_pinned_peer(peer_pk)` | returns the full `PeerPin` snapshot or `nullopt` |
 | `get_pinned_device_pk(peer_pk)` | convenience slice — returns the device half or `nullopt` |
-| `apply_rotation(peer_pk, new_user_pk, new_counter)` | swaps the pinned `user_pk` to `new_user_pk` and bumps `rotation_counter` to `new_counter`. Rejects with `INVALID_ENVELOPE` when `new_counter` does not strictly exceed the stored value (anti-replay); `NOT_FOUND` if no pin exists. Used by the kernel's rotation handler after `verify_rotation` accepts a 150-byte `RotationProof` (see `identity.md` §10) |
+| `apply_rotation(peer_pk, new_user_pk, new_counter)` | swaps the pinned `user_pk` to `new_user_pk` and bumps `rotation_counter` to `new_counter`. Rejects with `INVALID_ENVELOPE` when `new_counter` does not strictly exceed the stored value (anti-replay); `NOT_FOUND` if no pin exists. Used by the kernel's rotation handler after `verify_rotation` accepts a 150-byte `RotationProof` (see `identity.en.md` §10) |
 | `clear_pinned_device_pk(peer_pk)` | removes the pin (admin path; not a normal lifecycle event) |
 
 The pin is **per-peer**, not per-connection — a connection record
@@ -374,10 +374,11 @@ The map is unbounded at v1: every peer that has ever attested
 keeps an entry until the process exits or the operator calls
 `clear_pinned_device_pk`. A long-running supernode that meets a
 million distinct peers carries a million entries (≈128 MB at
-sixteen-byte keys plus bucket overhead). A v1.1 release adds
-either an LRU cap (operator-tunable through the limits surface)
-or a TTL keyed on cert `expiry`; v1 ships without either, so
-operators sizing memory budgets account for the upper bound.
+sixteen-byte keys plus bucket overhead). Either an LRU cap
+(operator-tunable through the limits surface) or a TTL keyed on
+cert `expiry` is a planned extension; the current surface caps
+neither, so operators sizing memory budgets account for the upper
+bound.
 
 Closing the cross-session identity-change window complements the
 per-conn identity-stability check the dispatcher already runs: the
@@ -391,6 +392,6 @@ record anything.
 
 ## 9. Cross-references
 
-- Limits driving counter bounds: `limits.md`.
-- TrustClass stored in record: `security-trust.md` §7.
-- Endpoint projection of the record: `host-api.md` §2 (`get_endpoint`).
+- Limits driving counter bounds: `limits.en.md`.
+- TrustClass stored in record: `security-trust.en.md` §7.
+- Endpoint projection of the record: `host-api.en.md` §2 (`get_endpoint`).

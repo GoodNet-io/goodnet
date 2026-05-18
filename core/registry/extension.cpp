@@ -3,13 +3,14 @@
 
 #include "extension.hpp"
 
+#include <algorithm>
 #include <mutex>
 
 namespace gn::core {
 
 namespace {
 
-/// Compatibility rule from abi-evolution.md §2: major must match,
+/// Compatibility rule from abi-evolution.en.md §2: major must match,
 /// registered minor must be at least the requested minor. The
 /// version word packs (major:8 minor:8 patch:16) per `gn_version_pack`.
 [[nodiscard]] bool versions_compatible(std::uint32_t registered,
@@ -45,6 +46,7 @@ gn_result_t ExtensionRegistry::register_extension(
     entry.version         = version;
     entry.vtable          = vtable;
     entry.lifetime_anchor = std::move(lifetime_anchor);
+    entry.seq             = ++next_seq_;
 
     entries_.emplace(std::move(key), std::move(entry));
     return GN_OK;
@@ -86,11 +88,22 @@ gn_result_t ExtensionRegistry::query_extension_checked(
 std::vector<ExtensionEntry> ExtensionRegistry::query_prefix(
     std::string_view prefix) const {
     std::vector<ExtensionEntry> matches;
-    std::shared_lock lock(mu_);
-    matches.reserve(entries_.size());
-    for (const auto& [name, entry] : entries_) {
-        if (name.starts_with(prefix)) matches.push_back(entry);
+    {
+        std::shared_lock lock(mu_);
+        matches.reserve(entries_.size());
+        for (const auto& [name, entry] : entries_) {
+            if (name.starts_with(prefix)) matches.push_back(entry);
+        }
     }
+    /// Sort by registration sequence so the strategy chain (and
+    /// any other consumer that wants deterministic walk order)
+    /// sees `gn.strategy.foo` before `gn.strategy.bar` exactly
+    /// when `foo` registered first, regardless of the hash-map
+    /// iteration order.
+    std::sort(matches.begin(), matches.end(),
+              [](const ExtensionEntry& a, const ExtensionEntry& b) {
+                  return a.seq < b.seq;
+              });
     return matches;
 }
 

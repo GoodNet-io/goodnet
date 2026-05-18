@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_conn_events.cpp
+/// @file   tests/unit/integration/test_conn_events.cpp
 /// @brief  subscribe(GN_SUBSCRIBE_CONN_STATE) + for_each_connection through the
 ///         real host_api thunks: the kernel fires CONNECTED on
 ///         notify_connect, DISCONNECTED on notify_disconnect, and

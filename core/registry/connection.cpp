@@ -25,7 +25,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
         return GN_ERR_INVALID_ENVELOPE;
     }
 
-    /// `limits.md` §4a cap pre-check before locks: zero means
+    /// `limits.en.md` §4a cap pre-check before locks: zero means
     /// "unlimited"; non-zero rejects when the live count is already
     /// at the cap.
     const std::uint32_t cap = max_connections_.load(std::memory_order_relaxed);
@@ -51,7 +51,7 @@ gn_result_t ConnectionRegistry::insert_with_index(ConnectionRecord rec) noexcept
     /// own `peer_pk → list-of-conns` map per `architecture/multi-path.ru.md`
     /// §«Идентичность connection поверх transport'а». Cross-session
     /// identity protection moved entirely to
-    /// `attestation_dispatcher.peer_pin_map` per `attestation.md` §5
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.en.md` §5
     /// step 7-8.
     if (s.records.contains(rec.id)) return GN_ERR_LIMIT_REACHED;
 
@@ -250,7 +250,7 @@ gn_result_t ConnectionRegistry::update_remote_pk(gn_conn_id_t id,
     /// most recently published one. Cross-session identity protection
     /// (impostor with different `device_pk` claiming an existing
     /// `peer_pk`) is enforced by
-    /// `attestation_dispatcher.peer_pin_map` per `attestation.md`
+    /// `attestation_dispatcher.peer_pin_map` per `attestation.en.md`
     /// §5 step 7-8, not by this registry.
     static const PublicKey kZeroPk{};
     /// Old pk's index entry only points at `id` if no later conn
@@ -357,6 +357,34 @@ void ConnectionRegistry::set_pending_bytes(gn_conn_id_t id,
     auto it = s.counters.find(id);
     if (it == s.counters.end() || it->second == nullptr) return;
     it->second->pending_queue_bytes.store(bytes, std::memory_order_relaxed);
+}
+
+std::optional<std::uint64_t> ConnectionRegistry::update_rtt_sample(
+    gn_conn_id_t id, std::uint64_t rtt_us) noexcept {
+    if (id == GN_INVALID_ID || rtt_us == 0) return std::nullopt;
+    const Shard& s = shard_for(id);
+    std::shared_lock lock(s.mu);
+    auto it = s.counters.find(id);
+    if (it == s.counters.end() || it->second == nullptr) {
+        return std::nullopt;
+    }
+    /// EWMA(α = 1/8) per RFC 6298: next = (7·prev + sample) / 8.
+    /// The first sample (prev == 0) seeds the EWMA — a single
+    /// observation jumps the recorded value to the observation
+    /// so no half-cooked zero shows up in `get_endpoint`
+    /// snapshots. Computed with `(7·prev + sample) / 8` rather
+    /// than `prev + (sample - prev) / 8` to keep the unsigned
+    /// arithmetic correct when `sample < prev`.
+    auto& slot = it->second->last_rtt_us;
+    std::uint64_t prev = slot.load(std::memory_order_relaxed);
+    while (true) {
+        const std::uint64_t next =
+            (prev == 0) ? rtt_us : ((prev * 7 + rtt_us) / 8);
+        if (slot.compare_exchange_weak(prev, next,
+                                         std::memory_order_relaxed)) {
+            return next;
+        }
+    }
 }
 
 gn_result_t ConnectionRegistry::pin_peer(

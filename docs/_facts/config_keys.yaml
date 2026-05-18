@@ -4,85 +4,229 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 177
+    line: 319
+- name: ice.auto_restart_backoff_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 479
+- name: ice.auto_restart_max_attempts
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 475
+- name: ice.auto_restart_on_consent_loss
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 471
 - name: ice.check_interval_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 156
+    line: 295
 - name: ice.consent_max_failures
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 152
+    line: 282
+- name: ice.consent_max_recovery
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 291
 - name: ice.keepalive_interval_s
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 148
+    line: 278
+- name: ice.lite_mode
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 326
+- name: ice.mdns_obfuscate_host_candidates
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 404
+- name: ice.mdns_resolve_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 408
 - name: ice.path_mtu
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 168
+    line: 307
+- name: ice.pmtu_active_probing
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 487
+- name: ice.pmtu_probe_concurrency
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 494
+- name: ice.pmtu_probe_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 490
+- name: ice.reactive_interface_change
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 329
 - name: ice.session_timeout_s
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 144
+    line: 274
+- name: ice.symmetric_port_prediction_attempts
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 336
+- name: ice.symmetric_port_prediction_enabled
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 332
+- name: ice.tcp_candidates_enabled
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 457
+- name: ice.tcp_so_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 463
+- name: ice.turn_allocate_timeout_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 381
+- name: ice.turn_backup_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 388
+- name: ice.turn_failover_min_interval_s
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 394
 - name: ice.turn_password
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 133
+    line: 262
+- name: ice.turn_requested_transport
+  type: string
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 430
 - name: ice.turn_servers
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 95
+    line: 216
 - name: ice.turn_tcp
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 184
+    line: 373
 - name: ice.turn_tls
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 192
+    line: 417
 - name: ice.turn_username
   type: string
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 120
+    line: 248
 - name: links.tls.cert_path
   type: string
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 493
+    line: 554
 - name: links.tls.key_path
   type: string
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 502
+    line: 563
 - name: links.tls.verify_peer
   type: bool
   family: links
   sources:
   - file: plugins/links/tls/tls.cpp
-    line: 386
+    line: 447
+- name: raw_inject.default_msg_id
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 91
+- name: raw_inject.encode_msg_id
+  type: string
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 103
+- name: raw_inject.listen
+  type: string
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 84
+- name: raw_inject.max_payload
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 99
+- name: raw_inject.rate_limit_per_sec
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 95
 - name: udp.new_conn_burst
   type: int64
   family: udp

@@ -29,7 +29,15 @@ def test_discover_security(tiny_repo):
 
 def test_discover_all_returns_every_kind(tiny_repo):
     inv = inventory.discover_all()
-    assert set(inv) >= {"links", "handlers", "security", "extensions"}
+    assert set(inv) >= {
+        "links", "handlers", "security", "strategies", "extensions",
+    }
+
+
+def test_discover_strategies_empty_when_dir_absent(tiny_repo):
+    # tiny_repo skeleton omits plugins/strategies/ entirely; walker
+    # must return an empty list rather than raising.
+    assert inventory.discover_strategies() == []
 
 
 def test_first_paragraph_skips_header(tmp_path):

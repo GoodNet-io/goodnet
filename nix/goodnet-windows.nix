@@ -1,10 +1,10 @@
 # Windows MVP cross-build via `pkgs.pkgsCross.mingwW64`. Produces a
 # static-plugin single-`goodnet.exe` that bundles kernel + gnet
-# protocol + lean plugin set (TCP + UDP + Noise + Null + heartbeat).
-# OpenSSL-requiring plugins (TLS, QUIC, WS) and POSIX-leaning
-# (handler-store, handler-dns, ICE, IPC) stay out of the bundle for
-# the first cut — `plugins/CMakeLists.txt` skips them under
-# `WIN32`.
+# protocol + lean plugin set (TCP + UDP + IPC + Noise + Null +
+# heartbeat). OpenSSL-requiring plugins (TLS, QUIC, WS) and POSIX-
+# leaning (handler-store, handler-dns, ICE, strategies/float_send_rtt)
+# stay out of the bundle for the first cut — `plugins/CMakeLists.txt`
+# skips them under `WIN32`.
 #
 # This derivation is consumed from the parent flake's
 # `packages.<linux-system>.goodnet-windows` slot — it stays
@@ -144,14 +144,15 @@ cross.stdenv.mkDerivation {
 
   doCheck = false;
 
-  # The static-plugin binary is just `bin/goodnet.exe`. With
-  # `-static -static-libgcc -static-libstdc++` (set in apps/goodnetd/
-  # CMakeLists.txt under WIN32) plus `--disable-shared` rebuilds of
-  # spdlog / fmt / libsodium in `buildInputs` above, the result is
-  # a single self-contained executable — no neighbouring DLLs are
-  # required at run-time. `dontPatchELF = true` skips the
-  # nix-mingw fixup that would copy in the dynamic mingw runtime
-  # DLLs that we just compiled away from.
+  # The static-plugin binary is just `bin/goodnetd.exe`. With
+  # `-static -static-libgcc -static-libstdc++` (set in the downstream
+  # daemon's CMakeLists under WIN32 at GoodNet-io/goodnetd) plus
+  # `--disable-shared` rebuilds of spdlog / fmt / libsodium in
+  # `buildInputs` above, the result is a single self-contained
+  # executable — no neighbouring DLLs are required at run-time.
+  # `dontPatchELF = true` skips the nix-mingw fixup that would copy
+  # in the dynamic mingw runtime DLLs that we just compiled away
+  # from.
   dontPatchELF = true;
 
   meta = {

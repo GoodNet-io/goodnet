@@ -8,10 +8,15 @@
  * The kernel calls `pick_conn` with a snapshot of all live conns to
  * a destination; the strategy returns the chosen `gn_conn_id_t`.
  *
- * One strategy plugin is active per node (operator config selects
- * which); multiple registrations conflict at plugin load time.
- * Future minors of this contract may add per-class strategies (one
- * per app priority band) — gate on `api_size` to detect.
+ * The kernel admits multiple strategy plugins concurrently and walks
+ * the registered chain in registration order on each `send_to`; the
+ * first strategy that returns a real conn wins. A strategy with no
+ * opinion on the current candidate set returns `GN_ERR_NOT_FOUND` so
+ * the next strategy gets a turn. Single-strategy deployments work
+ * unchanged; the chain is just the natural admission of composite
+ * setups (e.g. `rtt-optimal` + a `cost-aware` fallback). Future
+ * minors of this contract may add per-class strategies (one per app
+ * priority band) — gate on `api_size` to detect.
  *
  * See `docs/architecture/strategies.ru.md` for the design rationale
  * and the `gn.float-send.*` family of strategies built on this
@@ -95,7 +100,7 @@ typedef struct gn_path_sample_s {
  *
  * Registered by strategy plugins under `gn.strategy.<plugin-name>`.
  * Begins with `api_size` for size-prefix evolution per
- * `abi-evolution.md` §3. Consumers (the kernel's dispatch path)
+ * `abi-evolution.en.md` §3. Consumers (the kernel's dispatch path)
  * query the extension through `host_api->query_extension_checked`
  * which validates `api_size` against the consumer's compile-time
  * minimum before any slot fires.
@@ -114,8 +119,17 @@ typedef struct gn_strategy_api_s {
      *
      * @return GN_OK and a conn id taken from @p candidates on success.
      *         GN_ERR_NULL_ARG if any pointer is NULL or count is 0.
-     *         GN_ERR_NOT_FOUND if every candidate is currently
-     *         unsuitable (kernel falls back to lowest-priority conn).
+     *         GN_ERR_NOT_FOUND when the strategy has no opinion on
+     *         the candidate set — the kernel walks to the next
+     *         registered strategy; when every registered strategy
+     *         passes, the kernel falls back to the head of @p
+     *         candidates. Any other `gn_result_t` aborts the chain
+     *         and surfaces back to the `host_api->send_to` caller.
+     *
+     * `GN_OK` paired with `*out_chosen == GN_INVALID_ID` is treated
+     * the same as `GN_ERR_NOT_FOUND` for compatibility, but plugins
+     * should return `GN_ERR_NOT_FOUND` explicitly when they have
+     * no opinion.
      */
     gn_result_t (*pick_conn)(
         void* ctx,

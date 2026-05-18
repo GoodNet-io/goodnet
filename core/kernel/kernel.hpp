@@ -140,7 +140,7 @@ public:
     /// Drain every handler registered under @p ns_id and wait until
     /// the captured `lifetime_anchor` weak refs all expire (or the
     /// deadline elapses). Operator-driven graceful tenant teardown
-    /// per `handler-registration.md` §2 — analogous to PluginManager's
+    /// per `handler-registration.en.md` §2 — analogous to PluginManager's
     /// `drain_anchor` cycle but scoped to a namespace.
     ///
     /// @return number of HandlerEntry rows removed; on deadline-miss
@@ -149,12 +149,12 @@ public:
     std::size_t drain_namespace(std::string_view ns_id,
                                 std::chrono::milliseconds deadline);
 
-    /// Read-only resource bounds per `limits.md` §2. Loaded once at
+    /// Read-only resource bounds per `limits.en.md` §2. Loaded once at
     /// startup; subsequent reload requires kernel restart.
     void set_limits(const gn_limits_t& limits) noexcept;
     [[nodiscard]] const gn_limits_t& limits() const noexcept { return limits_; }
 
-    /// Kernel-owned Config instance per `host-api.md` §2
+    /// Kernel-owned Config instance per `host-api.en.md` §2
     /// (`config_get_*`). Plugins reach it through the host_api thunks.
     [[nodiscard]] Config& config() noexcept { return config_; }
     [[nodiscard]] const Config& config() const noexcept { return config_; }
@@ -255,11 +255,11 @@ private:
     std::atomic<std::shared_ptr<const identity::NodeIdentity>> node_identity_;
 
     /// Per-source rate limiter for `host_api->inject_*` per
-    /// `host-api.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
+    /// `host-api.en.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
     ::gn::ratelimit::RateLimiterMap<>     inject_rate_limiter_{
         100.0, 50.0, 4096};
 
-    /// Kernel-internal attestation flow per `attestation.md`. Owns
+    /// Kernel-internal attestation flow per `attestation.en.md`. Owns
     /// per-connection `our_sent` / `their_received_valid` flags and
     /// fires the `Untrusted → Peer` upgrade once both halves of the
     /// mutual exchange complete.
@@ -270,7 +270,7 @@ private:
     /// observability targets (`route.outcome.*`, `drop.*`,
     /// per-plugin counters). Plugins extend the surface through
     /// `host_api->emit_counter`; an exporter plugin reads through
-    /// `iterate_counters`. Per `metrics.md`.
+    /// `iterate_counters`. Per `metrics.en.md`.
     MetricsRegistry                       metrics_;
 };
 

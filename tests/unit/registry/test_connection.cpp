@@ -1,7 +1,7 @@
 /// @file   tests/unit/registry/test_connection.cpp
 /// @brief  GoogleTest unit tests for `gn::core::ConnectionRegistry`.
 ///
-/// Exercises the contract from `docs/contracts/registry.md`:
+/// Exercises the contract from `docs/contracts/registry.en.md`:
 /// monotonic id allocation, atomic three-index insert/erase, snapshot
 /// lookups by id / URI / pk, and the deadlock-free claim under
 /// concurrent insert and erase from multiple threads.
@@ -307,7 +307,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, FoldsPerConnectionCounters) {
 
 /// Cross-shard non-deadlock under contention: two threads each hold
 /// the snapshot+erase critical section on a different shard. The
-/// `scoped_lock` deadlock-avoidance from `registry.md` §3 must hold
+/// `scoped_lock` deadlock-avoidance from `registry.en.md` §3 must hold
 /// for the new path too.
 TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentCrossShardNoDeadlock) {
     constexpr int kRounds = 64;
@@ -366,7 +366,7 @@ TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentCrossShardNoDeadlock) {
 
 /// Two threads race snapshot+erase against the same id. Exactly
 /// one observes the record; the other returns `nullopt`. Holds
-/// the `registry.md` §4a atomicity guarantee under contention.
+/// the `registry.en.md` §4a atomicity guarantee under contention.
 TEST(ConnectionRegistry_SnapshotAndErase, ConcurrentSameIdExactlyOneSucceeds) {
     constexpr int kRounds = 256;
     ConnectionRegistry reg;
@@ -502,7 +502,7 @@ TEST(ConnectionRegistry_MaxConnections, ErasureFreesSlot) {
 // ── concurrency ──────────────────────────────────────────────────────────
 
 /// Hammer the registry from multiple threads doing interleaved
-/// insert+find+erase. Verifies registry.md §3 deadlock-free claim and
+/// insert+find+erase. Verifies registry.en.md §3 deadlock-free claim and
 /// the all-or-nothing visibility under contention.
 TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
     constexpr int kThreads        = 4;
@@ -517,7 +517,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
             const gn_conn_id_t id  = reg.alloc_id();
             /// `+ 1` keeps tid=0,i=0 from producing a zero pk —
             /// `insert_with_index` skips zero pk on purpose
-            /// (registry.md §7a) and `find_by_pk(zero)` would miss.
+            /// (registry.en.md §7a) and `find_by_pk(zero)` would miss.
             const std::uint64_t seed = ((static_cast<std::uint64_t>(tid) << 32) |
                                         static_cast<std::uint64_t>(i)) + 1;
             const PublicKey pk = make_pk(seed);
@@ -529,7 +529,7 @@ TEST(ConnectionRegistry_Concurrency, FourThreadsInsertEraseFind) {
                 ++insert_ok;
 
                 /// All three indexes return the same record without
-                /// external synchronisation — `registry.md` §3
+                /// external synchronisation — `registry.en.md` §3
                 /// invariant.
                 auto by_id  = reg.find_by_id(id);
                 auto by_uri = reg.find_by_uri(uri);
@@ -689,7 +689,7 @@ TEST(ConnectionRegistry_UpdateRemotePk, PlaceholderToReal) {
     /// remote_pk (zeros) before the handshake completes; once the
     /// security session exposes peer_static_pk, the kernel calls
     /// `update_remote_pk` so the pk index keys on the real peer key
-    /// (registry.md §7a + §8a cross-session pin gate).
+    /// (registry.en.md §7a + §8a cross-session pin gate).
     ConnectionRegistry reg;
     const gn_conn_id_t id = reg.alloc_id();
     const PublicKey placeholder{};
@@ -938,6 +938,62 @@ TEST(ConnectionRegistry_Pin, GetPinnedPeerReturnsAllFields) {
         EXPECT_EQ(fetched->user_pk,   user);
         EXPECT_EQ(fetched->handshake_hash, hh);
     }
+}
+
+// ── update_rtt_sample ────────────────────────────────────────────────────
+
+/// Invalid id / zero sample short-circuit to nullopt — the
+/// host_api thunk uses this as the "silently dropped" signal.
+TEST(ConnectionRegistry_RttSample, InvalidIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.update_rtt_sample(GN_INVALID_ID, 1000).has_value());
+}
+
+TEST(ConnectionRegistry_RttSample, ZeroSampleReturnsNullopt) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+    EXPECT_FALSE(reg.update_rtt_sample(id, 0).has_value());
+}
+
+TEST(ConnectionRegistry_RttSample, UnknownIdReturnsNullopt) {
+    ConnectionRegistry reg;
+    EXPECT_FALSE(reg.update_rtt_sample(/*never inserted*/ 9999,
+                                         1000).has_value());
+}
+
+/// The first observation seeds the EWMA — the slot moves from 0
+/// straight to `sample` rather than averaging against zero.
+TEST(ConnectionRegistry_RttSample, FirstObservationSeedsEwma) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+
+    auto smoothed = reg.update_rtt_sample(id, 10'000);
+    ASSERT_TRUE(smoothed.has_value());
+    EXPECT_EQ(smoothed.value_or(0u), 10'000u);
+
+    auto snap = reg.read_counters(id);
+    EXPECT_EQ(snap.last_rtt_us, 10'000u);
+}
+
+/// Subsequent observation runs EWMA(α = 1/8): next = (7·prev + s) / 8.
+/// 80ms outlier on a 10ms steady state → 18.75ms after one sample.
+TEST(ConnectionRegistry_RttSample, OutlierSampleSmoothsTowardSteadyState) {
+    ConnectionRegistry reg;
+    const auto id = reg.alloc_id();
+    ASSERT_EQ(reg.insert_with_index(
+        make_record(id, "tcp://h:1", make_pk(0x01))), GN_OK);
+
+    ASSERT_TRUE(reg.update_rtt_sample(id, 10'000).has_value());
+    auto smoothed = reg.update_rtt_sample(id, 80'000);
+    ASSERT_TRUE(smoothed.has_value());
+    EXPECT_NEAR(static_cast<double>(smoothed.value_or(0u)), 18'750.0, 50.0);
+
+    auto snap = reg.read_counters(id);
+    EXPECT_NEAR(static_cast<double>(snap.last_rtt_us), 18'750.0, 50.0);
 }
 
 }  // namespace

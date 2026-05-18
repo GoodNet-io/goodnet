@@ -20,7 +20,7 @@ Plugin SDK позволяет плагину держать свои поток�
 
 ## Контракт от ядра
 
-Контракт [`link.md §9`](../../contracts/link.en.md) говорит:
+Контракт [`link.en.md §9`](../../contracts/link.en.md) говорит:
 
 > A link's own shutdown path **must** fire `host_api->notify_disconnect`
 > synchronously for every session that was published through
@@ -62,7 +62,7 @@ thread. Затем main thread вызывает `shutdown()` — снимает 
 shutdown() при snapshot'е видит пустой map.
 
 Оба случая нарушают
-[`link.md §9`](../../contracts/link.en.md): для опубликованной через
+[`link.en.md §9`](../../contracts/link.en.md): для опубликованной через
 `notify_connect` сессии нет caller-thread emit'а.
 
 ## Протокол teardown'а
@@ -116,7 +116,7 @@ worker уже emit'ил на своём потоке.
 соединение через данный экземпляр линка. Освобождается при
 `shutdown()`. Для долгоживущих узлов с миллионами соединений
 поведение этого вектора нужно пересматривать; для стандартных
-сценариев pre-rc1 текущая стоимость приемлема.
+сценариев текущая стоимость приемлема.
 
 ## `claim_disconnect` для runtime'а
 
@@ -144,7 +144,7 @@ bool TcpLink::claim_disconnect(gn_conn_id_t id) {
 shutdown затем emit'ит на caller thread, ядро видит два вызова
 `notify_disconnect` с одинаковым `gn_conn_id_t`.
 
-[`thunk_notify_disconnect`](../../../core/kernel/host_api_builder.cpp)
+[`notify_disconnect`](../../../core/kernel/host_api/notifications.cpp)
 делает atomic snapshot+erase из connection registry. Первый
 вызов получает snapshot, разрушает security session, чистит
 attestation state, фаерит `DISCONNECTED` event. Второй получает
@@ -231,14 +231,14 @@ void Session::start_read() {
 - [`transports.ru.md`](./transports.ru.md) — общий гид по работе
   с link plugin'ом: threading, send/recv, listen vs extension API,
   регулярные грабли. Эта глава раскрывает teardown в деталях.
-- [`link.md` §9](../../contracts/link.en.md) — формальный контракт
+- [`link.en.md` §9](../../contracts/link.en.md) — формальный контракт
   shutdown release
-- [`signal-channel.md`](../../contracts/signal-channel.en.md) — события,
+- [`signal-channel.en.md`](../../contracts/signal-channel.en.md) — события,
   которые ядро фаерит в ответ на `notify_disconnect`
 - [`memory-management.md`](memory-management.ru.md) — borrowed/owned
   семантика на C ABI границе
 - [`error-handling.md`](error-handling.ru.md) — `gn_result_t`
   семантика для `(void)`-cast'а ошибок ожидаемого типа
-- [`plugin-lifetime.md`](../../contracts/plugin-lifetime.en.md) §4 —
+- [`plugin-lifetime.en.md`](../../contracts/plugin-lifetime.en.md) §4 —
   как kernel'у важна caller-thread'овая полнота emit'ов для
   drain budget'а

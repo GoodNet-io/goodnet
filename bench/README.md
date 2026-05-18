@@ -16,7 +16,7 @@ the right cause.
 | **Composition depth** | TLS/TCP (2) / WSS/TLS/TCP (3) / Noise/QUIC/UDP (3) | `bench_wss_over_tls`, follow-ups | ✅ depth-3 WSS; depth-3 Noise TBD |
 | **Strategy** | min-RTT picker over N candidates | `bench_float_send_rtt` | ✅ (opt-in via `GOODNET_BENCH_STRATEGIES`) |
 | **Real-mode end-to-end** | Full kernel + Noise XX + gnet protocol; one-way (`<Plug>Echo`) and echo round-trip (`<Plug>EchoRoundtrip`) | `bench_real_e2e` (`RealFixtureTcp`, `RealFixtureUdp`, `RealFixtureIpc` + `*Echo` siblings) | ✅ TCP / UDP / IPC; QUIC pending |
-| **Free-kernel showcase** | Multi-connect, strategy-driven carrier selection, Noise→Null handoff PoC, multi-thread fanout, carrier failover, mobility LAN shortcut | `bench_showcase` (six fixtures, separate aggregator) | ✅ all six sections; some stand-ins for Slice-9-KERNEL + C.4 hooks |
+| **Free-kernel showcase** | Multi-connect, strategy-driven carrier selection, Noise→Null handoff PoC, multi-thread fanout, carrier failover, mobility LAN shortcut | `bench_showcase` (six fixtures, separate aggregator) | ✅ all six sections; some stand-ins for kernel-emitted strategy events and the netlink mobility hook |
 
 ## Topology variants
 
@@ -78,8 +78,8 @@ payload-size это строки, а `GoodNet TCP+Noise+gnet` /
 одинаковую stack shape (transport + AEAD + framing/mux); см.
 `docs/perf/methodology.en.md` §1.3 (pairing rule).
 
-Track Б ('free-kernel showcase') живёт отдельно: бинарь
-`bench_showcase`, отчёт `bench/reports/showcase-<sha>.md` через
+Free-kernel showcase живёт отдельно: бинарь `bench_showcase`,
+отчёт `bench/reports/showcase-<sha>.md` через
 `bench/comparison/reports/showcase_aggregate.py`. Это **не**
 fair-comparison surface, а демонстрация архитектурных
 возможностей kernel'a, которым нет аналога в libp2p / WebRTC /

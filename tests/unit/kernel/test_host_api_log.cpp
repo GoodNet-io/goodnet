@@ -1,7 +1,7 @@
 /// @file   tests/unit/kernel/test_host_api_log.cpp
 /// @brief  Plugin-facing log substruct (`gn_log_api_t`) hands a fully
 ///         formatted buffer to the kernel sink without ever
-///         interpreting format specifiers, per `host-api.md` §11.
+///         interpreting format specifiers, per `host-api.en.md` §11.
 ///
 /// `should_log` is the level-filter fast path; `emit` is the literal
 /// hand-off. Together they close the format-string class of attack
@@ -210,9 +210,9 @@ TEST(HostApiLog, EmitDropsCallWhenContextCanaryPoisoned) {
     /// A plugin that retained `host_api` past its own teardown
     /// would, on next `emit`, dereference a freed `PluginContext`
     /// and read garbage `plugin_name`. The destructor stamps the
-    /// liveness canary to `kMagicDead`; `thunk_log_emit` checks
-    /// the canary before reading any other field and silently
-    /// drops the call. Simulate the post-teardown read by hand-
+    /// liveness canary to `kMagicDead`; the `log_emit` thunk
+    /// (in `core/kernel/host_api/control.cpp`) checks the canary
+    /// before reading any other field and silently drops the call. Simulate the post-teardown read by hand-
     /// poisoning the canary on a still-live context — the live
     /// path is exercised by every other test in this file.
     LogHarness h;

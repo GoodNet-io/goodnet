@@ -56,7 +56,7 @@ typedef uint64_t gn_timer_id_t;
 #define GN_INVALID_TIMER_ID   ((gn_timer_id_t)0)
 
 /** Service-executor task callback. Runs on the kernel's
- *  single-thread service executor (timer.md §3); `user_data` is
+ *  single-thread service executor (timer.en.md §3); `user_data` is
  *  passed back unchanged. */
 typedef void (*gn_task_fn_t)(void* user_data);
 
@@ -94,7 +94,7 @@ typedef enum gn_drop_reason_e {
     GN_DROP_TRUST_CLASS_MISMATCH            = 11,
 
     /**
-     * @name Attestation dispatcher (`attestation.md` §5)
+     * @name Attestation dispatcher (`attestation.en.md` §5)
      * Per-step rejection reasons emitted by the kernel-internal
      * attestation flow. The connection is closed on each.
      * @{
@@ -113,10 +113,10 @@ typedef enum gn_drop_reason_e {
  *        pressure channel.
  *
  * `host_api->send` itself returns `gn_result_t`; on a hard-cap drop
- * the result is `GN_ERR_LIMIT_REACHED` per `backpressure.md` §1.
+ * the result is `GN_ERR_LIMIT_REACHED` per `backpressure.en.md` §1.
  * This enum is the wire shape the per-conn `BACKPRESSURE_*` channel
  * will surface once that channel ships in a v1.x minor — see
- * `fsm-events.md` §4.2.
+ * `fsm-events.en.md` §4.2.
  */
 typedef enum gn_backpressure_e {
     GN_BP_OK            = 0,  /**< accepted, no pressure */
@@ -136,7 +136,7 @@ typedef enum gn_backpressure_e {
  * the kernel runs the active protocol layer's deframer over it and
  * routes the resulting envelopes. `msg_id` is ignored.
  *
- * Per `host-api.md` §8.
+ * Per `host-api.en.md` §8.
  */
 typedef enum gn_inject_layer_e {
     GN_INJECT_LAYER_MESSAGE = 0,
@@ -156,7 +156,7 @@ typedef enum gn_inject_layer_e {
  *
  * | Kind                     | `name`                    | `msg_id` / `priority`                  | `namespace_id`                 | `protocol_id`                  | `vtable`                       | `self`                  |
  * |--------------------------|---------------------------|----------------------------------------|--------------------------------|--------------------------------|--------------------------------|-------------------------|
- * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.md` §6)      | tenant scope (NULL = "default")| ignored (zero it)              | `gn_handler_vtable_t*`         | per-handler instance    |
+ * | `GN_REGISTER_HANDLER`    | protocol id               | meaningful (per `host-api.en.md` §6)      | tenant scope (NULL = "default")| ignored (zero it)              | `gn_handler_vtable_t*`         | per-handler instance    |
  * | `GN_REGISTER_LINK`       | URI scheme                | ignored (zero them)                    | ignored (zero it)              | declares protocol layer        | `gn_link_vtable_t*`            | per-link instance       |
  */
 typedef enum gn_register_kind_e {
@@ -168,9 +168,9 @@ typedef enum gn_register_kind_e {
  * @brief Metadata for `host_api->register`.
  *
  * Begins with `api_size` for size-prefix evolution per
- * `abi-evolution.md` §3. New fields land before `_reserved`.
+ * `abi-evolution.en.md` §3. New fields land before `_reserved`.
  *
- * **Zero-initialisation contract** (`abi-evolution.md` §4): the
+ * **Zero-initialisation contract** (`abi-evolution.en.md` §4): the
  * caller MUST zero `_pad` and `_reserved` before populating named
  * fields. C++ code achieves this with `gn_register_meta_t mt{};`
  * (value-init); C code uses `memset(&mt, 0, sizeof(mt))` or per-field
@@ -191,7 +191,7 @@ typedef struct gn_register_meta_s {
      * @borrowed for the call. NULL or empty selects the kernel default
      * (`gnet-v1`). HANDLER kind reads this slot as zero — the protocol
      * scope of a handler is `name` (which IS the protocol_id by
-     * convention). Per `protocol-layer.md` §4 the kernel resolves the
+     * convention). Per `protocol-layer.en.md` §4 the kernel resolves the
      * declared id against `ProtocolLayerRegistry` at first
      * `notify_connect` for the link's scheme; an unregistered id
      * surfaces as `GN_ERR_NOT_FOUND` at the connection site.
@@ -239,7 +239,7 @@ typedef struct gn_register_meta_s {
  * reads inside an array; pass @ref GN_CONFIG_NO_INDEX for scalar
  * lookups and for the `ARRAY_SIZE` query.
  *
- * Per `host-api.md` §2 and `config.md` §3.
+ * Per `host-api.en.md` §2 and `config.en.md` §3.
  */
 typedef enum gn_config_value_type_e {
     GN_CONFIG_VALUE_INT64      = 0,
@@ -311,9 +311,9 @@ typedef enum gn_result_e {
     GN_ERR_OUT_OF_RANGE       = -15, /**< value outside the contract's
                                        *   permitted range — config integer
                                        *   above the cap declared in
-                                       *   `limits.md`, array index past
+                                       *   `limits.en.md`, array index past
                                        *   end, etc. */
-    GN_ERR_FRAME_TOO_LARGE    = -16  /**< wire frame length exceeds the
+    GN_ERR_FRAME_TOO_LARGE    = -16, /**< wire frame length exceeds the
                                        *   contract's per-frame ceiling
                                        *   (`plugins/protocols/gnet/docs/wire-format.md` §2.4
                                        *   `kMaxFrameBytes`). Distinct from
@@ -324,7 +324,22 @@ typedef enum gn_result_e {
                                        *   (deframe_corrupt). The kernel
                                        *   maps this code to the
                                        *   `drop.frame_too_large` counter
-                                       *   per `metrics.md` §3. */
+                                       *   per `metrics.en.md` §3. */
+    GN_ERR_WIRE_DECODE        = -17  /**< CBOR / wire-format decode
+                                       *   failure: type tag mismatch,
+                                       *   premature EOF, malformed
+                                       *   initial byte, bad simple-value
+                                       *   tag. Distinct from
+                                       *   `GN_ERR_OUT_OF_RANGE` so the
+                                       *   wire codec can preserve the
+                                       *   "value outside contract range"
+                                       *   meaning for numeric overflows
+                                       *   (e.g. negative magnitude past
+                                       *   `int64_t::max`). Producers
+                                       *   that hand a `std::string*
+                                       *   out_diag` to the decoder also
+                                       *   get a one-line description of
+                                       *   the failure site. */
 } gn_result_t;
 
 /**
@@ -359,6 +374,7 @@ static inline const char* gn_strerror(gn_result_t r) {
         case GN_ERR_NOT_FOUND:             return "not found";
         case GN_ERR_OUT_OF_RANGE:          return "value outside the contract's permitted range";
         case GN_ERR_FRAME_TOO_LARGE:       return "wire frame exceeds kMaxFrameBytes ceiling";
+        case GN_ERR_WIRE_DECODE:           return "wire-format decode failed (CBOR type mismatch, EOF, or bad tag)";
     }
     return "unknown gn_result_t";
 }
@@ -390,7 +406,7 @@ typedef struct gn_message_s {
      * sizeof(gn_message_t) at the producer's build time. Caller-
      * allocated structs carry the size prefix so the consumer
      * (kernel thunk, handler) can refuse to read fields the caller's
-     * SDK did not allocate. Per `abi-evolution.md` §3 the size lives
+     * SDK did not allocate. Per `abi-evolution.en.md` §3 the size lives
      * at offset zero; the static_assert below pins that.
      *
      * Zero is permitted in v1.0 — pre-3.1 callsites that have not
@@ -420,14 +436,14 @@ typedef struct gn_message_s {
      * through `find_conn_by_pk` — the latter is wrong on relay paths
      * where `sender_pk` is the originating peer (set via
      * `EXPLICIT_SENDER`) but the receiving connection belongs to the
-     * relay. Per `host-api.md` §8 (inject) and §7 (notify_inbound).
+     * relay. Per `host-api.en.md` §8 (inject) and §7 (notify_inbound).
      *
      * Producers built before this field existed leave
      * `api_size < offsetof(conn_id) + sizeof(conn_id)` — handlers that
      * read the field MUST gate on the size check per the contract
      * above. A `GN_INVALID_ID` value MUST be tolerated as an unknown
      * edge: handlers degrade gracefully (return `CONTINUE`) rather
-     * than rejecting the envelope, per `handler-registration.md` §3a.
+     * than rejecting the envelope, per `handler-registration.en.md` §3a.
      */
     gn_conn_id_t   conn_id;
     void*          _reserved[4];                     /**< must be NULL on init */
@@ -455,13 +471,13 @@ _Static_assert(sizeof(((gn_message_t*)0)->_reserved) == 4 * sizeof(void*),
                "envelope reserved slots must be sized for ABI evolution");
 _Static_assert(offsetof(gn_message_t, api_size) == 0,
                "gn_message_t must begin with `uint32_t api_size` per "
-               "abi-evolution.md §3");
+               "abi-evolution.en.md §3");
 #endif
 
 #ifdef __cplusplus
 static_assert(offsetof(gn_message_t, api_size) == 0,
               "gn_message_t must begin with `uint32_t api_size` per "
-              "abi-evolution.md §3");
+              "abi-evolution.en.md §3");
 #endif
 
 #ifdef __cplusplus

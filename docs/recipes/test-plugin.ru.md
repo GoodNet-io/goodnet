@@ -26,7 +26,7 @@ Kernel-side conformance contracts — typed-test шаблоны в `sdk/test/con
 
 ## Шаг 1. SDK conformance contracts
 
-`sdk/test/conformance/link_teardown.hpp` определяет `LinkTeardownConformance` — typed-test, проверяющий, что `Link::shutdown()` фаерит `notify_disconnect` синхронно на caller-thread'е для каждой опубликованной через `notify_connect` сессии. Это контракт `link.md` §9 step 3.
+`sdk/test/conformance/link_teardown.hpp` определяет `LinkTeardownConformance` — typed-test, проверяющий, что `Link::shutdown()` фаерит `notify_disconnect` синхронно на caller-thread'е для каждой опубликованной через `notify_connect` сессии. Это контракт `link.en.md` §9 step 3.
 
 Шаблон состоит из:
 
@@ -198,8 +198,8 @@ Skipping медленных tests — нет.
 
 ## Cross-refs
 
-- [plugin-lifetime.md](../contracts/plugin-lifetime.en.md) — фазы init/register/unregister/shutdown, что валидно тестировать на каждой.
-- [link.md](../contracts/link.en.md) — `link.md §9` shutdown contract, проверяемый `LinkTeardownConformance`.
+- [plugin-lifetime.en.md](../contracts/plugin-lifetime.en.md) — фазы init/register/unregister/shutdown, что валидно тестировать на каждой.
+- [link.en.md](../contracts/link.en.md) — `link.en.md §9` shutdown contract, проверяемый `LinkTeardownConformance`.
 - [plugin-model](../architecture/plugin-model.ru.md) — почему плагин = independent unit, как layout dictates test placement.
-- [host-api.md](../contracts/host-api.en.md) — host stub'ам нужно implement'ить эти entries для conformance fixture'ов.
-- [signal-channel.md §6](../contracts/signal-channel.en.md) — exception catch / re-entry правила, которые conformance тесты проверяют под TSan.
+- [host-api.en.md](../contracts/host-api.en.md) — host stub'ам нужно implement'ить эти entries для conformance fixture'ов.
+- [signal-channel.en.md §6](../contracts/signal-channel.en.md) — exception catch / re-entry правила, которые conformance тесты проверяют под TSan.

@@ -22,7 +22,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
     if (vtable == nullptr || out_id == nullptr || protocol_id.empty()) {
         return GN_ERR_NULL_ARG;
     }
-    /// `abi-evolution.md` §3a: defensive size-prefix check on the
+    /// `abi-evolution.en.md` §3a: defensive size-prefix check on the
     /// plugin-provided vtable. A vtable that declares a smaller
     /// size than the kernel's known minimum is from an SDK older
     /// than the slots the kernel intends to call — reject before
@@ -36,7 +36,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
         return GN_ERR_INVALID_ENVELOPE;
     }
     if (is_reserved_system_msg_id(msg_id)) {
-        /// Per `handler-registration.md` §2a — kernel-internal
+        /// Per `handler-registration.en.md` §2a — kernel-internal
         /// dispatch ids are not exposed to plugin registrations.
         return GN_ERR_INVALID_ENVELOPE;
     }
@@ -69,7 +69,7 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
     /// `chains_[key]` default-creates an empty chain on miss;
     /// the find lookup keeps a rejected registration from
     /// leaving an orphan entry behind. A cap of zero disables
-    /// enforcement per `limits.md §4a`.
+    /// enforcement per `limits.en.md §4a`.
     if (cap != 0) {
         if (auto it = chains_.find(key); it != chains_.end() &&
                                          it->second.size() >= cap) {
@@ -122,7 +122,7 @@ gn_result_t HandlerRegistry::unregister_handler(gn_handler_id_t id) noexcept {
 std::vector<HandlerEntry> HandlerRegistry::lookup(std::string_view protocol_id,
                                                   std::uint32_t    msg_id) const {
     /// Fan out across every namespace registered for the
-    /// (protocol_id, msg_id) pair. Per `handler-registration.md`
+    /// (protocol_id, msg_id) pair. Per `handler-registration.en.md`
     /// the merged chain is sorted by (priority desc, insertion_seq
     /// asc) so a router treats the result identically to the
     /// pre-namespace single-chain world.

@@ -24,7 +24,7 @@ _host_api_t KIND-tagged register/unregister discipline._
 
 ## Зачем единая таблица
 
-Плагин в GoodNet — это shared object, который ядро привязывает к себе через ровно одну C ABI таблицу: `host_api_t` из `sdk/host_api.h`. Всё, что плагин может попросить у ядра — отправить envelope, зарегистрировать handler, посмотреть peer'а в реестре, заглянуть в config — идёт через указатель на функцию из этой таблицы. Никакого второго пути «в обход» нет: плагины не видят kernel-internal `host_loader_api_t`, не имеют доступа к глобальному synthetic state, не дёргают приватные символы ядра через `dlsym`.
+Плагин в GoodNet — это shared object, который ядро привязывает к себе через ровно одну C ABI таблицу: `host_api_t` из `sdk/host_api.h`. Всё, что плагин может попросить у ядра — отправить envelope, зарегистрировать handler, посмотреть peer'а в реестре, заглянуть в config — идёт через указатель на функцию из этой таблицы. Никакого второго пути «в обход» нет: плагины не видят kernel-internal state, не имеют доступа к глобальному synthetic state, не дёргают приватные символы ядра через `dlsym`.
 
 Single source of truth получается из принципа экономии когнитивной нагрузки автора плагина. Прочитал один заголовок — увидел всю поверхность. Тестируешь одну таблицу — покрыл все capability'и. Меняешь slot — компилятор ловит каждое использование, потому что оно одно. Альтернатива — россыпь global'ных C-функций или «ядро дёргает плагин через polymorphic dispatch» — превращает поверхность в неисчислимое множество и заставляет автора плагина следить за вкладами ядра. GoodNet эту ответственность на плагин не вешает.
 
@@ -73,7 +73,7 @@ gn_result_t (*unsubscribe)(void* host_ctx, gn_subscription_id_t id);
 
 Раздельные сигнатуры дают biding'ам строгую типизацию callback'а на канале без cast'ов через `(const void*, size_t)`. `unsubscribe` остаётся универсальной — id несёт channel tag в верхних битах и сам выбирает правильный канал.
 
-`for_each_connection` пробегает реестр под per-shard read-lock'ом, отдавая visitor'у `(conn, trust, remote_pk, uri)`. Это единственный путь итерации; отдельных `for_each_handler` или `for_each_link` нет — плагин не управляет реестрами, он лишь даёт в них вклад. Сорок одна точка входа схлопнулась до двадцати одной с восемью зарезервированными slot'ами.
+`for_each_connection` пробегает реестр под per-shard read-lock'ом, отдавая visitor'у `(conn, trust, remote_pk, uri)`. Это единственный путь итерации; отдельных `for_each_handler` или `for_each_link` нет — плагин не управляет реестрами, он лишь даёт в них вклад.
 
 ---
 
@@ -85,7 +85,7 @@ Slot'ы группируются по теме. Группы — это мент
 
 - `register_vtable(KIND_HANDLER | KIND_LINK, meta, vtable, self, &id)` — handler dispatch chain или link by scheme.
 - `unregister_vtable(id)` — id сам несёт kind tag.
-- `register_security(provider_id, vtable, self)` / `unregister_security(provider_id)` — security provider на trust class. v1 admits ровно одного активного провайдера на `Sessions::create`.
+- `register_security(provider_id, vtable, self)` / `unregister_security(provider_id)` — security provider на trust class. Kernel admits N providers per distinct `provider_id` через StackRegistry; `find_for_trust(trust)` подбирает первый registered provider, чья `allowed_trust_mask` admits заявленный класс.
 - `register_extension(name, version, vtable)` / `unregister_extension(name)` — публикация vtable под именем `gn.<area>` для plugin↔plugin lookup'а.
 
 `register_security` живёт отдельным slot'ом, а не под общим KIND, потому что её trust-mask gate работает по-другому: kernel читает `vtable->allowed_trust_mask()` один раз и потом проверяет на каждом `notify_connect`. У handler/link такой стороны нет.
@@ -115,7 +115,7 @@ Slot'ы группируются по теме. Группы — это мент
 - `notify_connect(remote_pk, uri, trust, role, &out_conn)` — link объявляет установленное соединение. Только role=Transport plugins могут вызывать.
 - `notify_inbound_bytes(conn, bytes, size)` — горячий путь link'а: байты идут через security decrypt → protocol deframe → router dispatch.
 - `notify_disconnect(conn, reason)` — link объявляет закрытие.
-- `notify_backpressure(conn, kind, pending_bytes)` — link рапортует пересечение high/low watermark per `backpressure.md`.
+- `notify_backpressure(conn, kind, pending_bytes)` — link рапортует пересечение high/low watermark per `backpressure.en.md`.
 - `kick_handshake(conn)` — после `notify_connect` ядро не запускает initiator's first message синхронно (race с регистрацией socket'а под conn id); link зовёт `kick_handshake` когда socket готов принимать байты.
 - `inject(layer, source, msg_id, bytes, size)` — bridge plugin'ы инжектят foreign-system bytes под собственным identity. `LAYER_MESSAGE` строит envelope и роутит; `LAYER_FRAME` гонит байты через protocol deframer'а.
 
@@ -145,14 +145,23 @@ Cross-plugin координация идёт ровно через эту пар
 
 `host_api_t` начинается с `uint32_t api_size`. Producer (ядро) проставляет `sizeof(host_api_t)` на своей стороне; consumer (плагин) видит размер, который ядро экспортировало. Slot, который плагин ожидает, может оказаться за пределами этого размера — тогда плагину придётся обойтись.
 
-Pre-rc1 окно открыто для shape-изменений. Slot'ы могут переименовываться, типы аргументов уточняться, неиспользуемые семьи сжиматься. Это — единственный момент, когда reshape бесплатен.
+Pre-`v1.0.0` reshape window (per
+[`abi-evolution.en.md`](../contracts/abi-evolution.en.md) §3b)
+открыто для shape-изменений. Slot'ы могут переименовываться,
+типы аргументов уточняться, неиспользуемые семьи сжиматься.
+Окно остаётся open через весь rc cycle (`v1.0.0-rc1`,
+`v1.0.0-rc2`, …) и закрывается только на plain `v1.0.0`.
 
-После rc1 эволюция строго additive. Новый slot всегда appended at the tail; восемь зарезервированных void* в `_reserved[8]` промотируются в named поля по одному за минор. Существующие байты `_reserved` не reused — это ломает ABI на consumer'ах, собранных против промежуточной версии.
+После freeze эволюция строго additive. Новый slot всегда appended
+at the tail; восемь зарезервированных void* в `_reserved[8]`
+промотируются в named поля по одному за минор. Существующие
+байты `_reserved` не reused — это ломает ABI на consumer'ах,
+собранных против промежуточной версии.
 
-`GN_API_HAS(api, slot)` из `sdk/abi.h` сочетает size-prefix presence check с null-pointer check'ом:
+`GN_API_HAS(api_type, api, slot)` из `sdk/abi.h` сочетает size-prefix presence check с null-pointer check'ом:
 
 ```c
-if (GN_API_HAS(api, kick_handshake)) {
+if (GN_API_HAS(host_api_t, api, kick_handshake)) {
     api->kick_handshake(host_ctx, conn);
 }
 ```
@@ -196,7 +205,7 @@ gn_config_get_int64(api, "links.tcp.bind_port", &port);
 
 Pointer carry'ит scope плагина. Не per-thread — плагин может звать slot'ы из любого потока, который владеет ссылкой на `api`. Не per-conn — соединения адресуются через `gn_conn_id_t`. Lifetime — от возврата `gn_plugin_init` до возврата `gn_plugin_shutdown`. После shutdown'а ядро может dlclose-нуть `.so`, и dereference `host_ctx` через старый `api*` указатель — undefined.
 
-Гарантия из `host-api.md`: `api->host_ctx` стабилен на всю lifetime'у плагина, opaque, и идентифицирует loader-side state ядра для этого плагина. Ничего больше плагин про него знать не должен.
+Гарантия из `host-api.en.md`: `api->host_ctx` стабилен на всю lifetime'у плагина, opaque, и идентифицирует loader-side state ядра для этого плагина. Ничего больше плагин про него знать не должен.
 
 ---
 
@@ -219,7 +228,7 @@ Soft-watermark и потерянное-соединение-на-горизон�
 событийный surface, не возврат `send`'а. Канал
 `GN_SUBSCRIBE_CONN_STATE` доставляет `BACKPRESSURE_SOFT` /
 `BACKPRESSURE_CLEAR` (см.
-[conn-events.md §2](../contracts/conn-events.en.md)). Подписчик читает
+[conn-events.en.md §2](../contracts/conn-events.en.md)). Подписчик читает
 `pending_bytes` из payload'а и принимает решение. Тип
 `gn_backpressure_t` в [`sdk/types.h`](../../sdk/types.h) — wire shape
 для этого канала, зарезервированный под per-conn pressure
@@ -235,11 +244,11 @@ hard-cap'а.
 
 ## Cross-references
 
-- Контракт: [`host-api.md`](../contracts/host-api.en.md) — slot list, error semantics, forbidden patterns, foreign-payload injection, service executor.
-- Контракт: [`abi-evolution.md`](../contracts/abi-evolution.en.md) — size-prefix gating, `_reserved` slot promotion rules.
-- Контракт: [`plugin-lifetime.md`](../contracts/plugin-lifetime.en.md) — `gn_plugin_init` / `register` / `unregister` / `shutdown` ordering.
-- Контракт: [`backpressure.md`](../contracts/backpressure.en.md) — high/low watermark publishing.
-- Контракт: [`timer.md`](../contracts/timer.en.md) — service-executor invariants.
-- Контракт: [`config.md`](../contracts/config.en.md) — config tree shape, reload signal.
+- Контракт: [`host-api.en.md`](../contracts/host-api.en.md) — slot list, error semantics, forbidden patterns, foreign-payload injection, service executor.
+- Контракт: [`abi-evolution.en.md`](../contracts/abi-evolution.en.md) — size-prefix gating, `_reserved` slot promotion rules.
+- Контракт: [`plugin-lifetime.en.md`](../contracts/plugin-lifetime.en.md) — `gn_plugin_init` / `register` / `unregister` / `shutdown` ordering.
+- Контракт: [`backpressure.en.md`](../contracts/backpressure.en.md) — high/low watermark publishing.
+- Контракт: [`timer.en.md`](../contracts/timer.en.md) — service-executor invariants.
+- Контракт: [`config.en.md`](../contracts/config.en.md) — config tree shape, reload signal.
 - Архитектура: [`plugin-model`](plugin-model.ru.md) — четыре роли плагина, dlopen pipeline, vtable shapes.
 - Архитектура: [`extension-model`](extension-model.ru.md) — plugin↔plugin coordination через `query_extension_checked`.

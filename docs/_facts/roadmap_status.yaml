@@ -1,16 +1,27 @@
 features:
 - name: NAT-traversal pipeline
-  status: missing
-  evidence: plugins/extensions/nat-traversal/ absent; extension id 'gn.nat' not registered
-    in plugins/
+  status: done
+  evidence: plugins/links/ice/ present
 - name: Multi-path scheduler
-  status: missing
-  evidence: plugins/extensions/multipath/ absent; extension id 'gn.multipath' not
-    registered in plugins/
+  status: done
+  evidence: plugins/strategies/float_send_rtt/ present
 - name: Directed relay → direct upgrade
-  status: missing
-  evidence: plugins/extensions/relay-upgrade/ absent; extension id 'gn.relay' not
-    registered in plugins/
+  status: done
+  evidence: plugins/links/ice/session.cpp present
+- name: DPLPMTUD active path-MTU probing
+  status: done
+  evidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present
+- name: Multi-TURN fallback
+  status: done
+  evidence: 'token ''turn_servers'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers`
+    ...); token ''turn_backup_interval_s'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)'
+- name: IPv6 mDNS dual-stack
+  status: done
+  evidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr
+    const char* kMdnsIPv6Multicast...)
+- name: Port mapping (UPnP / PCP / NAT-PMP)
+  status: done
+  evidence: plugins/links/portmap/ present
 - name: Kademlia-style DHT
   status: missing
   evidence: plugins/handlers/kademlia/ absent
@@ -19,17 +30,52 @@ features:
   evidence: plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/
     + sdk/
 - name: KV storage handler
-  status: missing
-  evidence: plugins/handlers/kv/ absent
+  status: done
+  evidence: plugins/handlers/store/ present
 - name: Gossip sync handler
   status: missing
   evidence: plugins/handlers/gossip/ absent
 - name: Offline outbound queue
   status: missing
   evidence: token 'outbound_queue' absent; token 'offline_queue' absent
+- name: Subprocess SECURITY/HANDLER worker proxy
+  status: done
+  evidence: 'symbol ''security_vtable_proxy'' present (core/plugin/remote_host.hpp:112:    [[nodiscard]]
+    const gn_security_provider_...)'
+- name: Recv-side parallel decrypt
+  status: done
+  evidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t
+    SecuritySession::decrypt_batch_tran...)
+- name: Link capability gate
+  status: done
+  evidence: core/kernel/link_capability.hpp present
+- name: DynamicRuntime dlsym cache
+  status: done
+  evidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct
+    DynamicPluginSymbols {)
+- name: Required-plugin manifest pinning
+  status: done
+  evidence: 'symbol ''ManifestEntry'' present (core/plugin/runtimes/remote.cpp:42:    const
+    ManifestEntry* manifest_entry = ...)'
+- name: gn_core_unload_plugin hot-reload
+  status: done
+  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t
+    gn_core_unload_plugin(gn_core_t* core,...)
+- name: Subprocess HOST_CALL slot completion
+  status: done
+  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:765:        case
+    GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)'
+- name: Per-slot reply-timeout override
+  status: done
+  evidence: 'symbol ''set_reply_timeout_for_slot'' present (core/plugin/remote_host.hpp:131:    void
+    set_reply_timeout_for_slot(std::uint...)'
+- name: Wire codec GN_ERR_WIRE_DECODE
+  status: done
+  evidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:///
+    Errors return `GN_ERR_WIRE_DECODE` for malf...)
 - name: Fuzz harness
-  status: missing
-  evidence: tests/fuzz/CMakeLists.txt absent; fuzz/CMakeLists.txt absent
+  status: done
+  evidence: tests/fuzz/CMakeLists.txt present
 - name: Coverage gating
   status: missing
   evidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent
@@ -39,3 +85,87 @@ features:
 - name: Test vectors
   status: missing
   evidence: tests/vectors/ absent; docs/test-vectors/ absent
+- name: Raw inject bridge
+  status: done
+  evidence: plugins/links/raw_inject/ present
+- name: Full WASM kernel build
+  status: missing
+  evidence: nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent
+- name: JS SDK + WebSocket bridge
+  status: missing
+  evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension
+    id 'gn.handler.web-api-proxy' not registered in plugins/
+- name: C ABI version of `IPluginRuntime`
+  status: missing
+  evidence: sdk/plugin_runtime.h absent
+- name: Subprocess sandbox
+  status: missing
+  evidence: token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent
+- name: BRIDGE kind first-class plugin taxonomy
+  status: missing
+  evidence: token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp
+    absent
+- name: io_uring runtime
+  status: missing
+  evidence: token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent
+- name: aarch64 Linux
+  status: missing
+  evidence: token 'aarch64-linux-ci' absent
+- name: Android build
+  status: missing
+  evidence: nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent
+- name: MCU port
+  status: missing
+  evidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent
+- name: C99 SDK subset
+  status: missing
+  evidence: sdk/c99/ absent
+- name: Rust
+  status: missing
+  evidence: bridges/goodnet-rs/Cargo.toml absent
+- name: Python
+  status: missing
+  evidence: bridges/goodnet-py/setup.py absent
+- name: Go
+  status: missing
+  evidence: bridges/goodnet-go/go.mod absent
+- name: Zig
+  status: missing
+  evidence: bridges/goodnet-zig/build.zig absent
+- name: Hardware key store
+  status: missing
+  evidence: plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered
+    in plugins/
+- name: Post-quantum security provider
+  status: missing
+  evidence: plugins/security/pq/ absent; token 'ML_KEM' absent
+- name: OpenTelemetry trace propagation across mesh hops
+  status: missing
+  evidence: token 'otel_span_propagate' absent
+- name: Concrete exporter plugins
+  status: missing
+  evidence: plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent
+- name: File transfer handler
+  status: missing
+  evidence: plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not
+    registered in plugins/
+- name: Identity registration handler
+  status: missing
+  evidence: plugins/handlers/identity/ absent; extension id 'gn.identity' not registered
+    in plugins/
+- name: Group membership handler
+  status: missing
+  evidence: plugins/handlers/group/ absent; extension id 'gn.group' not registered
+    in plugins/
+- name: Goodnetd binary roadmap
+  status: missing
+  evidence: token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent
+- name: CLI introspection tool
+  status: missing
+  evidence: tools/goodnetctl/ absent
+- name: Config validator
+  status: missing
+  evidence: tools/config_validator/ absent
+- name: TCP-TURN (RFC 6062)
+  status: done
+  evidence: 'token ''REQUESTED_TRANSPORT_TCP'' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...)'

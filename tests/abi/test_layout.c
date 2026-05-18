@@ -2,7 +2,7 @@
  * @file   tests/abi/test_layout.c
  * @brief  Compile-time pin of every public C ABI struct's layout.
  *
- * Per `docs/contracts/abi-evolution.md` §7, every SDK MINOR ships a
+ * Per `docs/contracts/abi-evolution.en.md` §7, every SDK MINOR ships a
  * `tests/abi/layout` binary that records the size of every public C ABI
  * struct and the offset of every named field. The file is compiled but
  * never executed: the assertions fire at compile time. Any future patch
@@ -12,7 +12,7 @@
  * The numbers were measured on x86_64 Linux gcc15 against the release
  * snapshot of `sdk/`. Grouping below mirrors the header layout. New
  * fields land before each header's `_reserved[]` slot — the reserved
- * trailer absorbs additive evolution per `abi-evolution.md` §3 without
+ * trailer absorbs additive evolution per `abi-evolution.en.md` §3 without
  * shifting any earlier offset.
  *
  * To regenerate after an ABI bump:
@@ -138,8 +138,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 488,
-               "host_api_t size pinned at 488 (added send_to slot 2026-05-12 Slice 9-KERNEL)");
+_Static_assert(sizeof(host_api_t) == 496,
+               "host_api_t size pinned at 496");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -225,9 +225,11 @@ _Static_assert(offsetof(host_api_t, subscribe_capability_blob) == 400,
 _Static_assert(offsetof(host_api_t, announce_rotation) == 408,
                "host_api_t::announce_rotation offset pinned at 408");
 _Static_assert(offsetof(host_api_t, send_to) == 416,
-               "host_api_t::send_to offset pinned at 416 (Slice 9-KERNEL)");
-_Static_assert(offsetof(host_api_t, _reserved) == 424,
-               "host_api_t::_reserved offset pinned at 424");
+               "host_api_t::send_to offset pinned at 416");
+_Static_assert(offsetof(host_api_t, notify_rtt_sample) == 424,
+               "host_api_t::notify_rtt_sample offset pinned at 424");
+_Static_assert(offsetof(host_api_t, _reserved) == 432,
+               "host_api_t::_reserved offset pinned at 432");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 

@@ -22,9 +22,15 @@ staged sooner.
 In scope:
 
 - The kernel (`core/`) and the SDK (`sdk/`).
-- The bundled link plugins (`plugins/links/{tcp,udp,ipc,ws,tls}`).
+- The bundled link plugins
+  (`plugins/links/{tcp,udp,ipc,ws,tls,ice,quic}`).
 - The bundled security plugins (`plugins/security/{noise,null}`).
-- The mandatory protocol layer (`plugins/protocols/gnet`).
+- The bundled handler plugins
+  (`plugins/handlers/{heartbeat,store,dns}`).
+- The bundled strategy plugin
+  (`plugins/strategies/float_send_rtt`).
+- The mandatory protocol layer (`plugins/protocols/gnet`) and the
+  opt-in passthrough (`plugins/protocols/raw`).
 
 Out of scope:
 

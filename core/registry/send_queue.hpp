@@ -84,13 +84,15 @@ struct PerConnQueue {
     /// Wire frames that the link plugin's `send_batch` rejected on
     /// the previous drain attempt — typically `GN_ERR_LIMIT_REACHED`
     /// from a TCP plugin whose per-session write buffer is full
-    /// (`tcp.cpp:611-625`). The drainer that retries these on the
+    /// (`plugins/links/tcp/tcp.cpp:762-776`, the `bytes_buffered + total
+    /// > pending_queue_bytes_hard_` branch of `TcpLink::send_batch`).
+    /// The drainer that retries these on the
     /// next claim sends the **same wire bytes** that were already
     /// AEAD-encrypted with their reserved nonces, so the receiver's
     /// nonce sequence stays gap-free. Until the stalled batch
     /// drains successfully, the drainer halts new pulls — kernel
     /// queue fills, producers see `GN_ERR_LIMIT_REACHED` per
-    /// `backpressure.md` §1, back-off naturally re-triggers drain
+    /// `backpressure.en.md` §1, back-off naturally re-triggers drain
     /// through subsequent push CAS attempts.
     ///
     /// Protected by `drain_lock_` (the same flag that gates ring

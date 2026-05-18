@@ -105,6 +105,16 @@ __pycache__/
 !plugins/workers/**/*.cpp
 !plugins/workers/**/*.hpp
 !plugins/workers/**/CMakeLists.txt
+# raw_inject is the SOCKS5-style bridge plugin — small enough to
+# ride in-tree as a proof for the inject API. Whitelisted explicitly
+# so the kernel monorepo tracks it alongside the other in-tree
+# fixtures.
+!plugins/links/raw_inject/**/*.cpp
+!plugins/links/raw_inject/**/*.hpp
+!plugins/links/raw_inject/**/*.c
+!plugins/links/raw_inject/**/CMakeLists.txt
+!plugins/links/raw_inject/LICENSE
+!plugins/links/raw_inject/README.md
 plugins/handlers/heartbeat/
 plugins/handlers/store/
 plugins/handlers/dns/
@@ -115,6 +125,7 @@ plugins/links/ws/
 plugins/links/ipc/
 plugins/links/tls/
 plugins/links/ice/
+plugins/links/portmap/
 plugins/links/quic/
 plugins/security/noise/
 plugins/security/null/
@@ -154,6 +165,10 @@ tests/integration/
 !tests/**/CMakeLists.txt
 # Python-side unit suite for tools/livedoc/.
 !tests/**/*.py
+# LibFuzzer seed corpora under tests/fuzz/corpus/<target>/ are
+# binary by nature; whitelist the .bin extension so the seeds
+# stay tracked alongside the harness sources.
+!tests/fuzz/corpus/**/*.bin
 !pytest.ini
 
 # Examples

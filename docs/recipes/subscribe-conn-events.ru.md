@@ -43,7 +43,7 @@ typedef struct gn_conn_event_s {
 | Kind | Когда |
 |---|---|
 | `GN_CONN_EVENT_CONNECTED` | `notify_connect` зарегистрировал conn в registry |
-| `GN_CONN_EVENT_DISCONNECTED` | `notify_disconnect` снял запись (см. `conn-events.md` §2a) |
+| `GN_CONN_EVENT_DISCONNECTED` | `notify_disconnect` снял запись (см. `conn-events.en.md` §2a) |
 | `GN_CONN_EVENT_TRUST_UPGRADED` | one-way `Untrusted` → `Peer` upgrade после security handshake |
 | `GN_CONN_EVENT_BACKPRESSURE_SOFT` | per-conn pending queue превысил `pending_queue_bytes_high` |
 | `GN_CONN_EVENT_BACKPRESSURE_CLEAR` | pending queue упал ниже `pending_queue_bytes_low` |
@@ -124,7 +124,7 @@ Callback запускается на **publishing thread'е** ядра — эт�
 
 - **Возвращайся быстро.** Долгая работа держит publisher'а; следующие subscriber'ы в snapshot'е стоят.
 - **Не блокируйся**, не ходи в I/O.
-- **Не бросай C++ exceptions** через C ABI boundary. SignalChannel ловит exception как kernel-side defence, но это не контрактное право плагина (`signal-channel.md` §6.2).
+- **Не бросай C++ exceptions** через C ABI boundary. SignalChannel ловит exception как kernel-side defence, но это не контрактное право плагина (`signal-channel.en.md` §6.2).
 - **State, разделяемый между event kind'ами, защищай локом** — разные kinds могут прилететь с разных thread'ов.
 - **Долгую работу постируй** через `host_api->set_timer(0, fn, ud, &id)` — service executor сериализует работу.
 - **Не вызывай `for_each_connection` изнутри callback'а connection-registry-mutating slot'а**: visitor держит per-shard read lock и self-deadlock'ится на любом мутирующем вызове registry.
@@ -184,9 +184,9 @@ static void cleanup_conn_sub(plugin_state_t* st) {
 
 `unsubscribe` идемпотентен — снятие отсутствующего id возвращает `GN_OK`.
 
-Если плагин не вызывает `unsubscribe`, ядро через lifetime-anchor (`plugin-lifetime.md` §4) auto-снимает все subscription'ы плагина при `gn_plugin_unregister`. Manual call — для случая re-subscribe'а с другими параметрами без полной выгрузки плагина.
+Если плагин не вызывает `unsubscribe`, ядро через lifetime-anchor (`plugin-lifetime.en.md` §4) auto-снимает все subscription'ы плагина при `gn_plugin_unregister`. Manual call — для случая re-subscribe'а с другими параметрами без полной выгрузки плагина.
 
-Внутри callback'а `subscribe`/`unsubscribe` — допустимы (`signal-channel.md` §4): вновь-добавленные subscriber'ы не получат in-flight event, вновь-удалённые — получат (snapshot уже снят).
+Внутри callback'а `subscribe`/`unsubscribe` — допустимы (`signal-channel.en.md` §4): вновь-добавленные subscriber'ы не получат in-flight event, вновь-удалённые — получат (snapshot уже снят).
 
 ---
 
@@ -220,9 +220,9 @@ static void on_conn_event(void* user_data, const gn_conn_event_t* ev) {
 
 ## Cross-refs
 
-- [conn-events.md](../contracts/conn-events.en.md) — event kinds, DISCONNECTED spec, ordering, dropped events.
-- [signal-channel.md](../contracts/signal-channel.en.md) — pub/sub primitive под капотом, snapshot rule, exception-catch contract.
-- [host-api.md §2](../contracts/host-api.en.md) — `subscribe_conn_state` / `unsubscribe` / `for_each_connection` slot signatures.
+- [conn-events.en.md](../contracts/conn-events.en.md) — event kinds, DISCONNECTED spec, ordering, dropped events.
+- [signal-channel.en.md](../contracts/signal-channel.en.md) — pub/sub primitive под капотом, snapshot rule, exception-catch contract.
+- [host-api.en.md §2](../contracts/host-api.en.md) — `subscribe_conn_state` / `unsubscribe` / `for_each_connection` slot signatures.
 - [relay-direct](../architecture/relay-direct.ru.md) — пример consumer'а для TRUST_UPGRADED.
-- [timer.md §2-3](../contracts/timer.en.md) — куда постить долгую работу из callback'а.
-- [plugin-lifetime.md §4](../contracts/plugin-lifetime.en.md) — auto-reap subscriptions через lifetime anchor.
+- [timer.en.md §2-3](../contracts/timer.en.md) — куда постить долгую работу из callback'а.
+- [plugin-lifetime.en.md §4](../contracts/plugin-lifetime.en.md) — auto-reap subscriptions через lifetime anchor.

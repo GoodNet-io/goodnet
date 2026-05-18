@@ -29,13 +29,16 @@ cmake --build build
 
 ## Load
 
-A host program calls
-`kernel.set_protocol_layer(std::make_shared<RawProtocol>(...))` to
-swap the active layer. v1 ships GNET as the default; `raw` is the
-opt-in alternative for hosts that already have framing.
+A host program registers the layer before `gn_core_start`. C ABI
+hosts call `gn_core_register_protocol(core, &vt, self)` (see
+`docs/contracts/core-c.en.md`). C++ hosts may register through
+`kernel.protocol_layers().register_layer(std::make_shared<RawProtocol>(...), &id)`
+directly. The protocol-layer registry admits multiple layers per
+kernel; `raw` is the opt-in alternative for hosts that already have
+framing.
 
 ## Contract
 
-- Kernel-side protocol-layer contract: `docs/contracts/protocol-layer.md`
+- Kernel-side protocol-layer contract: `docs/contracts/protocol-layer.en.md`
 - Opaque-payload semantics: a single handler receives every byte
   from a connection without any framing or routing tag.

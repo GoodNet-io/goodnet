@@ -16,7 +16,7 @@ _Security pipeline: dial → notify_connect → Noise → attestation → trust 
 - [Handshake (Noise XX)](#handshake-noise-xx)
 - [Connection FSM по фазам безопасности](#connection-fsm-по-фазам-безопасности)
 - [Аттестация](#аттестация)
-- [Single-active-provider invariant](#single-active-provider-invariant)
+- [Distinct-provider-id invariant](#distinct-provider-id-invariant)
 - [Replay protection](#replay-protection)
 - [Identity vs trust](#identity-vs-trust)
 - [Application visibility events](#application-visibility-events)
@@ -91,7 +91,7 @@ return from == to;
 `notify_connect`, attestation gate их не касается, downgrade не
 существует.
 
-Подробности гейта — [security-trust.md §3](../contracts/security-trust.en.md).
+Подробности гейта — [security-trust.en.md §3](../contracts/security-trust.en.md).
 
 ---
 
@@ -131,7 +131,7 @@ incoming-байты.
 
 С точки зрения kernel'а соединение проходит пять состояний.
 Подписчики `subscribe_conn_state` видят переходы как события из
-[conn-events.md](../contracts/conn-events.en.md).
+[conn-events.en.md](../contracts/conn-events.en.md).
 
 ![Connection FSM](../img/connection_fsm.svg)
 
@@ -139,14 +139,14 @@ incoming-байты.
 trust-классом и handshake-ролью. Kernel выделяет `gn_conn_id_t`,
 создаёт `SecuritySession` через `SessionRegistry::create`, проверяет
 trust против маски активного security-provider'а (см. §
-[Single-active-provider invariant](#single-active-provider-invariant))
+[Distinct-provider-id invariant](#distinct-provider-id-invariant))
 и публикует `GN_CONN_EVENT_CONNECTED`.
 
 **Handshake.** Сессия в фазе `Handshake`. Каждый
 `notify_inbound_bytes` прогоняется через `advance_handshake`;
 исходящие плейнтекст-фреймы, которые приложение успело отправить до
 завершения, буферизуются в `pending_` (per
-[backpressure.md §8](../contracts/backpressure.en.md)) и
+[backpressure.en.md §8](../contracts/backpressure.en.md)) и
 выливаются в транспорт после перехода в `Transport`.
 
 **Transport.** `handshake_complete` вернул 1, transport-keys
@@ -177,7 +177,7 @@ dispatcher автоматически собирает 232-байтовый payl
 
 | Offset | Size | Поле |
 |---|---|---|
-| 0     | 136 | attestation cert per [identity.md §4](../contracts/identity.en.md) |
+| 0     | 136 | attestation cert per [identity.en.md §4](../contracts/identity.en.md) |
 | 136   | 32  | binding — текущий `handshake_hash` сессии |
 | 168   | 64  | Ed25519 signature над `attestation \|\| binding` |
 
@@ -188,7 +188,7 @@ user-секретом над префиксом. Binding пинит cert к эт
 проверки.
 
 Receiver проходит семь шагов
-([attestation.md §5](../contracts/attestation.en.md)): размер,
+([attestation.en.md §5](../contracts/attestation.en.md)): размер,
 layout-split, binding-match, parse, signature verify, cert verify,
 identity stability против `ConnectionRegistry::pinned_device_pk`.
 Любой отказ закрывает соединение с конкретным
@@ -203,35 +203,41 @@ v1 не вводит wait-time bound. Plugin'ы, которым нужен deadl
 `Loopback` и `IntraNode` пропускают весь шаг — их trust
 финализирован на `notify_connect`.
 
+Формат заморожен — Ed25519-подпись над 232-байтовым payload'ом
+на `msg_id = 0x11` — это канонический v1 schema; альтернативные
+attestation-схемы регистрируются под отдельным extension-
+namespace `gn.security.attestation.*` рядом с v1, не вытесняя
+его. Дисспетчер живёт в kernel-коде (`core/kernel/
+attestation_dispatcher.{hpp,cpp}`) и не выносится в плагин,
+чтобы trust upgrade нельзя было подменить через подмену .so.
+Детальная формулировка — [attestation.en.md §11](../contracts/attestation.en.md).
+
 ---
 
-## Single-active-provider invariant
+## Distinct-provider-id invariant
 
-`SecurityRegistry` хранит ровно одного активного security-provider'а
-на всё ядро. Второй вызов `register_security` возвращает
-`GN_ERR_LIMIT_REACHED` без вытеснения существующего
-([security-trust.md §6](../contracts/security-trust.en.md)). Это
-гарантирует, что в node lifetime есть единственная конкретная
-crypto-реализация, которую может видеть оператор.
+`SecurityRegistry` admits N security providers concurrently
+через StackRegistry — одну entry per **distinct** `provider_id`.
+Повторный `register_security` под уже зарегистрированным id
+возвращает `GN_ERR_LIMIT_REACHED` без вытеснения incumbent'а
+([security-trust.en.md §6](../contracts/security-trust.en.md));
+свежий id присоединяется к admission set.
 
-На каждый трансклаcс существует одна допустимая комбинация:
+На каждый trust class kernel выбирает провайдера через
+`find_for_trust(trust)` — первый registered provider, чья
+`allowed_trust_mask` admits заявленный класс:
 
 - `Untrusted` / `Peer` обслуживаются провайдером, чей
   `allowed_trust_mask` включает соответствующий бит. У noise
   маска — все четыре класса; у null — только `Loopback | IntraNode`.
-- Попытка завести соединение в классе, который провайдер не
-  принимает, отклоняется на `SessionRegistry::create` с
-  `GN_ERR_INVALID_ENVELOPE` и инкрементом
-  `metrics.drop.trust_class_mismatch`.
+- Попытка завести соединение в классе, который ни один из
+  зарегистрированных провайдеров не принимает, отклоняется на
+  `SessionRegistry::create` с `GN_ERR_INVALID_ENVELOPE` и
+  инкрементом `metrics.drop.trust_class_mismatch`.
 
-Эта инвариантность опирается на `register_security` как на единственную
-точку входа. Plugin не может обойти регистр — kernel не линкует ни
-одного провайдера статически, в `core/` лежат только заголовки
+Plugin не может обойти регистр — kernel не линкует ни одного
+провайдера статически, в `core/` лежат только заголовки
 интерфейса. Источник конкретики — всегда загруженный плагин.
-
-В v1.x запланирован `StackRegistry` с per-trust-class селекцией
-(null для `Loopback`, noise для `Peer` на одном узле); до тех пор
-single-active — основной режим.
 
 ---
 
@@ -252,7 +258,7 @@ AEAD nonce монотонно увеличивается per-direction; повт
 Размер окна — деталь провайдера (noise-плагин использует 64).
 Window реализуется битовой маской, амортизированная стоимость
 проверки — O(1). Подробности в
-[security-trust.md §6](../contracts/security-trust.en.md).
+[security-trust.en.md §6](../contracts/security-trust.en.md).
 
 Attestation flow добавляет ещё один уровень replay-защиты:
 binding-поле в payload фиксирует `handshake_hash`, и попытка
@@ -272,7 +278,7 @@ Identity и trust — ортогональные понятия. Их легко
 переживающий замены устройств, плюс per-device ключ, который
 никогда не покидает машину. Mesh-адрес узла —
 `HKDF("goodnet/v1/address", user_pk || device_pk)` per
-[identity.md §3](../contracts/identity.en.md). Plugin'ы видят
+[identity.en.md §3](../contracts/identity.en.md). Plugin'ы видят
 только итоговый 32-байтовый `gn_ctx_local_pk`; кейпейры лежат в
 ядре и не пересекают plugin boundary.
 
@@ -285,7 +291,7 @@ trust'ы — каждое новое соединение проходит hands
 заново.
 
 Identity rotation
-([identity.md §6a](../contracts/identity.en.md)) меняет
+([identity.en.md §6a](../contracts/identity.en.md)) меняет
 local identity мгновенно через atomic shared_ptr swap, но trust на
 существующих соединениях остаётся прежним: kernel не разрывает их.
 Новые соединения открываются под новым device_pk.
@@ -347,14 +353,14 @@ nonce derivation — лежат в SDK noise-плагина и никогда н
 
 ## Cross-refs
 
-- [security-trust.md](../contracts/security-trust.en.md) — trust-class policy,
+- [security-trust.en.md](../contracts/security-trust.en.md) — trust-class policy,
   per-component admission masks, conn-id ownership gate
-- [attestation.md](../contracts/attestation.en.md) — wire payload, consumer
+- [attestation.en.md](../contracts/attestation.en.md) — wire payload, consumer
   steps, drop reasons
-- [identity.md](../contracts/identity.en.md) — two-component identity,
+- [identity.en.md](../contracts/identity.en.md) — two-component identity,
   address derivation, attestation cert format
-- [conn-events.md](../contracts/conn-events.en.md) — channel и kinds
-- [host-api.md](../contracts/host-api.en.md) §2 — `register_security`,
+- [conn-events.en.md](../contracts/conn-events.en.md) — channel и kinds
+- [host-api.en.md](../contracts/host-api.en.md) §2 — `register_security`,
   `notify_connect`, `kick_handshake`, `subscribe_conn_state`
 - [overview](overview.ru.md) — зоны ответственности и границы
 - [extension-model](extension-model.ru.md) — координация плагинов поверх

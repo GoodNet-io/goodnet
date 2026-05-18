@@ -2,7 +2,7 @@
 /// @brief  GoogleTest unit tests for `gn::core::SecurityRegistry`.
 ///
 /// Pins the StackRegistry contract from
-/// `docs/contracts/security-trust.md` §5: a kernel admits N security
+/// `docs/contracts/security-trust.en.md` §5: a kernel admits N security
 /// providers concurrently, each declaring `allowed_trust_mask`. The
 /// registry rejects a duplicate `provider_id`, but distinct ids
 /// (e.g. `gn.security.null` + `gn.security.noise`) coexist so the
@@ -44,9 +44,9 @@ TEST(SecurityRegistry_Args, RegisterRejectsNullVtable) {
     EXPECT_FALSE(r.is_active());
 }
 
-// ── single-active rule ───────────────────────────────────────────────────
+// ── register / coexistence rules ─────────────────────────────────────────
 
-TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
+TEST(SecurityRegistry_Register, FirstRegisterSucceeds) {
     SecurityRegistry r;
     int dummy_self = 0;
     EXPECT_FALSE(r.is_active());
@@ -62,7 +62,7 @@ TEST(SecurityRegistry_SingleActive, FirstRegisterSucceeds) {
     EXPECT_EQ(cur.self, &dummy_self);
 }
 
-TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
+TEST(SecurityRegistry_Register, DistinctIdsCoexist) {
     SecurityRegistry r;
     int self_a = 0, self_b = 0;
     ASSERT_EQ(r.register_provider("noise",
@@ -71,8 +71,7 @@ TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
 
     /// StackRegistry contract: registering a SECOND provider with a
     /// DISTINCT id (`null` alongside `noise`) succeeds — that is the
-    /// canonical "null on loopback + noise on peer" stack the v1.x
-    /// design promised.
+    /// canonical "null on loopback + noise on peer" composite stack.
     EXPECT_EQ(r.register_provider("null",
                                    make_dummy_vtable(), &self_b),
               GN_OK);
@@ -85,7 +84,7 @@ TEST(SecurityRegistry_SingleActive, DistinctIdsCoexist) {
     EXPECT_EQ(cur.self, &self_a);
 }
 
-TEST(SecurityRegistry_SingleActive, DuplicateIdRejected) {
+TEST(SecurityRegistry_Register, DuplicateIdRejected) {
     SecurityRegistry r;
     int self_a = 0, self_b = 0;
     ASSERT_EQ(r.register_provider("noise",
@@ -151,7 +150,7 @@ TEST(SecurityRegistry_Unregister, AllowsReregisterAfterRemoval) {
 
 // ── current() / is_active() ──────────────────────────────────────────────
 
-// ── find_for_trust (StackRegistry v1.x preview) ──────────────────────────
+// ── find_for_trust (multi-provider StackRegistry) ────────────────────────
 
 namespace {
 
@@ -239,7 +238,7 @@ TEST(SecurityRegistry_Current, EmptyOnFreshInstance) {
 // ── §3a vtable api_size validation ───────────────────────────────────────
 
 TEST(SecurityRegistry_VtableApiSize, RejectsZeroApiSize) {
-    /// `abi-evolution.md` §3a: zero-init vtable carries an api_size
+    /// `abi-evolution.en.md` §3a: zero-init vtable carries an api_size
     /// of zero, smaller than the kernel's minimum; reject before
     /// activation.
     SecurityRegistry r;

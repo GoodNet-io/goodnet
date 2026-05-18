@@ -54,7 +54,7 @@ Identity — persistent Ed25519 keypair. Public key (32 байта) — пост
 один раз, беречь.
 
 ```
-$ goodnet identity gen --out ~/.config/goodnet/identity.bin
+$ goodnetd identity gen --out ~/.config/goodnet/identity.bin
 ```
 
 Файл создаётся с правами `0600`. Это default path — bridge и listen
@@ -62,7 +62,7 @@ $ goodnet identity gen --out ~/.config/goodnet/identity.bin
 (typical systemd unit без `Environment=HOME=...`), `gssh` падает на
 `getpwuid(getuid())->pw_dir`.
 
-Адрес узла — base32-кодированный public key. `goodnet identity show`
+Адрес узла — base32-кодированный public key. `goodnetd identity show`
 печатает 52-символьную строку вида `QFK4...XYZ7`. Этими адресами
 обмениваются out-of-band: chat, paper, signed e-mail. Knowing peer-pk
 == knowing how to dial; обратный процесс невозможен.
@@ -95,7 +95,7 @@ stale-cache багов при ручной правке.
 Поля:
 
 - **`pk`** — обязательный. Base32-encoded 32-байтный public key пира,
-  ровно то, что выдаёт `goodnet identity show` на пировой стороне.
+  ровно то, что выдаёт `goodnetd identity show` на пировой стороне.
 - **`name`** — optional. Label для diagnostics; помогает оператору не
   путать пиров.
 - **`uris`** — массив транспортных URI. Первая URI в списке wins;
@@ -322,7 +322,7 @@ listen-side не загрузил Noise plugin.
 
 Текущая версия bridge использует kernel link-registry напрямую (раньше
 шёл через extension-API, который возвращает `GN_ERR_NOT_IMPLEMENTED`
-by design per `link.md` §8). Если эта диагностика появилась — значит
+by design per `link.en.md` §8). Если эта диагностика появилась — значит
 link-плагин не загрузился или bin/lib не в одном prefix'е. Проверить
 discovery paths (см. выше).
 
@@ -337,7 +337,7 @@ URI.
 
 Identity файл повреждён или wrong size: сбой записи, неправильный chmod
 (permission variant), accidental truncation. Решение: regen через
-`goodnet identity gen --out ~/.config/goodnet/identity.bin` или
+`goodnetd identity gen --out ~/.config/goodnet/identity.bin` или
 восстановление из бекапа. После regen pk меняется, peers нужно
 уведомить out-of-band.
 
@@ -365,7 +365,7 @@ Bridge не нашёл pk. Либо вписать вручную (см.
 
 - [install](../install.en.md) — production install бинарей и systemd unit'ов.
 - [deployment](./deployment.en.md) — server-side hardening, dedicated UID, file mode.
-- [gssh README](../../apps/gssh/README.md) — sibling repo doc, плотный command reference.
+- [gssh README](https://github.com/GoodNet-io/gssh) — sibling repo doc, плотный command reference.
 - [ecosystem](../architecture/ecosystem.ru.md) — где живёт gssh в семействе apps + plugins.
 - [security-flow](../architecture/security-flow.ru.md) — что именно делает Noise handshake.
 - [host-api-model](../architecture/host-api-model.ru.md) — почему bridge регистрирует
