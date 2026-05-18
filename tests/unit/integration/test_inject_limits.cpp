@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_inject_limits.cpp
+/// @file   tests/unit/integration/test_inject_limits.cpp
 /// @brief  Per-source rate limiter on the host_api inject paths.
 ///
 /// Drives `inject(LAYER_MESSAGE)` and `inject(LAYER_FRAME)` through the

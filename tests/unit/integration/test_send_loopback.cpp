@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_send_loopback.cpp
+/// @file   tests/unit/integration/test_send_loopback.cpp
 /// @brief  Full host_api round-trip through a paired in-memory transport.
 ///
 /// Builds two kernels (Alice and Bob) and pairs a minimal loopback

@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_host_api_chain.cpp
+/// @file   tests/unit/integration/test_host_api_chain.cpp
 /// @brief  Full kernel data path through the host_api boundary.
 ///
 /// Mirrors `test_inbound_chain.cpp` but drives the kernel through the

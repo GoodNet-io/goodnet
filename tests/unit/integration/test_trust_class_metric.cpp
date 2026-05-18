@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_trust_class_metric.cpp
+/// @file   tests/unit/integration/test_trust_class_metric.cpp
 /// @brief  Pin `metrics.drop.trust_class_mismatch` symmetry across
 ///         the two trust-class gates per `security-trust.en.md` §4 +
 ///         §9. The protocol-side gate at

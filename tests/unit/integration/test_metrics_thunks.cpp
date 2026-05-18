@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_metrics_thunks.cpp
+/// @file   tests/unit/integration/test_metrics_thunks.cpp
 /// @brief  `host_api->emit_counter` + `iterate_counters` slot wiring.
 ///
 /// Drives the metrics surface through the public host_api the same

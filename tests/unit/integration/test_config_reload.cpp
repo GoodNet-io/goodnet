@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_config_reload.cpp
+/// @file   tests/unit/integration/test_config_reload.cpp
 /// @brief  Hot reload pipeline: Kernel::reload_config →
 ///         on_config_reload signal → plugin re-reads via
 ///         host_api->subscribe(GN_SUBSCRIBE_CONFIG_RELOAD).

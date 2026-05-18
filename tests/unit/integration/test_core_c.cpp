@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_core_c.cpp
+/// @file   tests/unit/integration/test_core_c.cpp
 /// @brief  Host-embedding C ABI surface — drives `sdk/core.h` exactly
 ///         as a non-C++ host would. Asserts lifecycle ordering, NULL
 ///         handle defenses, double-init latch, identity availability

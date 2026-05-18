@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_backpressure_role.cpp
+/// @file   tests/unit/integration/test_backpressure_role.cpp
 /// @brief  Role gate on `host_api->notify_backpressure`.
 ///
 /// Per `docs/contracts/host-api.en.md` §2 and `backpressure.en.md` §3, only

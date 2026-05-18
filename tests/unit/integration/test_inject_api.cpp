@@ -1,4 +1,4 @@
-/// @file   tests/integration/test_inject_api.cpp
+/// @file   tests/unit/integration/test_inject_api.cpp
 /// @brief  Bridge-tier injection paths per host-api.en.md §8 — driven
 ///         through the host_api thunks exactly as a plugin would.
 
