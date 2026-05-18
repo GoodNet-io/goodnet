@@ -90,8 +90,7 @@ features:
   evidence: plugins/links/raw_inject/ present
 - name: Full WASM kernel build
   status: done
-  evidence: token 'EMSCRIPTEN' found (core/plugin/dl_compat.hpp:23:#if defined(__wasi__)
-    || defined(__EMSCRIPTEN__))
+  evidence: nix/goodnet-wasm.nix present
 - name: JS SDK + WebSocket bridge
   status: missing
   evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension

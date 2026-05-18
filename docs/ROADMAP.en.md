@@ -32,32 +32,33 @@ to refresh the table.
 | KV storage handler | ✓ done | plugins/handlers/store/ present |
 | Gossip sync handler | ✗ missing | plugins/handlers/gossip/ absent |
 | Offline outbound queue | ✗ missing | token 'outbound_queue' absent; token 'offline_queue' absent |
-| Subprocess SECURITY/HANDLER worker proxy | ✓ done | symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...) |
+| Subprocess SECURITY/HANDLER worker proxy | ✓ done | symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const gn_security_provider_vtable_t* RemoteHos...) |
 | Recv-side parallel decrypt | ✓ done | symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...) |
 | Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
-| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {) |
-| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...) |
+| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...) |
+| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manager.cpp:65:    const ManifestEntry* me = nullptr;) |
 | gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
-| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
-| Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...) |
+| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
+| Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...) |
 | Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
 | Fuzz harness | ✓ done | tests/fuzz/CMakeLists.txt present |
-| Coverage gating | ✗ missing | token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent |
+| Coverage gating | ✓ done | token 'gcov' found (CMakeLists.txt:142:option(GOODNET_COVERAGE "Build with gcov line+function cov...) |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
-| Full WASM kernel build | ✗ missing | nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent |
+| Full WASM kernel build | ✓ done | nix/goodnet-wasm.nix present |
 | JS SDK + WebSocket bridge | ✗ missing | plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension id 'gn.handler.web-api-proxy' not registered in plugins/ |
 | C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
 | io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
 | aarch64 Linux | ✓ done | nix/goodnet-aarch64-linux.nix present |
-| Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
+| macOS x86_64 / aarch64 (cross from Linux) | ✓ done | nix/goodnet-darwin.nix present |
+| Android build | ✓ done | nix/goodnet-android.nix present |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
-| Rust | ✓ done | bindings/rust/ — two-crate workspace (goodnet-sys + goodnet); bindgen at build time, safe RAII Core wrapper, flake output `goodnet-rust` |
-| Python | ✗ missing | bridges/goodnet-py/setup.py absent |
+| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
+| Python | ✓ done | bindings/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
 | Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
@@ -70,7 +71,7 @@ to refresh the table.
 | Goodnetd binary roadmap | ✗ missing | token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent |
 | CLI introspection tool | ✗ missing | tools/goodnetctl/ absent |
 | Config validator | ✗ missing | tools/config_validator/ absent |
-| TCP-TURN (RFC 6062) | ✗ missing | token 'TURN_TCP_ALLOCATE' absent; token 'turn_tcp_relay' absent |
+| TCP-TURN (RFC 6062) | ✓ done | token 'REQUESTED_TRANSPORT_TCP' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...) |
 <!-- /livedoc:roadmap_status_table -->
 
 ---
