@@ -38,6 +38,18 @@ rfcs:
     notes: "ChannelBind / ChannelData fast path §11, allocation,
             permissions, Send-Indication fallback."
 
+  - rfc: 6062
+    title: TURN Extensions for TCP Allocations
+    area: ICE / NAT traversal
+    status: partial
+    implementation: plugins/links/ice
+    notes: "REQUESTED-TRANSPORT=6 in ALLOCATE per §6; Connect /
+            ConnectionBind for per-peer data connections (§4.3-§4.5);
+            ConnectionAttempt indication parsed and dispatched to a
+            fresh data carrier; session-side wiring of the data-
+            carrier factory is operator-driven (TurnConfig::
+            requested_transport)."
+
   - rfc: 8838
     title: Trickle ICE for SDP
     area: ICE / NAT traversal
