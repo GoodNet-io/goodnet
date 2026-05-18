@@ -39,22 +39,28 @@ _Composer surface dispatch via bit-63 kComposerIdBit on conn-id._
 
 ## Что такое strategy plugin
 
-Strategy plugin — handler-плагин (или handler+extension combo),
-который реализует **одну конкретную policy** для cross-cutting
-задачи и expose'ит её через extension под предсказуемым
-namespace.
+Strategy plugin — отдельный plugin kind (`GN_PLUGIN_KIND_STRATEGY`
+в `sdk/plugin.h`), который реализует **одну конкретную policy** для
+cross-cutting задачи и expose'ит её через extension под
+предсказуемым namespace. Каркас даёт макрос `GN_STRATEGY_PLUGIN`
+(`sdk/cpp/strategy_plugin.hpp`); reference-реализация —
+`plugins/strategies/float_send_rtt/`.
 
 Конкретность важна. «Smart routing» — не strategy, потому что не
-объявляет что считает «smart». `gn.float-send.rtt` — strategy:
-«я переключаюсь на путь с минимальным observed RTT, измеряя через
-gn.heartbeat extension, switch threshold 25% degradation за 3
-seconds». Operator может выбрать или не выбрать эту конкретную
-policy сознательно.
+объявляет что считает «smart». `gn.strategy.rtt-optimal` —
+strategy: «я переключаюсь на путь с минимальным observed RTT,
+измеряя через gn.heartbeat extension, switch threshold 25%
+degradation за 3 seconds». Operator может выбрать или не выбрать
+эту конкретную policy сознательно.
 
 Каждая strategy:
 
-- Имеет **отдельный namespace** в форме `gn.<category>.<name>`
-- Реализуется отдельным plugin git'ом (`GoodNet-io/handler-<strategy>`)
+- Имеет **отдельный namespace** в форме `gn.<category>.<name>` —
+  SDK сейчас определяет `gn.strategy.*` family
+  (`GN_EXT_STRATEGY_PREFIX` в `sdk/extensions/strategy.h`);
+  per-category prefixes (`gn.dht.*`, `gn.relay.*`, `gn.discovery.*`)
+  — reserved namespaces
+- Реализуется отдельным plugin git'ом (`GoodNet-io/strategy-<name>`)
 - Документирует what it optimises, what signals it consumes,
   switch heuristic, failure modes — в plugin's own README
 - Регистрируется через `host_api->register_extension` со своим
@@ -169,8 +175,8 @@ Composition contract фиксируется в plugin's README. Перенос �
 
 ## Composition pattern
 
-Под планируемый `gn.float-send.*` family (см. §Reserved категории —
-v1 ships только `gn.strategy.*`, кэрнел walk'ает chain сам; см.
+Под `gn.float-send.*` family (см. §Reserved категории — пока в SDK
+определён только `gn.strategy.*`, kernel walk'ает chain сам; см.
 §«Принцип transparency» ниже) app выбирает конкретный strategy
 namespace явно:
 
@@ -326,10 +332,10 @@ gn_result_t (*on_path_event)(void* ctx,
 | `gn.strategy.*`   | Kernel          | Kernel             | Simple picker — strategy plugin staysless |
 | `gn.float-send.*` | Plugin          | Plugin             | Rich behaviours — caching, retry, fallback |
 
-`gn.float-send.*` (если когда-нибудь landed) может построиться
-поверх `gn.strategy.*` plugin'а как обёртка, добавляющая send
-pipe + per-peer cache. v1 ships только `gn.strategy.*`; кэрнел
-сам walk'ает chain через `host_api->send_to`.
+`gn.float-send.*` family может построиться поверх `gn.strategy.*`
+plugin'а как обёртка, добавляющая send pipe + per-peer cache.
+Сейчас в SDK определён только `gn.strategy.*`; kernel сам walk'ает
+chain через `host_api->send_to`.
 
 ### Reference impl — `gn.strategy.rtt-optimal`
 
