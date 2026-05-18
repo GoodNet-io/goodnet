@@ -961,6 +961,27 @@ gn_result_t link_send_thunk(void* self,
     return decode_code_reply(reply.payload, reply.flags);
 }
 
+// Scatter-gather batch send through the proxy. The remote LINK wire
+// protocol carries one `send` slot per frame, so the proxy loops over
+// the batch and issues a `send` PLUGIN_CALL for each entry. The
+// in-process atomicity contract (`link.en.md` §4 — single-writer per
+// connection) is preserved because the kernel write side serialises
+// PLUGIN_CALL frames through `write_mu_`; nothing else interleaves on
+// the same conn during the batch loop. The first failing send short-
+// circuits the rest so the caller observes the first non-OK code.
+gn_result_t link_send_batch_thunk(void* self,
+                                   gn_conn_id_t conn,
+                                   const gn_byte_span_t* batch,
+                                   size_t count) noexcept {
+    if (batch == nullptr && count != 0) return GN_ERR_NULL_ARG;
+    for (size_t i = 0; i < count; ++i) {
+        const auto rc = link_send_thunk(
+            self, conn, batch[i].bytes, batch[i].size);
+        if (rc != GN_OK) return rc;
+    }
+    return GN_OK;
+}
+
 gn_result_t link_disconnect_thunk(void* self,
                                    gn_conn_id_t conn) noexcept {
     auto* host = static_cast<RemoteHost*>(self);
@@ -996,6 +1017,7 @@ const gn_link_vtable_t* RemoteHost::link_vtable_proxy() noexcept {
     v.listen     = &link_listen_thunk;
     v.connect    = &link_connect_thunk;
     v.send       = &link_send_thunk;
+    v.send_batch = &link_send_batch_thunk;
     v.disconnect = &link_disconnect_thunk;
     v.destroy    = &link_destroy_thunk;
     return link_vtable_storage_.get();
