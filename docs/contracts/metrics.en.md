@@ -210,9 +210,9 @@ These responsibilities belong to exporter plugins, not the kernel:
 - **Reset / decrement.** Counters are monotonic. An exporter that
   needs a rate computes deltas across scrapes.
 
-A future revision may add a single `gauge` slot for absolute
-values that can decrease (active connection count, queue depth);
-v1 ships counters only.
+The contract surface defines counters only. A `gauge` slot for
+absolute values that can decrease (active connection count, queue
+depth) may be added in a future revision.
 
 ---
 

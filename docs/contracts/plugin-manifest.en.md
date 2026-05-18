@@ -212,9 +212,10 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
   operator who needs to permit a new plugin restarts the kernel
   with the extended manifest. Hot manifest reload may surface as
   a planned extension if a deployment drives it.
-- **Capability manifest.** A separate manifest will pin per-plugin
-  capabilities (filesystem, network, syscall) once the sandbox
-  layer lands. v1 ships only the integrity manifest.
+- **Capability manifest.** This contract surface covers only the
+  integrity manifest. A separate manifest pinning per-plugin
+  capabilities (filesystem, network, syscall) may land once the
+  sandbox layer is in place.
 - **Empty-manifest dev-mode.** The default surface is permissive:
   in-tree fixtures and the demo run with an empty manifest and
   every `dlopen` succeeds. Production deployments install a
@@ -264,11 +265,11 @@ The build infrastructure emits `<libfile>.json` next to each
 | Field | Type | Required | Notes |
 |---|---|---|---|
 | `meta.name` | string | yes | canonical plugin identifier, matches the binary's `gn_plugin_descriptor::name` |
-| `meta.type` | string | yes | one of `security`, `link`, `handler`, `protocol` |
+| `meta.type` | string | yes | one of `security`, `link`, `handler`, `strategy` (the loadable plugin kinds — protocols compile statically into the kernel and have no per-package JSON) |
 | `meta.version` | string | yes | semver triple (`MAJOR.MINOR.PATCH`) of the plugin distribution |
 | `meta.description` | string | yes | short single-line plugin summary; may be empty |
 | `meta.timestamp` | ISO-8601 UTC string | yes | when the manifest was generated |
-| `integrity.alg` | string | yes | hash algorithm; v1 ships `sha256` only |
+| `integrity.alg` | string | yes | hash algorithm; the contract surface accepts `sha256` only |
 | `integrity.hash` | 64-character lowercase hex | yes | SHA-256 of the `<libfile>.so` bytes |
 
 ### 8.2 Relation to the operator manifest (§2)

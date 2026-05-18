@@ -507,10 +507,11 @@ while the journal stays at INFO.
 
 ### 8.3 Format
 
-v1 ships `console` (human, optionally colored) and `json` (one
-record per line). JSON is the format for Loki / Elasticsearch /
-any aggregator consuming structured events. Console is the default
-for journald — `journalctl` renders timestamps itself.
+Two formats are defined: `console` (human, optionally colored)
+and `json` (one record per line). JSON is the format for Loki /
+Elasticsearch / any aggregator consuming structured events.
+Console is the default for journald — `journalctl` renders
+timestamps itself.
 
 ```json
 "log": {

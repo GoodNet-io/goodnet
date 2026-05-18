@@ -343,9 +343,10 @@ order — первая, что возвращает реальный `conn`, в�
 | `gn.strategy.*` | kernel | kernel | простой picker, kernel-mediated routing |
 | `gn.float-send.*` | plugin | plugin | rich behaviours — cache, retry, fallback |
 
-`gn.float-send.*` может построиться поверх `gn.strategy.*` как
-обёртка, добавляющая send pipe + per-peer state. v1 ships только
-`gn.strategy.*`; kernel walk'ает chain через `host_api->send_to`.
+`gn.float-send.*` family может построиться поверх `gn.strategy.*`
+как обёртка, добавляющая send pipe + per-peer state. Сейчас в SDK
+определён только `gn.strategy.*`; kernel walk'ает chain через
+`host_api->send_to`.
 
 **Reference impl.** `plugins/strategies/float_send_rtt/`
 регистрирует `gn.strategy.rtt-optimal` (v1.0). Минимум-RTT picker

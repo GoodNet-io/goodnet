@@ -297,11 +297,11 @@ The attack surface is bounded:
   path (§4) and do not surface the attestation flow at all, so
   the local-only deployment is unaffected.
 
-v1 ships without revocation. Operators rotate the leaked
-identity by reissuing a fresh `user_sk` outside the kernel and
-distributing the new `user_pk` to peers; until the rotation
-propagates the leaked `device_sk` is trusted up to the cert's
-expiry.
+The current contract surface defines no revocation channel.
+Operators rotate the leaked identity by reissuing a fresh
+`user_sk` outside the kernel and distributing the new `user_pk`
+to peers; until the rotation propagates the leaked `device_sk`
+is trusted up to the cert's expiry.
 
 Cross-session device-key pinning at the `ConnectionRegistry` level
 limits the leaked-key window to a single `remote_pk` value. The

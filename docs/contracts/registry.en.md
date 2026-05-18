@@ -376,8 +376,9 @@ keeps an entry until the process exits or the operator calls
 million distinct peers carries a million entries (≈128 MB at
 sixteen-byte keys plus bucket overhead). Either an LRU cap
 (operator-tunable through the limits surface) or a TTL keyed on
-cert `expiry` is a planned extension; v1 ships without either,
-so operators sizing memory budgets account for the upper bound.
+cert `expiry` is a planned extension; the current surface caps
+neither, so operators sizing memory budgets account for the upper
+bound.
 
 Closing the cross-session identity-change window complements the
 per-conn identity-stability check the dispatcher already runs: the
