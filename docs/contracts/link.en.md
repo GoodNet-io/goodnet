@@ -16,8 +16,8 @@ the TrustClass declaration responsibilities, and the write-serialisation
 guarantee.
 
 The kernel multiplexes many links concurrently — TCP, UDP, IPC, BLE,
-BT, WS, ICE, future QUIC. Each implements `gn_link_vtable_t`; the
-kernel sees them as interchangeable byte movers identified by a URI scheme.
+BT, WS, ICE, QUIC. Each implements `gn_link_vtable_t`; the kernel
+sees them as interchangeable byte movers identified by a URI scheme.
 
 ---
 
@@ -247,12 +247,11 @@ composition (WSS-over-TCP, TLS-over-TCP, ICE-over-UDP):
 | Composer | `composer_listen_port` | consumer → producer | read back the ephemeral L1 port after `composer_listen("...:0")` so a composer (WS / WSS / ICE) can surface a non-zero `listen_port()` to its own callers |
 
 Steady slots are functional in every baseline plugin in v1.0.x. The
-composer slots are reserved for the L2 family — WSS, TLS, ICE — and
-return `GN_ERR_NOT_IMPLEMENTED` on baseline links until the
-first L2 composer plugin lands and the contract is exercised
-end-to-end. Implementations always provide every slot pointer;
-unimplemented behaviour surfaces through the return code, never
-through a NULL slot.
+composer slots are populated by the L2 family — WSS, TLS, ICE, QUIC —
+and return `GN_ERR_NOT_IMPLEMENTED` on the L1 baseline links (TCP /
+UDP / IPC / WS) whose layer is the wire itself. Implementations
+always provide every slot pointer; unimplemented behaviour surfaces
+through the return code, never through a NULL slot.
 
 The slot inventory below is auto-extracted from
 `sdk/extensions/link.h` by `tools/livedoc.py`:
@@ -369,7 +368,7 @@ The canonical sequence inside a baseline link's `shutdown`:
 4. Stop the executor and join the worker thread.
 
 Implementation pattern lives in
-[`docs/impl/cpp/concurrency.md`](../impl/cpp/concurrency.ru.md).
+[`docs/impl/cpp/concurrency.ru.md`](../impl/cpp/concurrency.ru.md).
 
 Without step 3 the kernel-side `ConnectionRegistry` keeps the
 records past link shutdown. Per `plugin-lifetime.en.md` §4 those
