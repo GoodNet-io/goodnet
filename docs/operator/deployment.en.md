@@ -225,8 +225,8 @@ Field semantics:
   for the full URI scheme registry; transports register their own
   schemes (`tcp://`, `udp://`, `ipc://`, `tls://`, etc.).
 
-The catalogue is edited by hand — no auto-discovery in v1 by
-design; operators keep full control over which peers their node
+The catalogue is edited by hand — no auto-discovery by design;
+operators keep full control over which peers their node
 considers known.
 
 ### 4.3 Bootstrapping a mesh
@@ -247,7 +247,7 @@ source of truth via Ansible / salt / a config repo. The format is
 small enough that templating works cleanly.
 
 NAT traversal between nodes unable to dial each other directly
-lands with the relay / DHT plugins; in v1, a NAT'd peer reaches
+lands with the relay / DHT plugins. Today a NAT'd peer reaches
 out to a publicly-routable peer first (which caches the address)
 or ships through a well-known relay. See the project ROADMAP.
 
@@ -318,7 +318,7 @@ To add a new plugin to a running deployment:
    /etc/goodnet/node.json`.
 5. Start the unit: `sudo systemctl start goodnetd`.
 
-No hot-load path in v1: plugins join the kernel through
+No hot-load path today: plugins join the kernel through
 `PluginManager::load` once at startup. Subsequent additions
 require a restart.
 
@@ -592,9 +592,9 @@ Two `gn_limits_t` fields govern per-plugin behaviour:
   ID. Default 8. Combined with `max_relay_ttl`, caps amplification
   on relay paths.
 
-No per-plugin memory or CPU cap in v1. A plugin's footprint is
+No per-plugin memory or CPU cap today. A plugin's footprint is
 transitively bounded by the kernel limits above; tighter per-plugin
-sandboxing is v1.1+.
+sandboxing is a planned extension.
 
 ---
 
