@@ -14,6 +14,7 @@
 #   multi_turn_failover    primary TURN flaky    → secondary takes over
 #   no_udp_fallback        UDP blocked end-to-end→ relay-TCP+TLS
 #   port_prediction        symmetric-stride NAT  → predicted port pair
+#   quic_over_ice          quic://<peer-pk> URI  → QUIC handshake over ICE pair
 #   restricted_mtu         path MTU 900          → DPLPMTUD discovery
 #   symmetric_relay        A symmetric / B cone  → relay ↔ srflx
 #
@@ -69,14 +70,25 @@ for override in "${SCENARIOS[@]}"; do
     # Wait for both `.done` markers in the shared volume. The
     # peer harness writes them on first inbound byte from the
     # other peer; absence past TIMEOUT_S means the connect
-    # never completed.
+    # never completed. A `.fail` marker on either side is a
+    # hard error — the daemon refused to start or the connect
+    # attempt produced a deterministic error — so we break
+    # early rather than waste the full timeout.
     deadline=$(( $(date +%s) + TIMEOUT_S ))
+    a_fail=n; b_fail=n
     while [ "$(date +%s)" -lt "${deadline}" ]; do
         a_done=$(docker compose -f docker-compose.yml exec -T peer_a \
             test -f /var/lib/ice3-signal/A.done && echo y || echo n)
         b_done=$(docker compose -f docker-compose.yml exec -T peer_b \
             test -f /var/lib/ice3-signal/B.done && echo y || echo n)
+        a_fail=$(docker compose -f docker-compose.yml exec -T peer_a \
+            test -f /var/lib/ice3-signal/A.fail && echo y || echo n)
+        b_fail=$(docker compose -f docker-compose.yml exec -T peer_b \
+            test -f /var/lib/ice3-signal/B.fail && echo y || echo n)
         if [ "${a_done}" = "y" ] && [ "${b_done}" = "y" ]; then
+            break
+        fi
+        if [ "${a_fail}" = "y" ] || [ "${b_fail}" = "y" ]; then
             break
         fi
         sleep 1
@@ -85,6 +97,13 @@ for override in "${SCENARIOS[@]}"; do
     if [ "${a_done:-n}" = "y" ] && [ "${b_done:-n}" = "y" ]; then
         echo "  ${name}: PASS"
         PASS=$((PASS+1))
+    elif [ "${a_fail:-n}" = "y" ] || [ "${b_fail:-n}" = "y" ]; then
+        echo "  ${name}: FAIL (a.fail=${a_fail:-n} b.fail=${b_fail:-n})"
+        echo "  --- peer_a logs ---"
+        docker compose -f docker-compose.yml logs --tail=50 peer_a | sed 's/^/    /'
+        echo "  --- peer_b logs ---"
+        docker compose -f docker-compose.yml logs --tail=50 peer_b | sed 's/^/    /'
+        FAIL=$((FAIL+1))
     else
         echo "  ${name}: TIMEOUT (a=${a_done:-n} b=${b_done:-n})"
         echo "  --- peer_a logs ---"

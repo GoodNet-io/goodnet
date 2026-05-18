@@ -20,6 +20,7 @@ through the candidate the ICE FSM negotiated under that NAT shape.
 | `ice_lite_gateway` | full-cone | full-cone, lite | `srflx ↔ srflx`, only A drives | lite responder |
 | `port_prediction` | symmetric+stride | full-cone | `srflx ↔ srflx`, predicted port | symmetric NAT punch |
 | `no_udp_fallback` | full-cone, no UDP | full-cone, no UDP | `relay-tcp ↔ relay-tcp` | UDP blocked end-to-end |
+| `quic_over_ice` | full-cone | full-cone | `srflx ↔ srflx` via UDP | QUIC handshake over ICE-nominated UDP pair |
 
 The `all_relay` row doubles as a smoke test that TURN ChannelBind
 fast-path engages once both legs allocate channels.
@@ -53,6 +54,7 @@ ice-3node/
 │   ├── multi_turn_failover.yml
 │   ├── no_udp_fallback.yml
 │   ├── port_prediction.yml
+│   ├── quic_over_ice.yml
 │   ├── restricted_mtu.yml
 │   └── symmetric_relay.yml
 └── run_all.sh                 — orchestrate every scenario sequentially

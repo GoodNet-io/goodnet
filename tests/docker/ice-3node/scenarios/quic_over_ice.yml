@@ -1,0 +1,38 @@
+# Scenario: both peers full-cone NAT, but the upper layer is QUIC
+# rather than the default UDP send/recv loop. Each peer is
+# configured with a `quic://<peer-pk>` URI (no host:port — the
+# 64-hex peer-pk triggers carrier=ice routing inside the QUIC
+# composer, so the QUIC handshake rides the UDP socket that ICE
+# nominated rather than opening a fresh one). PATH_MTU is bumped
+# to 65000 to keep the OpenSSL QUIC handshake packets together
+# (matches the unit-test gating in plugins/links/quic/tests).
+#
+# Assertion: peer A's QUIC stream emits payload bytes that
+# peer B reads back, and each side writes the `.done` marker on
+# successful handshake + first inbound stream byte. Failure path
+# writes `.fail`, which the orchestrator surfaces as a hard fail
+# rather than a TIMEOUT.
+#
+# Coverage: this is the end-to-end half of RFC 9000 — the
+# unit tests in plugins/links/quic cover QUIC-over-UDP
+# (`QuicComposer.HandshakeAndPayloadRoundTrip`) and the carrier-
+# scheme route detection (`QuicLink.ComposerConnectIcePeerPkRoutes
+# ToIceCarrier`); this scenario exercises the full handshake over
+# an ICE-nominated pair, which is what rfc_coverage.yaml pins as
+# the missing piece for `status: full`.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+      PATH_MTU: "65000"
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+      PATH_MTU: "65000"
+
+  peer_a:
+    environment:
+      QUIC_OVER_ICE: "true"
+  peer_b:
+    environment:
+      QUIC_OVER_ICE: "true"

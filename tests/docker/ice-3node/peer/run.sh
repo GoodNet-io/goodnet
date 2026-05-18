@@ -48,6 +48,21 @@ set -eu
 : "${ICE_PORT_PREDICTION_STRIDE_MAX:=0}"
 : "${ICE_TCP_TLS_ONLY:=false}"
 
+# QUIC-over-ICE knob. When true, load gn.link.quic alongside
+# gn.link.ice and switch the default connect scheme to
+# `quic://<peer-pk>` — the 64-hex peer-pk in the URI triggers
+# carrier=ice routing inside the QUIC composer, so the handshake
+# rides the UDP socket ICE nominated rather than opening a fresh
+# one.
+: "${QUIC_OVER_ICE:=false}"
+if [ "${QUIC_OVER_ICE}" = "true" ]; then
+    QUIC_PLUGIN_ENTRY=', { "name": "goodnet_link_quic", "path": "/plugins/libgoodnet_link_quic.so" }'
+    CONNECT_SCHEME="quic"
+else
+    QUIC_PLUGIN_ENTRY=""
+    CONNECT_SCHEME="udp"
+fi
+
 mkdir -p "${SIGNAL_DIR}" /etc/goodnet /var/lib/goodnet
 
 # Build a JSON-array body for the stun/turn server lists by
@@ -89,6 +104,8 @@ sed \
     -e "s|@ICE_PMTU_ACTIVE_PROBING@|${ICE_PMTU_ACTIVE_PROBING}|g" \
     -e "s|@ICE_PORT_PREDICTION_STRIDE_MAX@|${ICE_PORT_PREDICTION_STRIDE_MAX}|g" \
     -e "s|@ICE_TCP_TLS_ONLY@|${ICE_TCP_TLS_ONLY}|g" \
+    -e "s|@QUIC_PLUGIN_ENTRY@|${QUIC_PLUGIN_ENTRY}|g" \
+    -e "s|@CONNECT_SCHEME@|${CONNECT_SCHEME}|g" \
     /etc/goodnet/peer.json.tmpl > /etc/goodnet/peer.json
 
 echo "[peer-${PEER_NAME}] config:"
@@ -97,9 +114,23 @@ cat /etc/goodnet/peer.json
 # Boot the kernel. Production builds wire the harness binary in
 # place of this stub which only prints + sleeps so the
 # scaffolding can be inspected with `docker compose logs peer_a`.
+#
+# On normal exit the harness has already written
+# `${SIGNAL_DIR}/${PEER_NAME}.done` for inbound-byte success.
+# A non-zero exit (or daemon refusal to start) drops a
+# `${SIGNAL_DIR}/${PEER_NAME}.fail` marker so the orchestrator
+# can distinguish hard failure from a slow connect.
 if command -v goodnetd >/dev/null 2>&1; then
     echo "[peer-${PEER_NAME}] starting goodnetd"
-    exec goodnetd run --config /etc/goodnet/peer.json
+    set +e
+    goodnetd run --config /etc/goodnet/peer.json
+    rc=$?
+    set -e
+    if [ "${rc}" -ne 0 ]; then
+        echo "[peer-${PEER_NAME}] goodnetd exited rc=${rc} — writing .fail"
+        : > "${SIGNAL_DIR}/${PEER_NAME}.fail"
+    fi
+    exit "${rc}"
 fi
 
 echo "[peer-${PEER_NAME}] NOTE: goodnetd binary not in PATH" \

@@ -8,7 +8,7 @@
     { "name": "goodnet_security_noise",    "path": "/plugins/libgoodnet_security_noise.so"    },
     { "name": "goodnet_link_udp",          "path": "/plugins/libgoodnet_link_udp.so"          },
     { "name": "goodnet_link_tcp",          "path": "/plugins/libgoodnet_link_tcp.so"          },
-    { "name": "goodnet_link_ice",          "path": "/plugins/libgoodnet_link_ice.so"          },
+    { "name": "goodnet_link_ice",          "path": "/plugins/libgoodnet_link_ice.so"          }@QUIC_PLUGIN_ENTRY@,
     { "name": "goodnet_handler_heartbeat", "path": "/plugins/libgoodnet_handler_heartbeat.so" }
   ],
   "ice": {
@@ -32,5 +32,8 @@
     "shared_dir": "@SIGNAL_DIR@",
     "self": "@PEER_NAME@",
     "peer": "@WAIT_FOR_PEER@"
+  },
+  "connect": {
+    "scheme": "@CONNECT_SCHEME@"
   }
 }
