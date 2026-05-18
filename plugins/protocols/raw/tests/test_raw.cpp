@@ -91,6 +91,26 @@ TEST(RawProtocol, DeframeReproducesPayload) {
     EXPECT_EQ(res.messages[0].receiver_pk[0], 0xAA);
 }
 
+TEST(RawProtocol, DeframeStampsMessageApiSize) {
+    /// Audit §W2-P G-8 — the produced `gn_message_t` must carry
+    /// `api_size = sizeof(gn_message_t)` so size-prefix-gated
+    /// readers (handlers built against a newer SDK) can verify
+    /// which fields are valid. Zero would be tolerated under the
+    /// v1.0 fallback at `sdk/types.h:412-416`, but the canonical
+    /// pattern (see `sdk/cpp/remote_plugin.cpp:830,864`) is to
+    /// stamp the field at production.
+    auto vt  = gn::protocol::raw::make_vtable();
+    auto ctx = make_ctx(GN_TRUST_LOOPBACK, 0xAA, 0xBB);
+    const std::uint8_t wire[] = {0x42};
+
+    gn_deframe_result_t res{};
+    ASSERT_EQ(vt.deframe(nullptr, ctx.get(), wire, sizeof(wire), &res), GN_OK);
+    ASSERT_EQ(res.count, 1u);
+    ASSERT_NE(res.messages, nullptr);
+    EXPECT_EQ(res.messages[0].api_size,
+              static_cast<std::uint32_t>(sizeof(gn_message_t)));
+}
+
 TEST(RawProtocol, DeframeWorksOnIntraNode) {
     auto vt  = gn::protocol::raw::make_vtable();
     auto ctx = make_ctx(GN_TRUST_INTRA_NODE, 0x01, 0x02);

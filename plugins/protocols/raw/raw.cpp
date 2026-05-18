@@ -51,6 +51,7 @@ gn_result_t deframe_thunk(void* /*self*/,
     /// is valid until the next deframe on the same thread.
     static thread_local gn_message_t scratch{};
     scratch = gn_message_t{};
+    scratch.api_size     = sizeof(gn_message_t);
     scratch.msg_id       = 1;  /// raw uses a fixed routing key
     scratch.payload      = bytes;
     scratch.payload_size = bytes_size;
