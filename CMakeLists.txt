@@ -49,6 +49,20 @@ add_compile_options(
     # `$<$<CXX_COMPILER_ID:GNU>>` so clang builds (asan/tsan/fuzz)
     # keep the diagnostic.
     "$<$<CXX_COMPILER_ID:GNU>:-Wno-free-nonheap-object>"
+    # Catch ODR violations between translation units at compile / LTO
+    # time. Stale build-cache `.o` files (ccache hash mismatch, ninja
+    # dep-graph gap during quick file-mtime changes, build-mode
+    # transitions) can leave a TU compiled against one view of a class
+    # while consumers see a different layout. Without these flags the
+    # mismatch only surfaces as a runtime heap-corruption crash deep
+    # in glibc malloc — found exactly that pattern on bench_udp /
+    # bench_quic / bench_ice before stale .o files were force-rebuilt.
+    # `-Wodr` runs at the LTO link stage; `-Wlto-type-mismatch` is the
+    # per-symbol diagnostic. Both GCC-only so far; clang has different
+    # ODR-checker plumbing (`-fsanitize=cfi-icall` is the rough analog
+    # but link-time-only).
+    "$<$<CXX_COMPILER_ID:GNU>:-Wodr>"
+    "$<$<CXX_COMPILER_ID:GNU>:-Wlto-type-mismatch>"
     # Strip the absolute build-tree prefix from `__FILE__` so log
     # output and assertion messages carry repo-relative paths
     # (`core/util/log.hpp:42`) instead of the full filesystem
