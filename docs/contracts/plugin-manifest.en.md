@@ -210,8 +210,8 @@ size()` stays zero, no `dlopen` ran, no rollback is needed.
   load.
 - **Manifest reload.** v1 has no `update_manifest` API. An
   operator who needs to permit a new plugin restarts the kernel
-  with the extended manifest. v1.1 may add hot manifest reload if
-  a deployment needs it.
+  with the extended manifest. Hot manifest reload may surface as
+  a planned extension if a deployment drives it.
 - **Capability manifest.** A separate manifest will pin per-plugin
   capabilities (filesystem, network, syscall) once the sandbox
   layer lands. v1 ships only the integrity manifest.
