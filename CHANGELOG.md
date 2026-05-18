@@ -6,6 +6,62 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Recv-side parallel decrypt — symmetric crypto fan-out
+
+The send path has fanned encrypt jobs through `CryptoWorkerPool`
+since rc1; the recv path stayed single-threaded inside
+`SecuritySession::decrypt_transport_stream`. Three new primitives
+close the asymmetry:
+
+`InlineCrypto::reserve_recv_nonces(k)` atomically grabs the next
+K recv nonces in one shot so K parallel decrypt jobs can fold
+their results back in delivery order without contention. The
+per-conn single-writer inbound-strand invariant keeps the
+reservation race-free.
+
+`InlineCrypto::make_decrypt_job(ciphertext, nonce, out)` builds a
+`CryptoWorkerPool::Job` that runs the AEAD decrypt at a given
+nonce into a caller-sized plaintext span. `result_len` encodes
+success (plaintext length) vs AEAD failure (0).
+
+`SecuritySession::decrypt_batch_transport` and its streaming
+wrapper `decrypt_batch_transport_stream` split N already-deframed
+ciphertext spans into N jobs through the pool and coalesce
+results. A batch of one falls through to the scalar
+`decrypt_transport_stream` path to skip the pool's latch +
+condvar overhead. Available only when `fast_crypto_active()`
+holds; otherwise the session defers to the provider's vtable
+decrypt slot.
+
+`notify_inbound_bytes` now routes the Transport-phase drain
+through `decrypt_batch_transport_stream`; multi-frame ticks fan
+out, single-frame ticks fall through transparently. At end-of-
+call routed plaintexts are reclaimed back into the session's
+`recycled_plaintext_pool_` (free-list capped at 16 entries) via
+`recycle_plaintext_buffers` so steady-state inbound traffic
+reuses buffer capacity instead of heap-churning one
+`std::vector<std::uint8_t>` per frame.
+
+Seven new tests pin the behaviour: three under `InlineCrypto`
+(`ReserveRecvNoncesAdvancesAtomically`,
+`MakeDecryptJobAuthenticatesMatchingCipher`,
+`MakeDecryptJobReportsAeadFailure`) and four under
+`SecuritySessionBatchDecrypt` (`RoundTripThroughPool`,
+`AeadFailureClearsOutput`, `StreamRoundTripBatchOfMany`,
+`RecyclePlaintextBuffersCapsAtMax`).
+
+### bench_showcase — gated on GOODNET_BENCH_SHOWCASE option
+
+The downgrade seam `SecuritySession::_test_clear_inline_crypto`
+is declared and defined only when `-DGOODNET_BENCH_SHOWCASE=ON`;
+the `bench_showcase` binary called the helper unconditionally,
+producing an LTO link failure on the default build. The showcase
+target now returns early with a skip message when the option is
+OFF, mirroring the existing skips for `GOODNET_BENCH_STRATEGIES`
+and `GOODNET_STATIC_PLUGINS`. Default `nix run .#build` is clean
+again; opting into the showcase propagates the macro kernel-wide
+so both ends of the seam see the symbol.
+
 ### Subprocess SECURITY + HANDLER vtable proxy synthesis
 
 `RemoteHost::security_vtable_proxy()` returns a synthesised
