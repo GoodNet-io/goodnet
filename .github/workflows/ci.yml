@@ -222,13 +222,118 @@ jobs:
           cd tests/docker/ice-3node
           docker compose down --volumes --remove-orphans || true
 
-# Sanitizers (ASan/UBSan, TSan) intentionally don't run on push. They
-# live on the developer's local box: `nix run .#test -- asan|tsan`
-# before push. Push CI is the smoke check — flake evaluates, vanilla
-# suite passes, plugin-verify matrix configures, ice-3node topology
-# comes up clean. clang-tidy lives in `.githooks/pre-commit`
-# (installable via `nix run .#setup`) so the diagnostic loop stays
-# at commit time, not CI time. Full sanitizer pass on a 2-core
-# GitHub-hosted runner is a 60-90 min critical-path tax that
-# magic-nix-cache only partially recovers; release artefacts ride
-# `release.yml` on tag push only.
+  fuzz-smoke:
+    # Builds the libFuzzer harness under `tests/fuzz/` with clang and
+    # runs each target for 10 s via `-max_total_time=10`. LibFuzzer
+    # exits non-zero on the first crash, so a regression that opens a
+    # parser crash on hostile input fails the job. Clang is not in the
+    # default dev shell — we stage `clang_19` through `nix shell`
+    # alongside the dev shell. If clang isn't reachable for any reason
+    # the step prints a skip line and exits 0; the gate stays advisory
+    # in that degraded state rather than blocking the whole CI run.
+    #
+    # Gated by the `fuzz` label OR push to main so PRs don't pay the
+    # cold-clang build tax (~3 min cold, magic-nix-cache amortises
+    # subsequent hits within the same workflow).
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    if: contains(github.event.pull_request.labels.*.name, 'fuzz') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Build fuzz targets (clang + libFuzzer)
+        run: |
+          nix shell nixpkgs#clang_19 --command bash -c '
+            command -v clang++ >/dev/null || {
+              echo "fuzz-smoke: clang not reachable — skipping"
+              exit 0
+            }
+            export CC=clang CXX=clang++
+            nix develop --command bash -c "
+              cmake -S . -B build-fuzz -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DGOODNET_BUILD_FUZZ=ON \
+                -DGOODNET_BUILD_TESTS=OFF
+              ninja -C build-fuzz \
+                fuzz_stun fuzz_gnet_deframe fuzz_ws_frame fuzz_mdns_dns
+            "
+          '
+      - name: Run fuzz targets (10 s each)
+        run: |
+          set -e
+          for t in fuzz_stun fuzz_gnet_deframe fuzz_ws_frame fuzz_mdns_dns; do
+            bin="build-fuzz/tests/fuzz/${t}"
+            if [ ! -x "$bin" ]; then
+              echo "── ${t}: binary missing (clang skipped earlier?)"
+              continue
+            fi
+            echo "── ${t}: 10 s smoke"
+            corpus_dir="tests/fuzz/corpus/${t}"
+            [ -d "$corpus_dir" ] || corpus_dir=""
+            "$bin" -max_total_time=10 -print_final_stats=1 ${corpus_dir}
+          done
+
+  asan-smoke:
+    # Vanilla kernel build under `-fsanitize=address,undefined
+    # -fno-sanitize-recover=all`, then ctest over the whole suite.
+    # Catches heap-UAF, OOB, and signed-overflow regressions that a
+    # gcc-debug ctest run masks. ~3-5 min on a 2-core hosted runner;
+    # magic-nix-cache pulls the toolchain from the cache so the
+    # critical path is the compile + run, not the dep fetch.
+    #
+    # Gated by the `sanitizer` label OR push to main. This replaces
+    # the prior "local-only" sanitizer policy — local box still gets
+    # `nix run .#test -- asan` for tight loops, but main no longer
+    # rides on the developer remembering to run it.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Run ctest under ASan + UBSan
+        run: nix run .#test -- asan
+
+  tsan-smoke:
+    # Same shape as `asan-smoke` but `-fsanitize=thread`. Catches the
+    # races the vanilla ctest can't see — data races on shared
+    # connection state, IO worker re-entry on the same plugin object,
+    # missing fences around futex-backed primitives. ~3-5 min.
+    #
+    # Same gating as `asan-smoke`: label `sanitizer` OR push to main.
+    # ASan + TSan share the label so one CI re-run covers both.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+        with:
+          use-flakehub: false
+      - name: Run ctest under TSan
+        run: nix run .#test -- tsan
+
+# CI gating policy:
+#
+#   * Every push to main + every PR to main: flake-check, livedoc-
+#     check, build-and-test (vanilla debug), plugin-verify matrix,
+#     windows-cross-build.
+#   * Push to main only (label-gated on PRs): bench-smoke (label
+#     `bench`), ice-3node (label `ice-test`), fuzz-smoke (label
+#     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`).
+#
+# ASan + TSan run on push to main (catch race / UAF that local dev
+# missed). Label-gated for PRs to keep PR CI time-bounded; tag the
+# PR with `sanitizer` if your change touches concurrency-sensitive
+# code. Local tight-loop still uses `nix run .#test -- asan|tsan`.
+# clang-tidy lives in `.githooks/pre-commit` and the cheap test gate
+# lives in `.githooks/pre-push` (both auto-wired by `nix run
+# .#setup`) so the fast-feedback diagnostic loop stays off the CI
+# critical path.
