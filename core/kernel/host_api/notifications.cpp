@@ -283,8 +283,8 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             return GN_OK;
         }
         if (session->phase() == SecurityPhase::Transport) {
-            const gn_result_t rc = session->decrypt_transport_stream(
-                wire_bytes, plaintexts);
+            const gn_result_t rc = session->decrypt_batch_transport_stream(
+                pc->kernel->crypto_pool(), wire_bytes, plaintexts);
             if (rc != GN_OK) return rc;
             if (plaintexts.empty()) return GN_OK;
         }
@@ -305,7 +305,10 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
         rec->protocol_id);
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
-    for (const auto& pt : plaintexts) {
+    /// `pt` is captured by-value reference; the buffers stay owned
+    /// by `plaintexts` so the recycle pass at end-of-call can hand
+    /// them back to the session's recycled-plaintext free list.
+    for (auto& pt : plaintexts) {
         auto deframed = layer->deframe(
             ctx, std::span<const std::uint8_t>(pt));
         if (!deframed.has_value()) {
@@ -381,6 +384,9 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             }
             route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
         }
+    }
+    if (session != nullptr && !plaintexts.empty()) {
+        session->recycle_plaintext_buffers(plaintexts);
     }
     return GN_OK;
 }
