@@ -374,10 +374,10 @@ The map is unbounded at v1: every peer that has ever attested
 keeps an entry until the process exits or the operator calls
 `clear_pinned_device_pk`. A long-running supernode that meets a
 million distinct peers carries a million entries (≈128 MB at
-sixteen-byte keys plus bucket overhead). A v1.1 release adds
-either an LRU cap (operator-tunable through the limits surface)
-or a TTL keyed on cert `expiry`; v1 ships without either, so
-operators sizing memory budgets account for the upper bound.
+sixteen-byte keys plus bucket overhead). Either an LRU cap
+(operator-tunable through the limits surface) or a TTL keyed on
+cert `expiry` is a planned extension; v1 ships without either,
+so operators sizing memory budgets account for the upper bound.
 
 Closing the cross-session identity-change window complements the
 per-conn identity-stability check the dispatcher already runs: the
