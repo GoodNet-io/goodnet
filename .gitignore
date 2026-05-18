@@ -154,6 +154,10 @@ tests/integration/
 !tests/**/CMakeLists.txt
 # Python-side unit suite for tools/livedoc/.
 !tests/**/*.py
+# LibFuzzer seed corpora under tests/fuzz/corpus/<target>/ are
+# binary by nature; whitelist the .bin extension so the seeds
+# stay tracked alongside the harness sources.
+!tests/fuzz/corpus/**/*.bin
 !pytest.ini
 
 # Examples

@@ -323,6 +323,16 @@ if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
+# ── Fuzz harness (LibFuzzer / clang only) ────────────────────────────────────
+# Opt-in target tree. The subdirectory probes the active compiler for
+# `-fsanitize=fuzzer` support and skips with a STATUS message when the
+# probe fails (gcc has no libFuzzer), so the configure stays green
+# under the default gcc toolchain.
+option(GOODNET_BUILD_FUZZ "Build LibFuzzer-driven fuzz targets" OFF)
+if(GOODNET_BUILD_FUZZ AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/fuzz/CMakeLists.txt")
+    add_subdirectory(tests/fuzz)
+endif()
+
 # ── Benchmark suite ──────────────────────────────────────────────────────────
 # Opt-in via GOODNET_BUILD_BENCH. Pulls google-benchmark from the dev
 # shell; the suite covers per-plugin throughput / latency / handshake,
@@ -375,6 +385,7 @@ message(STATUS "  Build type        : ${CMAKE_BUILD_TYPE}")
 message(STATUS "  Compiler          : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
 message(STATUS "  C++ standard      : ${CMAKE_CXX_STANDARD}")
 message(STATUS "  Tests             : ${GOODNET_BUILD_TESTS}")
+message(STATUS "  Fuzz harness      : ${GOODNET_BUILD_FUZZ}")
 message(STATUS "  Examples          : ${GOODNET_BUILD_EXAMPLES}")
 message(STATUS "  Bundled plugins   : ${GOODNET_BUILD_BUNDLED_PLUGINS}")
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
