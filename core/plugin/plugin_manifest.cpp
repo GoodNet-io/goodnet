@@ -67,6 +67,10 @@ using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
 
 }  // namespace
 
+std::string PluginManifest::canonical_path(const std::string& path) noexcept {
+    return canonicalise(path);
+}
+
 std::optional<PluginHash>
 PluginManifest::decode_hex(std::string_view hex) noexcept {
     if (hex.size() != 64) return std::nullopt;
@@ -314,6 +318,19 @@ gn_result_t PluginManifest::parse(std::string_view  json,
                 }
                 me.args.emplace_back(a.get<std::string>());
             }
+        }
+
+        // Optional `required`: when true, `PluginManager::load`
+        // refuses to complete unless this plugin registered. The
+        // field is a strict boolean — strings or integers fail parse
+        // so an operator typo does not silently collapse to false.
+        if (entry.contains("required")) {
+            const auto& rv = entry["required"];
+            if (!rv.is_boolean()) {
+                diagnostic = "manifest entry `required` must be a boolean";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            me.required = rv.get<bool>();
         }
 
         // Optional `quiescence_timeout_s`: per-plugin override for

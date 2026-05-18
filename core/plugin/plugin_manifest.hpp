@@ -78,6 +78,11 @@ struct ManifestEntry {
     ManifestKind kind{ManifestKind::Dynamic};
     std::vector<std::string> args;  ///< argv tail handed to a remote worker
     std::uint32_t quiescence_timeout_s{0};  ///< 0 ⇒ use global default
+    /// Required-plugin pin. When `true`, `PluginManager::load` refuses
+    /// to complete unless this entry's plugin registered successfully.
+    /// Default `false` preserves existing behaviour for entries that
+    /// omit the field. Parsed from the JSON `required` key.
+    bool         required{false};
 };
 
 /// Operator-supplied integrity allowlist.
@@ -188,6 +193,14 @@ public:
     /// `contains`/`verify` so relative and absolute spellings
     /// collapse to the same key.
     [[nodiscard]] const ManifestEntry* find(const std::string& path) const;
+
+    /// Canonicalise a path the same way `add_entry` and `parse` do.
+    /// Exposed so callers comparing live paths against manifest
+    /// entries collapse to the same key without rewriting the
+    /// filesystem rules. Falls back to the original string on
+    /// filesystem errors.
+    [[nodiscard]] static std::string canonical_path(
+        const std::string& path) noexcept;
 
     /// Decode a 64-character hex string into a 32-byte digest.
     /// Returns `nullopt` on length mismatch or non-hex characters.

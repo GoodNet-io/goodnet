@@ -206,6 +206,36 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         inst.registered = true;
     }
 
+    /// Phase 6: required-plugin pin enforcement. Every manifest entry
+    /// tagged `required = true` must have a corresponding loaded +
+    /// registered instance, identified by canonical path. A missing
+    /// required plugin returns `GN_ERR_INVALID_STATE` and rolls back
+    /// the whole load so no half-state survives.
+    if (!manifest_.empty()) {
+        std::vector<std::string> missing;
+        for (const auto& me : manifest_.entries()) {
+            if (!me.required) continue;
+            const bool present = std::any_of(
+                instances_.begin(), instances_.end(),
+                [&](const PluginInstance& inst) {
+                    return inst.registered &&
+                           PluginManifest::canonical_path(inst.path) ==
+                               me.path;
+                });
+            if (!present) missing.push_back(me.path);
+        }
+        if (!missing.empty()) {
+            std::string msg = "required plugin(s) not registered:";
+            for (const auto& p : missing) {
+                msg.push_back(' ');
+                msg.append(p);
+            }
+            note(msg);
+            rollback();
+            return GN_ERR_INVALID_STATE;
+        }
+    }
+
     active_ = true;
     return GN_OK;
 }

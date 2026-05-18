@@ -57,6 +57,7 @@ A schema-compatible reading:
 | `plugins[].kind` | `"dynamic"` or `"remote"` | no | linkage mode; defaults to `"dynamic"` |
 | `plugins[].args` | array of strings | no | argv tail handed to a `remote` worker; ignored for `dynamic` |
 | `plugins[].quiescence_timeout_s` | non-negative integer | no | per-plugin override of `PluginManager::set_quiescence_timeout`; zero (the default) selects the manager-wide value. Units: seconds. Useful for handlers that legitimately run long-tail async work (slow disk flush, large key derivation) and would otherwise leak their dlclose handle under the fast-quiescing default. |
+| `plugins[].required` | boolean | no | when `true`, `PluginManager::load` refuses to complete unless this entry's plugin registered successfully — returns `GN_ERR_INVALID_STATE` with the missing path in the diagnostic. Default `false` preserves the historical behaviour (any single entry may be absent without failing the whole load). Operators pin `gn.link.tcp` / `gn.link.tls` with `required: true` so a misconfigured deploy never silently runs without the kernel's minimum carrier set. |
 
 Parse rules:
 
