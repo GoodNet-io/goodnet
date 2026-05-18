@@ -58,19 +58,19 @@ keys:
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 425
+    line: 439
 - name: ice.pmtu_probe_concurrency
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 432
+    line: 446
 - name: ice.pmtu_probe_timeout_ms
   type: int64
   family: ice
   sources:
   - file: plugins/links/ice/link_ice.cpp
-    line: 428
+    line: 442
 - name: ice.reactive_interface_change
   type: int64
   family: ice
@@ -95,6 +95,18 @@ keys:
   sources:
   - file: plugins/links/ice/link_ice.cpp
     line: 332
+- name: ice.tcp_candidates_enabled
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 425
+- name: ice.tcp_so_timeout_ms
+  type: int64
+  family: ice
+  sources:
+  - file: plugins/links/ice/link_ice.cpp
+    line: 431
 - name: ice.turn_allocate_timeout_s
   type: int64
   family: ice
@@ -161,6 +173,36 @@ keys:
   sources:
   - file: plugins/links/tls/tls.cpp
     line: 447
+- name: raw_inject.default_msg_id
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 242
+- name: raw_inject.encode_msg_id
+  type: string
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 254
+- name: raw_inject.listen
+  type: string
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 235
+- name: raw_inject.max_payload
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 250
+- name: raw_inject.rate_limit_per_sec
+  type: int64
+  family: raw_inject
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 246
 - name: udp.new_conn_burst
   type: int64
   family: udp

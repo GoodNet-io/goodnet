@@ -45,6 +45,7 @@ to refresh the table.
 | Coverage gating | ✗ missing | token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
+| Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
 <!-- /livedoc:roadmap_status_table -->
 
 ---
@@ -170,6 +171,11 @@ Tracked outside the four directions above; no version gates them.
 - **Test vectors** — byte-precise fixtures for every wire format
   shipped in the tree, so a non-C reimplementation can prove
   compatibility without reading kernel code.
+- **Raw inject bridge** — `plugins/links/raw_inject` accepts plain
+  TCP clients and pipes their bytes through `host_api->inject(MESSAGE)`
+  so legacy services land on the mesh without recompiling against
+  the SDK. Plain-POSIX demo at `tests/demo/c_raw_inject/` proves the
+  client-side surface stays at libc.
 
 ---
 

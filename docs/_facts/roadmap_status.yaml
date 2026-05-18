@@ -85,3 +85,6 @@ features:
 - name: Test vectors
   status: missing
   evidence: tests/vectors/ absent; docs/test-vectors/ absent
+- name: Raw inject bridge
+  status: done
+  evidence: plugins/links/raw_inject/ present

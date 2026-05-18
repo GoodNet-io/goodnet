@@ -1,8 +1,8 @@
-total: 1372
+total: 1384
 groups:
 - tree: kernel
-  count: 870
-  files: 77
+  count: 871
+  files: 78
 - tree: plugins/handlers/dns
   count: 73
   files: 4
@@ -13,8 +13,8 @@ groups:
   count: 43
   files: 2
 - tree: plugins/links/ice
-  count: 117
-  files: 8
+  count: 121
+  files: 9
 - tree: plugins/links/ipc
   count: 8
   files: 2
@@ -23,6 +23,9 @@ groups:
   files: 1
 - tree: plugins/links/quic
   count: 11
+  files: 1
+- tree: plugins/links/raw_inject
+  count: 7
   files: 1
 - tree: plugins/links/tcp
   count: 14
@@ -58,10 +61,11 @@ by_plugin:
   handlers/dns: 73
   handlers/heartbeat: 11
   handlers/store: 43
-  links/ice: 117
+  links/ice: 121
   links/ipc: 8
   links/portmap: 8
   links/quic: 11
+  links/raw_inject: 7
   links/tcp: 14
   links/tls: 21
   links/udp: 21

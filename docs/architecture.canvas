@@ -3,9 +3,9 @@
 		{
 			"id": "g_public",
 			"type": "group",
-			"x": 2122,
+			"x": 2099,
 			"y": -270,
-			"width": 1760,
+			"width": 1759,
 			"height": 520,
 			"color": "5",
 			"label": "PUBLIC C ABI (sdk/core.h)"
@@ -73,7 +73,7 @@
 		{
 			"id": "g_security",
 			"type": "group",
-			"x": 6035,
+			"x": 6023,
 			"y": 334,
 			"width": 1195,
 			"height": 460,
@@ -103,7 +103,7 @@
 		{
 			"id": "g_ext_tests",
 			"type": "group",
-			"x": 5648,
+			"x": 5636,
 			"y": -210,
 			"width": 640,
 			"height": 400,
@@ -113,9 +113,9 @@
 		{
 			"id": "g_roadmap",
 			"type": "group",
-			"x": 6265,
+			"x": 6253,
 			"y": -170,
-			"width": 13893,
+			"width": 14347,
 			"height": 320,
 			"color": "4",
 			"label": "ROADMAP STATUS (auto, see roadmap_status.yaml)"
@@ -124,7 +124,7 @@
 			"id": "n_core_c",
 			"type": "text",
 			"text": "# gn_core — public C ABI\n`sdk/core.h` → `core/kernel/core_c.cpp`\n\n**Single entry point**\n\n```c\ngn_result_t gn_core_create(const gn_core_config_t*, gn_core_t**);\ngn_result_t gn_core_start(gn_core_t*);\nvoid        gn_core_stop(gn_core_t*);\nvoid        gn_core_destroy(gn_core_t*);\n```\n\nВсе языковые биндинги встают сверху одного C ABI.\nC++ удобства в `sdk/convenience.h` — header-only inline.",
-			"x": 2731,
+			"x": 2149,
 			"y": -170,
 			"width": 527,
 			"height": 340
@@ -133,7 +133,7 @@
 			"id": "n_config",
 			"type": "text",
 			"text": "# Config\n`sdk/types.h` (gn_config_value_type_t) →\n`core/config/`\n\nPlain JSON документ, валидируется на load.\nДоступ через `host_api->config_get(key, type, index, ...)`:\n- dotted-path (`links.tcp.listen`)\n- typed read с явной проверкой\n- reload через subscribe_config_reload\n\nLimits подмножеством — `host_api->limits()` отдаёт готовый\n`gn_limits_t*` на всю жизнь плагина.",
-			"x": 2172,
+			"x": 2753,
 			"y": -150,
 			"width": 482,
 			"height": 300
@@ -142,7 +142,7 @@
 			"id": "n_error",
 			"type": "text",
 			"text": "# gn_result_t\n`sdk/types.h`\n\n```c\ntypedef enum {\n  GN_OK = 0,\n  GN_ERR_NULL_ARG, GN_ERR_NOT_FOUND,\n  GN_ERR_INVALID_ENVELOPE,\n  GN_ERR_VERSION_MISMATCH,\n  GN_ERR_LIMIT_REACHED,\n  GN_ERR_OUT_OF_RANGE, GN_ERR_INVALID_STATE,\n  ...\n} gn_result_t;\n```\n\nОдин enum для каждого failure mode.\nКонтракт `host-api.en.md` фиксирует возврат на каждом slot'е.",
-			"x": 3335,
+			"x": 3312,
 			"y": -200,
 			"width": 497,
 			"height": 400
@@ -367,7 +367,7 @@
 			"id": "n_noise_plugin",
 			"type": "text",
 			"text": "# security-noise\n`plugins/security/noise/`\n\nIndependent git unit (mirror `GoodNet-io/security-noise`).\nGPL-2 + linking exception.\n\nРеализует `gn_security_provider_vtable_t`:\n- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n- libsodium для AEAD / KDF / random\n- export_transport_keys → передаёт ключи в kernel-side\n  `InlineCrypto` для post-handshake fast path\n\n`allowed_trust_mask = Untrusted | Peer` — ставится на провайдера\nи проверяется ядром на каждый `Sessions::create`.",
-			"x": 6085,
+			"x": 6073,
 			"y": 404,
 			"width": 520,
 			"height": 340
@@ -376,7 +376,7 @@
 			"id": "n_null_plugin",
 			"type": "text",
 			"text": "# security-null\n`plugins/security/null/`\n\nIndependent git unit. MIT.\n\nPassthrough provider — `needs_handshake = false`,\nencrypt/decrypt = identity copy.\n\n`allowed_trust_mask = Loopback | IntraNode` —\nпод канонический v1 stack включается **только** для локальных\nконн'ов; попытка взять null на `Untrusted` отбивается ядром\nсинхронно. Plain-text-on-untrusted в v1 unreachable.",
-			"x": 6683,
+			"x": 6671,
 			"y": 424,
 			"width": 497,
 			"height": 300
@@ -439,7 +439,7 @@
 			"id": "n_int_tests",
 			"type": "text",
 			"text": "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\nmirror `GoodNet-io/integration-tests`).\n\nCross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\nмомент.\n\nПодтягивается тем же `nix run .#setup` через slot map.\nЧисто-kernel \"integration\" тесты живут в `tests/unit/integration/`\nи линкуются с kernel напрямую.",
-			"x": 5698,
+			"x": 5686,
 			"y": -140,
 			"width": 540,
 			"height": 280
@@ -484,7 +484,7 @@
 			"id": "n_rm_nat_traversal_pipeline",
 			"type": "text",
 			"text": "# ✓ NAT-traversal pipeline\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6315,
+			"x": 6303,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -493,7 +493,7 @@
 			"id": "n_rm_multi_path_scheduler",
 			"type": "text",
 			"text": "# ✓ Multi-path scheduler\n\nstatus: **done**\n\nevidence: plugins/strategies/float_send_rtt/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6770,
+			"x": 6758,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -502,7 +502,7 @@
 			"id": "n_rm_directed_relay_direct_upgrade",
 			"type": "text",
 			"text": "# ✓ Directed relay → direct upgrade\n\nstatus: **done**\n\nevidence: plugins/links/ice/session.cpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7277,
+			"x": 7265,
 			"y": -100,
 			"width": 392,
 			"height": 200
@@ -511,7 +511,7 @@
 			"id": "n_rm_dplpmtud_active_path_mtu_probing",
 			"type": "text",
 			"text": "# ✓ DPLPMTUD active path-MTU probing\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7746,
+			"x": 7734,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -520,7 +520,7 @@
 			"id": "n_rm_multi_turn_fallback",
 			"type": "text",
 			"text": "# ✓ Multi-TURN fallback\n\nstatus: **done**\n\nevidence: token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8363,
+			"x": 8351,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -529,7 +529,7 @@
 			"id": "n_rm_ipv6_mdns_dual_stack",
 			"type": "text",
 			"text": "# ✓ IPv6 mDNS dual-stack\n\nstatus: **done**\n\nevidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8980,
+			"x": 8968,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -538,7 +538,7 @@
 			"id": "n_rm_port_mapping_upnp_pcp_nat_pmp",
 			"type": "text",
 			"text": "# ✓ Port mapping (UPnP / PCP / NAT-PMP)\n\nstatus: **done**\n\nevidence: plugins/links/portmap/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 9614,
+			"x": 9602,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -547,7 +547,7 @@
 			"id": "n_rm_kademlia_style_dht",
 			"type": "text",
 			"text": "# ✗ Kademlia-style DHT\n\nstatus: **missing**\n\nevidence: plugins/handlers/kademlia/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 10084,
+			"x": 10072,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -556,7 +556,7 @@
 			"id": "n_rm_address_based_forwarding",
 			"type": "text",
 			"text": "# ✗ Address-based forwarding\n\nstatus: **missing**\n\nevidence: plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 10539,
+			"x": 10527,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -565,7 +565,7 @@
 			"id": "n_rm_kv_storage_handler",
 			"type": "text",
 			"text": "# ✓ KV storage handler\n\nstatus: **done**\n\nevidence: plugins/handlers/store/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11156,
+			"x": 11145,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -574,7 +574,7 @@
 			"id": "n_rm_gossip_sync_handler",
 			"type": "text",
 			"text": "# ✗ Gossip sync handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/gossip/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11611,
+			"x": 11599,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -583,7 +583,7 @@
 			"id": "n_rm_offline_outbound_queue",
 			"type": "text",
 			"text": "# ✗ Offline outbound queue\n\nstatus: **missing**\n\nevidence: token 'outbound_queue' absent; token 'offline_queue' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 12066,
+			"x": 12054,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -592,7 +592,7 @@
 			"id": "n_rm_subprocess_security_handler_worker_proxy",
 			"type": "text",
 			"text": "# ✓ Subprocess SECURITY/HANDLER worker proxy\n\nstatus: **done**\n\nevidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 12683,
+			"x": 12671,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -601,7 +601,7 @@
 			"id": "n_rm_recv_side_parallel_decrypt",
 			"type": "text",
 			"text": "# ✓ Recv-side parallel decrypt\n\nstatus: **done**\n\nevidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 13300,
+			"x": 13289,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -610,7 +610,7 @@
 			"id": "n_rm_link_capability_gate",
 			"type": "text",
 			"text": "# ✓ Link capability gate\n\nstatus: **done**\n\nevidence: core/kernel/link_capability.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 13918,
+			"x": 13905,
 			"y": -100,
 			"width": 407,
 			"height": 200
@@ -619,7 +619,7 @@
 			"id": "n_rm_dynamicruntime_dlsym_cache",
 			"type": "text",
 			"text": "# ✓ DynamicRuntime dlsym cache\n\nstatus: **done**\n\nevidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 14401,
+			"x": 14390,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -628,7 +628,7 @@
 			"id": "n_rm_required_plugin_manifest_pinning",
 			"type": "text",
 			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 15018,
+			"x": 15007,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -637,7 +637,7 @@
 			"id": "n_rm_gn_core_unload_plugin_hot_reload",
 			"type": "text",
 			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 15636,
+			"x": 15624,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -646,7 +646,7 @@
 			"id": "n_rm_subprocess_host_call_slot_completion",
 			"type": "text",
 			"text": "# ✓ Subprocess HOST_CALL slot completion\n\nstatus: **done**\n\nevidence: symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 16253,
+			"x": 16242,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -655,7 +655,7 @@
 			"id": "n_rm_per_slot_reply_timeout_override",
 			"type": "text",
 			"text": "# ✓ Per-slot reply-timeout override\n\nstatus: **done**\n\nevidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 16871,
+			"x": 16859,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -664,7 +664,7 @@
 			"id": "n_rm_wire_codec_gn_err_wire_decode",
 			"type": "text",
 			"text": "# ✓ Wire codec GN_ERR_WIRE_DECODE\n\nstatus: **done**\n\nevidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 17489,
+			"x": 17476,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -673,7 +673,7 @@
 			"id": "n_rm_fuzz_harness",
 			"type": "text",
 			"text": "# ✓ Fuzz harness\n\nstatus: **done**\n\nevidence: tests/fuzz/CMakeLists.txt present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 18106,
+			"x": 18093,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -682,7 +682,7 @@
 			"id": "n_rm_coverage_gating",
 			"type": "text",
 			"text": "# ✗ Coverage gating\n\nstatus: **missing**\n\nevidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 18560,
+			"x": 18548,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -691,7 +691,7 @@
 			"id": "n_rm_plugin_templates_and_scaffolder",
 			"type": "text",
 			"text": "# ✓ Plugin templates and scaffolder\n\nstatus: **done**\n\nevidence: nix/plugin.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 19178,
+			"x": 19166,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -700,9 +700,18 @@
 			"id": "n_rm_test_vectors",
 			"type": "text",
 			"text": "# ✗ Test vectors\n\nstatus: **missing**\n\nevidence: tests/vectors/ absent; docs/test-vectors/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 19633,
+			"x": 19621,
 			"y": -100,
 			"width": 475,
+			"height": 200
+		},
+		{
+			"id": "n_rm_raw_inject_bridge",
+			"type": "text",
+			"text": "# ✓ Raw inject bridge\n\nstatus: **done**\n\nevidence: plugins/links/raw_inject/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 20174,
+			"y": -100,
+			"width": 377,
 			"height": 200
 		}
 	],

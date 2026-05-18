@@ -91,6 +91,10 @@ features:
         - plugin_exists: tests/vectors
         - plugin_exists: docs/test-vectors
 
+  "Raw inject bridge":
+    rule:
+      plugin_exists: plugins/links/raw_inject
+
   "DPLPMTUD active path-MTU probing":
     rule:
       all:
