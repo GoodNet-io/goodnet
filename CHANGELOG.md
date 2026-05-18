@@ -6,6 +6,72 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Bench-CI smoke + regression gate
+
+A new `bench-smoke` job in `.github/workflows/ci.yml` builds
+`bench_real_e2e`, `bench_tcp`, and `bench_udp` in Release mode,
+runs each for ~0.3 s with `--benchmark_format=json`, and either
+compares against a committed baseline JSON via
+`tools/bench_compare.py --threshold-pct 15` (failing on
+regression beyond the threshold) or — when no baseline file is
+present — runs in smoke mode via the new
+`tools/bench_summary.py` helper that just logs the per-benchmark
+numbers. Gated by the `bench` label on PRs or push to main so
+PRs that don't touch perf-relevant code skip the Release-build
+tax. JSON artefacts upload on every run for post-hoc review.
+
+`bench/baselines/README.md` documents the ratchet workflow: the
+baseline is intentionally manual, refreshed in the same commit
+that legitimately changes performance. Auto-rolling baselines
+would mask unintentional regressions, so the gate is the review
+mechanism.
+
+### gn_core_query_extension_checked — public C-ABI surface tests
+
+Three new tests under `CoreC.Query*` exercise
+`gn_core_query_extension_checked(core, name, version)` — the
+public C-ABI entry that external clients (raw-socket adapters,
+FFI bindings, the planned C-inject demo) use to consume the
+kernel's extension registry. Previously the surface was only
+covered against NULL handles. Happy path queries
+`gn.link.capability` and exercises its `get` vtable slot; the
+two negative paths confirm an unknown name returns NULL and a
+future producer-version pin fails the lookup rather than
+silently returning a partial vtable.
+
+### ICE plugin — multi-TURN fallback (sub-repo)
+
+`plugins/links/ice` gains sequential walk through
+`IceConfig::turn_servers` in `gather_relay` — the first
+`TURN ALLOCATE` success wins, remaining entries stay as backups.
+A `turn_backup_timer_` fires every
+`cfg_.turn_backup_interval_s` (default 30 s) to probe one
+backup; on a successful backup ALLOCATE plus a degraded primary
+(via `TurnClient::is_healthy()`), failover swaps the relay
+candidate. Rate-limited to one failover per
+`cfg_.turn_failover_min_interval_s` (default 60 s) to avoid
+oscillation. Per-attempt deadline via
+`turn_allocate_timeout_s` (default 5 s).
+
+Two new ICE tests
+(`IceMultiTurn.MultiTurnFallsOverToSecondOnPrimaryFailure`,
+`IceMultiTurn.MultiTurnBackupReattemptedAfterInterval`) exercise
+the fallover + backup-probe paths.
+
+### ICE plugin — IPv6 mDNS dual-stack (sub-repo)
+
+`plugins/links/ice/mdns.{cpp,hpp}` now binds both `224.0.0.251`
+(IPv4) and `ff02::fb` (IPv6) multicast groups via
+`SO_REUSEPORT` so the responder coexists with system mDNS
+daemons. Per-interface `IPV6_JOIN_GROUP` for every AF_INET6
+address returned by `getifaddrs` (IPv6 multicast routing is
+scoped per interface). AAAA queries route to the new IPv6
+socket; ANY queries get both A and AAAA when both exist.
+`ice.mdns_obfuscate_host_candidates` now covers AF_INET6 host
+candidates — IPv6-only home networks (T-Mobile cellular, IPv6
+CG-NAT setups) no longer leak the host's private IPv6 address
+as a raw candidate.
+
 ### Link capability probe + required-plugin manifest pin
 
 `core/kernel/link_capability.{cpp,hpp}` adds a host-side bind probe
