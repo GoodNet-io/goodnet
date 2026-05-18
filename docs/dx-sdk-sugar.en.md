@@ -14,14 +14,17 @@ probably belongs here — open an issue.
 
 ## Lifecycle macros
 
-### `GN_LINK_PLUGIN(Class, "plugin_name", "version")`
+### `GN_LINK_PLUGIN(Class, "scheme")`
 
 Header: `<sdk/cpp/link_plugin.hpp>`
 
 Expands to the six `gn_plugin_*` extern "C" entry points + the
-optional `gn_plugin_descriptor`. Class needs `set_host_api(api)`
-and the usual link-plugin methods (`listen`, `connect`, `send`,
-…). See `plugins/links/tcp/plugin_entry.cpp` for a 1-line example.
+optional `gn_plugin_descriptor`. The plugin name in the descriptor
+is derived as `"goodnet_link_" + scheme` automatically; the macro
+takes only the scheme literal, not a separate name / version pair.
+Class needs `set_host_api(api)` and the usual link-plugin methods
+(`listen`, `connect`, `send`, …). See
+`plugins/links/tcp/plugin_entry.cpp` for a 1-line example.
 
 ### `GN_HANDLER_PLUGIN(Class, "plugin_name", "version")`
 
