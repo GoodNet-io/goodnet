@@ -124,11 +124,11 @@ jobs:
     # image, brings up STUN + TURN + 2 NAT routers + 2 peers per
     # scenario, polls the shared signal volume for done-markers, tears
     # down between scenarios. The peer-side harness binary that writes
-    # the markers is a separate slice — until it lands this job
-    # verifies the topology comes up cleanly (compose `up` succeeds,
-    # no container exits early) and is gated by the `ice-test` label
-    # so PRs without ICE-touching changes don't pay the docker-build
-    # tax (~5-10 min cold).
+    # the markers is planned — until it lands this job verifies the
+    # topology comes up cleanly (compose `up` succeeds, no container
+    # exits early) and is gated by the `ice-test` label so PRs without
+    # ICE-touching changes don't pay the docker-build tax (~5-10 min
+    # cold).
     runs-on: ubuntu-latest
     timeout-minutes: 25
     if: contains(github.event.pull_request.labels.*.name, 'ice-test') || github.event_name == 'push'
