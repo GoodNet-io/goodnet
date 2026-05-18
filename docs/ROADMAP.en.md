@@ -41,15 +41,25 @@ to refresh the table.
 A pair of nodes finds each other and sustains a path even when neither
 side has a public address.
 
-- **NAT-traversal pipeline** — AutoNAT-style mapping classification,
-  relay candidate selection. Builds on the `gn.heartbeat` extension
-  (RTT measurement) by adding a NAT-mapping classifier on top.
+- **NAT-traversal pipeline** — full ICE agent (host / server-reflexive
+  via STUN / relayed via TURN), mDNS peer discovery, and pair-promotion
+  nomination shipped in `plugins/links/ice`. Builds on the
+  `gn.heartbeat` extension (RTT measurement).
 - **Multi-path scheduler** — TCP, UDP, WebSocket and TLS in parallel
   per connection so a path failure switches over without dropping the
   session.
-- **Directed relay → direct upgrade** — connection opens through a
-  relay, upgrades to a direct path once both ends have discovered each
-  other.
+- **Directed relay → direct upgrade** — TURN-relayed pair becomes the
+  initial path, ICE nomination upgrades to a direct host/srflx pair
+  once connectivity checks pass.
+- **DPLPMTUD active path-MTU probing** — RFC 8899 search through
+  `plugins/links/ice/path_mtu.hpp`, fragment-avoiding probe ladder
+  bounded by the carrier MTU.
+- **Multi-TURN fallback** — `ice.turn_servers` list with primary +
+  backups, periodic re-probe controlled by
+  `ice.turn_backup_interval_s`.
+- **IPv6 mDNS dual-stack** — `ff02::fb` multicast listener alongside
+  the legacy IPv4 `224.0.0.251` socket for `.local.` discovery on
+  v6-only networks.
 
 These ride on top of the existing link / security / protocol layers
 through plugins; the kernel does not grow new surfaces.
@@ -96,6 +106,34 @@ security boundary.
   `host_api->emit_counter` / `iterate_counters` per
   [`metrics.en.md`](contracts/metrics.en.md); Prometheus and OTLP exporters
   that consume it live as plugins, not kernel code.
+- **Subprocess SECURITY/HANDLER worker proxy** — `security_vtable_proxy`
+  in `core/plugin/remote_host.hpp` routes security/handler vtable
+  callbacks through the remote-plugin wire protocol so untrusted
+  plugins run in a subprocess sandbox.
+- **Recv-side parallel decrypt** — `decrypt_batch_transport` in
+  `core/security/session.hpp` decrypts a batch of inbound transport
+  frames per connection without giving up the noise-replay window.
+- **Link capability gate** — `core/kernel/link_capability.hpp`
+  enforces which carriers a plugin is allowed to expose.
+- **DynamicRuntime dlsym cache** — `DynamicPluginSymbols` in
+  `core/plugin/runtimes/dynamic.hpp` resolves every plugin entry
+  point once at load and reuses the cached pointers.
+- **Required-plugin manifest pinning** — `ManifestEntry::required`
+  in `core/plugin/plugin_manifest.hpp` lets a node operator pin a
+  set of plugins as mandatory; missing required plugins fail
+  startup instead of silently degrading.
+- **gn_core_unload_plugin hot-reload** — explicit `core_c.h` entry
+  point for plugin unload, matched against the load path so hot
+  reload is a contract, not a race.
+- **Subprocess HOST_CALL slot completion** — `NOTIFY_CONNECT` and
+  three sibling slots in `sdk/remote/slots.h` complete the four-slot
+  HOST_CALL surface that subprocess workers need.
+- **Per-slot reply-timeout override** — `set_reply_timeout_for_slot`
+  lets a remote-host caller widen the per-slot deadline for slow
+  handlers without inflating the global default.
+- **Wire codec GN_ERR_WIRE_DECODE** — the wire codec returns a
+  distinct error so callers can tell a malformed frame apart from a
+  transport-level failure.
 
 ---
 

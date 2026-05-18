@@ -21,6 +21,7 @@ features:
   "NAT-traversal pipeline":
     rule:
       any:
+        - plugin_exists: plugins/links/ice
         - plugin_exists: plugins/extensions/nat-traversal
         - extension_registered: gn.nat
     partial_if:
@@ -37,6 +38,7 @@ features:
   "Directed relay → direct upgrade":
     rule:
       any:
+        - file_exists: plugins/links/ice/session.cpp
         - plugin_exists: plugins/extensions/relay-upgrade
         - extension_registered: gn.relay
 
@@ -88,3 +90,59 @@ features:
       any:
         - plugin_exists: tests/vectors
         - plugin_exists: docs/test-vectors
+
+  "DPLPMTUD active path-MTU probing":
+    rule:
+      all:
+        - plugin_exists: plugins/links/ice
+        - file_exists: plugins/links/ice/path_mtu.hpp
+
+  "Multi-TURN fallback":
+    rule:
+      all:
+        - kernel_feature: turn_servers
+        - kernel_feature: turn_backup_interval_s
+
+  "IPv6 mDNS dual-stack":
+    rule:
+      kernel_feature: "ff02::fb"
+
+  "Subprocess SECURITY/HANDLER worker proxy":
+    rule:
+      symbol_in_kernel: security_vtable_proxy
+
+  "Recv-side parallel decrypt":
+    rule:
+      symbol_in_kernel: decrypt_batch_transport
+
+  "Link capability gate":
+    rule:
+      file_exists: core/kernel/link_capability.hpp
+
+  "DynamicRuntime dlsym cache":
+    rule:
+      symbol_in_kernel: DynamicPluginSymbols
+
+  "Required-plugin manifest pinning":
+    rule:
+      any:
+        - symbol_in_kernel: ManifestEntry
+        - file_exists: core/plugin/plugin_manifest.hpp
+
+  "gn_core_unload_plugin hot-reload":
+    rule:
+      symbol_in_kernel: gn_core_unload_plugin
+
+  "Subprocess HOST_CALL slot completion":
+    rule:
+      any:
+        - symbol_in_kernel: GN_WIRE_HOST_SLOT_NOTIFY_CONNECT
+        - file_exists: sdk/remote/slots.h
+
+  "Per-slot reply-timeout override":
+    rule:
+      symbol_in_kernel: set_reply_timeout_for_slot
+
+  "Wire codec GN_ERR_WIRE_DECODE":
+    rule:
+      symbol_in_kernel: GN_ERR_WIRE_DECODE
