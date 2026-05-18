@@ -91,10 +91,11 @@ rfcs:
     area: QUIC
     status: partial
     implementation: plugins/links/quic
-    notes: "ngtcp2-backed; works over plain UDP carrier. Carrier
-            scheme detect: 64-hex peer-pk → gn.link.ice carrier
-            (route detection only, end-to-end handshake over ICE
-            nominated pair tracked in ROADMAP)."
+    notes: "OpenSSL-3.6-native QUIC (OSSL_QUIC_server_method /
+            OSSL_QUIC_client_method + SSL_new_stream); works over
+            plain UDP carrier. Carrier scheme detect: 64-hex peer-pk
+            → gn.link.ice carrier (route detection only, end-to-end
+            handshake over ICE nominated pair tracked in ROADMAP)."
 
   - rfc: 8446
     title: TLS 1.3
