@@ -2,7 +2,13 @@
 
 Forgejo is the sole CI. The workflow files at
 `.forgejo/workflows/{ci,dev,release}.yml` target the runner label
-`nixos:host` and assume Nix is preinstalled on `PATH`. The
+`nixos` (declared on the runner as `nixos:host`, where the `:host`
+suffix selects the host-mode executor — workflow `runs-on:` references
+only the bare label) and assume Nix is preinstalled on `PATH`. The
+host-mode executor means the system `/etc/nix/nix.conf` substituters
+(including the local `nix-serve` at `http://localhost:5555` with
+public key `goodnet-cache.local:sMamNw9G84OcJPGUzIylgdKapN5raFscLfDiqXe8ao4=`)
+are used by CI builds directly — no per-workflow cache action needed. The
 `.github/workflows/` directory is empty by design — no GitHub
 Actions runs anything for this repo. Release artefacts are built on
 the Forgejo runner on tag push and published to GitHub Releases via
@@ -108,7 +114,7 @@ A throwaway workflow to confirm Nix is on `PATH` inside the runner:
 on: { workflow_dispatch: {} }
 jobs:
   ping:
-    runs-on: nixos:host
+    runs-on: nixos
     steps:
       - uses: actions/checkout@v4
       - run: nix --version

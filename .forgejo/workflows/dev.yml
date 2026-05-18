@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: nixos:host
+    runs-on: nixos
     steps:
       - uses: actions/checkout@v4
 

@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   flake-check:
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
@@ -41,7 +41,7 @@ jobs:
     # `tests/tools` so the python-side gates (livedoc parser
     # contract, bench-regression comparator) catch a refactor
     # that would otherwise slip past the C++ build-and-test job.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -51,7 +51,7 @@ jobs:
         run: nix develop --command pytest
 
   build-and-test:
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
     # produces an artefact standalone — i.e. without the kernel
     # monorepo's CMake tree present. Catches `find_package(GoodNet)`
     # / `flake.nix` regressions in plugin repos.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -98,7 +98,7 @@ jobs:
     # Windows runner in the test gate. The release.yml `build-
     # windows` job runs the same recipe on tag push to produce the
     # shipped `.zip`.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
@@ -117,7 +117,7 @@ jobs:
     #
     # Gated by the `bench` label OR push to main so PRs that don't
     # touch perf-relevant code don't pay the Release-build tax.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 20
     if: contains(github.event.pull_request.labels.*.name, 'bench') || github.event_name == 'push'
     steps:
@@ -167,7 +167,7 @@ jobs:
     # exits early) and is gated by the `ice-test` label so PRs without
     # ICE-touching changes don't pay the docker-build tax (~5-10 min
     # cold).
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 25
     if: contains(github.event.pull_request.labels.*.name, 'ice-test') || github.event_name == 'push'
     steps:
@@ -215,7 +215,7 @@ jobs:
     # Gated by the `fuzz` label OR push to main so PRs don't pay the
     # cold-clang build tax. On the self-hosted runner the Nix store
     # is reused so subsequent hits are nearly free.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 20
     if: contains(github.event.pull_request.labels.*.name, 'fuzz') || github.event_name == 'push'
     steps:
@@ -263,7 +263,7 @@ jobs:
     # the prior "local-only" sanitizer policy — local box still gets
     # `nix run .#test -- asan` for tight loops, but main no longer
     # rides on the developer remembering to run it.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 30
     if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
     steps:
@@ -279,7 +279,7 @@ jobs:
     #
     # Same gating as `asan-smoke`: label `sanitizer` OR push to main.
     # ASan + TSan share the label so one CI re-run covers both.
-    runs-on: nixos:host
+    runs-on: nixos
     timeout-minutes: 30
     if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
     steps:

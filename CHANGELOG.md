@@ -6,6 +6,53 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### CI migrated to Forgejo Actions; GitHub repo becomes release-only
+
+The full CI matrix (`build-and-test`, `plugin-verify`, `windows-cross`,
+`bench-smoke`, `ice-3node`, `fuzz-smoke`, `asan-smoke`, `tsan-smoke`,
+`flake-check`, `livedoc-check`) runs on the project's self-hosted
+Forgejo instance at `http://localhost:3000/goodnet-io/goodnet`.
+Workflows live at `.forgejo/workflows/{ci,dev,release}.yml`; the
+`.github/workflows/` directory has been removed — GitHub Actions no
+longer runs anything for this repo. The trigger was the recurring
+`magic-nix-cache` Actions-Cache rate-limit on the GitHub free tier
+that had broken every release cycle since rc3.
+
+The Forgejo runner registers with labels `[ubuntu-latest, nixos]` and
+runs in `:host` executor mode, which means the system
+`/etc/nix/nix.conf` substituters are visible to every job. The local
+binary cache `http://localhost:5555` (NixOS `nix-serve` service,
+public key `goodnet-cache.local:sMamNw9G84OcJPGUzIylgdKapN5raFscLfDiqXe8ao4=`)
+is already pinned in `substituters`, so the rate-limited
+`DeterminateSystems/magic-nix-cache-action` is gone and the workflows
+do not need a replacement cache step.
+
+Release artefacts are still published on GitHub — but the workflow
+that builds them now lives on Forgejo. `.forgejo/workflows/release.yml`
+triggers on `v*` tags, builds Linux+Windows x86_64 artefacts on the
+self-hosted runner, then publishes to `goodnet-io/goodnet` on GitHub
+via the `gh` CLI (staged from `nixpkgs#gh` on demand). The publish step
+is idempotent on tag re-runs: `gh release view` decides between
+`create` and `upload --clobber`. The `softprops/action-gh-release@v2`
+wrapper has been dropped. The release job consumes a Forgejo-side
+repo secret named `GH_TOKEN` (scopes: classic `repo`, or fine-grained
+`Contents: read and write` on the target repo); see
+`docs/operator/ci-forgejo-setup.en.md` §GitHub Releases publish.
+
+The aarch64 release matrix arm is dropped from the Forgejo copy of
+`release.yml` — no aarch64 self-hosted runner is registered yet;
+restoring that arm is queued for the rc6 cycle alongside the broader
+cross-arch initiative (see `docs/ROADMAP.en.md`).
+
+`docs/operator/ci-forgejo-setup.en.md` is the operator handbook for
+this layout: how to spin the Forgejo container (the local
+`docker-forgejo.service` unit binds web on `:3000` and SSH on `:222`
+to `/home/vaniello/forgejo/data`), how to register the runner via
+the native NixOS user-systemd path (`~/.config/systemd/user/forgejo-runner.service`,
+already templated against `/home/vaniello/forgejo/runner/`) or the
+docker path, how to set the `GH_TOKEN` secret, and the verbatim
+`gh release` publish command.
+
 ## [1.0.0-rc5] — 2026-05-19
 
 ### Subprocess plugin runtime — LINK / SECURITY / HANDLER host-call slots
