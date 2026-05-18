@@ -58,6 +58,28 @@ Two new ICE tests
 `IceMultiTurn.MultiTurnBackupReattemptedAfterInterval`) exercise
 the fallover + backup-probe paths.
 
+### ICE plugin — DPLPMTUD active path-MTU probing (sub-repo)
+
+`plugins/links/ice` gains a `PathMtuProbe` state machine
+implementing RFC 8899 (Packetization Layer Path MTU Discovery
+for Datagram Transports). Fires padded STUN binding requests at
+sizes from the configurable ladder (default `{1200, 1400, 1500,
+4000, 9000}`), correlates responses by transaction id, and
+binary-search bisects on consecutive loss to find the largest
+MTU that doesn't lose packets. Replaces the previous static
+`ice.path_mtu` floor with a live `effective_path_mtu()`
+queryable through the new `gn.link.ice.path_mtu` extension
+slot. Compared to ICMP-based RFC 1191 PMTUD this doesn't depend
+on ICMP unreachable (often filtered by firewalls).
+
+Four config knobs: `ice.pmtu_active_probing` (feature gate,
+default on), `ice.pmtu_search_steps` (ladder values),
+`ice.pmtu_probe_timeout_ms` (default 500 ms),
+`ice.pmtu_probe_concurrency` (default 1). Seven new tests under
+`PmtuStateMachine`, `PmtuSession`, `PmtuExtension`,
+`PmtuStunPadding`. Vanilla suite 112/112; ASan/UBSan 112/112,
+no leaks.
+
 ### ICE plugin — IPv6 mDNS dual-stack (sub-repo)
 
 `plugins/links/ice/mdns.{cpp,hpp}` now binds both `224.0.0.251`
