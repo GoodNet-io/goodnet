@@ -37,7 +37,7 @@ strict `--warnings-as-errors=*` clang-tidy gating every merge.
   (kernel/, registry/, identity/, security/, signal/, util/, plugin/, config/, abi/, sdk/).
 - Cross-plugin composition or PluginManager dlopen exercises — `integration/`.
 - Plugin internals (TCP / UDP / WS / IPC / TLS / ICE / QUIC, Noise,
-  null, GNET, raw, heartbeat, DNS, store, float-send-rtt) — each
+  null, GNET, raw, heartbeat, DNS, store, float_send_rtt) — each
   plugin's own `tests/` next to its source.
 
 ## License
