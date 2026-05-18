@@ -361,6 +361,15 @@
           # the `darwin-cross-build` workflow runs with
           # `continue-on-error: true` so an SDK-gap regression does
           # not break main.
+        } // pkgs.lib.optionalAttrs
+          # `pkgsCross.*-darwin.stdenv` requires an Apple SDK staged
+          # via requireFile (Xcode license — nixpkgs cannot redistribute).
+          # Without that staging the eval fails on cctools. Gate the
+          # darwin-cross outputs behind a successful tryEval of the
+          # cross stdenv so vanilla linux `nix flake check` stays
+          # clean; operators who have staged the SDK get the targets
+          # back automatically.
+          (builtins.tryEval pkgs.pkgsCross.x86_64-darwin.stdenv).success {
           goodnet-darwin-x86_64 = import ./nix/goodnet-darwin.nix {
             inherit pkgs;
             arch = "x86_64";
@@ -368,6 +377,28 @@
           goodnet-darwin-aarch64 = import ./nix/goodnet-darwin.nix {
             inherit pkgs;
             arch = "aarch64";
+          };
+        } // {
+
+          # WASM / WASI cross-build via `pkgs.pkgsCross.wasi32`.
+          # First of three WASM directions tracked in
+          # `docs/ROADMAP.en.md` §WASM-web — kernel-core wire codec
+          # + GNET framing compile to wasm32-wasi. Sockets, dlopen,
+          # and fork-using runtimes are gated out at the source
+          # layer (`__wasi__` / `__EMSCRIPTEN__` guards in
+          # `core/plugin/dl_compat.hpp`, `runtimes/dynamic.cpp`,
+          # and `wire_codec.cpp`) and at the build-system layer
+          # (the nix derivation drives clang directly against the
+          # two TUs; the full kernel CMake tree is not invoked
+          # because `find_package(spdlog)` / `find_package(OpenSSL)`
+          # etc. do not resolve under the wasi32 cross stdenv).
+          # Linux-host-only — pkgsCross runs on Linux and emits a
+          # WebAssembly module. CI gate runs under
+          # `continue-on-error: true` because the wasi tooling pin
+          # is volatile (libcxx exceptions flip, sysroot rebuild on
+          # every llvm bump).
+          goodnet-wasm = import ./nix/goodnet-wasm.nix {
+            inherit pkgs;
           };
         });
 

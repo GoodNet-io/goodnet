@@ -1,7 +1,50 @@
 /// @file   core/plugin/runtimes/dynamic.cpp
 /// @brief  DynamicRuntime — dlopen-backed lifecycle dispatch.
+///
+/// WASI / Emscripten: this TU is excluded from the kernel-core
+/// source list by `nix/goodnet-wasm.nix` (no `dlopen` on WASI 1.0
+/// / no `SIDE_MODULE` integration in the wasm cross-build). A
+/// guarded shim at the top of the file keeps the unit self-
+/// protective if a downstream build forgets to filter — every
+/// member becomes a `GN_ERR_NOT_FOUND` stub mirroring the Windows
+/// path in `remote_host.cpp`.
 
 #include <core/plugin/runtimes/dynamic.hpp>
+
+#if defined(__wasi__) || defined(__EMSCRIPTEN__)
+
+#include <core/kernel/plugin_context.hpp>
+#include <core/plugin/plugin_manager.hpp>
+
+namespace gn::core {
+
+gn_result_t DynamicRuntime::load(const std::string& path,
+                                  const PluginLoadContext&,
+                                  PluginInstance&,
+                                  std::string& diag) {
+    diag = "DynamicRuntime: dlopen unavailable on WASI / Emscripten "
+           "(no shared-object plugin loading in the wasm kernel "
+           "build); path was: ";
+    diag += path;
+    return GN_ERR_NOT_FOUND;
+}
+
+gn_result_t DynamicRuntime::init(PluginInstance&)             { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t DynamicRuntime::register_plugin(PluginInstance&)  { return GN_ERR_NOT_IMPLEMENTED; }
+void        DynamicRuntime::unregister(PluginInstance&)       {}
+void        DynamicRuntime::shutdown(PluginInstance&)         {}
+void        DynamicRuntime::close(PluginInstance&, bool)      {}
+
+gn_result_t DynamicRuntime::resolve_symbols_(void*,
+                                              DynamicPluginSymbols&,
+                                              std::string& diag) {
+    diag = "DynamicRuntime: resolve_symbols unavailable on WASI / Emscripten";
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
+}  // namespace gn::core
+
+#else  // POSIX / mingw path
 
 #include <core/plugin/dl_compat.hpp>
 
@@ -303,3 +346,5 @@ void DynamicRuntime::close(PluginInstance& inst, bool drained) {
 }
 
 }  // namespace gn::core
+
+#endif  // !__wasi__ && !__EMSCRIPTEN__

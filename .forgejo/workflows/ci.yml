@@ -151,6 +151,40 @@ jobs:
           NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM: "1"
         run: nix build .#${{ matrix.target }} --print-build-logs --keep-going --impure
 
+  wasm-cross-build:
+    # WASM / WASI cross-build of the kernel-core wire codec + GNET
+    # framing subset via `pkgs.pkgsCross.wasi32`. First of three
+    # WASM directions tracked in `docs/ROADMAP.en.md` §WASM-web;
+    # the other two (full-kernel emscripten browser build,
+    # wasmtime-backed plugin runtime) stay scoped out. The build
+    # produces `lib/libgoodnet-wasm.a` against the wasi-libcxx
+    # static sysroot; networking plugins, dlopen-runtime, and the
+    # fork-using subprocess host are gated out at both the source
+    # layer (`__wasi__` / `__EMSCRIPTEN__`) and the build layer
+    # (the derivation drives clang directly instead of the full
+    # kernel CMake graph). `continue-on-error: true` because the
+    # wasi tooling pin is volatile — libcxx exception toggles flip
+    # between llvm bumps, the wasi-sysroot rebuilds on every nixpkgs
+    # refresh, and the `passthru.skip_reason` surfaces non-fatal
+    # blockers so the job logs a "skipped" line instead of breaking
+    # main. Same `cross-build` label gate as `darwin-cross-build`.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # Surfaces the `passthru.skip_reason` attribute the WASM
+        # derivation sets when the wasi32 toolchain pin breaks the
+        # build (libcxx exceptions flip, sysroot ABI shift). Stays
+        # advisory — the build step below is the real signal.
+        run: |
+          nix eval .#goodnet-wasm.skip_reason --raw 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build WASM kernel core
+        run: nix build .#goodnet-wasm --print-build-logs --keep-going
+
   bench-smoke:
     # Builds the three primary perf binaries in Release mode and runs
     # each for ~0.3 s with `--benchmark_format=json`. If a baseline
@@ -361,9 +395,10 @@ jobs:
 #   * Push to main only (label-gated on PRs): bench-smoke (label
 #     `bench`), ice-3node (label `ice-test`), fuzz-smoke (label
 #     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`),
-#     coverage-smoke (label `coverage`), darwin-cross-build (label
-#     `cross-build`, advisory via `continue-on-error` because the
-#     Apple SDK is not in nixpkgs).
+#     coverage-smoke (label `coverage`), darwin-cross-build +
+#     wasm-cross-build (label `cross-build`, both advisory via
+#     `continue-on-error` — the Apple SDK is not in nixpkgs and the
+#     wasi32 tooling pin is volatile).
 #
 # ASan + TSan run on push to main (catch race / UAF that local dev
 # missed). Label-gated for PRs to keep PR CI time-bounded; tag the

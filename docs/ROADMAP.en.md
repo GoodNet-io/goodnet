@@ -246,6 +246,19 @@ handler / a build target.
   already lets us load only a subset (static plugins only — no
   dlopen in WASM). Heavy work but the kernel ABI doesn't change.
 
+  *First landing — kernel-core subset compiles to `wasm32-wasi`
+  via `nix build .#goodnet-wasm` (driven from
+  `nix/goodnet-wasm.nix` against `pkgs.pkgsCross.wasi32`). Scope:
+  `core/plugin/wire_codec.cpp` + `plugins/protocols/gnet/wire.cpp`
+  → `lib/libgoodnet-wasm.a`. Out of scope and gated by
+  `#if !defined(__wasi__) && !defined(__EMSCRIPTEN__)`:
+  `core/plugin/remote_host.cpp` (socketpair + fork + execve),
+  `core/plugin/runtimes/dynamic.cpp` (dlopen), every
+  `plugins/links/*` (no WASI sockets), every `plugins/security/*`
+  (asio + libsodium thread layer). Emscripten / browser path and
+  the wasmtime-backed plugin runtime stay scoped out — they are
+  directions 2 and 3 of this section.*
+
 - **JS SDK + WebSocket bridge** — far simpler near-term path. The
   browser DOES NOT run goodnet code. Instead:
   - A kernel handler `gn.handler.web-api-proxy` listens on
@@ -363,8 +376,16 @@ different sandboxing and performance trade-offs.
 The kernel ABI is C-ABI clean. Bindings ship as separate repos
 that consume `sdk/*.h` without recompiling the kernel.
 
-- **Rust** — `cbindgen`-generated wrappers around `sdk/*.h` +
-  idiomatic Rust trait for handlers / link plugins.
+- **Rust** — landed under `bindings/rust/` as a two-crate Cargo
+  workspace. `goodnet-sys` runs `bindgen` over `sdk/core.h` at
+  build time (no checked-in `bindings.rs`); `goodnet` is the
+  safe RAII wrapper — `Core` owns `*mut gn_core_t`, `Drop` calls
+  `gn_core_destroy`. Lifecycle + `load_plugin` + `register_protocol`
+  are hand-wrapped as `Result<_, Error>`; the rest of the C ABI is
+  reachable via `goodnet::sys::*`. Flake output `goodnet-rust`
+  builds both crates and runs the create→init→drop smoke test.
+  Plugin-side traits (`Handler`, `Link` written in Rust) stay a
+  follow-up.
 - **Python** — synchronous C-extension SDK. Subprocess
   remote-plugin path already works; in-process C-extension
   bindings would give a faster path for Python-side handlers.
