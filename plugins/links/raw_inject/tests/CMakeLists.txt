@@ -6,7 +6,6 @@ add_executable(test_raw_inject
 target_link_libraries(test_raw_inject PRIVATE
     GoodNet::sdk
     goodnet_raw_inject_objects
-    asio::asio
     Threads::Threads
     GTest::gtest
     GTest::gtest_main)
