@@ -7,6 +7,8 @@
 
 #include "plugin_manager.hpp"
 
+#include <algorithm>
+#include <cassert>
 #include <chrono>
 #include <thread>
 #include <utility>
@@ -291,6 +293,77 @@ bool PluginManager::drain_anchor(PluginInstance& inst,
     }
 }
 
+void PluginManager::teardown_one(PluginInstance& inst) {
+    /// Publish `shutdown_requested = true` before any plugin
+    /// entry runs in the teardown path. Async callbacks scheduled
+    /// after this point refuse to enter plugin code through
+    /// `GateGuard::acquire`; long-running plugin loops that poll
+    /// `is_shutdown_requested` see the flag and exit cooperatively
+    /// during `gn_plugin_unregister` / `gn_plugin_shutdown`
+    /// (`plugin-lifetime.en.md` §8).
+    if (inst.ctx && inst.ctx->plugin_anchor) {
+        inst.ctx->plugin_anchor->shutdown_requested.store(
+            true, std::memory_order_release);
+    }
+
+    if (inst.registered) {
+        unregister_one(inst);
+        inst.registered = false;
+    }
+
+    /// Cancel still-pending timers / posted tasks for this anchor.
+    /// Cancellation removes registry entries; in-flight callbacks
+    /// that were already past `GateGuard::acquire` continue to
+    /// run against the still-live plugin until they release the
+    /// guard.
+    if (inst.ctx && inst.ctx->plugin_anchor) {
+        kernel_.timers().cancel_for_anchor(inst.ctx->plugin_anchor);
+    }
+
+    /// Drain BEFORE `gn_plugin_shutdown`. Two-step: (1) demote the
+    /// kernel-side strong references to weak observers — once
+    /// every kernel-held strong drops, the only refs that keep
+    /// `watch.lock()` alive are in-flight `GateGuard`s; (2) wait
+    /// for those guards to release. After drain returns the
+    /// plugin has zero callbacks running through its `.text`,
+    /// every `user_data` derived from `self` is no longer being
+    /// dereferenced, and `gn_plugin_shutdown` can free `self`
+    /// without racing an active dispatch.
+    ///
+    /// Inverting this order — `gn_plugin_shutdown` before drain —
+    /// would free `self` while a guard-holding callback was
+    /// mid-call. The gate keeps `.text` mapped so the call
+    /// resolves, but a lambda capturing `user_data = &p->link->state`
+    /// would then dereference freed memory. The drain MUST run
+    /// before `gn_plugin_shutdown` to keep the dereference safe.
+    std::weak_ptr<PluginAnchor> watch;
+    if (inst.ctx) {
+        watch = inst.ctx->plugin_anchor;
+        inst.ctx->plugin_anchor.reset();
+    }
+    const bool drained = drain_anchor(inst, watch);
+
+    if (inst.self) {
+        shutdown_one(inst);
+        inst.self = nullptr;
+    }
+
+    /// Hand off the kind-specific load-state teardown to the
+    /// runtime. Dynamic: dlclose if drained, plus the integrity
+    /// fd. Remote: terminate + reset the RemoteHost. Static:
+    /// nothing — entry symbols live in the kernel binary.
+    if (inst.runtime != nullptr) {
+        inst.runtime->close(inst, drained);
+    }
+
+    /// ctx is the last kernel-side owner of the heap allocation.
+    /// Reset it after dlclose so any leftover `host_ctx` pointer
+    /// the plugin captured points at freed memory rather than
+    /// freed-and-reused memory; any UAF here surfaces as a clean
+    /// ASan diagnostic instead of a silent corruption.
+    inst.ctx.reset();
+}
+
 void PluginManager::rollback() {
     leaked_handles_ = 0;
 
@@ -303,77 +376,43 @@ void PluginManager::rollback() {
     /// in-flight dispatch snapshot — we wait for it to release the
     /// anchor before unmapping the .text section behind its vtable.
     for (auto it = instances_.rbegin(); it != instances_.rend(); ++it) {
-        /// Publish `shutdown_requested = true` before any plugin
-        /// entry runs in the rollback path. Async callbacks scheduled
-        /// after this point refuse to enter plugin code through
-        /// `GateGuard::acquire`; long-running plugin loops that poll
-        /// `is_shutdown_requested` see the flag and exit cooperatively
-        /// during `gn_plugin_unregister` / `gn_plugin_shutdown`
-        /// (`plugin-lifetime.en.md` §8).
-        if (it->ctx && it->ctx->plugin_anchor) {
-            it->ctx->plugin_anchor->shutdown_requested.store(
-                true, std::memory_order_release);
-        }
-
-        if (it->registered) {
-            unregister_one(*it);
-            it->registered = false;
-        }
-
-        /// Cancel still-pending timers / posted tasks for this anchor.
-        /// Cancellation removes registry entries; in-flight callbacks
-        /// that were already past `GateGuard::acquire` continue to
-        /// run against the still-live plugin until they release the
-        /// guard.
-        if (it->ctx && it->ctx->plugin_anchor) {
-            kernel_.timers().cancel_for_anchor(it->ctx->plugin_anchor);
-        }
-
-        /// Drain BEFORE `gn_plugin_shutdown`. Two-step: (1) demote the
-        /// kernel-side strong references to weak observers — once
-        /// every kernel-held strong drops, the only refs that keep
-        /// `watch.lock()` alive are in-flight `GateGuard`s; (2) wait
-        /// for those guards to release. After drain returns the
-        /// plugin has zero callbacks running through its `.text`,
-        /// every `user_data` derived from `self` is no longer being
-        /// dereferenced, and `gn_plugin_shutdown` can free `self`
-        /// without racing an active dispatch.
-        ///
-        /// Inverting this order — `gn_plugin_shutdown` before drain —
-        /// would free `self` while a guard-holding callback was
-        /// mid-call. The gate keeps `.text` mapped so the call
-        /// resolves, but a lambda capturing `user_data = &p->link->state`
-        /// would then dereference freed memory. The drain MUST run
-        /// before `gn_plugin_shutdown` to keep the dereference safe.
-        std::weak_ptr<PluginAnchor> watch;
-        if (it->ctx) {
-            watch = it->ctx->plugin_anchor;
-            it->ctx->plugin_anchor.reset();
-        }
-        const bool drained = drain_anchor(*it, watch);
-
-        if (it->self) {
-            shutdown_one(*it);
-            it->self = nullptr;
-        }
-
-        /// Hand off the kind-specific load-state teardown to the
-        /// runtime. Dynamic: dlclose if drained, plus the integrity
-        /// fd. Remote: terminate + reset the RemoteHost. Static:
-        /// nothing — entry symbols live in the kernel binary.
-        if (it->runtime != nullptr) {
-            it->runtime->close(*it, drained);
-        }
-
-        /// ctx is the last kernel-side owner of the heap allocation.
-        /// Reset it after dlclose so any leftover `host_ctx` pointer
-        /// the plugin captured points at freed memory rather than
-        /// freed-and-reused memory; any UAF here surfaces as a clean
-        /// ASan diagnostic instead of a silent corruption.
-        it->ctx.reset();
+        teardown_one(*it);
     }
     instances_.clear();
     active_ = false;
+}
+
+gn_result_t PluginManager::unload(std::string_view name) {
+    /// Find by descriptor's `plugin_name`. Matches the field the
+    /// plugin sets in its `gn_plugin_descriptor` and the same key
+    /// the resolver uses for dependency edges. An empty name has
+    /// no chance of matching, so callers see `NOT_FOUND` instead
+    /// of an accidental wildcard.
+    if (name.empty()) return GN_ERR_NOT_FOUND;
+
+    auto it = std::find_if(
+        instances_.begin(), instances_.end(),
+        [&](const PluginInstance& inst) {
+            return inst.descriptor.plugin_name == name;
+        });
+    if (it == instances_.end()) return GN_ERR_NOT_FOUND;
+
+    /// Reset the leak counter to match `rollback()` semantics — the
+    /// per-call value reports "did this unload leak a handle?" and
+    /// nothing more. Cumulative leaks live on the metrics surface.
+    leaked_handles_ = 0;
+
+    teardown_one(*it);
+    instances_.erase(it);
+
+    /// Walk the post-erase state to keep `active_` honest. The flag
+    /// is the gate `load()` checks on entry; clearing it once every
+    /// instance is gone lets a host re-prime the manager with a
+    /// fresh `load()` after a sequence of `unload()` calls.
+    if (instances_.empty()) {
+        active_ = false;
+    }
+    return GN_OK;
 }
 
 void PluginManager::shutdown() {
@@ -382,10 +421,26 @@ void PluginManager::shutdown() {
 }
 
 void PluginManager::set_manifest(PluginManifest manifest) noexcept {
+    /// Manifest setters are bootstrap-only — the contract in the
+    /// header (`plugin-manifest.en.md` §5 step 4) demands every
+    /// setter run before `load`. Swapping the trust root mid-session
+    /// would let a load admitted under the old hash list keep its
+    /// instance live while a new arrival is checked against fresh
+    /// expectations, and the per-plugin `quiescence_timeout_s`
+    /// resolved at `open_one` would no longer match the manifest in
+    /// effect. The assert turns the contract's "does not guard"
+    /// note into a loud failure under an embedder bug.
+    assert(!active_ && "manifest setters are bootstrap-only");
     manifest_ = std::move(manifest);
 }
 
 void PluginManager::set_manifest_required(bool required) noexcept {
+    /// Bootstrap-only per the same reasoning as `set_manifest`.
+    /// Flipping the required flag during an active session would
+    /// not retroactively reject already-loaded plugins; the assert
+    /// catches the misuse at the setter call rather than silently
+    /// shipping a half-enforced policy.
+    assert(!active_ && "manifest setters are bootstrap-only");
     manifest_required_ = required;
 }
 

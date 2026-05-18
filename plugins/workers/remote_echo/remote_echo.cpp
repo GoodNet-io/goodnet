@@ -10,10 +10,12 @@
 /// `RemoteHost` test drives this worker as its target binary.
 
 #include <cstdint>
+#include <cstring>
 
 #include <sdk/host_api.h>
 #include <sdk/link.h>
 #include <sdk/plugin.h>
+#include <sdk/trust.h>
 
 #include <sdk/cpp/remote_plugin.hpp>
 
@@ -33,8 +35,24 @@ gn_result_t echo_listen(void* /*self*/, const char* /*uri*/) noexcept {
     return GN_OK;
 }
 
-gn_result_t echo_connect(void* /*self*/, const char* /*uri*/) noexcept {
-    return GN_OK;
+gn_result_t echo_connect(void* self, const char* uri) noexcept {
+    /// The echo link's whole point is to round-trip bytes on whatever
+    /// connection the kernel hands it. Real transports complete a
+    /// handshake before issuing `notify_connect`; the echo worker has
+    /// nothing to handshake, so it synthesises the conn immediately so
+    /// the kernel-side link contract is satisfied (LINK callers expect
+    /// the conn to materialise before any traffic crosses).
+    auto& s = *static_cast<EchoSelf*>(self);
+    if (s.api == nullptr || s.api->notify_connect == nullptr) {
+        return GN_ERR_INVALID_STATE;
+    }
+    std::uint8_t pk[GN_PUBLIC_KEY_BYTES];
+    std::memset(pk, 0, sizeof(pk));
+    gn_conn_id_t conn_id = 0;
+    return s.api->notify_connect(
+        s.api->host_ctx, pk,
+        uri != nullptr ? uri : "remote_echo://",
+        GN_TRUST_LOOPBACK, GN_ROLE_INITIATOR, &conn_id);
 }
 
 gn_result_t echo_send(void* self,
