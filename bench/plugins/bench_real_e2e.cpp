@@ -211,8 +211,20 @@ void run_send_recv(Fixture& f, ::benchmark::State& state) {
 
     res.snapshot_end();
     state.counters["last_err"] = static_cast<double>(last_err);
+    /// `state.iterations()` (not `meter.size()`) — matches the
+    /// shape `bench_udp.cpp::EchoRoundtrip` and every other plugin
+    /// bench in the tree. `meter.size()` skips iterations that
+    /// `continue`'d on backpressure, which silently zeroes the
+    /// `bytes_per_second` column whenever the per-conn send queue
+    /// stalls for a tick at the start of a run — the loop already
+    /// retries those iterations, so the bytes legitimately moved
+    /// through the stack are `iterations × payload`. Aggregator
+    /// drops rows with `bytes_per_second == 0` (see
+    /// `aggregate.py:is_real_row → emit_perf_table`), so under
+    /// `meter.size() == 0` the case produced no report row even
+    /// though every iteration was timed.
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(meter.size()) *
+        static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size));
     report_latency(state, meter);
     report_resources(state, res);
@@ -281,9 +293,13 @@ void run_echo_roundtrip(Fixture& f, ::benchmark::State& state) {
     state.counters["last_err"] = static_cast<double>(last_err);
     /// Bytes processed: full RTT moves payload twice (ping + pong),
     /// so report 2× for throughput comparability with libp2p's
-    /// bidirectional read+write measurement.
+    /// bidirectional read+write measurement. Use `state.iterations()`
+    /// (not `meter.size()`) for the same reason `run_send_recv`
+    /// does — the aggregator drops zero-throughput rows and a
+    /// transient stall at start of the run would otherwise leave
+    /// the case unreported.
     state.SetBytesProcessed(
-        static_cast<std::int64_t>(meter.size()) *
+        static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size) * 2);
     report_latency(state, meter);
     report_resources(state, res);
