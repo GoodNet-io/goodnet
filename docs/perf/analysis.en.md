@@ -264,10 +264,10 @@ The showcase exists to make these architectural moves
 boolean derived from counters in the JSON output — pass / fail,
 not aggregated latency. The full read happens in
 [`bench/showcase/README.md`](../../bench/showcase/README.md),
-including the B.3 PoC disclaimer (`GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE`
-env-gate + unit test
+including the B.3 PoC disclaimer (`GOODNET_BENCH_SHOWCASE`
+compile-time gate + unit test
 [`tests/unit/security/test_inline_downgrade_gate.cpp`](../../tests/unit/security/test_inline_downgrade_gate.cpp)
-that pins the contract).
+that pins the in-bench phase-guard contract).
 
 ### DX LOC — hello-world echo
 

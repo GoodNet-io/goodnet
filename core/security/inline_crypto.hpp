@@ -106,11 +106,11 @@ public:
     /// copy-through for `gn.security.null`).
     ///
     /// The inline-crypto half of the post-handshake Noise→Null
-    /// handoff PoC used by `bench/showcase` §B.3. The hook is
+    /// handoff PoC in `bench/showcase` §B.3. The hook is
     /// gated through `SecuritySession::_test_clear_inline_crypto`,
-    /// which checks the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`
-    /// env var before calling here. Without the env var, nothing
-    /// in the build reaches this method.
+    /// which is compiled in only when the build defines
+    /// `GOODNET_BENCH_SHOWCASE`. Default builds drop the caller
+    /// entirely, so nothing in the kernel reaches this method.
     void clear_for_test() noexcept;
 
 private:

@@ -4,7 +4,6 @@
 
 #include "session.hpp"
 
-#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -302,32 +301,23 @@ std::vector<std::vector<std::uint8_t>> SecuritySession::take_pending() {
     return out;
 }
 
+#ifdef GOODNET_BENCH_SHOWCASE
 gn_result_t SecuritySession::_test_clear_inline_crypto() {
-#ifndef GOODNET_BENCH_SHOWCASE
-    /// Production build — the bench-only seam is compiled out
-    /// entirely. The method stays in the type surface so callers
-    /// (test fixtures, bench harnesses linked against a release
-    /// kernel) get a hard error instead of a missing symbol.
-    return GN_ERR_INVALID_STATE;
-#else
-    /// Bench build only (`-DGOODNET_BENCH_SHOWCASE=ON`). A second
-    /// runtime gate over the compile-time gate so that even a
-    /// bench-mode kernel does not zero the inline AEAD state
-    /// unless the operator explicitly opted in for the current
-    /// process by setting the env var. The env-var trip-wire
-    /// matches the historical contract pinned in
-    /// `tests/unit/security/test_inline_downgrade_gate.cpp`.
-    const char* gate = std::getenv("GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE");
-    if (!gate || std::strcmp(gate, "1") != 0) {
-        return GN_ERR_INVALID_STATE;
-    }
+    /// The compile-time gate (`-DGOODNET_BENCH_SHOWCASE=ON`) is the
+    /// only thing standing between production code and the inline
+    /// AEAD wipe. Default builds drop this entire translation unit
+    /// region, so a release kernel has no symbol to call. Inside
+    /// the bench build, the only runtime guard is the session phase
+    /// — a session that never finished handshake stays in
+    /// `Closed`/`Handshake`, and clearing inline crypto on it would
+    /// race the next encrypt cycle.
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport) {
         return GN_ERR_INVALID_STATE;
     }
     inline_crypto_.clear_for_test();
     return GN_OK;
-#endif
 }
+#endif  // GOODNET_BENCH_SHOWCASE
 
 gn_result_t SecuritySession::decrypt_transport(
     std::span<const std::uint8_t> ciphertext,

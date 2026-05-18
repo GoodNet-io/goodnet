@@ -244,12 +244,14 @@ endif()
 # layout that drives both GoodNet and reference stacks through the
 # same payload matrix.
 
-# ── Free-kernel showcase bench (track Б) ──────────────────────────────
+# ── Free-kernel showcase bench ────────────────────────────────────────
 #
 # Demonstrates GoodNet-distinctive moves no other stack can reproduce:
 # multi-connect under one identity, runtime strategy-driven carrier
 # pick, post-handshake provider handoff PoC, multi-thread fanout,
 # carrier failover, mobility LAN shortcut. Drives the inline-crypto
-# downgrade seam (`SecuritySession::_test_clear_inline_crypto`) so
-# gated through GOODNET_BENCH_STRATEGIES.
+# downgrade seam (`SecuritySession::_test_clear_inline_crypto`,
+# compile-gated through `GOODNET_BENCH_SHOWCASE`); the subdirectory
+# is also gated through `GOODNET_BENCH_STRATEGIES` for the strategy-
+# plugin sub-checkout.
 add_subdirectory(showcase)

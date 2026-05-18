@@ -11,8 +11,9 @@
 ///         `goodnet_float_send_rtt` picker.
 ///   §B.3  post-handshake security provider handoff Noise→Null —
 ///         PoC by zeroing the kernel-side InlineCrypto state on an
-///         established session (env-gated through
-///         `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`).
+///         established session (compile-gated through
+///         `GOODNET_BENCH_SHOWCASE`; default builds drop the hook
+///         entirely).
 ///   §B.5  carrier failover via manual `CONN_DOWN` injection.
 ///         The kernel auto-fires `CONN_DOWN` from
 ///         `notify_disconnect` in production; the bench drives
@@ -271,17 +272,26 @@ inline void inject_conn_down(
 /// vtable is copy-through, so per-frame AEAD cost drops to zero
 /// while identity-binding established at Noise handshake survives.
 ///
-/// Env-gated through `_test_clear_inline_crypto` — caller MUST
-/// set `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1` before invoking,
-/// otherwise the kernel-side guard refuses with
-/// `GN_ERR_INVALID_STATE`. The bench process exports the env var
-/// from `main` so children inherit; production binaries never set
-/// it, so the seam fails closed if accidentally linked.
+/// Compile-gated through `_test_clear_inline_crypto` — the
+/// kernel-side method exists only when the build defines
+/// `GOODNET_BENCH_SHOWCASE`. Production binaries do not compile
+/// the method at all, so the bench helper has nothing to link
+/// against; this header refuses to compile a caller outside the
+/// gate to surface the misuse at build time rather than link
+/// time. The kernel still enforces a phase guard inside the
+/// method so a bench harness cannot wipe inline crypto on a
+/// session that never finished the handshake.
 inline gn_result_t downgrade_inline_crypto(
     Kernel& kernel, gn_conn_id_t conn) {
+#ifdef GOODNET_BENCH_SHOWCASE
     auto session = kernel.sessions().find(conn);
     if (!session) return GN_ERR_NOT_FOUND;
     return session->_test_clear_inline_crypto();
+#else
+    (void)kernel;
+    (void)conn;
+    return GN_ERR_NOT_IMPLEMENTED;
+#endif
 }
 
 /// Convenience: clear inline crypto on BOTH halves of an

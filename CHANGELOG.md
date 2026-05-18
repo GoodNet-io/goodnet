@@ -188,17 +188,15 @@ kernel-driven architecture:
   AEAD state. Subsequent `encrypt_transport` /
   `decrypt_transport` fall through to the provider vtable
   (copy-through for `gn.security.null`), dropping per-frame AEAD
-  cost while the handshake hash stays alive. The seam is gated
-  at runtime through the `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`
-  environment variable; without the var the method returns
-  `GN_ERR_INVALID_STATE` so production binaries that accidentally
-  link the showcase header fail closed.
+  cost while the handshake hash stays alive. The seam is
+  compile-gated through the `GOODNET_BENCH_SHOWCASE` macro;
+  default builds do not compile the method at all, so production
+  binaries cannot link the showcase header.
   `tests/unit/security/test_inline_downgrade_gate.cpp` pins the
-  contract — refuses without env var, refuses outside
-  `SecurityPhase::Transport`, refuses on string values other than
-  literal `1`. v1.x followup exposes a kernel-driven
-  `SessionRegistry::downgrade_*` API; the bench's PoC suffices
-  to surface the latency-step number now.
+  in-bench phase-guard contract — the method refuses outside
+  `SecurityPhase::Transport`. The kernel-driven
+  `SessionRegistry::downgrade_*` API is a followup; the bench's
+  PoC suffices to surface the latency-step number now.
 * `FanoutFixture/Producers` — N producer threads on bob spam
   `api.send_to(alice_pk)` in parallel; the kernel's
   strand-per-conn + crypto worker pool absorb the load. Throughput

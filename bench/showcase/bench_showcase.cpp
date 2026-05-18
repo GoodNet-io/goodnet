@@ -36,7 +36,6 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <cstdlib>
 #include <string>
 #include <thread>
 #include <unistd.h>
@@ -712,12 +711,11 @@ BENCHMARK_REGISTER_F(MobilityFixture, LanShortcut)
 }  // namespace
 
 int main(int argc, char** argv) {
-    /// §B.3 — env-gate for the inline-crypto downgrade hook. Bench
-    /// process sets it before fixtures load so child kernel calls
-    /// inherit. Production binaries never set this; the gate fails
-    /// closed there.
-    ::setenv("GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE", "1", /*overwrite*/1);
-
+    /// §B.3 — the inline-crypto downgrade hook is compile-gated
+    /// through `GOODNET_BENCH_SHOWCASE` (set on this target by
+    /// `bench/showcase/CMakeLists.txt`). Production binaries do
+    /// not compile the hook at all; no runtime opt-in is needed
+    /// here.
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
     ::benchmark::RunSpecifiedBenchmarks();

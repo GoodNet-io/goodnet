@@ -57,18 +57,20 @@ debugging).
 ## B.3 PoC disclaimer
 
 The Noise→Null handoff in B.3 reaches into kernel-private state
-through `SecuritySession::_test_clear_inline_crypto`, gated at
-runtime through `GN_SHOWCASE_ALLOW_INLINE_DOWNGRADE=1`. The bench
-process sets the env var from `main` so child kernels inherit. The
-gate fails closed otherwise — accidentally linking the seam into a
-production binary is observable through the
-`tests/unit/security/test_inline_downgrade_gate.cpp` unit test,
-which pins the contract.
+through `SecuritySession::_test_clear_inline_crypto`, compile-gated
+through the `GOODNET_BENCH_SHOWCASE` macro. Default builds do not
+compile the method at all — accidentally linking the seam into a
+production binary fails at link time. The bench-side helper in
+`bench/test_bench_showcase.hpp` carries the same `#ifdef`, so a
+caller built without the macro receives `GN_ERR_NOT_IMPLEMENTED`.
+The `tests/unit/security/test_inline_downgrade_gate.cpp` unit test
+pins the in-bench phase-guard contract (the method refuses outside
+`SecurityPhase::Transport`).
 
 The production-shape handoff (`SessionRegistry::downgrade_*` +
 trust-class hook on connection bring-up + peer-side wire signal)
-is planned. The bench's PoC suffices to surface the latency-step
-number; it is NOT a path operators should use.
+is a followup. The bench's PoC suffices to surface the
+latency-step number; it is NOT a path operators should use.
 
 ## Bench-only synthesis
 
