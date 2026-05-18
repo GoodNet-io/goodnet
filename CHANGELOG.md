@@ -6,120 +6,33 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Bench-CI smoke + regression gate
+### Subprocess plugin runtime — LINK / SECURITY / HANDLER host-call slots
 
-A new `bench-smoke` job in `.github/workflows/ci.yml` builds
-`bench_real_e2e`, `bench_tcp`, and `bench_udp` in Release mode,
-runs each for ~0.3 s with `--benchmark_format=json`, and either
-compares against a committed baseline JSON via
-`tools/bench_compare.py --threshold-pct 15` (failing on
-regression beyond the threshold) or — when no baseline file is
-present — runs in smoke mode via the new
-`tools/bench_summary.py` helper that just logs the per-benchmark
-numbers. Gated by the `bench` label on PRs or push to main so
-PRs that don't touch perf-relevant code skip the Release-build
-tax. JSON artefacts upload on every run for post-hoc review.
+The subprocess runtime now hosts the same vtable surface that
+static and dynamic plugins see. `RemoteHost::handle_host_call_`
+decodes six host-call opcodes that previously fell through the
+default branch: `NOTIFY_CONNECT` (0x13), `NOTIFY_DISCONNECT`
+(0x14), `REGISTER_VTABLE` (0x15), `UNREGISTER_VTABLE` (0x16),
+`REGISTER_SECURITY` (0x17), `UNREGISTER_SECURITY` (0x18). The
+worker-side library (`sdk/cpp/remote_plugin.cpp`) ships the
+matching `host_api_t` thunks wired into `g_state.synth_api` so a
+LINK / SECURITY / HANDLER subprocess worker drives the host
+surface a static or dynamic plugin would see.
 
-`bench/baselines/README.md` documents the ratchet workflow: the
-baseline is intentionally manual, refreshed in the same commit
-that legitimately changes performance. Auto-rolling baselines
-would mask unintentional regressions, so the gate is the review
-mechanism.
-
-### gn_core_query_extension_checked — public C-ABI surface tests
-
-Three new tests under `CoreC.Query*` exercise
-`gn_core_query_extension_checked(core, name, version)` — the
-public C-ABI entry that external clients (raw-socket adapters,
-FFI bindings, the planned C-inject demo) use to consume the
-kernel's extension registry. Previously the surface was only
-covered against NULL handles. Happy path queries
-`gn.link.capability` and exercises its `get` vtable slot; the
-two negative paths confirm an unknown name returns NULL and a
-future producer-version pin fails the lookup rather than
-silently returning a partial vtable.
-
-### ICE plugin — multi-TURN fallback (sub-repo)
-
-`plugins/links/ice` gains sequential walk through
-`IceConfig::turn_servers` in `gather_relay` — the first
-`TURN ALLOCATE` success wins, remaining entries stay as backups.
-A `turn_backup_timer_` fires every
-`cfg_.turn_backup_interval_s` (default 30 s) to probe one
-backup; on a successful backup ALLOCATE plus a degraded primary
-(via `TurnClient::is_healthy()`), failover swaps the relay
-candidate. Rate-limited to one failover per
-`cfg_.turn_failover_min_interval_s` (default 60 s) to avoid
-oscillation. Per-attempt deadline via
-`turn_allocate_timeout_s` (default 5 s).
-
-Two new ICE tests
-(`IceMultiTurn.MultiTurnFallsOverToSecondOnPrimaryFailure`,
-`IceMultiTurn.MultiTurnBackupReattemptedAfterInterval`) exercise
-the fallover + backup-probe paths.
-
-### ICE plugin — DPLPMTUD active path-MTU probing (sub-repo)
-
-`plugins/links/ice` gains a `PathMtuProbe` state machine
-implementing RFC 8899 (Packetization Layer Path MTU Discovery
-for Datagram Transports). Fires padded STUN binding requests at
-sizes from the configurable ladder (default `{1200, 1400, 1500,
-4000, 9000}`), correlates responses by transaction id, and
-binary-search bisects on consecutive loss to find the largest
-MTU that doesn't lose packets. Replaces the previous static
-`ice.path_mtu` floor with a live `effective_path_mtu()`
-queryable through the new `gn.link.ice.path_mtu` extension
-slot. Compared to ICMP-based RFC 1191 PMTUD this doesn't depend
-on ICMP unreachable (often filtered by firewalls).
-
-Four config knobs: `ice.pmtu_active_probing` (feature gate,
-default on), `ice.pmtu_search_steps` (ladder values),
-`ice.pmtu_probe_timeout_ms` (default 500 ms),
-`ice.pmtu_probe_concurrency` (default 1). Seven new tests under
-`PmtuStateMachine`, `PmtuSession`, `PmtuExtension`,
-`PmtuStunPadding`. Vanilla suite 112/112; ASan/UBSan 112/112,
-no leaks.
-
-### ICE plugin — IPv6 mDNS dual-stack (sub-repo)
-
-`plugins/links/ice/mdns.{cpp,hpp}` now binds both `224.0.0.251`
-(IPv4) and `ff02::fb` (IPv6) multicast groups via
-`SO_REUSEPORT` so the responder coexists with system mDNS
-daemons. Per-interface `IPV6_JOIN_GROUP` for every AF_INET6
-address returned by `getifaddrs` (IPv6 multicast routing is
-scoped per interface). AAAA queries route to the new IPv6
-socket; ANY queries get both A and AAAA when both exist.
-`ice.mdns_obfuscate_host_candidates` now covers AF_INET6 host
-candidates — IPv6-only home networks (T-Mobile cellular, IPv6
-CG-NAT setups) no longer leak the host's private IPv6 address
-as a raw candidate.
-
-### Link capability probe + required-plugin manifest pin
-
-`core/kernel/link_capability.{cpp,hpp}` adds a host-side bind probe
-for UDP / TCP on IPv4 and IPv6. `gn::host_link_capability()`
-probes once on first call, caches the four-bool snapshot, and
-re-probes on `refresh_host_link_capability()`. Plugin code
-consults the cached snapshot through the new
-`GN_EXT_LINK_CAPABILITY` extension (registered by the kernel
-constructor) instead of every UDP plugin retrying its bind in a
-log-spamming loop. A graceful-degradation host (corporate
-firewall, mobile carrier with UDP blocked, container without
-IPv6) gets one summary WARN at probe time naming the disabled
-carrier families.
-
-`ManifestEntry::required` (parsed from the JSON `required` key,
-default `false`) pins critical plugins for the loader. After every
-load `PluginManager::load` walks the manifest and rejects with
-`GN_ERR_INVALID_STATE` if any required entry has no registered
-instance, naming the missing paths in the diagnostic. Operators
-pin `gn.link.tcp` + `gn.link.tls` so a misconfigured deploy never
-silently runs without the minimum carrier set.
-
-Four tests under `LinkCapability*` and
-`PluginManager_ManifestRequired` cover the contract end-to-end.
-
-### RemoteHost — per-slot reply-timeout override
+`RemoteHost::security_vtable_proxy()` returns a synthesised
+`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
+frames at pinned ids 0x300..0x308 (handshake_open, step,
+complete, export_transport_keys, encrypt, decrypt, rekey,
+handshake_close). `allowed_trust_mask` rides on slot 0x300; the
+provider_id itself comes from the HELLO descriptor and needs no
+wire round trip. `RemoteHost::handler_vtable_proxy()` is the
+analogue for HANDLER plugins at 0x400..0x405 (protocol_id,
+supported_msg_ids, handle_message, on_result, on_init,
+on_shutdown). The `supported_msg_ids` thunk caches the worker's
+reply per-RemoteHost so the borrowed pointer stays valid for the
+lifetime of the registration. The remote LINK vtable proxy's
+`send_batch` slot is synthesised in the same shape — it loops over
+each frame, issuing one `link_send_thunk` PLUGIN_CALL per frame.
 
 `RemoteHost::set_reply_timeout_for_slot(slot_id, duration)` lets
 the host caller dial different reply deadlines per wire slot. A
@@ -129,23 +42,77 @@ seconds. The single global `set_reply_timeout` value remains the
 fallback for any slot without an explicit override.
 `clear_reply_timeout_overrides()` drops the map back to the
 unscoped default. The `round_trip_` dispatcher consults the
-override map before falling back to `reply_timeout_`. The
-override mechanism is documented in
-`docs/contracts/remote-plugin.en.md` after the §6 slot tables.
+override map before falling back to `reply_timeout_`.
 
+Worker-side stub library: `WorkerConfig` carries
+`security_vtable` / `security_self` and `handler_vtable` /
+`handler_self` so the worker declares its real vtables once.
+The PLUGIN_CALL dispatcher routes 0x300..0x308 into the worker's
+`gn_security_provider_vtable_t` and 0x400..0x405 into its
+`gn_handler_vtable_t`. Per-handshake `void*` state pointers are
+stashed in a worker-side handle map so the wire only sees u64
+tokens. Synthetic `host_api_t` gains `register_security` and
+`unregister_security` thunks for the 0x17 / 0x18 round trips.
+
+Four in-tree workers cover regression:
+`plugins/workers/remote_echo` round-trips notify_connect,
+send_batch via the proxy, and register/unregister via call_register
+(three gtest cases under `test_remote_echo_slots.cpp`);
+`plugins/workers/remote_noise_stub` exposes a deterministic
+3-step XX-shaped security script and an encrypt/decrypt
+round-trip; `plugins/workers/remote_handler_stub` exposes a
+deterministic envelope-dispatch handler;
 `plugins/workers/remote_slow_stub` is a pathological worker that
 sleeps in `on_init` / `on_register` per `GOODNET_SLOW_STUB_*_MS`
-env vars so the per-slot timeout regression can fire
-deterministically. Three new tests under `RemoteHostTimeoutOverride`
-(`OverrideAppliedToSlot`, `OverrideDoesNotAffectOtherSlots`,
-`ClearRemovesOverride`) drive the surface end-to-end.
+env vars so the per-slot timeout regression fires deterministically.
+Integration suites `test_remote_host_security.cpp` (4 tests),
+`test_remote_host_handler.cpp` (5 tests), and
+`RemoteHostTimeoutOverride` (`OverrideAppliedToSlot`,
+`OverrideDoesNotAffectOtherSlots`, `ClearRemovesOverride`) drive
+the proxies and overrides end-to-end.
 
-### Recv-side parallel decrypt — symmetric crypto fan-out
+### Public C ABI — unload_plugin + query_extension_checked surface tests
+
+The C ABI entry point `gn_core_unload_plugin(name)` now drives a
+real per-name teardown through a new `PluginManager::unload(name)`
+path. The existing `shutdown` / `rollback` walks were factored into
+a shared `teardown_one()` helper so the per-name path reuses the
+quiescence-gated unregister → shutdown → close chain without
+duplicating it. Idempotent on unknown name (`GN_ERR_NOT_FOUND`);
+NULL argument is rejected with `GN_ERR_INVALID_ARGUMENT`.
+`docs/contracts/plugin-lifetime.en.md` §6.1 documents the
+host-driven hot-reload contract: after `unload(name)` returns
+`GN_OK`, the host may re-prime with a fresh
+`gn_core_load_plugins`. Two new integration tests exercise the
+reload (`CoreUnloadReload`) and multi-protocol coexistence
+(`RegisterSecondProtocol`) paths.
+
+Three new tests under `CoreC.Query*` exercise
+`gn_core_query_extension_checked(core, name, version)` — the
+public C-ABI entry that external clients (raw-socket adapters,
+FFI bindings, the planned C-inject demo) use to consume the
+kernel's extension registry. Previously the surface was only
+covered against NULL handles. Happy path queries
+`gn.link.capability` and exercises its `get` vtable slot; the
+two negative paths confirm an unknown name returns NULL and a
+producer-version pin fails the lookup rather than silently
+returning a partial vtable.
+
+`gn_ctx_make_for_test(...)` and `gn_ctx_destroy(...)` on
+`sdk/connection.h` allocate and release a synthetic
+`gn_connection_context_t` for plugin test fixtures. Production
+code never calls them — the kernel manages context lifecycle
+itself — but the entry points let protocol-layer / security-layer
+plugin tests fixture a real kernel-shaped context without
+including kernel-internal headers (which the ABI hermeticity
+gate forbids for plugin TUs).
+
+### Security — recv-side parallel decrypt + recycled plaintext pool
 
 The send path has fanned encrypt jobs through `CryptoWorkerPool`
 since rc1; the recv path stayed single-threaded inside
 `SecuritySession::decrypt_transport_stream`. Three new primitives
-close the asymmetry:
+close the asymmetry.
 
 `InlineCrypto::reserve_recv_nonces(k)` atomically grabs the next
 K recv nonces in one shot so K parallel decrypt jobs can fold
@@ -167,122 +134,38 @@ condvar overhead. Available only when `fast_crypto_active()`
 holds; otherwise the session defers to the provider's vtable
 decrypt slot.
 
-`notify_inbound_bytes` now routes the Transport-phase drain
-through `decrypt_batch_transport_stream`; multi-frame ticks fan
-out, single-frame ticks fall through transparently. At end-of-
-call routed plaintexts are reclaimed back into the session's
+`notify_inbound_bytes` routes the Transport-phase drain through
+`decrypt_batch_transport_stream`; multi-frame ticks fan out,
+single-frame ticks fall through transparently. At end-of-call
+routed plaintexts are reclaimed back into the session's
 `recycled_plaintext_pool_` (free-list capped at 16 entries) via
 `recycle_plaintext_buffers` so steady-state inbound traffic
 reuses buffer capacity instead of heap-churning one
 `std::vector<std::uint8_t>` per frame.
 
-Seven new tests pin the behaviour: three under `InlineCrypto`
-(`ReserveRecvNoncesAdvancesAtomically`,
+The bench-only downgrade seam
+`SecuritySession::_test_clear_inline_crypto` is declared and
+defined only when `-DGOODNET_BENCH_SHOWCASE=ON`; the
+`bench_showcase` binary called the helper unconditionally,
+producing an LTO link failure on the default build. The showcase
+target now returns early with a skip message when the option is
+OFF, mirroring the existing skips for `GOODNET_BENCH_STRATEGIES`
+and `GOODNET_STATIC_PLUGINS`. Default `nix run .#build` is clean;
+opting into the showcase propagates the macro kernel-wide so both
+ends of the seam see the symbol.
+
+Seven new tests pin the recv-side behaviour: three under
+`InlineCrypto` (`ReserveRecvNoncesAdvancesAtomically`,
 `MakeDecryptJobAuthenticatesMatchingCipher`,
 `MakeDecryptJobReportsAeadFailure`) and four under
 `SecuritySessionBatchDecrypt` (`RoundTripThroughPool`,
 `AeadFailureClearsOutput`, `StreamRoundTripBatchOfMany`,
 `RecyclePlaintextBuffersCapsAtMax`).
 
-### bench_showcase — gated on GOODNET_BENCH_SHOWCASE option
+### Plugin manager + manifest
 
-The downgrade seam `SecuritySession::_test_clear_inline_crypto`
-is declared and defined only when `-DGOODNET_BENCH_SHOWCASE=ON`;
-the `bench_showcase` binary called the helper unconditionally,
-producing an LTO link failure on the default build. The showcase
-target now returns early with a skip message when the option is
-OFF, mirroring the existing skips for `GOODNET_BENCH_STRATEGIES`
-and `GOODNET_STATIC_PLUGINS`. Default `nix run .#build` is clean
-again; opting into the showcase propagates the macro kernel-wide
-so both ends of the seam see the symbol.
-
-### Subprocess SECURITY + HANDLER vtable proxy synthesis
-
-`RemoteHost::security_vtable_proxy()` returns a synthesised
-`gn_security_provider_vtable_t` whose slots issue PLUGIN_CALL
-frames at the pinned ids 0x300..0x308 (handshake_open, step,
-complete, export_transport_keys, encrypt, decrypt, rekey,
-handshake_close). `allowed_trust_mask` rides on slot 0x300 — the
-provider_id itself comes from the HELLO descriptor and needs no
-wire round trip. `RemoteHost::handler_vtable_proxy()` is the
-analogue for HANDLER plugins at 0x400..0x405 (protocol_id,
-supported_msg_ids, handle_message, on_result, on_init,
-on_shutdown). The `supported_msg_ids` thunk caches the worker's
-reply per-RemoteHost so the borrowed pointer stays valid for the
-lifetime of the registration.
-
-`handle_host_call_` gains two new opcodes: 0x17
-(`register_security`) and 0x18 (`unregister_security`). SECURITY
-workers publish their synthesised proxy through
-`host_api->register_security`. The existing 0x15
-(`register_vtable`) slot now also accepts `GN_REGISTER_HANDLER`
-and routes through the handler proxy.
-
-Worker-side stub library: `WorkerConfig` carries
-`security_vtable`/`security_self` and `handler_vtable`/
-`handler_self` so the worker declares its real vtables once.
-The PLUGIN_CALL dispatcher routes 0x300..0x308 into the worker's
-`gn_security_provider_vtable_t` and 0x400..0x405 into its
-`gn_handler_vtable_t`. Per-handshake `void*` state pointers are
-stashed in a worker-side handle map so the wire only sees u64
-tokens. Synthetic `host_api_t` gains `register_security` and
-`unregister_security` thunks for the 0x17 / 0x18 round trips.
-
-Two new in-tree workers cover regression:
-`plugins/workers/remote_noise_stub` exposes a deterministic
-3-step XX-shaped security script and an encrypt/decrypt
-round-trip; `plugins/workers/remote_handler_stub` exposes a
-deterministic envelope-dispatch handler. Integration suites
-`test_remote_host_security.cpp` (4 tests) and
-`test_remote_host_handler.cpp` (5 tests) drive the proxies
-end-to-end. `docs/contracts/remote-plugin.en.md` §6 marks every
-SECURITY + HANDLER slot as implemented and lists 0x17 / 0x18
-host slots.
-
-### Subprocess LINK runtime — host-call slot completion
-
-`RemoteHost::handle_host_call_` now decodes the four LINK
-host-call opcodes that previously fell through the default branch:
-`NOTIFY_CONNECT` (0x13), `NOTIFY_DISCONNECT` (0x14),
-`REGISTER_VTABLE` (0x15), `UNREGISTER_VTABLE` (0x16). The
-worker-side library (`sdk/cpp/remote_plugin.cpp`) gains four
-matching `host_api_t` thunks wired into `g_state.synth_api`, so a
-subprocess LINK plugin can finally drive the same host surface a
-static or dynamic LINK plugin sees.
-
-The remote LINK vtable proxy's `send_batch` slot is also
-synthesised — it loops over each frame, issuing one
-`link_send_thunk` PLUGIN_CALL per frame. The fallback path in
-`internal.cpp` (scalar `send`) is unchanged; callers iterating the
-vtable directly now observe a non-null `send_batch`.
-
-`plugins/workers/remote_echo` exercises the new surface end-to-
-end: `echo_connect` calls `notify_connect` with synthesised
-pk/uri/loopback-trust/initiator-role; three new gtest cases under
-`plugins/workers/remote_echo/tests/test_remote_echo_slots.cpp`
-round-trip notify_connect, send_batch via the proxy, and
-register/unregister via call_register.
-
-### gn_core_unload_plugin — host-driven hot-reload
-
-The C ABI entry point `gn_core_unload_plugin(name)` now drives a
-real per-name teardown through a new `PluginManager::unload(name)`
-path. The existing `shutdown` / `rollback` walks were factored into
-a shared `teardown_one()` helper so the per-name path reuses the
-quiescence-gated unregister → shutdown → close chain without
-duplicating it. Idempotent on unknown name (`GN_ERR_NOT_FOUND`);
-NULL argument is rejected with `GN_ERR_INVALID_ARGUMENT`.
-`docs/contracts/plugin-lifetime.en.md` §6.1 documents the
-host-driven hot-reload contract: after `unload(name)` returns
-`GN_OK`, the host may re-prime with a fresh
-`gn_core_load_plugins`. Two new integration tests exercise the
-reload (`CoreUnloadReload`) and multi-protocol coexistence
-(`RegisterSecondProtocol`) paths.
-
-### DynamicRuntime — symbols cached at load
-
-`DynamicRuntime::load` now resolves every `gn_plugin_*` symbol
-once via `dlsym` and stores function pointers on the owning
+`DynamicRuntime::load` resolves every `gn_plugin_*` symbol once
+via `dlsym` and stores the function pointers on the owning
 `PluginInstance` (a new `DynamicPluginSymbols` aggregate). The
 init / register / unregister / shutdown entry points dereference
 the cached pointers instead of re-issuing `dlsym` per call —
@@ -296,7 +179,13 @@ tests assert the cache holds: three new cases in
 no-re-resolve across 64 register/unregister cycles, and
 cache-clear on dlclose.
 
-### PluginManifest — per-plugin quiescence override + O(1) find
+`ManifestEntry::required` (parsed from the JSON `required` key,
+default `false`) pins critical plugins for the loader. After every
+load `PluginManager::load` walks the manifest and rejects with
+`GN_ERR_INVALID_STATE` if any required entry has no registered
+instance, naming the missing paths in the diagnostic. Operators
+pin `gn.link.tcp` + `gn.link.tls` so a misconfigured deploy never
+silently runs without the minimum carrier set.
 
 `ManifestEntry` carries an optional `quiescence_timeout_s` field
 parsed from JSON; the rollback path consults the per-plugin value
@@ -305,17 +194,17 @@ declare longer drain windows without inflating the global timeout
 for every plugin. The override is documented in
 `docs/contracts/plugin-manifest.en.md` §2.
 
-`PluginManifest::find(path)` is now O(1) — a sibling
+`PluginManifest::find(path)` is O(1) — a sibling
 `std::unordered_map<std::string, std::size_t>` index keyed on the
 canonicalised path runs alongside the order-preserving vector,
 rebuilt on every `add_entry` / `parse`. Remote-heavy deployments
 with hundreds of subprocess entries see find drop from O(N) to
 hash-lookup cost.
 
-`set_manifest` and `set_manifest_required` now assert
-`!active_` — those setters are bootstrap-only and racing them
-against an active session is a programming error the comment
-already promised to catch.
+`set_manifest` and `set_manifest_required` assert `!active_` —
+those setters are bootstrap-only and racing them against an
+active session is a programming error the comment already
+promised to catch.
 
 ### Wire codec — decode-failure error code
 
@@ -330,7 +219,108 @@ output parameter — the offset + decoder's expectation lands in
 new code. Existing `!= GN_OK` call sites in `remote_host.cpp` and
 the worker library are unaffected.
 
-### Bench infrastructure — bytes-processed metering + parody/real fence
+### Link capability — host-side bind probe + extension surface
+
+`core/kernel/link_capability.{cpp,hpp}` adds a host-side bind probe
+for UDP / TCP on IPv4 and IPv6. `gn::host_link_capability()`
+probes once on first call, caches the four-bool snapshot, and
+re-probes on `refresh_host_link_capability()`. Plugin code
+consults the cached snapshot through the new
+`GN_EXT_LINK_CAPABILITY` extension (registered by the kernel
+constructor) instead of every UDP plugin retrying its bind in a
+log-spamming loop. A graceful-degradation host (corporate
+firewall, mobile carrier with UDP blocked, container without
+IPv6) gets one summary WARN at probe time naming the disabled
+carrier families.
+
+Four tests under `LinkCapability*` and
+`PluginManager_ManifestRequired` cover the probe surface and the
+manifest-pin gate end-to-end. The `required` field pinning
+`gn.link.tcp` + `gn.link.tls` (described under "Plugin manager +
+manifest" above) is the operator-facing complement that turns the
+capability probe into a deploy-time invariant.
+
+### IPluginRuntime polymorphic-loader abstraction
+
+PluginManager dispatches every plugin-lifecycle step
+(load / init / register / unregister / shutdown / close) through
+a runtime registry keyed by the manifest entry's `kind` string.
+The kernel ships three built-in runtimes — `dynamic` (dlopen),
+`static` (gn_plugin_static_registry walk), `remote` (subprocess
+worker over `sdk/remote/wire.h`) — each owning its kind-specific
+entry-symbol resolution and load-state teardown.
+
+Host programs that bundle a custom linkage (WebAssembly host,
+FFI-over-IPC bridge, per-process sandbox manager) implement the
+`IPluginRuntime` interface in `core/plugin/plugin_runtime.hpp`
+and register an instance through
+`PluginManager::register_runtime(kind, std::unique_ptr<...>)`
+before `load`. Manifest entries whose `kind` field matches
+dispatch through the custom runtime; PluginManager itself stays
+unchanged. The kernel-internal abstraction is the keystone for
+the future SDK `gn_core_register_runtime` slot — that addition
+is non-breaking once it lands.
+
+### host_api notify_rtt_sample slot + multi-strategy chain dispatch
+
+A new size-prefixed slot `notify_rtt_sample` is appended before
+`host_api_t._reserved`. The struct grows from 488 to 496 B; the
+`_reserved` array stays at its design size of 8 entries. Link
+plugins and the heartbeat handler push observed RTT samples
+through the slot; the kernel folds each sample into a per-conn
+EWMA(α = 1/8) per RFC 6298 and republishes the smoothed value to
+every registered strategy through
+`on_path_event(GN_PATH_EVENT_RTT_UPDATE)`. The strategy chain
+ranks conns by latency without each strategy maintaining its own
+probe. LINK / HANDLER / UNKNOWN (host embedding) kinds can
+publish; other kinds get `GN_ERR_NOT_IMPLEMENTED`. Zero is the
+"no-sample" sentinel and silently dropped; unknown conn id
+returns `GN_ERR_NOT_FOUND`. The heartbeat handler forwards every
+matched PONG-driven sample to the kernel after recording its own
+raw `last_rtt_us` for the gn.heartbeat extension's get_rtt slot.
+
+The kernel admits multiple `gn.strategy.*` plugins concurrently
+and walks the registered chain in registration order on each
+`host_api->send_to`. The first strategy that returns a real
+conn wins; a strategy with no opinion on the candidate set
+returns `GN_ERR_NOT_FOUND` and the chain advances to the next.
+The previous single-strategy gate (`GN_ERR_LIMIT_REACHED` on a
+second registration) is removed. Single-strategy deployments
+work unchanged; the chain is the natural admission of composite
+setups (`rtt-optimal` + a `cost-aware` fallback).
+`ExtensionRegistry::query_prefix` sorts results by the monotonic
+registration sequence so the strategy walk is deterministic
+regardless of the underlying hash-map iteration order.
+`(GN_OK, GN_INVALID_ID)` from a strategy is treated as
+`GN_ERR_NOT_FOUND` for chain advancement, mirroring the
+documented lenient interpretation on
+`gn_strategy_api_t::pick_conn`. A non-NOT_FOUND error aborts
+the chain. The kernel auto-fires `on_path_event` with
+`GN_PATH_EVENT_CONN_UP` and `GN_PATH_EVENT_CONN_DOWN` to every
+registered strategy so the chain reflects live connection
+state without manual injection.
+
+`register_vtable` and `register_security` now gate on
+plugin-kind match — a HANDLER plugin cannot register a LINK
+vtable, a LINK plugin cannot register a SECURITY provider, and
+the rejection surfaces as `GN_ERR_INVALID_ARGUMENT` with a
+diagnostic naming the mismatch. Five unit tests in
+`tests/unit/registry/test_update_rtt_sample.cpp` and the
+`tests/send_to/` suite cover the RTT-sample + chain-fallthrough
++ kind-gate paths.
+
+### Security registry — multi-provider StackRegistry documentation
+
+The kernel's security registry has admitted multiple distinct
+`provider_id`s since the StackRegistry contract; the surface was
+previously documented as "single active provider total" in
+several places. The `docs/contracts/security-trust.en.md` §6
+multi-provider paragraph and the `register_security` docstrings
+in `sdk/host_api.h` and `docs/host-api.en.md` now describe the
+multi-provider shape. `find_for_trust` selection is registration-
+order policy.
+
+### Bench infrastructure — bytes-processed metering + parody/real fence + CI smoke gate
 
 `bench/plugins/bench_real_e2e.cpp` and `bench/plugins/bench_tcp.cpp`
 both reported `bytes_per_second` as `meter.size() × payload` or
@@ -345,20 +335,43 @@ now use `state.iterations() × payload`, matching
 `bench/comparison/reports/aggregate.py` tags every row with a
 `mode` field (`"real"` for libp2p / iroh / `RealFixture*`,
 `"parody"` for iperf3 / socat / synthetic) and refuses to mix
-shapes inside the same pivot cell via a new
-`ModeMismatchError`. The aggregator exits non-zero if a
-mis-tagged parody row sneaks into a real-mode column.
+shapes inside the same pivot cell via a new `ModeMismatchError`.
+The aggregator exits non-zero if a mis-tagged parody row sneaks
+into a real-mode column.
 
 `docs/perf/methodology.en.md` §2.6 documents the send/recv
 asymmetry as a structural property of the data plane: send fans
 out through `CryptoWorkerPool::run_batch` via
 `reserve_send_nonces` + `encrypt_batch_transport`; recv walks
-`decrypt_transport` single-threaded inside `notify_inbound_bytes`.
-The follow-up shape (`reserve_recv_nonces`,
-`decrypt_batch_transport`, batched gather) is described as
-factual missing primitives, not a regression.
+`decrypt_transport` single-threaded inside `notify_inbound_bytes`
+(the recv-side parallel path described under "Security" closes
+this asymmetry).
 
-### RFC coverage — RFC 7692 not-implemented explicit
+A new `bench-smoke` job in `.github/workflows/ci.yml` builds
+`bench_real_e2e`, `bench_tcp`, and `bench_udp` in Release mode,
+runs each for ~0.3 s with `--benchmark_format=json`, and either
+compares against a committed baseline JSON via
+`tools/bench_compare.py --threshold-pct 15` (failing on
+regression beyond the threshold) or — when no baseline file is
+present — runs in smoke mode via the new
+`tools/bench_summary.py` helper that just logs the per-benchmark
+numbers. Gated by the `bench` label on PRs or push to main so
+PRs that don't touch perf-relevant code skip the Release-build
+tax. JSON artefacts upload on every run for post-hoc review.
+`bench/baselines/README.md` documents the ratchet workflow: the
+baseline is intentionally manual, refreshed in the same commit
+that legitimately changes performance. Auto-rolling baselines
+would mask unintentional regressions, so the gate is the review
+mechanism.
+
+`tools/bench_compare.py` ships as a standalone per-commit
+regression-gate driver with a `--threshold-pct` CLI flag that
+widens the regression band and an exit code 2 for missing-file
+errors. Eight pytest cases under `tests/tools/` pin the
+regression-gate contract; CI's livedoc-check job extends to run
+the `tests/tools/` and `tests/livedoc/` pytest suites.
+
+### RFC coverage + attestation freeze
 
 `tools/livedoc/rfc_coverage.yaml` and the rendered
 `docs/_facts/rfc_coverage.yaml` declare RFC 7692
@@ -369,9 +382,12 @@ gets a response with no `Sec-WebSocket-Extensions` echo, so per
 RFC 7692 §5.1 the extension never activates and the connection
 falls back to uncompressed frames. RFC 6455 entry gains a §5.4
 fragmentation-reassembly detail (max 16 MiB merged, 64 KiB
-single-frame cap) matching the WS plugin's actual ceiling.
-
-### Attestation — v1 format frozen, extension namespace documented
+single-frame cap) matching the WS plugin's actual ceiling. The
+catalogue also gains RFC 6762 (multicast DNS) and the
+draft-mdns-ice-candidates entry covering the ICE plugin's mDNS
+host-candidate obfuscation surface, and the RFC 9000 entry
+corrects its implementation note from "ngtcp2-backed" to
+"OpenSSL 3.6 native QUIC".
 
 `docs/contracts/attestation.en.md` adds a §Stability paragraph
 declaring the current Ed25519 / 232-byte / msg_id 0x11 layout as
@@ -382,148 +398,58 @@ The dispatcher's file-header comment and
 `docs/architecture/security-flow.ru.md` §attestation
 cross-reference the new contract paragraph.
 
-### Doc — plugin-lifetime future runtimes + remote-plugin trust model
+### Plugin-lifetime + remote-plugin contract prose
 
 `docs/contracts/plugin-lifetime.en.md` §2a notes that
 `IPluginRuntime` is a C++ interface today; a C ABI version is the
-natural development when WASM / eBPF runtimes arrive (the
-runtime itself can be a loadable module). `docs/contracts/remote-
-plugin.en.md` calls out that the subprocess trust model is
-operator-vetted manifest + sha256, not runtime isolation, and
-documents the `descriptor_name_storage_` runtime-mirrored
-pattern as the price of supporting HELLO-payload names.
+natural development when WASM / eBPF runtimes arrive (the runtime
+itself can be a loadable module). `docs/contracts/remote-plugin.en.md`
+calls out that the subprocess trust model is operator-vetted
+manifest + sha256, not runtime isolation, and documents the
+`descriptor_name_storage_` runtime-mirrored pattern as the price
+of supporting HELLO-payload names. The same contract is normalized
+with `Stability: active · v1` headers alongside `dns`, `store`,
+and `plugin-linkage`.
 
-### IPluginRuntime polymorphic-loader abstraction
+### Build + tooling
 
-PluginManager now dispatches every plugin-lifecycle step
-(load / init / register / unregister / shutdown / close)
-through a runtime registry keyed by the manifest entry's
-`kind` string. The kernel ships three built-in runtimes —
-`dynamic` (dlopen), `static` (gn_plugin_static_registry walk),
-`remote` (subprocess worker over `sdk/remote/wire.h`) — each
-owning its kind-specific entry-symbol resolution and load-state
-teardown.
+`flake.nix` exposes a new `packages.sdk-headers` derivation —
+header-only redistribution of `sdk/` for downstream consumers
+that build against the C ABI without pulling the kernel build
+graph. `.githooks/pre-commit` gates on livedoc drift when the
+changed files touch livedoc inputs, complementing the
+`ci`-side livedoc-check job that runs pytest over
+`tests/livedoc/` + `tests/tools/`.
 
-Host programs that bundle a custom linkage (WebAssembly host,
-FFI-over-IPC bridge, per-process sandbox manager) implement the
-`IPluginRuntime` interface in `core/plugin/plugin_runtime.hpp`
-and register an instance through
-`PluginManager::register_runtime(kind, std::unique_ptr<...>)`
-before `load`. Manifest entries whose `kind` field matches
-dispatch through the custom runtime; PluginManager itself stays
-unchanged. The kernel-internal abstraction is the load-bearing
-keystone for the future SDK `gn_core_register_runtime` slot —
-that addition is non-breaking once it lands.
+### Sub-repo work referenced
 
-### host_api->notify_rtt_sample slot for RTT observability
+`plugins/links/ice` is a separate git that ships its own
+CHANGELOG. Three substantive landings in this cycle that
+operators reading the kernel CHANGELOG should be aware of:
 
-A new size-prefixed slot appended before `host_api_t._reserved`.
-The struct grows from 488 to 496 B; the `_reserved` array stays
-at its design size of 8 entries. Link plugins and the heartbeat
-handler push observed RTT samples through the slot;
-the kernel folds each sample into a per-conn EWMA(α = 1/8) per
-RFC 6298 and republishes the smoothed value to every registered
-strategy through `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`. The
-strategy chain ranks conns by latency without each strategy
-maintaining its own probe.
+- **Multi-TURN fallback** — sequential walk through
+  `IceConfig::turn_servers` in `gather_relay`; backup probing
+  via `turn_backup_timer_` (default 30 s); failover when a
+  backup ALLOCATE succeeds and the primary is degraded per
+  `TurnClient::is_healthy()`; rate-limited to one failover per
+  `turn_failover_min_interval_s` (default 60 s).
+- **IPv6 mDNS dual-stack** — `mdns.{cpp,hpp}` binds both
+  `224.0.0.251` (IPv4) and `ff02::fb` (IPv6) multicast groups
+  via `SO_REUSEPORT`; per-interface `IPV6_JOIN_GROUP` for every
+  AF_INET6 address from `getifaddrs`; AAAA queries route to the
+  new IPv6 socket; `ice.mdns_obfuscate_host_candidates` now
+  covers AF_INET6 host candidates.
+- **DPLPMTUD active path-MTU probing** — `PathMtuProbe` state
+  machine implementing RFC 8899 (Packetization Layer Path MTU
+  Discovery for Datagram Transports); fires padded STUN binding
+  requests at sizes from the configurable ladder (default
+  `{1200, 1400, 1500, 4000, 9000}`); correlates responses by
+  transaction id; binary-search bisects on consecutive loss.
+  Replaces the static `ice.path_mtu` floor with a live
+  `effective_path_mtu()` queryable through the new
+  `gn.link.ice.path_mtu` extension slot.
 
-LINK / HANDLER / UNKNOWN (host embedding) kinds can publish;
-other kinds get `GN_ERR_NOT_IMPLEMENTED`. Zero is the
-"no-sample" sentinel and silently dropped; unknown conn id
-returns `GN_ERR_NOT_FOUND`. The heartbeat handler now forwards
-every matched PONG-driven sample to the kernel after recording
-its own raw `last_rtt_us` for the gn.heartbeat extension's
-get_rtt slot.
-
-### DNS handler wire dispatch — 7 envelopes live
-
-handler-dns previously returned `GN_PROPAGATION_CONTINUE` for
-every msg_id; local callers reached the resolver only through
-the `gn.dns` extension vtable. This release ships full wire
-dispatch for the seven `DNS_*` envelopes per
-`docs/contracts/dns.en.md` §3:
-
-- `DNS_PUT` (0x0610) writes through the resolver with implicit
-  type = RrType::TXT (the wire treats values as opaque bytes
-  per the locked v1.x contract).
-- `DNS_GET` (0x0611) resolves exact / prefix / since modes.
-  Exact dispatches through the typed Resolver; prefix and since
-  bypass the Resolver and walk the store extension directly
-  (`StoreClient::get_prefix` / `get_since` with the TXT-prefixed
-  key), filtering decoded results back to `RrType::TXT`.
-- `DNS_RESULT` (0x0612) carries responses framed per §3.6.
-- `DNS_DELETE` (0x0613) routes through the resolver.
-- `DNS_SUBSCRIBE` (0x0614) records the peer's interest; the
-  handler tracks subscribers under sub_mu_ and prunes them via
-  the conn-state DISCONNECTED channel.
-- `DNS_NOTIFY` (0x0615) auto-dispatches on every successful
-  wire-side PUT/DELETE that matches a subscriber's key (exact
-  or prefix mode).
-- `DNS_SYNC` (0x0616) is symmetric: request carries
-  record_count = 0, reply appends N records produced by
-  `StoreClient::get_since` filtered to TXT.
-
-Wire-side records use TXT as the implicit DNS record type
-because the locked layout does not carry an explicit type
-field; the extension surface keeps its typed
-`Resolver::put_record(name, type, rdata, ttl, flags)` shape.
-Extension-API writes to the TXT type also fan out DNS_NOTIFY
-to matching wire subscribers, so a local caller updating a
-record cannot sneak past wire-level observers; non-TXT writes
-stay extension-only since the wire surface has no type field
-to interpret them.
-
-The pre-release misnamed the msg_id constants
-(`kMsgResolve` / `kMsgPutRecord` had the value-pair inverted
-from the contract); the rename to `kMsgPut` / `kMsgGet` /
-`kMsgResult` aligns the names with values.
-
-### handler-store first-writer-wins authority ACL
-
-Wire-side STORE_PUT and STORE_DELETE now consult the Noise-
-authenticated `sender_pk` the gnet protocol layer stamps on
-the envelope. The handler binds each key to its initial wire
-writer's public key; subsequent PUT or DELETE from a different
-peer is rejected with the new status code 4
-(`kStatusUnauthorized`) instead of silently allowing
-cross-peer overwrites. The original writer can update or delete
-freely; ownership lapses when the owning peer deletes the key.
-
-Loopback / in-process / test-fixture envelopes with all-zero
-sender_pk bypass the gate — the kernel is implicitly trusted
-and the `gn.store` extension callers (`put_local` / `del_local`)
-have no on-the-wire sender to authenticate.
-
-### Multi-strategy chain dispatch on send_to
-
-The kernel admits multiple `gn.strategy.*` plugins concurrently
-and walks the registered chain in registration order on each
-`host_api->send_to`. The first strategy that returns a real
-conn wins. A strategy with no opinion on the candidate set
-returns `GN_ERR_NOT_FOUND` and the chain advances to the next.
-The previous single-strategy gate (`GN_ERR_LIMIT_REACHED` on a
-second registration) is removed. Single-strategy deployments
-work unchanged; the chain is the natural admission of composite
-setups (`rtt-optimal` + a `cost-aware` fallback).
-
-`ExtensionRegistry::query_prefix` sorts results by the
-monotonic registration sequence so the strategy walk is
-deterministic regardless of the underlying hash-map iteration
-order. `(GN_OK, GN_INVALID_ID)` from a strategy is treated as
-`GN_ERR_NOT_FOUND` for chain advancement, mirroring the
-documented lenient interpretation on
-`gn_strategy_api_t::pick_conn`.
-
-### gn_ctx_make_for_test / gn_ctx_destroy SDK test helpers
-
-A pair of C ABI entry points on `sdk/connection.h` that allocate
-and release a synthetic `gn_connection_context_t` for plugin
-test fixtures. Production code never calls them — the kernel
-manages context lifecycle itself — but the entry points let
-protocol-layer / security-layer plugin tests fixture a real
-kernel-shaped context without including kernel-internal
-headers (which the ABI hermeticity gate forbids for plugin
-TUs).
+See `plugins/links/ice/CHANGELOG.md` for the full ICE entry.
 
 ## [1.0.0-rc3] — 2026-05-13
 
