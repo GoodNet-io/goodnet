@@ -332,6 +332,17 @@ admission (e.g. null on `Loopback` / `IntraNode`, Noise on
 `Untrusted` / `Peer`) reads through `find_for_trust` against the
 union of registered providers' masks.
 
+`find_for_trust(trust)` walks the registry in **registration
+order** and returns the first provider whose `allowed_trust_mask`
+admits the queried class. Two providers that both admit the same
+class — say a custom `noise-ik` registered alongside the canonical
+`noise-xx`, both with `Untrusted | Peer` — resolve to the one that
+registered first. Registration order is the policy: operators
+order `register_security` calls deliberately, and `init_all`
+ordering through `gn_plugin_descriptor_t::provides` /
+`requires` (see `plugin-lifetime.en.md` §5) keeps the order
+deterministic across kernel restarts.
+
 ---
 
 ## 6a. Conn-id ownership gate
