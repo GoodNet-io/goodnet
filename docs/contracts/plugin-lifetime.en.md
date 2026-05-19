@@ -365,6 +365,9 @@ as under a live kernel.
 
 ## 10. Cross-references
 
+- Plugin-side shutdown ordering (six-step sequence): `lifecycle.en.md` §4.
+  This document specifies the kernel-side protocol; `lifecycle.en.md`
+  pins the plugin's `shutdown()` member ordering as a hard invariant.
 - C ABI evolution: `abi-evolution.en.md` §3.
 - The host vtable used at registration: `host-api.en.md`.
 - Quiescence wait mechanics: `fsm-events.en.md` §6 (generation counter).

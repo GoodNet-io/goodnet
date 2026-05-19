@@ -26,7 +26,10 @@ plugin author's reading order is:
 3. [`contracts/plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) —
    when the kernel calls each entry point and what each phase may
    safely do.
-4. The contract for the role you are filling: `link.en.md`,
+4. [`contracts/lifecycle.en.md`](contracts/lifecycle.en.md) — the
+   plugin-side complement: the six-step shutdown ordering and the
+   test recipe that catches races like #100.
+5. The contract for the role you are filling: `link.en.md`,
    `handler-registration.en.md`, `plugins/security/noise/docs/handshake.md`, etc.
 
 ---
