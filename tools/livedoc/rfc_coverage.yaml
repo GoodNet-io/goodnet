@@ -2,6 +2,10 @@
 # plugin tree implement, where each one lives, and how deep the
 # coverage goes.
 #
+# Hand-curated for now; consider auto-derive from source markers
+# (e.g. `// RFC NNNN §X.Y` banner comments at the implementation
+# sites) in future. Update on every RFC implementation landing.
+#
 # Status values:
 #   full    — every MUST/SHOULD of the RFC is in tree and tested
 #   partial — core paths covered; specific sections deliberately out
@@ -53,11 +57,14 @@ rfcs:
   - rfc: 8838
     title: Trickle ICE for SDP
     area: ICE / NAT traversal
-    status: partial
+    status: full
     implementation: plugins/links/ice
     notes: "End-of-candidates marker §10 signalled via OFFER_EOC /
-            ANSWER_EOC; full SDP integration out of scope (kernel
-            uses a key-exchange-based offer/answer, not SDP)."
+            ANSWER_EOC; outbound poll surface `poll_local` in
+            `gn_link_ice_signal_api_t` drains queued local candidate
+            blobs for out-of-process signalling bridges. Full SDP
+            integration out of scope (kernel uses a key-exchange-
+            based offer/answer, not SDP)."
 
   - rfc: 8305
     title: Happy Eyeballs Version 2
@@ -84,6 +91,38 @@ rfcs:
     implementation: plugins/links/ice
     notes: "Pacing + consent-freshness compliant; verified in unit
             tests."
+
+  - rfc: 6886
+    title: NAT Port Mapping Protocol (NAT-PMP)
+    area: ICE / NAT traversal
+    status: full
+    implementation: plugins/links/portmap
+    notes: "12-byte request / 16-byte response on UDP/5351; default
+            gateway resolved from `/proc/net/route`; lifetime renewal
+            at `lifetime_s / 2` cadence per §3.3."
+
+  - rfc: 6887
+    title: Port Control Protocol (PCP)
+    area: ICE / NAT traversal
+    status: partial
+    implementation: plugins/links/portmap
+    notes: "MAP opcode — 60-byte request (24-byte common header +
+            36-byte body); client IP carried as IPv4-mapped IPv6.
+            PEER / FILTER opcodes deliberately out of scope for v1."
+
+  - rfc: 6970
+    title: Universal Plug and Play (UPnP) Internet Gateway Device-Port Control Protocol Interworking Function (IGD-PCP IWF)
+    area: ICE / NAT traversal
+    status: full
+    implementation: plugins/links/portmap
+    notes: "UPnP IGD-D 1.0 / 2.0 control surface: SSDP M-SEARCH on
+            `239.255.255.250:1900` (MX = 2 s) → HTTP GET device
+            description → `WANIPConnection:1` `<controlURL>`
+            extraction → SOAP `AddPortMapping` +
+            `GetExternalIPAddress`. `:2` accepted as wire-compatible
+            fallback. Hand-rolled HTTP / SSDP socket layer (no curl /
+            Boost dep); live-router integration test gated on
+            `GN_PORTMAP_UPNP_LIVE_TEST`."
 
   - rfc: 6762
     title: Multicast DNS

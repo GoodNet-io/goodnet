@@ -115,7 +115,7 @@
 			"type": "group",
 			"x": 6253,
 			"y": -170,
-			"width": 28446,
+			"width": 32794,
 			"height": 320,
 			"color": "4",
 			"label": "ROADMAP STATUS (auto, see roadmap_status.yaml)"
@@ -636,7 +636,7 @@
 		{
 			"id": "n_rm_gn_core_unload_plugin_hot_reload",
 			"type": "text",
-			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:648:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 15624,
 			"y": -100,
 			"width": 540,
@@ -735,7 +735,7 @@
 		{
 			"id": "n_rm_c_abi_version_of_ipluginruntime",
 			"type": "text",
-			"text": "# ✗ C ABI version of `IPluginRuntime`\n\nstatus: **missing**\n\nevidence: sdk/plugin_runtime.h absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ C ABI version of `IPluginRuntime`\n\nstatus: **done**\n\nevidence: sdk/plugin_runtime.h present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 21700,
 			"y": -100,
 			"width": 377,
@@ -850,19 +850,91 @@
 			"height": 200
 		},
 		{
-			"id": "n_rm_hardware_key_store",
+			"id": "n_rm_phase_1_identitysigner_abstraction_in_flight",
 			"type": "text",
-			"text": "# ✗ Hardware key store\n\nstatus: **missing**\n\nevidence: plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 28376,
+			"text": "# ✗ Phase 1 — `IdentitySigner` abstraction (in flight)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 28408,
 			"y": -100,
-			"width": 540,
+			"width": 445,
+			"height": 200
+		},
+		{
+			"id": "n_rm_phase_2_c_abi_for_identity_providers_pending",
+			"type": "text",
+			"text": "# ✗ Phase 2 — C ABI for identity providers (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 28999,
+			"y": -100,
+			"width": 430,
+			"height": 200
+		},
+		{
+			"id": "n_rm_phase_3_pkcs_11_plugin_dual_expose_pending",
+			"type": "text",
+			"text": "# ✗ Phase 3 — PKCS#11 plugin dual-expose (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 29596,
+			"y": -100,
+			"width": 415,
+			"height": 200
+		},
+		{
+			"id": "n_rm_phase_4_goodnetd_operator_ux_pending",
+			"type": "text",
+			"text": "# ✗ Phase 4 — `goodnetd` operator UX (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 30184,
+			"y": -100,
+			"width": 385,
+			"height": 200
+		},
+		{
+			"id": "n_rm_phase_5_sdk_cpp_core_dx_noise_xx_integration_pending",
+			"type": "text",
+			"text": "# ✗ Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 30751,
+			"y": -100,
+			"width": 520,
+			"height": 200
+		},
+		{
+			"id": "n_rm_hardware_key_store_pkcs_11",
+			"type": "text",
+			"text": "# ✗ Hardware key store — PKCS#11\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 31411,
+			"y": -100,
+			"width": 377,
+			"height": 200
+		},
+		{
+			"id": "n_rm_hardware_key_store_tpm_2_0",
+			"type": "text",
+			"text": "# ✗ Hardware key store — TPM 2.0\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 31865,
+			"y": -100,
+			"width": 377,
+			"height": 200
+		},
+		{
+			"id": "n_rm_hardware_key_store_macos_keychain",
+			"type": "text",
+			"text": "# ✗ Hardware key store — macOS Keychain\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 32341,
+			"y": -100,
+			"width": 377,
+			"height": 200
+		},
+		{
+			"id": "n_rm_hardware_key_store_webauthn_passkey",
+			"type": "text",
+			"text": "# ✗ Hardware key store — WebAuthn / passkey\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 32851,
+			"y": -100,
+			"width": 377,
 			"height": 200
 		},
 		{
 			"id": "n_rm_post_quantum_security_provider",
 			"type": "text",
 			"text": "# ✗ Post-quantum security provider\n\nstatus: **missing**\n\nevidence: plugins/security/pq/ absent; token 'ML_KEM' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 28993,
+			"x": 33341,
 			"y": -100,
 			"width": 490,
 			"height": 200
@@ -871,7 +943,7 @@
 			"id": "n_rm_opentelemetry_trace_propagation_across_mesh_hops",
 			"type": "text",
 			"text": "# ✗ OpenTelemetry trace propagation across mesh hops\n\nstatus: **missing**\n\nevidence: token 'otel_span_propagate' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 29613,
+			"x": 33961,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -880,7 +952,7 @@
 			"id": "n_rm_concrete_exporter_plugins",
 			"type": "text",
 			"text": "# ✗ Concrete exporter plugins\n\nstatus: **missing**\n\nevidence: plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 30172,
+			"x": 34520,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -889,7 +961,7 @@
 			"id": "n_rm_file_transfer_handler",
 			"type": "text",
 			"text": "# ✗ File transfer handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 30789,
+			"x": 35137,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -898,7 +970,7 @@
 			"id": "n_rm_identity_registration_handler",
 			"type": "text",
 			"text": "# ✗ Identity registration handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/identity/ absent; extension id 'gn.identity' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 31407,
+			"x": 35754,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -907,7 +979,7 @@
 			"id": "n_rm_group_membership_handler",
 			"type": "text",
 			"text": "# ✗ Group membership handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/group/ absent; extension id 'gn.group' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 32024,
+			"x": 36372,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -916,7 +988,7 @@
 			"id": "n_rm_goodnetd_binary_roadmap",
 			"type": "text",
 			"text": "# ✗ Goodnetd binary roadmap\n\nstatus: **missing**\n\nevidence: token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 32641,
+			"x": 36989,
 			"y": -100,
 			"width": 482,
 			"height": 200
@@ -925,7 +997,7 @@
 			"id": "n_rm_cli_introspection_tool",
 			"type": "text",
 			"text": "# ✗ CLI introspection tool\n\nstatus: **missing**\n\nevidence: tools/goodnetctl/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 33201,
+			"x": 37549,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -934,7 +1006,7 @@
 			"id": "n_rm_config_validator",
 			"type": "text",
 			"text": "# ✗ Config validator\n\nstatus: **missing**\n\nevidence: tools/config_validator/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 33655,
+			"x": 38003,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -943,7 +1015,7 @@
 			"id": "n_rm_tcp_turn_rfc_6062",
 			"type": "text",
 			"text": "# ✓ TCP-TURN (RFC 6062)\n\nstatus: **done**\n\nevidence: token 'REQUESTED_TRANSPORT_TCP' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 34109,
+			"x": 38458,
 			"y": -100,
 			"width": 540,
 			"height": 200

@@ -1,0 +1,18 @@
+total: 4
+bridges:
+- name: cpp
+  path: bridges/cpp
+  lang: cpp
+  notes: Header-only RAII layer over `sdk/core.h` for apps that consume
+- name: js
+  path: bridges/js
+  lang: js
+  notes: '`npm`-installable wrapper that talks the JSON-RPC dialect served by'
+- name: python
+  path: bridges/python
+  lang: python
+  notes: '`pip install`-able wrapper over the GoodNet C ABI (`sdk/core.h`).'
+- name: rust
+  path: bridges/rust
+  lang: rust
+  notes: 'Two-crate Cargo workspace under `bridges/rust/`:'

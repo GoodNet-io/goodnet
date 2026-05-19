@@ -153,6 +153,7 @@ manual edits.
 |---|---|---|
 | dns | [`plugins/handlers/dns`](../../plugins/handlers/dns) | Real DNS service for a GoodNet cluster. Typed RR storage on top of |
 | heartbeat | [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat) | Two-way liveness check between connected peers. Emits PING on |
+| ssh-modern | [`plugins/handlers/ssh-modern`](../../plugins/handlers/ssh-modern) |  |
 | store | [`plugins/handlers/store`](../../plugins/handlers/store) | Distributed key-value store handler — brings the legacy |
 | web_api_proxy | [`plugins/handlers/web_api_proxy`](../../plugins/handlers/web_api_proxy) | Browser-gateway handler plugin for the GoodNet kernel. A goodnetd |
 
@@ -176,6 +177,7 @@ manual edits.
 |---|---|---|
 | noise | [`plugins/security/noise`](../../plugins/security/noise) | Noise XX security provider for GoodNet. Pattern |
 | null | [`plugins/security/null`](../../plugins/security/null) | Loopback / IntraNode pass-through security provider. Used on |
+| pkcs11 | [`plugins/security/pkcs11`](../../plugins/security/pkcs11) | Hardware key store provider for GoodNet — PKCS#11 backend. The |
 
 ### Strategies plugins
 

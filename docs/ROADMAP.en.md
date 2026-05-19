@@ -37,7 +37,7 @@ to refresh the table.
 | Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
 | DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...) |
 | Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manager.cpp:65:    const ManifestEntry* me = nullptr;) |
-| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:648:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
+| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
 | Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
 | Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...) |
 | Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
@@ -48,7 +48,7 @@ to refresh the table.
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
 | Full WASM kernel build | ✓ done | nix/goodnet-wasm.nix present |
 | JS SDK + WebSocket bridge | ✓ done | plugins/handlers/web_api_proxy/ present; bridges/js/package.json present; extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define GN_EXT_WEB_API_...) |
-| C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
+| C ABI version of `IPluginRuntime` | ✓ done | sdk/plugin_runtime.h present |
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
 | io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
@@ -61,12 +61,15 @@ to refresh the table.
 | Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
-| Hardware key store — PKCS#11 | ◐ partial | plugins/security/pkcs11/ landed; identity-side extension 'gn.identity.pkcs11' lands in Phase 3 of the IdentitySigner refactor |
-| IdentitySigner abstraction (Phase 1) | ◐ in flight | core/identity/signer.hpp + LibsodiumSigner default; zero behaviour change for current file-based identity |
-| Identity provider C ABI (Phase 2) | ✗ missing | sdk/extensions/identity.h absent; gn_core_install_identity_from_provider absent |
-| Hardware key store — TPM 2.0 | ✗ pending | plugins/identity/tpm/ absent; depends on Phase 2 |
-| Hardware key store — macOS Keychain | ✗ pending | plugins/identity/keychain/ absent; depends on Phase 2 |
-| Hardware key store — WebAuthn / passkey | ✗ pending | plugins/identity/webauthn/ absent; pairs with web-node direction |
+| Phase 1 — `IdentitySigner` abstraction (in flight) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 2 — C ABI for identity providers (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 3 — PKCS#11 plugin dual-expose (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 4 — `goodnetd` operator UX (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — PKCS#11 | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — TPM 2.0 | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — macOS Keychain | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — WebAuthn / passkey | ✗ missing | no rule in roadmap_map.yaml |
 | Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
 | OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
 | Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
