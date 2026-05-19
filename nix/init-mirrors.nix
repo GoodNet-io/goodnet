@@ -58,6 +58,8 @@ pkgs.writeShellApplication {
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
       [bridges/cpp]=bridges-cpp
+      [bridges/python]=bridges-python
+      [bridges/rust]=bridges-rust
       [tests/integration]=integration-tests
     )
 

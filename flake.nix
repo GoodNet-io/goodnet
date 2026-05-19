@@ -241,83 +241,20 @@
             };
           };
 
-          # Pip-installable Python wrapper over libgoodnet_kernel
-          # through cffi (ABI mode). Pure-Python, no compiled
-          # extensions — the kernel `.so` is loaded at runtime via
-          # `dlopen`. The `goodnet-core` derivation is propagated so
-          # the kernel library is on the consumer's runtime closure;
-          # users still need `GOODNET_CORE_LIB` or `LD_LIBRARY_PATH`
-          # pointing at `${goodnet-core}/lib/` for the dlopen to
-          # resolve. See `bridges/python/README.md` for the runtime
-          # dependency notes.
-          goodnet-python = pkgs.python3Packages.buildPythonPackage {
-            pname   = "goodnet";
-            version = "0.1.0";
-            src     = ./bridges/python;
-            format  = "pyproject";
-            nativeBuildInputs = with pkgs.python3Packages; [
-              setuptools wheel
-            ];
-            propagatedBuildInputs = [
-              pkgs.python3Packages.cffi
-              goodnet-core
-            ];
-            # Tests gated on libgoodnet_kernel.so being reachable;
-            # the smoke suite skips gracefully when it is not, but
-            # the Nix sandbox blocks network and dlopen of paths
-            # outside the build closure. We point GOODNET_CORE_LIB
-            # at the propagated kernel build so `pytest` can drive
-            # the lifecycle round-trip during `nix build`.
-            checkInputs = [ pkgs.python3Packages.pytest ];
-            preCheck = ''
-              export GOODNET_CORE_LIB=${goodnet-core}/lib/libgoodnet_kernel.so
-            '';
-            pythonImportsCheck = [ "goodnet" "goodnet._ffi" "goodnet.errors" ];
-            meta = {
-              description = "Python bindings for the GoodNet network kernel (cffi ABI mode).";
-              license     = pkgs.lib.licenses.mit;
-              platforms   = pkgs.lib.platforms.linux ++ pkgs.lib.platforms.darwin;
-            };
-          };
-
-          # Rust bindings — two-crate Cargo workspace under
-          # `bridges/rust/`. `goodnet-sys` runs `bindgen` over
-          # `sdk/core.h` at build time; `goodnet` is the safe RAII
-          # wrapper around the kernel handle. The derivation points the
-          # crate at the already-built `goodnet-core` output through
-          # `GOODNET_CORE_DIR` so bindgen reads the canonical installed
-          # headers + the linker picks up `libgoodnet_kernel.so` from
-          # the same closure.
-          goodnet-rust = pkgs.rustPlatform.buildRustPackage {
-            pname   = "goodnet-rust";
-            version = "0.1.0";
-            src     = pkgs.lib.cleanSourceWith {
-              src    = ./bridges/rust;
-              filter = path: type:
-                let b = builtins.baseNameOf path; in
-                !(b == "target" || b == "result");
-            };
-            cargoLock = {
-              lockFile = ./bridges/rust/Cargo.lock;
-            };
-            nativeBuildInputs = with pkgs; [
-              pkg-config
-              llvmPackages.libclang
-              rustPlatform.bindgenHook
-            ];
-            buildInputs = [
-              goodnet-core
-            ] ++ (with pkgs; [
-              libsodium openssl spdlog fmt nlohmann_json
-            ]);
-            GOODNET_CORE_DIR = "${goodnet-core}";
-            doCheck = true;
-            meta = {
-              description = "GoodNet kernel — Rust bindings (raw FFI + safe RAII wrapper).";
-              license     = pkgs.lib.licenses.mit;
-              platforms   = goodnet-core.meta.platforms or pkgs.lib.platforms.unix;
-            };
-          };
+          # Language bindings — Python (`bridges-python`) and Rust
+          # (`bridges-rust`) — used to ride here as in-tree
+          # `goodnet-python` / `goodnet-rust` derivations against
+          # `./bridges/{python,rust}`. Both split into standalone
+          # repos in May 2026 (commit splitting `bridges/{python,
+          # rust}` into separate gits, mirroring the bridges-cpp
+          # model). Consumers fetch them as flake inputs:
+          #
+          #     inputs.bridges-python.url = "github:GoodNet-io/bridges-python";
+          #     inputs.bridges-rust.url   = "github:GoodNet-io/bridges-rust";
+          #
+          # The per-binding flake threads `goodnet-core` (this
+          # repo's `packages.<system>.goodnet-core`) through its own
+          # build closure for the kernel header + library paths.
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           # Truly-static kernel + bundled plugin set against musl +
           # `pkgsStatic` versions of openssl, libsodium, spdlog, fmt,
@@ -887,7 +824,9 @@
                 plugins/links/ice \
                 plugins/security/noise \
                 plugins/security/null \
-                bridges/cpp"
+                bridges/cpp \
+                bridges/python \
+                bridges/rust"
               _gn_missing=0
               for _gn_slot in $_gn_plugin_slots; do
                 if [ ! -d "$_gn_slot/.git" ]; then

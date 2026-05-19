@@ -1,7 +1,0 @@
-# Cargo build output — large, machine-generated, never checked in.
-/target/
-
-# Nix build symlinks left behind by `nix build` invocations run from
-# this directory.
-/result
-/result-*

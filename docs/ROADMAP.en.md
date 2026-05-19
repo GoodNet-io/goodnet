@@ -377,19 +377,25 @@ different sandboxing and performance trade-offs.
 The kernel ABI is C-ABI clean. Bindings ship as separate repos
 that consume `sdk/*.h` without recompiling the kernel.
 
-- **Rust** — landed under `bridges/rust/` as a two-crate Cargo
-  workspace. `goodnet-sys` runs `bindgen` over `sdk/core.h` at
-  build time (no checked-in `bindings.rs`); `goodnet` is the
-  safe RAII wrapper — `Core` owns `*mut gn_core_t`, `Drop` calls
-  `gn_core_destroy`. Lifecycle + `load_plugin` + `register_protocol`
-  are hand-wrapped as `Result<_, Error>`; the rest of the C ABI is
-  reachable via `goodnet::sys::*`. Flake output `goodnet-rust`
-  builds both crates and runs the create→init→drop smoke test.
-  Plugin-side traits (`Handler`, `Link` written in Rust) stay a
-  follow-up.
-- **Python** — synchronous C-extension SDK. Subprocess
-  remote-plugin path already works; in-process C-extension
-  bindings would give a faster path for Python-side handlers.
+- **Rust** — landed as the standalone `GoodNet-io/bridges-rust`
+  repo, slotted at `bridges/rust/` in the kernel checkout.
+  Two-crate Cargo workspace: `goodnet-sys` runs `bindgen` over
+  `sdk/core.h` at build time (no checked-in `bindings.rs`);
+  `goodnet` is the safe RAII wrapper — `Core` owns
+  `*mut gn_core_t`, `Drop` calls `gn_core_destroy`. Lifecycle +
+  `load_plugin` + `register_protocol` are hand-wrapped as
+  `Result<_, Error>`; the rest of the C ABI is reachable via
+  `goodnet::sys::*`. The bridges-rust flake builds both crates
+  and runs the create→init→drop smoke test against a
+  `goodnet-core` threaded in as a flake input. Plugin-side
+  traits (`Handler`, `Link` written in Rust) stay a follow-up.
+- **Python** — landed as the standalone `GoodNet-io/bridges-
+  python` repo, slotted at `bridges/python/`. cffi ABI-mode
+  wrapper: pure-Python package, no compiled extension — the
+  kernel `.so` is loaded at runtime via `dlopen`. Ships full
+  lifecycle + identity + plugin load/unload + the application
+  I/O slot + introspection counters. Callback-based
+  subscriptions stay deferred.
 - **Go** — cgo wrappers, idiomatic Go API for the most-used SDK
   surface (`gn_core_query_extension`, `host_api->send`, etc.).
 - **Zig** — Zig's `@cImport` already works against `sdk/*.h`;

@@ -132,34 +132,16 @@ plugins/links/quic/
 plugins/security/noise/
 plugins/security/null/
 
-# bridges/cpp/ is the slot for the bridges-cpp repo — operator-side
-# C++ binding over `sdk/core.h`. Lives in its own git (mirror at
-# `~/.local/share/goodnet-mirrors/bridges-cpp.git`); the explicit
-# block stops git from auto-registering the nested `.git/` as a
-# submodule when something runs `git add -A` from the monorepo root.
+# bridges/{cpp,python,rust}/ are the slots for the bridges-{cpp,
+# python,rust} repos — operator-side bindings over `sdk/core.h`.
+# Each lives in its own git (mirrors at
+# `~/.local/share/goodnet-mirrors/bridges-{cpp,python,rust}.git`);
+# the explicit block stops git from auto-registering the nested
+# `.git/` as a submodule when something runs `git add -A` from
+# the monorepo root.
 bridges/cpp/
-
-# bridges/rust — in-tree Rust crates (goodnet-sys + goodnet) built
-# in-tree with cargo; lockfile + Cargo.toml + .rs files all live in
-# the monorepo, no nested git.
-!bridges/rust/Cargo.toml
-!bridges/rust/Cargo.lock
-!bridges/rust/default.nix
-!bridges/rust/README.md
-!bridges/rust/.gitignore
-!bridges/rust/**/Cargo.toml
-!bridges/rust/**/*.rs
-!bridges/rust/**/*.h
-
-# bridges/python — in-tree Python wrapper over libgoodnet_kernel
-# through cffi. Pip-installable package, no compiled extensions, so
-# everything is plain-text and rides in the monorepo unlike the
-# nested-git plugin slots above.
-!bridges/python/**/*.py
-!bridges/python/**/*.toml
-!bridges/python/**/*.cfg
-!bridges/python/**/*.md
-!bridges/python/**/*.txt
+bridges/python/
+bridges/rust/
 
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel
