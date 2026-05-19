@@ -975,3 +975,282 @@ TEST(CoreC, UnloadPluginNullArgRejected) {
 }
 
 #endif  // GOODNET_NULL_PLUGIN_PATH
+
+// ── gn_core_register_runtime — C ABI external runtime kind ──────────────────
+//
+// Mirrors `sdk/plugin_runtime.h`. The tests below pin the four observable
+// behaviours of that path: argument validation, reserved-kind rejection,
+// api_size truncation acceptance, init-thunk dispatch on registration, and
+// end-to-end load through the registered runtime's `register_plugin` thunk.
+
+#include <sdk/plugin_runtime.h>
+
+#include <core/kernel/core_c_internal.hpp>
+#include <core/plugin/plugin_runtime.hpp>
+#include <core/plugin/remote_host.hpp>  // PluginInstance carries a unique_ptr<RemoteHost>
+
+namespace runtime_test {
+
+/// Free-function thunks share state through `void* ctx` — kept as
+/// free functions (not lambdas-with-captures) so the test exercises
+/// the exact C ABI shape a Rust / Go / C host would use.
+struct Counters {
+    std::atomic<int>           init_calls{0};
+    std::atomic<int>           shutdown_calls{0};
+    std::atomic<int>           register_calls{0};
+    std::atomic<int>           unregister_calls{0};
+    std::atomic<gn_result_t>   init_return{GN_OK};
+    std::mutex                 mu;
+    std::vector<std::string>   last_names;
+    std::vector<std::string>   last_paths;
+    /// Monotonic instance handle the test thunk hands back to the
+    /// kernel. Starts at 1 so the very first mint is non-zero.
+    std::atomic<std::uint32_t> next_instance{1};
+};
+
+inline gn_result_t do_init(void* ctx) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->init_calls.fetch_add(1);
+    return c->init_return.load();
+}
+
+inline gn_result_t do_shutdown(void* ctx) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->shutdown_calls.fetch_add(1);
+    return GN_OK;
+}
+
+inline gn_result_t do_register(void* ctx,
+                               const char* name,
+                               const char* path,
+                               gn_plugin_instance_t* out_instance) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->register_calls.fetch_add(1);
+    {
+        std::lock_guard lk(c->mu);
+        c->last_names.emplace_back(name ? name : "");
+        c->last_paths.emplace_back(path ? path : "");
+    }
+    if (out_instance != nullptr) {
+        *out_instance = c->next_instance.fetch_add(1);
+    }
+    return GN_OK;
+}
+
+inline gn_result_t do_unregister(void* ctx, gn_plugin_instance_t /*inst*/) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->unregister_calls.fetch_add(1);
+    return GN_OK;
+}
+
+inline gn_plugin_runtime_vtable_t make_vtable() {
+    gn_plugin_runtime_vtable_t v{};
+    v.api_size        = sizeof(gn_plugin_runtime_vtable_t);
+    v.init            = &do_init;
+    v.register_plugin = &do_register;
+    v.unregister      = &do_unregister;
+    v.shutdown        = &do_shutdown;
+    return v;
+}
+
+}  // namespace runtime_test
+
+TEST(CoreRegisterRuntime, NullArgsReturnInvalid) {
+    /// Every NULL combination on the registration entry must surface
+    /// `GN_ERR_NULL_ARG` — symmetric with the rest of the C ABI's
+    /// «never dereference on a NULL handshake» discipline.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    EXPECT_EQ(gn_core_register_runtime(nullptr, "k", &vt, &counters),
+              GN_ERR_NULL_ARG);
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, nullptr, &vt, &counters),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_register_runtime(core, "", &vt, &counters),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_register_runtime(core, "k", nullptr, &counters),
+              GN_ERR_NULL_ARG);
+
+    /// The valid combination must NOT have fired any thunks.
+    EXPECT_EQ(counters.init_calls.load(),     0);
+    EXPECT_EQ(counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, ReservedKindsReject) {
+    /// Built-in kinds ("static", "dynamic", "remote") are populated
+    /// by the PluginManager ctor; a host registration attempt under
+    /// any of these returns `GN_ERR_LIMIT_REACHED` per the
+    /// runtime-registry's duplicate-key policy.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, "static", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_register_runtime(core, "dynamic", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_register_runtime(core, "remote", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Rejections fired before any thunk ran.
+    EXPECT_EQ(counters.init_calls.load(),     0);
+    EXPECT_EQ(counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, SmallApiSizeAccepted) {
+    /// A vtable that declares exactly `GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`
+    /// is the minimum the kernel accepts — anything smaller means the
+    /// producer was built against an even older SDK than the one this
+    /// header ships. `MIN_SIZE` today covers all four thunks, but a
+    /// future minor that appends a fifth thunk lets older hosts keep
+    /// working with their original (smaller) `api_size`.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+    vt.api_size = GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE;
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, "minsize", &vt, &counters),
+              GN_OK);
+
+    /// A truly truncated vtable — smaller than min — is rejected.
+    gn_plugin_runtime_vtable_t too_small{};
+    too_small.api_size        = sizeof(std::size_t);  // only the api_size field
+    too_small.init            = &runtime_test::do_init;
+    too_small.register_plugin = &runtime_test::do_register;
+    too_small.unregister      = &runtime_test::do_unregister;
+    too_small.shutdown        = &runtime_test::do_shutdown;
+    EXPECT_EQ(gn_core_register_runtime(core, "too-small", &too_small, &counters),
+              GN_ERR_VERSION_MISMATCH);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, RegistrationCallsInit) {
+    /// The runtime-level `init` thunk fires once during
+    /// `gn_core_register_runtime`. The paired `shutdown` thunk fires
+    /// when the kernel drops the runtime, which happens at
+    /// `gn_core_destroy` time (PluginManager dtor walks the runtime
+    /// registry).
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(counters.init_calls.load(), 0);
+    EXPECT_EQ(gn_core_register_runtime(core, "init-counter", &vt, &counters),
+              GN_OK);
+    EXPECT_EQ(counters.init_calls.load(), 1);
+
+    /// Re-registering the same kind hits the LIMIT_REACHED path and
+    /// must NOT fire a second init.
+    EXPECT_EQ(gn_core_register_runtime(core, "init-counter", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(counters.init_calls.load(), 1);
+
+    /// A non-OK init return rolls back the registration without
+    /// firing the paired shutdown — an unpaired teardown would
+    /// surprise the host with a release of state it never set up.
+    runtime_test::Counters fail_counters;
+    fail_counters.init_return.store(GN_ERR_INTEGRITY_FAILED);
+    EXPECT_EQ(gn_core_register_runtime(core, "init-fails", &vt, &fail_counters),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_EQ(fail_counters.init_calls.load(),     1);
+    EXPECT_EQ(fail_counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+    /// Destroy walked the PluginManager dtor which dropped every
+    /// registered runtime; the OK-init counter saw its paired
+    /// shutdown thunk fire.
+    EXPECT_EQ(counters.shutdown_calls.load(), 1);
+    /// The fail-init runtime was never owned by the manager — its
+    /// shutdown thunk stays at zero.
+    EXPECT_EQ(fail_counters.shutdown_calls.load(), 0);
+}
+
+TEST(CoreRegisterRuntime, LoadCustomKindEndToEnd) {
+    /// End-to-end: register a `"test-runtime"` kind, dispatch through
+    /// the kernel's runtime registry, and assert the vtable thunk
+    /// saw the entry name + path. This drives the same dispatch path
+    /// `PluginManager::open_one` would take if the manifest schema
+    /// already supported a free-form `runtime` field. The test
+    /// reaches into the C++ runtime registry via the internal core
+    /// handle to invoke `load()` directly — the public C ABI for
+    /// custom-kind loads will land in a later commit (today the
+    /// manifest still only maps to dynamic/static/remote).
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    ASSERT_EQ(gn_core_register_runtime(core, "test-runtime", &vt, &counters),
+              GN_OK);
+
+    /// Reach through `gn_core_s` to the PluginManager's runtime
+    /// registry. `runtime_for` returns a borrowed pointer; the
+    /// manager owns the adapter and keeps it alive for the lifetime
+    /// of `core`.
+    auto* runtime = core->plugins.runtime_for("test-runtime");
+    ASSERT_NE(runtime, nullptr);
+    EXPECT_EQ(runtime->name(), "test-runtime");
+
+    /// Dispatch a fake load through the runtime. The kernel-internal
+    /// `PluginLoadContext` is the only argument we have to pass
+    /// directly — the manager builds it the same way during
+    /// `open_one`.
+    gn::core::PluginInstance inst{};
+    gn::core::PluginManifest empty_manifest;
+    gn::core::PluginLoadContext lc{
+        .kernel = &core->kernel,
+        .manifest = &empty_manifest,
+        .manifest_required = false,
+    };
+    std::string diag;
+    EXPECT_EQ(runtime->load("/virtual/path/wasm-plugin.wasm", lc, inst, diag),
+              GN_OK)
+        << "diag: " << diag;
+
+    /// The thunk recorded the canonical entry name + path. The
+    /// adapter derives the name from the path's basename minus the
+    /// extension; the path is forwarded verbatim.
+    EXPECT_EQ(counters.register_calls.load(), 1);
+    {
+        std::lock_guard lk(counters.mu);
+        ASSERT_EQ(counters.last_names.size(), 1u);
+        ASSERT_EQ(counters.last_paths.size(), 1u);
+        EXPECT_EQ(counters.last_names.front(), "wasm-plugin");
+        EXPECT_EQ(counters.last_paths.front(), "/virtual/path/wasm-plugin.wasm");
+    }
+    /// The adapter wrote a non-zero handle into `inst.self` (smuggled
+    /// through as a uintptr_t round-trip).
+    EXPECT_NE(inst.self, nullptr);
+
+    /// Tear the fake instance down through the same runtime — the
+    /// `unregister` thunk runs once, then `close` is a no-op.
+    runtime->unregister(inst);
+    EXPECT_EQ(counters.unregister_calls.load(), 1);
+    runtime->shutdown(inst);
+    runtime->close(inst, /*drained=*/true);
+
+    /// Second unregister is idempotent: `self` was nulled out so the
+    /// thunk skips the dispatch.
+    runtime->unregister(inst);
+    EXPECT_EQ(counters.unregister_calls.load(), 1);
+
+    gn_core_destroy(core);
+    EXPECT_EQ(counters.shutdown_calls.load(), 1);
+}

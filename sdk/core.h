@@ -63,6 +63,7 @@
 #include <sdk/host_api.h>
 #include <sdk/limits.h>
 #include <sdk/link.h>
+#include <sdk/plugin_runtime.h>
 #include <sdk/protocol.h>
 #include <sdk/security.h>
 #include <sdk/types.h>
@@ -545,6 +546,60 @@ GN_EXPORT gn_result_t gn_core_load_plugins_batch(
  *   requested name; the call is idempotent past that point.
  */
 GN_EXPORT gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name);
+
+/**
+ * @brief Register a custom plugin runtime under @p kind.
+ *
+ * The kind name maps 1:1 to the runtime selector the kernel uses
+ * when picking a runtime for a manifest entry. The built-in kinds
+ * are `"static"`, `"dynamic"`, and `"remote"`; attempting to
+ * register one of these returns `GN_ERR_LIMIT_REACHED` (the kernel
+ * treats the runtime registry as a `kind → runtime` map without a
+ * replace-in-place slot).
+ *
+ * Custom runtimes are addressed through the runtime lookup
+ * (`PluginManager::runtime_for(kind)`) — a future minor will
+ * extend the manifest schema with a free-form `runtime` field that
+ * routes manifest entries to non-built-in kinds. In the meantime,
+ * downstream hosts driving non-`dlopen` plugins (Wasm, JVM bridge,
+ * sandbox proxies) can register the kind here and dispatch through
+ * the runtime directly from their loader; the kernel-side rollback
+ * and quiescence-wait chain covers both built-in and custom
+ * runtimes uniformly.
+ *
+ * `vtable` must point at a `gn_plugin_runtime_vtable_t` whose
+ * `api_size` is at least `GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`; smaller
+ * values fail with `GN_ERR_VERSION_MISMATCH`. The kernel copies the
+ * vtable so the caller may drop the pointer after return — but @p
+ * ctx is captured by reference and must outlive every thunk
+ * dispatch (i.e., until the kernel calls the `shutdown` thunk during
+ * `gn_core_destroy`).
+ *
+ * @param core   Kernel handle returned by `gn_core_create`. Must
+ *               not be NULL.
+ * @param kind   @borrowed NUL-terminated runtime kind name. Copied
+ *               internally. NULL or empty returns `GN_ERR_NULL_ARG`.
+ * @param vtable @borrowed pointer to the size-prefixed vtable. NULL
+ *               returns `GN_ERR_NULL_ARG`. The kernel reads up to
+ *               `vtable->api_size` bytes.
+ * @param ctx    Opaque pointer passed to every thunk call. May be
+ *               NULL when the runtime is stateless.
+ *
+ * @return `GN_OK` on success;
+ *         `GN_ERR_NULL_ARG` on NULL @p core / @p kind / @p vtable
+ *         (or empty @p kind);
+ *         `GN_ERR_VERSION_MISMATCH` when `vtable->api_size <
+ *         GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`;
+ *         `GN_ERR_LIMIT_REACHED` when @p kind is already registered
+ *         (including the built-in reserved kinds);
+ *         the `init` thunk's return code when init fails (registration
+ *         is rolled back).
+ */
+GN_EXPORT gn_result_t gn_core_register_runtime(
+    gn_core_t*                              core,
+    const char*                             kind,
+    const gn_plugin_runtime_vtable_t*       vtable,
+    void*                                   ctx);
 
 /* ── Provider registration (in-process, no .so) ──────────────────────────── */
 
