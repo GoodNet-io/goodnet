@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  web-node-arch.svg — browser-resident WASM kernel + JS-as-plugin.
+  Side A: full kernel in WASM, JS wraps plugin runtimes.
+  Side B: thin web_api_proxy (direction 3) — compared.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="780"
+     viewBox="0 0 1180 780" font-family="JetBrains Mono,Fira Code,monospace">
+  <title>Web-node WASM kernel vs proxy thin client</title>
+  <desc>Side-by-side: full kernel-in-WASM with JS plugin runtime
+        adapter, vs direction-3 web_api_proxy thin client.</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#585b70"/>
+    </marker>
+    <marker id="arrT" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94e2d5"/>
+    </marker>
+    <marker id="arrP" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fab387"/>
+    </marker>
+  </defs>
+
+  <rect width="1180" height="780" fill="#1e1e2e"/>
+
+  <text x="24" y="36" fill="#cdd6f4" font-size="15" font-weight="bold">
+    Web-node — direction 4 (WASM kernel + JS plugin runtime)  vs  direction 3 (web_api_proxy)
+  </text>
+  <text x="24" y="56" fill="#585b70" font-size="11">
+    Same product surface, two implementations. Direction 4 runs the kernel locally; direction 3 talks to a remote daemon over WSS.
+  </text>
+
+  <!-- ════════ SIDE A: direction 4 — full WASM kernel ════════ -->
+  <g>
+    <rect x="24" y="80" width="540" height="660" rx="8"
+          fill="#181825" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="36" y="104" fill="#a6e3a1" font-size="12" font-weight="bold">
+      Direction 4 — WASM kernel + JS-as-plugin
+    </text>
+    <text x="36" y="122" fill="#585b70" font-size="10">browser tab; kernel runs in a Web Worker</text>
+
+    <!-- Browser tab outline -->
+    <rect x="48" y="144" width="492" height="490" rx="6"
+          fill="#1e1e2e" stroke="#cba6f7" stroke-width="1.2"/>
+    <text x="60" y="166" fill="#cba6f7" font-size="11" font-weight="bold">browser tab (Web Worker scope)</text>
+
+    <!-- WASM kernel blob -->
+    <rect x="72" y="186" width="220" height="100" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="84" y="206" fill="#a6e3a1" font-size="10" font-weight="bold">WASM kernel blob (.wasm)</text>
+    <text x="84" y="222" fill="#cdd6f4" font-size="9">goodnet_kernel.wasm</text>
+    <text x="84" y="238" fill="#cdd6f4" font-size="9">  · core/registry/*</text>
+    <text x="84" y="252" fill="#cdd6f4" font-size="9">  · core/composer/*</text>
+    <text x="84" y="266" fill="#cdd6f4" font-size="9">  · sdk/host_api_t  (Emscripten C ABI)</text>
+    <text x="84" y="280" fill="#cdd6f4" font-size="9">  · no transport — links are external</text>
+
+    <!-- JS loader / GoodnetClient -->
+    <rect x="312" y="186" width="220" height="100" rx="6"
+          fill="#45475a" stroke="#89b4fa" stroke-width="1.5"/>
+    <text x="324" y="206" fill="#89b4fa" font-size="10" font-weight="bold">JS loader (bridges/js)</text>
+    <text x="324" y="222" fill="#cdd6f4" font-size="9">GoodnetClient (TypeScript)</text>
+    <text x="324" y="238" fill="#cdd6f4" font-size="9">  · instantiates kernel.wasm</text>
+    <text x="324" y="252" fill="#cdd6f4" font-size="9">  · provides imports table (host_api)</text>
+    <text x="324" y="266" fill="#cdd6f4" font-size="9">  · gn_register_runtime("wasm-plugin")</text>
+    <text x="324" y="280" fill="#cdd6f4" font-size="9">  · routes handler callbacks → JS</text>
+
+    <!-- Wasm-plugin runtime adapter -->
+    <rect x="72" y="306" width="460" height="86" rx="6"
+          fill="#45475a" stroke="#f9e2af" stroke-width="1.5"/>
+    <text x="84" y="326" fill="#f9e2af" font-size="10" font-weight="bold">
+      JS handler thunks  —  registered as "wasm-plugin" runtime (sdk/plugin_runtime.h)
+    </text>
+    <text x="84" y="344" fill="#cdd6f4" font-size="9">on_message / on_result / on_capability — each thunk is a JS closure</text>
+    <text x="84" y="358" fill="#cdd6f4" font-size="9">PluginManager::open_one → runtime-&gt;load wraps a JS module URL into a vtable</text>
+    <text x="84" y="372" fill="#cdd6f4" font-size="9">dispatch path identical to static/dynamic — registry doesn't know the difference</text>
+    <text x="84" y="386" fill="#cdd6f4" font-size="9">handler code: hand-written JS / TS, no transpilation back to WASM required</text>
+
+    <!-- WSS carrier -->
+    <rect x="72" y="412" width="220" height="86" rx="6"
+          fill="#45475a" stroke="#cba6f7" stroke-width="1.5"/>
+    <text x="84" y="432" fill="#cba6f7" font-size="10" font-weight="bold">gn.link.ws (WSS only)</text>
+    <text x="84" y="448" fill="#cdd6f4" font-size="9">browser sandbox has no raw sockets</text>
+    <text x="84" y="462" fill="#cdd6f4" font-size="9">  → WSS is the only outbound primitive</text>
+    <text x="84" y="476" fill="#cdd6f4" font-size="9">  · wss://relay.example.org:443</text>
+    <text x="84" y="490" fill="#cdd6f4" font-size="9">  · WebSocket API; mask handling per RFC 6455</text>
+
+    <!-- IndexedDB identity store -->
+    <rect x="312" y="412" width="220" height="86" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="324" y="432" fill="#94e2d5" font-size="10" font-weight="bold">IndexedDB identity store</text>
+    <text x="324" y="448" fill="#cdd6f4" font-size="9">persisted node_identity + peer trust</text>
+    <text x="324" y="462" fill="#cdd6f4" font-size="9">  · encrypted secret_key (WebCrypto)</text>
+    <text x="324" y="476" fill="#cdd6f4" font-size="9">  · per-origin scoped</text>
+    <text x="324" y="490" fill="#cdd6f4" font-size="9">  · accessed via host_api shim</text>
+
+    <!-- Status -->
+    <rect x="72" y="518" width="460" height="104" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"/>
+    <text x="84" y="538" fill="#585b70" font-size="10" font-weight="bold">Trade-offs</text>
+    <text x="84" y="556" fill="#cdd6f4" font-size="9">  + identical handler code as native nodes (Plugin SDK reused via WASI shim)</text>
+    <text x="84" y="572" fill="#cdd6f4" font-size="9">  + works offline-capable (once .wasm + plugins are cached in SW)</text>
+    <text x="84" y="588" fill="#cdd6f4" font-size="9">  − ~2 MB kernel blob payload; cold-start hit on first tab</text>
+    <text x="84" y="604" fill="#cdd6f4" font-size="9">  − WSS-only severely limits NAT-traversal; ICE/QUIC/UDP out of scope</text>
+    <text x="84" y="620" fill="#cdd6f4" font-size="9">  status: experimental; tracks Tor Snowflake-style relay-only links</text>
+
+    <text x="36" y="666" fill="#585b70" font-size="9">Reuse rate: kernel + handlers + (most) plugins reused from native build.</text>
+    <text x="36" y="680" fill="#585b70" font-size="9">Per-platform code: JS loader + IndexedDB host_api shim + WASM link adapter.</text>
+    <text x="36" y="694" fill="#585b70" font-size="9">Plugins of kind link/handler/security can ship as wasm-plugin runtime modules served from CDN.</text>
+  </g>
+
+  <!-- ════════ SIDE B: direction 3 — web_api_proxy thin ════════ -->
+  <g>
+    <rect x="592" y="80" width="564" height="660" rx="8"
+          fill="#181825" stroke="#89b4fa" stroke-width="1.5"/>
+    <text x="604" y="104" fill="#89b4fa" font-size="12" font-weight="bold">
+      Direction 3 — web_api_proxy (thin)
+    </text>
+    <text x="604" y="122" fill="#585b70" font-size="10">browser tab; kernel runs on the user's home daemon</text>
+
+    <!-- Browser tab -->
+    <rect x="616" y="144" width="516" height="200" rx="6"
+          fill="#1e1e2e" stroke="#cba6f7" stroke-width="1.2"/>
+    <text x="628" y="166" fill="#cba6f7" font-size="11" font-weight="bold">browser tab — pure JS</text>
+    <rect x="640" y="186" width="476" height="60" rx="6"
+          fill="#45475a" stroke="#89b4fa" stroke-width="1.5"/>
+    <text x="652" y="206" fill="#89b4fa" font-size="10" font-weight="bold">GoodnetClient (TypeScript, no WASM)</text>
+    <text x="652" y="222" fill="#cdd6f4" font-size="9">connects to wss://home-node:443/api</text>
+    <text x="652" y="236" fill="#cdd6f4" font-size="9">marshals send / subscribe over JSON-RPC frames; ~50 KB minified</text>
+
+    <rect x="640" y="262" width="476" height="68" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="652" y="282" fill="#94e2d5" font-size="10" font-weight="bold">UI state cache (IndexedDB)</text>
+    <text x="652" y="298" fill="#cdd6f4" font-size="9">latest peer list, message ring-buffer</text>
+    <text x="652" y="312" fill="#cdd6f4" font-size="9">no secret_key here — daemon owns identity</text>
+    <text x="652" y="326" fill="#cdd6f4" font-size="9">re-sync on tab open</text>
+
+    <!-- WSS RPC arrow gap -->
+    <text x="616" y="378" fill="#fab387" font-size="11" font-weight="bold">WSS / JSON-RPC  ──→  user's home goodnetd</text>
+
+    <!-- Home daemon -->
+    <rect x="616" y="394" width="516" height="290" rx="6"
+          fill="#1e1e2e" stroke="#fab387" stroke-width="1.2"/>
+    <text x="628" y="416" fill="#fab387" font-size="11" font-weight="bold">goodnetd on user's machine (native binary)</text>
+
+    <rect x="640" y="436" width="240" height="100" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="652" y="456" fill="#a6e3a1" font-size="10" font-weight="bold">native kernel</text>
+    <text x="652" y="472" fill="#cdd6f4" font-size="9">  · same C++ binary as headless</text>
+    <text x="652" y="486" fill="#cdd6f4" font-size="9">  · full ICE / QUIC / TCP / UDP</text>
+    <text x="652" y="500" fill="#cdd6f4" font-size="9">  · handlers run native code</text>
+    <text x="652" y="514" fill="#cdd6f4" font-size="9">  · identity lives on disk</text>
+    <text x="652" y="528" fill="#cdd6f4" font-size="9">  · all carriers available</text>
+
+    <rect x="892" y="436" width="240" height="100" rx="6"
+          fill="#45475a" stroke="#cba6f7" stroke-width="1.5"/>
+    <text x="904" y="456" fill="#cba6f7" font-size="10" font-weight="bold">web_api_proxy handler</text>
+    <text x="904" y="472" fill="#cdd6f4" font-size="9">plugins/handlers/web_api/</text>
+    <text x="904" y="486" fill="#cdd6f4" font-size="9">  · listens wss:// (gn.link.ws)</text>
+    <text x="904" y="500" fill="#cdd6f4" font-size="9">  · JSON-RPC dispatcher</text>
+    <text x="904" y="514" fill="#cdd6f4" font-size="9">  · auth: pairing-token / cookie</text>
+    <text x="904" y="528" fill="#cdd6f4" font-size="9">  · tab is a thin terminal</text>
+
+    <rect x="640" y="552" width="492" height="120" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"/>
+    <text x="652" y="572" fill="#585b70" font-size="10" font-weight="bold">Trade-offs</text>
+    <text x="652" y="590" fill="#cdd6f4" font-size="9">  + tab is ~50 KB; no kernel cold-start</text>
+    <text x="652" y="606" fill="#cdd6f4" font-size="9">  + full NAT traversal — daemon does ICE</text>
+    <text x="652" y="622" fill="#cdd6f4" font-size="9">  + identity stays on user's hardware (or HSM)</text>
+    <text x="652" y="638" fill="#cdd6f4" font-size="9">  − requires the user to run a daemon somewhere reachable</text>
+    <text x="652" y="654" fill="#cdd6f4" font-size="9">  − offline tab = offline app; no PWA story</text>
+
+    <text x="604" y="710" fill="#585b70" font-size="9">Per-platform code: web_api_proxy handler + GoodnetClient JS + JSON-RPC schema.</text>
+    <text x="604" y="724" fill="#585b70" font-size="9">Kernel and handlers are unchanged from the native build.</text>
+  </g>
+
+  <!-- Inter-side arrows: WASM kernel ↔ JS loader, JS → wasm-plugin, etc -->
+  <path d="M 292 236 L 312 236" stroke="#94e2d5" stroke-width="1.2"
+        fill="none" marker-end="url(#arrT)"/>
+  <text x="298" y="228" fill="#94e2d5" font-size="9">imports</text>
+
+  <path d="M 422 286 L 422 306" stroke="#94e2d5" stroke-width="1.2"
+        fill="none" marker-end="url(#arrT)"/>
+  <path d="M 182 392 L 182 412" stroke="#fab387" stroke-width="1.2"
+        fill="none" marker-end="url(#arrP)"/>
+  <text x="84" y="406" fill="#fab387" font-size="9">link plugin (WSS)</text>
+  <path d="M 422 392 L 422 412" stroke="#fab387" stroke-width="1.2"
+        fill="none" marker-end="url(#arrP)"/>
+  <text x="320" y="406" fill="#fab387" font-size="9">host_api shim</text>
+
+  <!-- Side B internal arrow: tab ↔ daemon -->
+  <path d="M 878 344 L 878 394" stroke="#fab387" stroke-width="1.5"
+        fill="none" marker-end="url(#arrP)"/>
+  <path d="M 770 486 L 892 486" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+  <!-- Legend / status -->
+  <g transform="translate(900,52)">
+    <rect x="0" y="-12" width="14" height="14" fill="#a6e3a1"/>
+    <text x="18" y="-1" fill="#cdd6f4" font-size="10">kernel</text>
+    <rect x="60" y="-12" width="14" height="14" fill="#89b4fa"/>
+    <text x="78" y="-1" fill="#cdd6f4" font-size="10">bridge</text>
+    <rect x="130" y="-12" width="14" height="14" fill="#fab387"/>
+    <text x="148" y="-1" fill="#cdd6f4" font-size="10">carrier</text>
+    <rect x="200" y="-12" width="14" height="14" fill="#94e2d5"/>
+    <text x="218" y="-1" fill="#cdd6f4" font-size="10">storage</text>
+  </g>
+</svg>

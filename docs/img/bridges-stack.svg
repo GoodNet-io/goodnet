@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  bridges-stack.svg — sdk/core.h C ABI as the foundation, sdk/cpp/
+  as the C++ adapter layer, bridges/{cpp,python,rust,js} as
+  per-language wrappers on top, and apps consuming bridges.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="700"
+     viewBox="0 0 1180 700" font-family="JetBrains Mono,Fira Code,monospace">
+  <title>GoodNet bridges stack overview</title>
+  <desc>Layered diagram: C ABI bottom, C++ adapter middle,
+        per-language bridges, apps on top.</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#585b70"/>
+    </marker>
+  </defs>
+
+  <rect width="1180" height="700" fill="#1e1e2e"/>
+
+  <text x="24" y="36" fill="#cdd6f4" font-size="15" font-weight="bold">
+    Bridges stack — C ABI ── sdk/cpp ── bridges/{cpp,python,rust,js} ── apps
+  </text>
+  <text x="24" y="56" fill="#585b70" font-size="11">
+    Every layer is a thin wrapper over the one below. The C ABI is the single source of truth; everything else is generated or hand-written but versionable against it.
+  </text>
+
+  <!-- ═══ Layer 0: Apps ═══ -->
+  <g>
+    <text x="36" y="100" fill="#fab387" font-size="11" font-weight="bold">Layer 3 — Apps (consumers)</text>
+    <rect x="60" y="112" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="72" y="134" fill="#fab387" font-size="11" font-weight="bold">goodnetd</text>
+    <text x="72" y="152" fill="#cdd6f4" font-size="10">apps/goodnetd/</text>
+    <text x="72" y="166" fill="#cdd6f4" font-size="10">native daemon, sdk/cpp direct</text>
+    <text x="72" y="180" fill="#cdd6f4" font-size="10">operator CLI multicall</text>
+
+    <rect x="324" y="112" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="336" y="134" fill="#fab387" font-size="11" font-weight="bold">gssh</text>
+    <text x="336" y="152" fill="#cdd6f4" font-size="10">apps/gssh/</text>
+    <text x="336" y="166" fill="#cdd6f4" font-size="10">ssh server + goodnet handler-ext</text>
+    <text x="336" y="180" fill="#cdd6f4" font-size="10">sdk/cpp direct</text>
+
+    <rect x="588" y="112" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="600" y="134" fill="#fab387" font-size="11" font-weight="bold">web-node (browser)</text>
+    <text x="600" y="152" fill="#cdd6f4" font-size="10">apps/web-node/</text>
+    <text x="600" y="166" fill="#cdd6f4" font-size="10">bridges/js GoodnetClient</text>
+    <text x="600" y="180" fill="#cdd6f4" font-size="10">WASM kernel or web_api_proxy</text>
+
+    <rect x="852" y="112" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="864" y="134" fill="#fab387" font-size="11" font-weight="bold">3rd-party tooling</text>
+    <text x="864" y="152" fill="#cdd6f4" font-size="10">python notebooks, rust bots,</text>
+    <text x="864" y="166" fill="#cdd6f4" font-size="10">node.js scripts</text>
+    <text x="864" y="180" fill="#cdd6f4" font-size="10">bridges/{python,rust,js}</text>
+  </g>
+
+  <!-- ═══ Layer 2: Per-language bridges ═══ -->
+  <g>
+    <text x="36" y="232" fill="#94e2d5" font-size="11" font-weight="bold">Layer 2 — Language bridges (parallel)</text>
+
+    <rect x="60" y="244" width="248" height="120" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="72" y="266" fill="#94e2d5" font-size="11" font-weight="bold">bridges/cpp</text>
+    <text x="72" y="284" fill="#cdd6f4" font-size="10">  · header-only public re-export</text>
+    <text x="72" y="300" fill="#cdd6f4" font-size="10">  · #include &lt;goodnet/core.hpp&gt;</text>
+    <text x="72" y="316" fill="#cdd6f4" font-size="10">  · ABI-stable surface for plugins</text>
+    <text x="72" y="332" fill="#cdd6f4" font-size="10">  · CMake package goodnet::cpp</text>
+    <text x="72" y="350" fill="#94e2d5" font-size="10">  status: GREEN</text>
+
+    <rect x="324" y="244" width="248" height="120" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="336" y="266" fill="#94e2d5" font-size="11" font-weight="bold">bridges/python</text>
+    <text x="336" y="284" fill="#cdd6f4" font-size="10">  · pybind11 / cffi over sdk/core.h</text>
+    <text x="336" y="300" fill="#cdd6f4" font-size="10">  · goodnet.Core / Identity / Handler</text>
+    <text x="336" y="316" fill="#cdd6f4" font-size="10">  · GIL released across kernel calls</text>
+    <text x="336" y="332" fill="#cdd6f4" font-size="10">  · pip install goodnet</text>
+    <text x="336" y="350" fill="#94e2d5" font-size="10">  status: GREEN</text>
+
+    <rect x="588" y="244" width="248" height="120" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="600" y="266" fill="#94e2d5" font-size="11" font-weight="bold">bridges/rust</text>
+    <text x="600" y="284" fill="#cdd6f4" font-size="10">  · -sys crate over sdk/core.h</text>
+    <text x="600" y="300" fill="#cdd6f4" font-size="10">  · goodnet (safe wrapper crate)</text>
+    <text x="600" y="316" fill="#cdd6f4" font-size="10">  · #[no_std] feature for embedded</text>
+    <text x="600" y="332" fill="#cdd6f4" font-size="10">  · async API (futures)</text>
+    <text x="600" y="350" fill="#fab387" font-size="10">  status: PEACH (in flight)</text>
+
+    <rect x="852" y="244" width="248" height="120" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="864" y="266" fill="#94e2d5" font-size="11" font-weight="bold">bridges/js</text>
+    <text x="864" y="284" fill="#cdd6f4" font-size="10">  · TypeScript GoodnetClient</text>
+    <text x="864" y="300" fill="#cdd6f4" font-size="10">  · Emscripten bindings (WASM)</text>
+    <text x="864" y="316" fill="#cdd6f4" font-size="10">    or JSON-RPC (web_api_proxy)</text>
+    <text x="864" y="332" fill="#cdd6f4" font-size="10">  · npm i @goodnet/client</text>
+    <text x="864" y="350" fill="#f9e2af" font-size="10">  status: YELLOW (early)</text>
+  </g>
+
+  <!-- ═══ Layer 1: sdk/cpp ═══ -->
+  <g>
+    <text x="36" y="404" fill="#b4befe" font-size="11" font-weight="bold">Layer 1 — sdk/cpp (C++ adapter, in-tree)</text>
+    <rect x="60" y="416" width="1040" height="100" rx="6"
+          fill="#45475a" stroke="#b4befe" stroke-width="1.5"/>
+    <text x="72" y="438" fill="#b4befe" font-size="11" font-weight="bold">sdk/cpp/  —  thin C++ wrappers over sdk/*.h</text>
+    <text x="72" y="458" fill="#cdd6f4" font-size="10">Core (kernel lifecycle)   ·   Identity (key handling, from_hsm factory)   ·   errors (Status / Result&lt;T&gt;)   ·   host_api_default (RAII wrapper)</text>
+    <text x="72" y="476" fill="#cdd6f4" font-size="10">connect / listen_to (URI helpers)   ·   subscription (typed conn-state callbacks)   ·   wire (TLV serialisation, capability_tlv.hpp)</text>
+    <text x="72" y="492" fill="#cdd6f4" font-size="10">link_carrier · link_plugin · handler_plugin · protocol_layer · strategy_plugin · log · per_conn_map · token_bucket</text>
+    <text x="72" y="508" fill="#585b70" font-size="10">header-only where possible; no runtime cost vs raw C ABI; covered by sdk/cpp/test/*.</text>
+  </g>
+
+  <!-- ═══ Layer 0: C ABI ═══ -->
+  <g>
+    <text x="36" y="556" fill="#a6e3a1" font-size="11" font-weight="bold">Layer 0 — sdk/*.h (C ABI, ABI-stable)</text>
+    <rect x="60" y="568" width="1040" height="100" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="72" y="590" fill="#a6e3a1" font-size="11" font-weight="bold">
+      sdk/core.h · sdk/host_api.h · sdk/handler.h · sdk/link.h · sdk/security.h · sdk/identity.h · sdk/plugin.h · sdk/plugin_runtime.h
+    </text>
+    <text x="72" y="610" fill="#cdd6f4" font-size="10">
+      Plain extern "C", api_size-versioned vtables (see docs/contracts/abi-evolution.en.md §3).
+    </text>
+    <text x="72" y="626" fill="#cdd6f4" font-size="10">
+      host_api_t = 41 named slots + 8 reserved — single ABI table handed to every plugin and every bridge.
+    </text>
+    <text x="72" y="642" fill="#cdd6f4" font-size="10">
+      Stable across kernel versions; minor-version bumps add slots, never reshape existing ones.
+    </text>
+    <text x="72" y="660" fill="#585b70" font-size="10">
+      every layer above this row depends on these headers; this row depends on nothing inside the project.
+    </text>
+  </g>
+
+  <!-- Arrows: each layer ↓ on the previous -->
+  <path d="M 184 192 L 184 244" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 444 192 L 444 244" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 708 192 L 708 244" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 968 192 L 968 244" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+  <path d="M 184 364 L 184 416" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 444 364 L 444 416" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 708 364 L 708 416" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 968 364 L 968 416" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+  <path d="M 580 516 L 580 568" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+</svg>
