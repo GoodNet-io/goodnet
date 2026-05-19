@@ -256,9 +256,41 @@ handler / a build target.
   `core/plugin/remote_host.cpp` (socketpair + fork + execve),
   `core/plugin/runtimes/dynamic.cpp` (dlopen), every
   `plugins/links/*` (no WASI sockets), every `plugins/security/*`
-  (asio + libsodium thread layer). Emscripten / browser path and
-  the wasmtime-backed plugin runtime stay scoped out — they are
-  directions 2 and 3 of this section.*
+  (asio + libsodium thread layer). The wasmtime-backed plugin
+  runtime stays scoped out (direction 3 below).*
+
+  *Second landing — browser-WASM via `pkgs.emscripten` (`emcc`)
+  through `nix build .#goodnet-wasm-emscripten` (driven from
+  `nix/goodnet-wasm-emscripten.nix`). Companion to the WASI
+  route above; both coexist as additive flake outputs. Output
+  triple is `lib/libgoodnet-wasm-emscripten.a` +
+  `lib/goodnet.wasm` + `lib/goodnet.js`; the JS loader (the
+  future JS SDK, direction 3 in the WASM-runtime sweep) wraps
+  the pair via `await Goodnet()` so a `<script>` tag's
+  `Module.instantiateGoodnet()` style call yields a peer node
+  inside a browser tab. Buildable scope today: same dep-free
+  codec + framing TUs as the WASI route
+  (`core/plugin/wire_codec.cpp` + `plugins/protocols/gnet/wire.cpp`),
+  extended with `plugins/protocols/raw/raw.cpp` (the raw 1:1
+  layer; emcc-friendly, dep-free). Honest gap list lives in
+  the derivation's `passthru.gaps` attribute: **libsodium** has
+  no Emscripten port in nixpkgs and the `emconfigure` source
+  build is a follow-up — every TU that `#include <sodium.h>`
+  (identity/, security/inline_crypto, plugin_manifest) is
+  excluded; **asio** headers parse under emcc but the reactor
+  needs `-pthread` + `SharedArrayBuffer` + cross-origin-isolated
+  COOP/COEP host headers, so `kernel.cpp` / `plugin_manager.cpp`
+  / `timer_registry.cpp` are out until the JS-SDK consumer
+  wires that side; **`plugins/links/ws/`** is a standalone-git
+  plugin slot — its header-only `wire.hpp` + `ws_http_parse.hpp`
+  get an emcc parse-check when the slot is populated before
+  `nix build`, otherwise skipped without failing. The
+  `gn.link.wss` carrier itself (asio TCP + RFC-6455 wire over
+  asio's `__EMSCRIPTEN__` reactor) follows the asio gap. The
+  same `_WIN32`-vs-POSIX split in `core/plugin/remote_host.cpp`
+  excludes fork/exec/socketpair from the browser build at the
+  source list level (no process model in browser WASM), so no
+  new `__EMSCRIPTEN__` guard touches that TU.*
 
 - **JS SDK + WebSocket bridge** — far simpler near-term path. The
   browser DOES NOT run goodnet code. Instead:

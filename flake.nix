@@ -337,6 +337,26 @@
           goodnet-wasm = import ./nix/goodnet-wasm.nix {
             inherit pkgs;
           };
+
+          # WASM / Emscripten cross-build — second of three WASM
+          # directions in `docs/ROADMAP.en.md` §WASM-web. Targets
+          # `wasm32-emscripten` (browser host) rather than the WASI
+          # server-side route above. Builds the same dep-free kernel-
+          # core subset (CBOR codec + GNET framing) plus the raw
+          # protocol layer and the header-only ws plugin parsers
+          # (wire / http handshake); kernel TUs that pull libsodium
+          # (identity, session) or asio (kernel.cpp, plugin_manager,
+          # timer_registry) stay scoped out — see the derivation's
+          # `passthru.gaps` for the honest gap list. Output pair is
+          # `goodnet.wasm` + `goodnet.js` loader; the future JS SDK
+          # (direction 3) calls `await Goodnet()` to instantiate it.
+          # Linux-host-only (pkgs.emscripten runs on Linux). CI gates
+          # this under `continue-on-error: true` because the
+          # emscripten port surface is volatile (sysroot rebuilds on
+          # llvm bumps, asio/libsodium port availability shifts).
+          goodnet-wasm-emscripten = import ./nix/goodnet-wasm-emscripten.nix {
+            inherit pkgs;
+          };
         });
 
       apps = forAllSystems (system: pkgs:

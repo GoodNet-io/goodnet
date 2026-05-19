@@ -185,6 +185,40 @@ jobs:
       - name: Cross-build WASM kernel core
         run: nix build .#goodnet-wasm --print-build-logs --keep-going
 
+  wasm-emscripten-build:
+    # Browser-WASM cross-build via `pkgs.emscripten` (`emcc`).
+    # Second of the three WASM directions in
+    # `docs/ROADMAP.en.md` §Web — browser integration. Where
+    # `wasm-cross-build` above targets `wasm32-wasi` for a
+    # wasmtime server-side host, this job targets
+    # `wasm32-emscripten` for in-browser instantiation: the
+    # output pair `goodnet.wasm` + `goodnet.js` is what the JS
+    # SDK (direction 3) wraps. Same dep-free codec / framing
+    # subset compiles; the kernel TUs that drag libsodium
+    # (identity/, session, manifest) or asio (kernel.cpp,
+    # plugin_manager, timer_registry) stay gated out at the
+    # source list — see the derivation's `passthru.gaps`.
+    # `continue-on-error: true` because the Emscripten port
+    # surface is volatile (sysroot rebuilds on llvm bumps,
+    # libsodium/asio port availability shifts under us). Same
+    # `cross-build` label gate as the WASI and darwin
+    # cross-builds.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # Surfaces `passthru.skip_reason` when the emscripten
+        # toolchain pin breaks the build. Stays advisory; the
+        # next step is the real signal.
+        run: |
+          nix eval .#goodnet-wasm-emscripten.skip_reason --raw 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build WASM kernel via Emscripten
+        run: nix build .#goodnet-wasm-emscripten --print-build-logs --keep-going
+
   bench-smoke:
     # Builds the three primary perf binaries in Release mode and runs
     # each for ~0.3 s with `--benchmark_format=json`. If a baseline
