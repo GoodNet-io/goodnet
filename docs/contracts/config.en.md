@@ -75,36 +75,36 @@ _41 config key(s) read by core / plugins, grouped by family._
 
 | Key | Type | Reader |
 |---|---|---|
-| `ice.aggressive_nomination` | `int64` | [`plugins/links/ice/link_ice.cpp#L319`](../../plugins/links/ice/link_ice.cpp#L319) |
-| `ice.auto_restart_backoff_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L479`](../../plugins/links/ice/link_ice.cpp#L479) |
-| `ice.auto_restart_max_attempts` | `int64` | [`plugins/links/ice/link_ice.cpp#L475`](../../plugins/links/ice/link_ice.cpp#L475) |
-| `ice.auto_restart_on_consent_loss` | `int64` | [`plugins/links/ice/link_ice.cpp#L471`](../../plugins/links/ice/link_ice.cpp#L471) |
-| `ice.check_interval_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L295`](../../plugins/links/ice/link_ice.cpp#L295) |
-| `ice.consent_max_failures` | `int64` | [`plugins/links/ice/link_ice.cpp#L282`](../../plugins/links/ice/link_ice.cpp#L282) |
-| `ice.consent_max_recovery` | `int64` | [`plugins/links/ice/link_ice.cpp#L291`](../../plugins/links/ice/link_ice.cpp#L291) |
-| `ice.keepalive_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L278`](../../plugins/links/ice/link_ice.cpp#L278) |
-| `ice.lite_mode` | `int64` | [`plugins/links/ice/link_ice.cpp#L326`](../../plugins/links/ice/link_ice.cpp#L326) |
-| `ice.mdns_obfuscate_host_candidates` | `int64` | [`plugins/links/ice/link_ice.cpp#L404`](../../plugins/links/ice/link_ice.cpp#L404) |
-| `ice.mdns_resolve_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L408`](../../plugins/links/ice/link_ice.cpp#L408) |
-| `ice.path_mtu` | `int64` | [`plugins/links/ice/link_ice.cpp#L307`](../../plugins/links/ice/link_ice.cpp#L307) |
-| `ice.pmtu_active_probing` | `int64` | [`plugins/links/ice/link_ice.cpp#L487`](../../plugins/links/ice/link_ice.cpp#L487) |
-| `ice.pmtu_probe_concurrency` | `int64` | [`plugins/links/ice/link_ice.cpp#L494`](../../plugins/links/ice/link_ice.cpp#L494) |
-| `ice.pmtu_probe_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L490`](../../plugins/links/ice/link_ice.cpp#L490) |
-| `ice.reactive_interface_change` | `int64` | [`plugins/links/ice/link_ice.cpp#L329`](../../plugins/links/ice/link_ice.cpp#L329) |
-| `ice.session_timeout_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L274`](../../plugins/links/ice/link_ice.cpp#L274) |
-| `ice.symmetric_port_prediction_attempts` | `int64` | [`plugins/links/ice/link_ice.cpp#L336`](../../plugins/links/ice/link_ice.cpp#L336) |
-| `ice.symmetric_port_prediction_enabled` | `int64` | [`plugins/links/ice/link_ice.cpp#L332`](../../plugins/links/ice/link_ice.cpp#L332) |
-| `ice.tcp_candidates_enabled` | `int64` | [`plugins/links/ice/link_ice.cpp#L457`](../../plugins/links/ice/link_ice.cpp#L457) |
-| `ice.tcp_so_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L463`](../../plugins/links/ice/link_ice.cpp#L463) |
-| `ice.turn_allocate_timeout_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L381`](../../plugins/links/ice/link_ice.cpp#L381) |
-| `ice.turn_backup_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L388`](../../plugins/links/ice/link_ice.cpp#L388) |
-| `ice.turn_failover_min_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L394`](../../plugins/links/ice/link_ice.cpp#L394) |
-| `ice.turn_password` | `string` | [`plugins/links/ice/link_ice.cpp#L262`](../../plugins/links/ice/link_ice.cpp#L262) |
-| `ice.turn_requested_transport` | `string` | [`plugins/links/ice/link_ice.cpp#L430`](../../plugins/links/ice/link_ice.cpp#L430) |
-| `ice.turn_servers` | `string` | [`plugins/links/ice/link_ice.cpp#L216`](../../plugins/links/ice/link_ice.cpp#L216) |
-| `ice.turn_tcp` | `int64` | [`plugins/links/ice/link_ice.cpp#L373`](../../plugins/links/ice/link_ice.cpp#L373) |
-| `ice.turn_tls` | `int64` | [`plugins/links/ice/link_ice.cpp#L417`](../../plugins/links/ice/link_ice.cpp#L417) |
-| `ice.turn_username` | `string` | [`plugins/links/ice/link_ice.cpp#L248`](../../plugins/links/ice/link_ice.cpp#L248) |
+| `ice.aggressive_nomination` | `int64` | [`plugins/links/ice/link_ice.cpp#L324`](../../plugins/links/ice/link_ice.cpp#L324) |
+| `ice.auto_restart_backoff_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L484`](../../plugins/links/ice/link_ice.cpp#L484) |
+| `ice.auto_restart_max_attempts` | `int64` | [`plugins/links/ice/link_ice.cpp#L480`](../../plugins/links/ice/link_ice.cpp#L480) |
+| `ice.auto_restart_on_consent_loss` | `int64` | [`plugins/links/ice/link_ice.cpp#L476`](../../plugins/links/ice/link_ice.cpp#L476) |
+| `ice.check_interval_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L300`](../../plugins/links/ice/link_ice.cpp#L300) |
+| `ice.consent_max_failures` | `int64` | [`plugins/links/ice/link_ice.cpp#L287`](../../plugins/links/ice/link_ice.cpp#L287) |
+| `ice.consent_max_recovery` | `int64` | [`plugins/links/ice/link_ice.cpp#L296`](../../plugins/links/ice/link_ice.cpp#L296) |
+| `ice.keepalive_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L283`](../../plugins/links/ice/link_ice.cpp#L283) |
+| `ice.lite_mode` | `int64` | [`plugins/links/ice/link_ice.cpp#L331`](../../plugins/links/ice/link_ice.cpp#L331) |
+| `ice.mdns_obfuscate_host_candidates` | `int64` | [`plugins/links/ice/link_ice.cpp#L409`](../../plugins/links/ice/link_ice.cpp#L409) |
+| `ice.mdns_resolve_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L413`](../../plugins/links/ice/link_ice.cpp#L413) |
+| `ice.path_mtu` | `int64` | [`plugins/links/ice/link_ice.cpp#L312`](../../plugins/links/ice/link_ice.cpp#L312) |
+| `ice.pmtu_active_probing` | `int64` | [`plugins/links/ice/link_ice.cpp#L492`](../../plugins/links/ice/link_ice.cpp#L492) |
+| `ice.pmtu_probe_concurrency` | `int64` | [`plugins/links/ice/link_ice.cpp#L499`](../../plugins/links/ice/link_ice.cpp#L499) |
+| `ice.pmtu_probe_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L495`](../../plugins/links/ice/link_ice.cpp#L495) |
+| `ice.reactive_interface_change` | `int64` | [`plugins/links/ice/link_ice.cpp#L334`](../../plugins/links/ice/link_ice.cpp#L334) |
+| `ice.session_timeout_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L279`](../../plugins/links/ice/link_ice.cpp#L279) |
+| `ice.symmetric_port_prediction_attempts` | `int64` | [`plugins/links/ice/link_ice.cpp#L341`](../../plugins/links/ice/link_ice.cpp#L341) |
+| `ice.symmetric_port_prediction_enabled` | `int64` | [`plugins/links/ice/link_ice.cpp#L337`](../../plugins/links/ice/link_ice.cpp#L337) |
+| `ice.tcp_candidates_enabled` | `int64` | [`plugins/links/ice/link_ice.cpp#L462`](../../plugins/links/ice/link_ice.cpp#L462) |
+| `ice.tcp_so_timeout_ms` | `int64` | [`plugins/links/ice/link_ice.cpp#L468`](../../plugins/links/ice/link_ice.cpp#L468) |
+| `ice.turn_allocate_timeout_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L386`](../../plugins/links/ice/link_ice.cpp#L386) |
+| `ice.turn_backup_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L393`](../../plugins/links/ice/link_ice.cpp#L393) |
+| `ice.turn_failover_min_interval_s` | `int64` | [`plugins/links/ice/link_ice.cpp#L399`](../../plugins/links/ice/link_ice.cpp#L399) |
+| `ice.turn_password` | `string` | [`plugins/links/ice/link_ice.cpp#L267`](../../plugins/links/ice/link_ice.cpp#L267) |
+| `ice.turn_requested_transport` | `string` | [`plugins/links/ice/link_ice.cpp#L435`](../../plugins/links/ice/link_ice.cpp#L435) |
+| `ice.turn_servers` | `string` | [`plugins/links/ice/link_ice.cpp#L221`](../../plugins/links/ice/link_ice.cpp#L221) |
+| `ice.turn_tcp` | `int64` | [`plugins/links/ice/link_ice.cpp#L378`](../../plugins/links/ice/link_ice.cpp#L378) |
+| `ice.turn_tls` | `int64` | [`plugins/links/ice/link_ice.cpp#L422`](../../plugins/links/ice/link_ice.cpp#L422) |
+| `ice.turn_username` | `string` | [`plugins/links/ice/link_ice.cpp#L253`](../../plugins/links/ice/link_ice.cpp#L253) |
 
 ### `links` keys
 

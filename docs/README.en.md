@@ -154,6 +154,7 @@ manual edits.
 | dns | [`plugins/handlers/dns`](../../plugins/handlers/dns) | Real DNS service for a GoodNet cluster. Typed RR storage on top of |
 | heartbeat | [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat) | Two-way liveness check between connected peers. Emits PING on |
 | store | [`plugins/handlers/store`](../../plugins/handlers/store) | Distributed key-value store handler — brings the legacy |
+| web_api_proxy | [`plugins/handlers/web_api_proxy`](../../plugins/handlers/web_api_proxy) | Browser-gateway handler plugin for the GoodNet kernel. A goodnetd |
 
 ### Links plugins
 
