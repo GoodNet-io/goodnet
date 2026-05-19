@@ -249,10 +249,10 @@ struct Stub : ::gn::sdk::test::LinkStub {
 // ─── Listen wires the TCP carrier acceptor ─────────────────────────────
 
 TEST(RawInjectLink, ListenSubscribesAcceptThenInvokesCarrierListen) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     ASSERT_EQ(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
@@ -262,9 +262,9 @@ TEST(RawInjectLink, ListenSubscribesAcceptThenInvokesCarrierListen) {
 }
 
 TEST(RawInjectLink, ListenFailsWithoutCarrierExtension) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     auto api = ::gn::sdk::test::make_link_host_api(h);
+    auto link = std::make_shared<RawInjectLink>();
     /// `query_extension_checked` left null — the carrier query fails.
     link->set_host_api(&api);
     EXPECT_NE(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
@@ -273,10 +273,10 @@ TEST(RawInjectLink, ListenFailsWithoutCarrierExtension) {
 // ─── Accept + inject pump ─────────────────────────────────────────────
 
 TEST(RawInjectLink, CarrierAcceptDispatchesNotifyConnect) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
     ASSERT_EQ(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
 
@@ -293,10 +293,10 @@ TEST(RawInjectLink, CarrierAcceptDispatchesNotifyConnect) {
 }
 
 TEST(RawInjectLink, CarrierDataDispatchesInjectWithDefaultMsgId) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     Config cfg;
@@ -323,10 +323,10 @@ TEST(RawInjectLink, CarrierDataDispatchesInjectWithDefaultMsgId) {
 }
 
 TEST(RawInjectLink, StreamMsgIdEncodingPeelsBigEndianPrefix) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     Config cfg;
@@ -353,10 +353,10 @@ TEST(RawInjectLink, StreamMsgIdEncodingPeelsBigEndianPrefix) {
 }
 
 TEST(RawInjectLink, MaxPayloadOverflowDrops) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     Config cfg;
@@ -376,10 +376,10 @@ TEST(RawInjectLink, MaxPayloadOverflowDrops) {
 // ─── Outbound: send forwards to the carrier ────────────────────────────
 
 TEST(RawInjectLink, SendForwardsToCarrierSendOnKernelConnId) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     ASSERT_EQ(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
@@ -409,10 +409,10 @@ TEST(RawInjectLink, SendForwardsToCarrierSendOnKernelConnId) {
 }
 
 TEST(RawInjectLink, SendUnknownConnReturnsNotFound) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     ASSERT_EQ(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
@@ -425,10 +425,10 @@ TEST(RawInjectLink, SendUnknownConnReturnsNotFound) {
 // ─── Disconnect ────────────────────────────────────────────────────────
 
 TEST(RawInjectLink, DisconnectClosesCarrierConn) {
-    auto link = std::make_shared<RawInjectLink>();
     Stub h;
     FakeTcpCarrier carrier;
     auto api = make_api(h, carrier);
+    auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
 
     ASSERT_EQ(link->listen("raw-inject://127.0.0.1:0"), GN_OK);
