@@ -47,6 +47,19 @@ int main(int argc, char** argv) {
             {GOODNET_NOISE_PLUGIN_PATH, {}},  // hash auto-computed
             {GOODNET_TCP_PLUGIN_PATH,   {}},
         };
+        // Default identity = file-backed at the XDG path. For an
+        // HSM-backed setup pin the identity through the Phase 5
+        // factory instead:
+        //
+        //   opts.identity = gn::sdk::Identity::from_hsm({
+        //       .extension_id = "gn.identity.pkcs11",
+        //       .key_label    = "my-yubikey",
+        //   });
+        //
+        // The plugin's `gn_identity_signer_vtable_t` then handles
+        // every signature; the private key never enters this
+        // process. CI has no HSM fixture so the example sticks to
+        // the file path.
         gn::sdk::Core core(opts);
 
         auto session = core.connect_to(uri);

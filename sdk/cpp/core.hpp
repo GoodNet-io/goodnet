@@ -44,6 +44,7 @@
 
 #include <sdk/core.h>
 #include <sdk/cpp/connect.hpp>
+#include <sdk/cpp/identity.hpp>
 #include <sdk/cpp/subscription.hpp>
 #include <sdk/host_api.h>
 #include <sdk/types.h>
@@ -127,9 +128,16 @@ public:
     };
 
     struct Options {
-        /// Path to a `NodeIdentity::save_to_file` blob. When empty
-        /// the kernel mints a fresh identity inside `gn_core_init`.
-        std::filesystem::path identity_path;
+        /// Identity source. Default-constructed = file-backed at
+        /// the XDG default path. Use `Identity::from_hsm(...)`,
+        /// `Identity::from_file({...})`, or
+        /// `Identity::from_memory({...})` to override. See
+        /// `sdk/cpp/identity.hpp` for the variant catalogue —
+        /// Phase 5 of the rc6 identity refactor surfaced the HSM
+        /// path here so embedders pick a backend declaratively
+        /// instead of unfolding the
+        /// `gn_core_install_identity_from_provider` C ABI by hand.
+        Identity identity{};
 
         /// Path to a `plugins`-array manifest per
         /// `docs/contracts/plugin-manifest.en.md`. When empty no
@@ -163,10 +171,13 @@ public:
 
     /// Explicit ctor: caller pins every path. The ctor body walks
     /// `gn_core_create` → `reload_config_json` (if non-empty) →
-    /// `install_identity_from_file` (if set) → `gn_core_init` →
-    /// `load_plugins_batch` (if a manifest is set) → `gn_core_start`.
-    /// Each failure path throws `Error` carrying the step name and
-    /// an actionable hint.
+    /// identity install (dispatched on `opts.identity.source()`:
+    /// `install_identity_from_file` for `IdentityFromFile`,
+    /// `install_identity_from_provider` for `IdentityFromProvider`,
+    /// or the in-process tempfile shim for `IdentityFromMemory`) →
+    /// `gn_core_init` → `load_plugins_batch` (if a manifest is
+    /// set) → `gn_core_start`. Each failure path throws `Error`
+    /// carrying the step name and an actionable hint.
     explicit Core(Options opts);
 
     Core(const Core&)            = delete;
