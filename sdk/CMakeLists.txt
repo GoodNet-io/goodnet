@@ -19,6 +19,30 @@ target_include_directories(goodnet_sdk INTERFACE
 
 target_compile_features(goodnet_sdk INTERFACE cxx_std_23)
 
+# ── DX (developer-experience) layer ──────────────────────────────────────────
+# `sdk/cpp/core.hpp` + `sdk/cpp/errors.hpp` + `sdk/cpp/host_api_default.hpp`
+# need an implementation TU for the manifest JSON parser, the error-hint
+# table, and the singleton init guard. Compiled as a small static library
+# so downstream apps link the host_api_default + Core lifecycle code once.
+add_library(goodnet_sdk_dx STATIC cpp/core.cpp)
+add_library(GoodNet::sdk_dx ALIAS goodnet_sdk_dx)
+set_target_properties(goodnet_sdk_dx PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME sdk_dx
+)
+target_include_directories(goodnet_sdk_dx PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+    "$<INSTALL_INTERFACE:include/goodnet>"
+)
+target_link_libraries(goodnet_sdk_dx
+    PUBLIC
+        GoodNet::sdk
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        PkgConfig::SODIUM
+)
+target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_23)
+
 # ── Subprocess plugin worker stub ────────────────────────────────────────────
 # Static library a worker binary links to inherit the wire-protocol
 # reader loop + synthetic host_api. Mirrors the kernel-side
@@ -54,7 +78,7 @@ endif()
 # `GoodNet::sdk` as the C ABI header-only target. Plugins outside this tree
 # link against it, never against the kernel — the kernel side stays GPL
 # with the linker exception per the top-level LICENSE.
-install(TARGETS goodnet_sdk EXPORT GoodNetTargets)
+install(TARGETS goodnet_sdk goodnet_sdk_dx EXPORT GoodNetTargets)
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"

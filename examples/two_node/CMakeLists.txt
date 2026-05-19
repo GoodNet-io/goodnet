@@ -15,6 +15,7 @@ add_executable(goodnet_demo main.cpp)
 target_link_libraries(goodnet_demo
     PRIVATE
         GoodNet::sdk
+        GoodNet::sdk_dx
         GoodNet::kernel_shared
         PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}

@@ -43,6 +43,7 @@ target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
         GoodNet::protocol_gnet
+        GoodNet::sdk_dx
         GTest::gtest
         GTest::gtest_main
         rapidcheck

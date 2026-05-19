@@ -13,6 +13,7 @@ add_executable(hello_echo_client client.cpp)
 target_link_libraries(hello_echo_client
     PRIVATE
         GoodNet::sdk
+        GoodNet::sdk_dx
         GoodNet::kernel_shared
         PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}
@@ -27,6 +28,7 @@ add_executable(hello_echo_server server.cpp)
 target_link_libraries(hello_echo_server
     PRIVATE
         GoodNet::sdk
+        GoodNet::sdk_dx
         GoodNet::kernel_shared
         PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}
