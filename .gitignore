@@ -165,6 +165,7 @@ tests/integration/
 !tests/docker/**/*.yml
 !tests/docker/**/*.tmpl
 !tests/docker/**/*.md
+!tests/docker/**/*.nix
 
 # Tests
 !tests/**/*.c

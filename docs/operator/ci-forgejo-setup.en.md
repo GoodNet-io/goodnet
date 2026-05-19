@@ -183,6 +183,18 @@ nix shell nixpkgs#gh --command bash -euo pipefail -c '
 in commit-list form). `--clobber` overwrites assets of the same name
 on a re-run; the release row itself is preserved.
 
+## ice-3node job on a NixOS runner
+
+The `ice-3node` job in `ci.yml` runs the docker integration stack
+at `tests/docker/ice-3node/`. On a NixOS host the default
+`nixos-fw forward` chain drops docker inter-bridge frames before
+they reach the NAT containers, so the scenarios time out even with
+the container-side iptables rules from commit `b845fa8`. See
+[`tests/docker/ice-3node/README.md`](../../tests/docker/ice-3node/README.md)
+under "Prerequisites — NixOS hosts" for the three operator paths;
+[`tests/docker/ice-3node/nixos-firewall.nix`](../../tests/docker/ice-3node/nixos-firewall.nix)
+is the drop-in module for the surgical path.
+
 ## Cross-references
 
 - `.forgejo/workflows/ci.yml` — full job set
