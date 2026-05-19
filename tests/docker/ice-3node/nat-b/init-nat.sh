@@ -19,17 +19,35 @@
 #                 B share NAT-A (NAT-B is unused). Hairpin loopback
 #                 enabled so A→B via WAN-IP works inside the NAT.
 #
-# Logs to stdout so `docker compose logs nat_a` shows the chosen
+# Logs to stdout so `docker compose logs nat_b` shows the chosen
 # mode + the iptables ruleset.
 
 set -eu
 
-LAN_IFACE="${LAN_IFACE:-eth0}"
-WAN_IFACE="${WAN_IFACE:-eth1}"
-LAN_SUBNET="${LAN_SUBNET:-10.20.0.0/24}"
+# Interface names default to docker's `eth0` / `eth1` assignment
+# order (alphabetical by network name in compose), but the order
+# is fragile if scenarios add/rename networks. Detect the WAN side
+# dynamically by asking the kernel which interface owns the route
+# to the `net` subnet (10.10.0.0/24); fall back to the static
+# defaults when ip(8) is unavailable or the route is missing
+# (e.g. unit-test runs of the script outside docker).
+LAN_SUBNET="${LAN_SUBNET:-10.30.0.0/24}"
+WAN_SUBNET="${WAN_SUBNET:-10.10.0.0/24}"
 NAT_MODE="${NAT_MODE:-full_cone}"
 
-echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFACE}"
+detect_iface() {
+    # `ip -o route show <subnet>` prints "<subnet> dev <iface> ..."
+    # Pick the second field after `dev`. Empty on missing route.
+    ip -o route show "$1" 2>/dev/null \
+        | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}'
+}
+
+WAN_DETECTED="$(detect_iface "${WAN_SUBNET}")"
+LAN_DETECTED="$(detect_iface "${LAN_SUBNET}")"
+WAN_IFACE="${WAN_DETECTED:-${WAN_IFACE:-eth1}}"
+LAN_IFACE="${LAN_DETECTED:-${LAN_IFACE:-eth0}}"
+
+echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFACE}(${WAN_SUBNET})"
 
 # Enable IP forwarding regardless of mode. compose `sysctls:` block
 # already toggles `net.ipv4.ip_forward=1` per namespace, but write
@@ -38,11 +56,40 @@ echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFAC
 # installed — debian-slim ships `iptables` / `iproute2` but not
 # `sysctl(8)`).
 echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
+echo 1 > /proc/sys/net/ipv4/conf/all/forwarding 2>/dev/null || true
 
 # Wipe any rules from a previous run.
 iptables -t nat -F
 iptables -t filter -F
 iptables -t mangle -F
+
+# FORWARD chain default — docker's child-netns FORWARD policy is
+# inherited from the base image (debian: ACCEPT) but some hosts +
+# kernel-modules pre-populate restrictive rules. Force a permissive
+# policy here and then layer explicit ACCEPT rules so the iptables
+# packet counters tell us whether traffic actually traverses.
+iptables -P FORWARD ACCEPT
+iptables -P INPUT ACCEPT
+iptables -P OUTPUT ACCEPT
+
+# Explicit ACCEPT for forwarding in both directions. LAN → WAN is
+# the outbound peer→Internet path; the reverse half allows STUN /
+# TURN replies (and the eventual ICE check-pair response packets)
+# to reach the LAN-side peer. Without these rules the FORWARD
+# hook silently drops UDP between bridges even with ip_forward=1,
+# because the docker bridge driver doesn't install per-network
+# ACCEPT rules into the container's own netns FORWARD chain.
+iptables -A FORWARD -i "${LAN_IFACE}" -o "${WAN_IFACE}" -j ACCEPT
+iptables -A FORWARD -i "${WAN_IFACE}" -o "${LAN_IFACE}" \
+    -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+# Permit unsolicited inbound to a full-cone NAT — the conntrack
+# entry is created by the outbound STUN binding request and the
+# reverse half above covers RELATED/ESTABLISHED, but ICE peer
+# checks arrive on a different 5-tuple than the STUN binding so
+# the conntrack state is NEW from the WAN side. Allow it; the
+# NAT POSTROUTING rule below + the conntrack tuple decide
+# whether it reaches a LAN endpoint.
+iptables -A FORWARD -i "${WAN_IFACE}" -o "${LAN_IFACE}" -j ACCEPT
 
 case "${NAT_MODE}" in
     full_cone)
@@ -80,6 +127,8 @@ esac
 
 echo "[init-nat] iptables -t nat -L -nv:"
 iptables -t nat -L -nv
+echo "[init-nat] iptables -L FORWARD -nv:"
+iptables -L FORWARD -nv
 
 # Optional: drop ALL UDP between the LAN and a target subnet
 # (typically the peer's LAN reachable via the WAN bridge). Used
@@ -88,8 +137,8 @@ iptables -t nat -L -nv
 BLOCK_UDP_TO="${BLOCK_UDP_TO:-}"
 if [ -n "${BLOCK_UDP_TO}" ]; then
     echo "[init-nat] dropping UDP forward to ${BLOCK_UDP_TO}"
-    iptables -A FORWARD -p udp -d "${BLOCK_UDP_TO}" -j DROP
-    iptables -A FORWARD -p udp -s "${BLOCK_UDP_TO}" -j DROP
+    iptables -I FORWARD -p udp -d "${BLOCK_UDP_TO}" -j DROP
+    iptables -I FORWARD -p udp -s "${BLOCK_UDP_TO}" -j DROP
 fi
 
 # Optional: clip the WAN-side egress MTU via netem so DPLPMTUD
