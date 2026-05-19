@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "attestation.hpp"
 #include "derive.hpp"
 #include "keypair.hpp"
+#include "signer.hpp"
 #include "sub_key_registry.hpp"
 
 namespace gn::core::identity {
@@ -61,6 +63,15 @@ public:
     [[nodiscard]] const KeyPair&            device()      const noexcept { return device_; }
     [[nodiscard]] const Attestation&        attestation() const noexcept { return att_; }
     [[nodiscard]] const ::gn::PublicKey&    address()     const noexcept { return address_; }
+
+    /// Abstract signer over the user identity key. Every kernel call
+    /// site that previously signed with `user().sign(...)` migrated
+    /// to `signer()->sign(...)` in Phase 1; Phase 2 lets hosts swap
+    /// the in-process `LibsodiumSigner` for an HSM-backed
+    /// implementation without disturbing callers. Non-null whenever
+    /// the identity was constructed through `compose` / `generate` /
+    /// `load_from_file` — only a moved-from instance returns null.
+    [[nodiscard]] IdentitySigner*           signer()      const noexcept { return signer_.get(); }
 
     [[nodiscard]] SubKeyRegistry&           sub_keys()       noexcept { return sub_keys_; }
     [[nodiscard]] const SubKeyRegistry&     sub_keys() const noexcept { return sub_keys_; }
@@ -110,13 +121,14 @@ public:
     [[nodiscard]] ::gn::Result<NodeIdentity> clone() const;
 
 private:
-    KeyPair                     user_;
-    KeyPair                     device_;
-    Attestation                 att_{};
-    ::gn::PublicKey             address_{};
-    SubKeyRegistry              sub_keys_;
-    std::uint64_t               rotation_counter_ = 0;
-    std::vector<RotationEntry>  rotation_history_;
+    KeyPair                                  user_;
+    KeyPair                                  device_;
+    Attestation                              att_{};
+    ::gn::PublicKey                          address_{};
+    SubKeyRegistry                           sub_keys_;
+    std::uint64_t                            rotation_counter_ = 0;
+    std::vector<RotationEntry>               rotation_history_;
+    std::unique_ptr<IdentitySigner>          signer_;
 };
 
 } // namespace gn::core::identity

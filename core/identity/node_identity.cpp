@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <memory>
 #include <span>
 #include <string>
 #include <sys/stat.h>
@@ -31,6 +32,8 @@
 #include <vector>
 
 #include <core/util/log.hpp>
+
+#include "libsodium_signer.hpp"
 
 namespace gn::core::identity {
 
@@ -264,7 +267,22 @@ parse(std::span<const std::uint8_t> buf) {
     out.user_   = std::move(user);
     out.device_ = std::move(device);
 
-    auto att = Attestation::create(out.user_, out.device_.public_key(),
+    /// Build the IdentitySigner from the user keypair's libsodium
+    /// secret-key blob. Phase 1: in-process libsodium signer that
+    /// reproduces the previous `KeyPair::sign` path bit-for-bit.
+    /// Phase 2 swaps this for HSM-backed signers without touching
+    /// any call site that already migrated to `signer()->sign(...)`.
+    if (!out.user_.has_secret()) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_INVALID_STATE,
+            "NodeIdentity::compose: user keypair has no secret"});
+    }
+    out.signer_ = std::make_unique<LibsodiumSigner>(
+        out.user_.secret_key_view());
+
+    auto att = Attestation::create(*out.signer_,
+                                    out.user_.public_key(),
+                                    out.device_.public_key(),
                                     expiry_unix_ts);
     if (!att) return std::unexpected(att.error());
     out.att_ = *att;
