@@ -61,7 +61,12 @@ to refresh the table.
 | Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
-| Hardware key store | ◐ partial | plugins/security/pkcs11/ present (extension id 'gn.security.pkcs11'); TPM 2.0 + macOS Keychain still pending |
+| Hardware key store — PKCS#11 | ◐ partial | plugins/security/pkcs11/ landed; identity-side extension 'gn.identity.pkcs11' lands in Phase 3 of the IdentitySigner refactor |
+| IdentitySigner abstraction (Phase 1) | ◐ in flight | core/identity/signer.hpp + LibsodiumSigner default; zero behaviour change for current file-based identity |
+| Identity provider C ABI (Phase 2) | ✗ missing | sdk/extensions/identity.h absent; gn_core_install_identity_from_provider absent |
+| Hardware key store — TPM 2.0 | ✗ pending | plugins/identity/tpm/ absent; depends on Phase 2 |
+| Hardware key store — macOS Keychain | ✗ pending | plugins/identity/keychain/ absent; depends on Phase 2 |
+| Hardware key store — WebAuthn / passkey | ✗ pending | plugins/identity/webauthn/ absent; pairs with web-node direction |
 | Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
 | OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
 | Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
@@ -437,20 +442,63 @@ that consume `sdk/*.h` without recompiling the kernel.
 
 ## Security extensions
 
-- **Hardware key store** — TPM, YubiKey, secure-enclave backing
-  for the Ed25519 identity key. The security-provider abstraction
-  in [`security-trust.en.md`](contracts/security-trust.en.md)
-  already lets a plugin substitute the key source. The PKCS#11
-  backend at `plugins/security/pkcs11/` covers the portable case
-  (YubiKey 5, SoftHSM2 for dev/CI, and any enterprise HSM that
-  exposes a PKCS#11 v3.0 module — AWS CloudHSM, Thales Luna, etc.);
-  it routes `C_Sign` to the on-token Ed25519 private key so the
-  secret half never materialises in process memory. Native TPM 2.0
-  (TSS/ESAPI) and macOS Keychain backings stay pending — each will
-  ship as its own sibling sub-repo under `plugins/security/<name>/`,
-  registering distinct extension ids (`gn.security.tpm`,
-  `gn.security.keychain`) alongside `gn.security.pkcs11`.
-- **Post-quantum security provider** — ML-KEM (FIPS 203) /
+### Identity refactor — 5-phase plan for pluggable signers
+
+Today's `NodeIdentity` holds a raw Ed25519 secret-key blob and calls
+`crypto_sign_*` directly from kernel code. That's a single failure
+mode (file copy == identity stolen) and blocks any hardware-backed
+key store. The refactor introduces an `IdentitySigner` abstraction
+and routes every kernel signing call through it.
+
+- **Phase 1 — `IdentitySigner` abstraction (in flight)** —
+  `core/identity/signer.hpp` interface + `LibsodiumSigner` default
+  impl (wraps current libsodium behaviour bit-for-bit). All direct
+  `crypto_sign_*` callers in kernel route through the signer.
+  `gn_core_install_identity_from_file` continues working unchanged.
+  Zero observable behaviour change. **Unlocks everything downstream.**
+- **Phase 2 — C ABI for identity providers (pending)** —
+  `sdk/extensions/identity.h` with `gn_identity_signer_vtable_t`
+  (`pubkey` + `sign` thunks) + public
+  `gn_core_install_identity_from_provider(core, ext_id, key_label)`.
+  Plugin signers register as extensions; kernel queries them through
+  the standard extension surface.
+- **Phase 3 — PKCS#11 plugin dual-expose (pending)** — existing
+  `plugins/security/pkcs11/` adds the `gn.identity.pkcs11` extension
+  alongside its current `gn.security.pkcs11` (transport-side). Same
+  `.so`, two extensions; no sub-repo rename. ROADMAP "Hardware key
+  store" flips fully to ✓ once Phase 3 lands.
+- **Phase 4 — `goodnetd` operator UX (pending)** —
+  `goodnetd identity import-hsm --module ... --label ... --pin-env ...`,
+  `doctor` HSM health checks, `quickstart` HSM option in the wizard.
+- **Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)** —
+  `gn::sdk::Core` ctor `Identity::from_hsm({ext_id, key_label})`
+  factory; Noise XX provider pulls the identity_static_key via the
+  signer (not the key bytes). After Phase 5, every downstream
+  consumer (bridges/cpp/python/rust/js, apps/gssh, ssh-modern,
+  web-node) automatically gains HSM-backed identity through the
+  same `Core` constructor.
+
+### Backend family — `plugins/identity/<backend>/`
+
+Once Phase 2 lands, the `gn.identity.*` extension family gets its
+own plugin tree. New backends ship as siblings, no kernel patches.
+
+- **Hardware key store — PKCS#11** ◐ partial — `plugins/security/pkcs11/`
+  v0.1 landed (sub-repo `GoodNet-io/security-pkcs11`). Currently
+  exposes only `gn.security.pkcs11` (transport-side); identity-side
+  `gn.identity.pkcs11` arrives in Phase 3. Covers YubiKey 5, SoftHSM2
+  (dev/CI), and any enterprise HSM with a PKCS#11 v3.0 module — AWS
+  CloudHSM, Thales Luna, etc.
+- **Hardware key store — TPM 2.0** ✗ pending — separate sub-repo
+  `plugins/identity/tpm/`. Uses `tpm2-tss` ESAPI for the Ed25519 path.
+  Phase 3+ once PKCS#11 identity flow proves the contract.
+- **Hardware key store — macOS Keychain** ✗ pending —
+  `plugins/identity/keychain/`. Apple Security framework; iOS
+  Secure Enclave variant shares the same plugin contract.
+- **Hardware key store — WebAuthn / passkey** ✗ pending —
+  `plugins/identity/webauthn/`. Browser-side identity for web-node
+  (see [[107-web-node-fullkernel]]). Uses CTAP2 / FIDO2.
+- **Post-quantum security provider** ✗ pending — ML-KEM (FIPS 203) /
   ML-DSA (FIPS 204) provider when the standards settle and
   libsodium / OpenSSL ship vetted implementations. The Noise
   protocol abstraction can host the PQ handshake without a wire-
