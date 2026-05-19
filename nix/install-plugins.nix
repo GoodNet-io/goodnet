@@ -70,6 +70,7 @@ pkgs.writeShellApplication {
       [plugins/handlers/heartbeat]=handler-heartbeat
       [plugins/handlers/store]=handler-store
       [plugins/handlers/dns]=handler-dns
+      [plugins/handlers/web_api_proxy]=handler-web-api-proxy
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
@@ -81,6 +82,7 @@ pkgs.writeShellApplication {
       [bridges/cpp]=bridges-cpp
       [bridges/python]=bridges-python
       [bridges/rust]=bridges-rust
+      [bridges/js]=bridges-js
       [tests/integration]=integration-tests
     )
 

@@ -37,7 +37,7 @@ to refresh the table.
 | Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
 | DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...) |
 | Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manager.cpp:65:    const ManifestEntry* me = nullptr;) |
-| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
+| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:648:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
 | Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
 | Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...) |
 | Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
@@ -47,7 +47,7 @@ to refresh the table.
 | Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
 | Full WASM kernel build | ✓ done | nix/goodnet-wasm.nix present |
-| JS SDK + WebSocket bridge | ✗ missing | plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension id 'gn.handler.web-api-proxy' not registered in plugins/ |
+| JS SDK + WebSocket bridge | ✓ done | plugins/handlers/web_api_proxy/ present; bridges/js/package.json present; extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define GN_EXT_WEB_API_...) |
 | C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |

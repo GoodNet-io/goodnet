@@ -121,6 +121,7 @@ plugins/handlers/heartbeat/
 plugins/handlers/store/
 plugins/handlers/dns/
 plugins/handlers/mycelium/
+plugins/handlers/web_api_proxy/
 plugins/links/tcp/
 plugins/links/udp/
 plugins/links/ws/
@@ -132,16 +133,17 @@ plugins/links/quic/
 plugins/security/noise/
 plugins/security/null/
 
-# bridges/{cpp,python,rust}/ are the slots for the bridges-{cpp,
-# python,rust} repos — operator-side bindings over `sdk/core.h`.
-# Each lives in its own git (mirrors at
-# `~/.local/share/goodnet-mirrors/bridges-{cpp,python,rust}.git`);
+# bridges/{cpp,python,rust,js}/ are the slots for the bridges-{cpp,
+# python,rust,js} repos — operator-side bindings over `sdk/core.h`
+# plus the browser-side `goodnet-js` client. Each lives in its own
+# git (mirrors at `~/.local/share/goodnet-mirrors/bridges-*.git`);
 # the explicit block stops git from auto-registering the nested
 # `.git/` as a submodule when something runs `git add -A` from
 # the monorepo root.
 bridges/cpp/
 bridges/python/
 bridges/rust/
+bridges/js/
 
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel

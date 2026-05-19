@@ -61,6 +61,10 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(handlers/dns)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/web_api_proxy/CMakeLists.txt")
+    add_subdirectory(handlers/web_api_proxy)
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()

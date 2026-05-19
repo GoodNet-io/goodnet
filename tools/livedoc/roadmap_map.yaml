@@ -170,9 +170,9 @@ features:
 
   "JS SDK + WebSocket bridge":
     rule:
-      any:
+      all:
         - plugin_exists: plugins/handlers/web_api_proxy
-        - plugin_exists: bridges/goodnet-js
+        - file_exists: bridges/js/package.json
         - extension_registered: gn.handler.web-api-proxy
 
   "C ABI version of `IPluginRuntime`":

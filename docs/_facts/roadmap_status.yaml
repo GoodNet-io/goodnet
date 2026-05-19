@@ -58,7 +58,7 @@ features:
     ManifestEntry* me = nullptr;)'
 - name: gn_core_unload_plugin hot-reload
   status: done
-  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t
+  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:648:gn_result_t
     gn_core_unload_plugin(gn_core_t* core,...)
 - name: Subprocess HOST_CALL slot completion
   status: done
@@ -92,9 +92,10 @@ features:
   status: done
   evidence: nix/goodnet-wasm.nix present
 - name: JS SDK + WebSocket bridge
-  status: missing
-  evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension
-    id 'gn.handler.web-api-proxy' not registered in plugins/
+  status: done
+  evidence: plugins/handlers/web_api_proxy/ present; bridges/js/package.json present;
+    extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define
+    GN_EXT_WEB_API_...)
 - name: C ABI version of `IPluginRuntime`
   status: missing
   evidence: sdk/plugin_runtime.h absent
