@@ -56,6 +56,7 @@ result-*
 
 # Diagram + math generators
 !tools/*.py
+!tools/*.sh
 !tools/math/*.py
 # Livedoc package — abi_extract, renderers, roadmap resolver,
 # inventory walker, plus the YAML feature map.
