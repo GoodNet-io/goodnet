@@ -203,6 +203,26 @@ it manually:
 rm -rf /tmp/gn-sample-peer.XXXXXX
 ```
 
+## Hardware keys (future)
+
+`bootstrap-env` writes a file-backed identity (`identity/default.bin`,
+64-byte libsodium Ed25519 secret key, mode `0600`) — this is the
+**current default and the only built-in option**. A file copy is
+an identity steal.
+
+HSM-backed identity (PKCS#11 token, TPM 2.0, macOS Keychain,
+WebAuthn) is on the roadmap and lands across a 5-phase refactor
+documented in `docs/contracts/identity.en.md` §12. The
+operator-facing workflow — `goodnetd identity import-hsm`,
+`goodnetd doctor` HSM checks, `goodnetd quickstart --hsm` — is
+sketched in `docs/operator/identity-hsm-setup.en.md` (draft,
+gated until Phase 4 lands).
+
+The bootstrap shape on this page is unchanged by the HSM work.
+The Phase 5 `gn::sdk::Core` ctor gains an `Identity::from_hsm()`
+factory; the file-backed path stays the default for projects that
+do not opt in.
+
 ## See also
 
 * `nix/init-app.nix`, `nix/bootstrap-env.nix`, `nix/sample-peer.nix`
@@ -213,3 +233,7 @@ rm -rf /tmp/gn-sample-peer.XXXXXX
   scaffolded `main.cpp` template opens against.
 * `docs/contracts/plugin-manifest.en.md` — manifest format the
   bootstrap step generates.
+* `docs/contracts/identity.en.md` — canonical identity contract
+  including the 5-phase HSM-backend roadmap.
+* `docs/operator/identity-hsm-setup.en.md` — forward-looking
+  operator guide for HSM-backed identity (gated until Phase 4).
