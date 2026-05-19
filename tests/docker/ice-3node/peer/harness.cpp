@@ -4,9 +4,23 @@
 //
 // Drives the C ABI from `sdk/core.h` to spin up a kernel, load the
 // ICE link plugin (plus dependencies), exchange pubkeys with the
-// peer via a shared volume, issue an outbound ICE connect, and
-// write a `.done` marker on the first inbound byte. Replaces the
+// peer via a shared volume, issue an outbound ICE connect, pump
+// candidate signals through the shared signal_dir, and write a
+// `.done` marker on the first inbound byte. Replaces the
 // `goodnetd` daemon for the docker compose ICE scenarios.
+//
+// Signalling
+// ----------
+// The kernel ICE link surfaces `gn.link.ice.signal` (version
+// `0x00020000`) for out-of-process candidate exchange. We poll
+// `poll_local(peer_pk)` to drain the freshly serialised local-side
+// candidate blob and atomically write it to
+// `signal_dir/<self>.<kind>` so the peer's harness can read it and
+// hand the bytes to its own ICE plugin through `offer_eoc` /
+// `answer_eoc`. The reverse direction mirrors: poll the peer's
+// files, deliver via the inbound slot of the same extension. The
+// loop runs at 50 ms cadence — plenty for the docker scenarios
+// where gather completes in well under a second.
 
 // Pin <climits>/<limits.h> at the top: libstdc++ 15.2 has a known bug
 // where `<bits/atomic_wait.h>` references INT_MAX without including
@@ -25,6 +39,7 @@
 #include <filesystem>
 #include <fstream>
 #include <mutex>
+#include <set>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -35,6 +50,7 @@
 
 #include <sdk/conn_events.h>
 #include <sdk/core.h>
+#include <sdk/host_api.h>
 #include <sdk/types.h>
 
 namespace fs = std::filesystem;
@@ -91,21 +107,61 @@ void hex_encode(const uint8_t* in, size_t n, std::string& out) {
     }
 }
 
+bool hex_decode(std::string_view hex, uint8_t* out, size_t out_len) {
+    if (hex.size() != out_len * 2) return false;
+    auto digit = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return 10 + c - 'a';
+        if (c >= 'A' && c <= 'F') return 10 + c - 'A';
+        return -1;
+    };
+    for (size_t i = 0; i < out_len; ++i) {
+        const int hi = digit(hex[i * 2]);
+        const int lo = digit(hex[i * 2 + 1]);
+        if (hi < 0 || lo < 0) return false;
+        out[i] = static_cast<uint8_t>((hi << 4) | lo);
+    }
+    return true;
+}
+
 // Atomic file write: tmp file + rename so a reader never observes a
 // partial file. The peer poll on the other side reads as soon as the
 // inode is visible, so torn writes would break the handshake.
-bool write_file_atomic(const fs::path& target, std::string_view body) {
+bool write_file_atomic(const fs::path& target, const uint8_t* body,
+                        size_t body_size) {
     auto tmp = target;
     tmp += ".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
         if (!f) return false;
-        f.write(body.data(), static_cast<std::streamsize>(body.size()));
+        f.write(reinterpret_cast<const char*>(body),
+                 static_cast<std::streamsize>(body_size));
         if (!f) return false;
     }
     std::error_code ec;
     fs::rename(tmp, target, ec);
     return !ec;
+}
+
+bool write_file_atomic(const fs::path& target, std::string_view body) {
+    return write_file_atomic(target,
+                              reinterpret_cast<const uint8_t*>(body.data()),
+                              body.size());
+}
+
+std::vector<uint8_t> read_file_bytes(const fs::path& path) {
+    std::vector<uint8_t> out;
+    std::ifstream f(path, std::ios::binary);
+    if (!f) return out;
+    f.seekg(0, std::ios::end);
+    const auto sz = f.tellg();
+    if (sz <= 0) return out;
+    out.resize(static_cast<size_t>(sz));
+    f.seekg(0, std::ios::beg);
+    f.read(reinterpret_cast<char*>(out.data()),
+            static_cast<std::streamsize>(out.size()));
+    if (!f) out.clear();
+    return out;
 }
 
 bool sha256_file(const fs::path& path, uint8_t out[32]) {
@@ -131,6 +187,65 @@ bool sha256_file(const fs::path& path, uint8_t out[32]) {
     int rc = EVP_DigestFinal_ex(ctx, out, &outlen);
     EVP_MD_CTX_free(ctx);
     return rc == 1 && outlen == 32;
+}
+
+// ── gn.link.ice.signal vtable shape ──────────────────────────────────────
+//
+// Mirror of `gn_link_ice_signal_api_t` in
+// `plugins/links/ice/link_ice.hpp`. Declared locally because the
+// plugin header is C++-only (pulls in asio); the ABI is plain C
+// extern struct so we just need the field layout to match.
+//
+// Version `0x00020000` adds the trailing `poll_local` slot for
+// outbound trickle.
+
+constexpr uint32_t kIceSignalVersion = 0x00020000u;
+constexpr const char* kIceSignalExtName = "gn.link.ice.signal";
+
+constexpr uint32_t kIceSignalKindOffer       = 0;
+constexpr uint32_t kIceSignalKindAnswer      = 1;
+constexpr uint32_t kIceSignalKindOfferEoc    = 2;
+constexpr uint32_t kIceSignalKindAnswerEoc   = 3;
+
+extern "C" {
+
+struct gn_link_ice_signal_api_v2 {
+    uint32_t api_size;
+
+    gn_result_t (*offer)(void* ctx, const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                          const uint8_t* blob, size_t blob_size);
+    gn_result_t (*answer)(void* ctx, const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                           const uint8_t* blob, size_t blob_size);
+    gn_result_t (*offer_eoc)(void* ctx,
+                               const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                               const uint8_t* blob, size_t blob_size);
+    gn_result_t (*answer_eoc)(void* ctx,
+                                const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                                const uint8_t* blob, size_t blob_size);
+    gn_result_t (*poll_local)(void* ctx,
+                                const uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],
+                                uint32_t* kind_out,
+                                uint8_t* blob_out, size_t blob_cap,
+                                size_t* blob_len_out);
+
+    void* ctx;
+    void* _reserved[2];
+};
+
+}  // extern "C"
+
+// Inbox file name for a given role + kind. The producer side picks
+// the kind based on whether it's controlling (OFFER_EOC) or
+// responding (ANSWER_EOC); the consumer side dispatches all four
+// kinds at every poll.
+const char* kind_to_suffix(uint32_t kind) {
+    switch (kind) {
+        case kIceSignalKindOffer:     return "offer";
+        case kIceSignalKindAnswer:    return "answer";
+        case kIceSignalKindOfferEoc:  return "offer_eoc";
+        case kIceSignalKindAnswerEoc: return "answer_eoc";
+        default:                       return "unknown";
+    }
 }
 
 // ── Subscription callbacks ───────────────────────────────────────────────
@@ -370,6 +485,36 @@ int main() {
         return 1;
     }
 
+    // Resolve the gn.link.ice.signal extension vtable. This is the
+    // missing piece that stalls the FSM if absent: without an
+    // out-of-process pump for offer / answer the ICE state machine
+    // sits in Gathering / WaitingRemote until the harness deadline.
+    const void* signal_vtable = gn_core_query_extension_checked(
+        core, kIceSignalExtName, kIceSignalVersion);
+    if (signal_vtable == nullptr) {
+        std::string m = "gn.link.ice.signal vtable lookup failed (version=";
+        m += std::to_string(kIceSignalVersion);
+        m += ")";
+        timed_log(m);
+        write_fail("ice signal extension missing");
+        gn_core_off_conn_state(core, sub_state);
+        gn_core_unsubscribe(core, sub_msg);
+        gn_core_destroy(core);
+        return 1;
+    }
+    const auto* ice_signal =
+        static_cast<const gn_link_ice_signal_api_v2*>(signal_vtable);
+    if (ice_signal->api_size < sizeof(gn_link_ice_signal_api_v2)
+        || ice_signal->poll_local == nullptr) {
+        timed_log("gn.link.ice.signal shape mismatch");
+        write_fail("ice signal extension shape mismatch");
+        gn_core_off_conn_state(core, sub_state);
+        gn_core_unsubscribe(core, sub_msg);
+        gn_core_destroy(core);
+        return 1;
+    }
+    timed_log("ice signal extension bound");
+
     // Poll for the peer's pubkey.
     std::string peer_pk_hex;
     {
@@ -409,6 +554,16 @@ int main() {
     }
     timed_log("peer pubkey received");
 
+    uint8_t peer_pk[GN_PUBLIC_KEY_BYTES] = {};
+    if (!hex_decode(peer_pk_hex, peer_pk, sizeof(peer_pk))) {
+        timed_log("peer pk hex decode failed");
+        write_fail("peer pk hex decode failed");
+        gn_core_off_conn_state(core, sub_state);
+        gn_core_unsubscribe(core, sub_msg);
+        gn_core_destroy(core);
+        return 1;
+    }
+
     // Build the connect URI. Both `ice://<peer-pk>` and
     // `quic://<peer-pk>` route through the link plugin registered
     // for the scheme. The kernel parses the prefix itself when
@@ -416,28 +571,52 @@ int main() {
     const std::string scheme  = quic_over_ice ? "quic" : "ice";
     const std::string uri     = scheme + "://" + peer_pk_hex;
 
+    // Role split: only the peer with the lex-lower pubkey calls
+    // `gn_core_connect`. ICE requires exactly one side to be
+    // controlling; if both peers initiate they both register a
+    // controller-role IceSession against the same peer and the
+    // tie-breaker fight (without role-conflict negotiation in the
+    // current FSM) leaves nomination stuck. Using lex order is the
+    // cheap deterministic predicate every peer can run against its
+    // own pubkey + the peer's pubkey without any extra coordination.
+    //
+    // The non-initiating side stays in the signal pump loop and lets
+    // ICE allocate a responder-role session through the inbound
+    // `offer_eoc` slot once the peer's local candidates arrive.
+    const bool is_initiator = (pk_hex < peer_pk_hex);
     gn_conn_id_t conn = GN_INVALID_ID;
-    if (gn_result_t rc = gn_core_connect(core, uri.c_str(),
-                                          scheme.c_str(), &conn);
-        rc != GN_OK) {
-        std::string m = "gn_core_connect rc=";
-        m += std::to_string(rc);
-        m += " uri=" + uri;
-        timed_log(m);
-        write_fail("connect failed");
-        gn_core_off_conn_state(core, sub_state);
-        gn_core_unsubscribe(core, sub_msg);
-        gn_core_destroy(core);
-        return 1;
+    if (is_initiator) {
+        if (gn_result_t rc = gn_core_connect(core, uri.c_str(),
+                                              scheme.c_str(), &conn);
+            rc != GN_OK) {
+            std::string m = "gn_core_connect rc=";
+            m += std::to_string(rc);
+            m += " uri=" + uri;
+            timed_log(m);
+            write_fail("connect failed");
+            gn_core_off_conn_state(core, sub_state);
+            gn_core_unsubscribe(core, sub_msg);
+            gn_core_destroy(core);
+            return 1;
+        }
+        g_active_conn.store(conn);
+        timed_log(std::string("connect issued (initiator) conn=") +
+                   std::to_string(conn));
+    } else {
+        timed_log("responder role — waiting for peer OFFER");
     }
-    g_active_conn.store(conn);
-    timed_log(std::string("connect issued conn=") + std::to_string(conn));
 
-    // Wait for either:
-    //   * our own `CONNECTED` event fires AND we sent a byte to peer
-    //     AND we received a byte back (our .done written) AND the peer
-    //     wrote its .done.
-    //   * timeout — write .fail.
+    // Signal pump + connection wait loop.
+    //
+    //   * outbound: drain ice_signal->poll_local for any locally
+    //     gathered candidate blobs; write atomically to
+    //     signal_dir/<self>.<kind> for the peer to consume.
+    //   * inbound: scan signal_dir/<peer>.<kind> for blobs we have
+    //     not yet seen; hand each to the matching slot
+    //     (offer / offer_eoc / answer / answer_eoc).
+    //   * data: once the FSM reaches Connected we send a single
+    //     ping byte and wait for the peer's ping; first inbound
+    //     msg materialises a .done file.
     const fs::path peer_done = fs::path(signal_dir) /
                                (wait_peer + ".done");
 
@@ -445,8 +624,95 @@ int main() {
         clk::now() + std::chrono::duration_cast<clk::duration>(
                          std::chrono::duration<double>(timeout_s));
 
+    // Track which inbound files we've already delivered. Atomic
+    // rename + size+mtime tracking would be more robust against the
+    // peer republishing under the same name, but the current contract
+    // is: the peer writes each `<peer>.<kind>` file at most once per
+    // gather, so a simple "seen-set keyed by path" is enough.
+    struct SeenKey {
+        fs::path path;
+        std::uintmax_t size;
+        std::filesystem::file_time_type mtime;
+        bool operator<(const SeenKey& other) const {
+            if (path != other.path) return path < other.path;
+            if (size != other.size) return size < other.size;
+            return mtime < other.mtime;
+        }
+    };
+    std::set<SeenKey> seen_inbound;
+
     bool ping_sent = false;
+    std::vector<uint8_t> poll_buf(32 * 1024);
     while (clk::now() < deadline) {
+        // ── Outbound pump ──────────────────────────────────────────
+        // Drain every queued blob for this peer in one pass so
+        // trickle batches don't pile up.
+        for (;;) {
+            uint32_t kind = 0;
+            size_t blob_len = 0;
+            const gn_result_t rc = ice_signal->poll_local(
+                ice_signal->ctx, peer_pk, &kind,
+                poll_buf.data(), poll_buf.size(), &blob_len);
+            if (rc == GN_ERR_OUT_OF_RANGE) {
+                // Resize and retry once — the new size came back in
+                // blob_len.
+                poll_buf.resize(blob_len);
+                continue;
+            }
+            if (rc != GN_OK) break;  // NOT_FOUND or other terminal
+            const auto suffix = kind_to_suffix(kind);
+            const auto path = fs::path(signal_dir) /
+                              (peer_name + "." + suffix);
+            if (write_file_atomic(path, poll_buf.data(), blob_len)) {
+                std::string m = "poll_local kind=";
+                m += suffix;
+                m += " size=";
+                m += std::to_string(blob_len);
+                timed_log(m);
+            }
+        }
+
+        // ── Inbound pump ───────────────────────────────────────────
+        for (const auto* suffix :
+                {"offer", "offer_eoc", "answer", "answer_eoc"}) {
+            const auto path = fs::path(signal_dir) /
+                              (wait_peer + "." + suffix);
+            std::error_code ec;
+            if (!fs::exists(path, ec)) continue;
+            const auto size = fs::file_size(path, ec);
+            if (ec) continue;
+            const auto mtime = fs::last_write_time(path, ec);
+            if (ec) continue;
+            SeenKey k{path, size, mtime};
+            if (seen_inbound.count(k)) continue;
+            auto bytes = read_file_bytes(path);
+            if (bytes.empty()) continue;
+
+            gn_result_t deliver_rc = GN_ERR_NOT_IMPLEMENTED;
+            if (std::strcmp(suffix, "offer") == 0) {
+                deliver_rc = ice_signal->offer(
+                    ice_signal->ctx, peer_pk, bytes.data(), bytes.size());
+            } else if (std::strcmp(suffix, "offer_eoc") == 0) {
+                deliver_rc = ice_signal->offer_eoc(
+                    ice_signal->ctx, peer_pk, bytes.data(), bytes.size());
+            } else if (std::strcmp(suffix, "answer") == 0) {
+                deliver_rc = ice_signal->answer(
+                    ice_signal->ctx, peer_pk, bytes.data(), bytes.size());
+            } else if (std::strcmp(suffix, "answer_eoc") == 0) {
+                deliver_rc = ice_signal->answer_eoc(
+                    ice_signal->ctx, peer_pk, bytes.data(), bytes.size());
+            }
+            seen_inbound.insert(k);
+            std::string m = "deliver kind=";
+            m += suffix;
+            m += " size=";
+            m += std::to_string(bytes.size());
+            m += " rc=";
+            m += std::to_string(deliver_rc);
+            timed_log(m);
+        }
+
+        // ── Data plane ─────────────────────────────────────────────
         if (g_conn_ready.load() && !ping_sent) {
             const uint8_t one = 0x42;
             const gn_conn_id_t target = g_active_conn.load();
@@ -455,14 +721,9 @@ int main() {
             if (rc == GN_OK) {
                 ping_sent = true;
                 timed_log("sent ping byte");
-            } else {
-                // Some plugin contracts surface a transient invalid
-                // state until the security handshake finishes — keep
-                // retrying. A persistent error path is bounded by the
-                // outer deadline.
-                std::this_thread::sleep_for(std::chrono::milliseconds(20));
-                continue;
             }
+            // Transient invalid-state from a still-handshaking
+            // security session is retried on the next loop iteration.
         }
         if (g_inbound_seen.load()) {
             std::error_code ec;
@@ -480,7 +741,7 @@ int main() {
                 return 0;
             }
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     timed_log("timeout — writing .fail");
