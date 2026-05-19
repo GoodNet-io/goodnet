@@ -40,5 +40,10 @@ endif()
 include("${CMAKE_CURRENT_LIST_DIR}/GoodNetTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/AddPlugin.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/GoodNetTesting.cmake")
+# `goodnet_app(TARGET sources...)` — downstream consumer helper.
+# Wires add_executable + GoodNet::sdk / GoodNet::kernel_shared link
+# + libsodium + C++23 + BUILD_RPATH / INSTALL_RPATH in a single call.
+# Used by projects scaffolded through `nix run goodnet#init-app`.
+include("${CMAKE_CURRENT_LIST_DIR}/goodnet_app.cmake")
 
 check_required_components(GoodNet)

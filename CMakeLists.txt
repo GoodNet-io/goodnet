@@ -415,6 +415,7 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfigVersion.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/goodnet_app.cmake"
     DESTINATION "${GOODNET_CMAKE_DIR}")
 
 # ── Summary ──────────────────────────────────────────────────────────────────

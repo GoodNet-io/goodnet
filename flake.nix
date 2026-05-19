@@ -720,16 +720,45 @@
           # python `graphviz` package + doxygen) is sealed from
           # the host environment.
           gn-docs = import ./nix/docs.nix { inherit pkgs; };
+
+          # Downstream-app bootstrap layer — `nix run goodnet#init-app`,
+          # `goodnet#bootstrap-env`, `goodnet#sample-peer`. Reduces a
+          # fresh new-app sequence from 10+ manual steps (identity
+          # gen, manifest gen, plugin .so resolve, config write, dev
+          # shell, LD_LIBRARY_PATH) to three commands:
+          #
+          #     nix run goodnet#init-app -- my-thing
+          #     nix run goodnet#bootstrap-env          # one-time
+          #     cd my-thing && nix develop && cmake -B build && cmake --build build
+          #
+          # `init-app` scaffolds the consumer project; `bootstrap-env`
+          # lays down per-user `~/.local/share/goodnet/{identity,
+          # plugins,manifests,config.json}`; `sample-peer` spins up a
+          # throwaway peer the new consumer can dial against. The
+          # matching dev shell (`goodnet#app`, exported below)
+          # exports the env vars the `goodnet_app(...)` CMake helper
+          # macro and `gn::sdk::Core` ctor read. See
+          # `docs/operator/downstream-app-setup.en.md` for the full
+          # walkthrough.
+          gn-init-app =
+            pkgs.callPackage ./nix/init-app.nix { };
+          gn-bootstrap-env =
+            pkgs.callPackage ./nix/bootstrap-env.nix { };
+          gn-sample-peer =
+            pkgs.callPackage ./nix/sample-peer.nix { };
         in
         {
-          default = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          setup   = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
-          update  = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
-          build   = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          test    = { type = "app"; program = "${gn-test}/bin/gn-test"; };
-          run     = { type = "app"; program = "${gn-run}/bin/gn-run"; };
-          plugin  = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
-          docs    = { type = "app"; program = "${gn-docs}/bin/goodnet-docs"; };
+          default       = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          setup         = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
+          update        = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
+          build         = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          test          = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          run           = { type = "app"; program = "${gn-run}/bin/gn-run"; };
+          plugin        = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
+          docs          = { type = "app"; program = "${gn-docs}/bin/goodnet-docs"; };
+          init-app      = { type = "app"; program = "${gn-init-app}/bin/gn-init-app"; };
+          bootstrap-env = { type = "app"; program = "${gn-bootstrap-env}/bin/gn-bootstrap-env"; };
+          sample-peer   = { type = "app"; program = "${gn-sample-peer}/bin/gn-sample-peer"; };
         });
 
       devShells = forAllSystems (system: pkgs:
@@ -785,6 +814,19 @@
             init-mirrors    = gn-init-mirrors;
             install-plugins = gn-install-plugins;
             install-hooks   = gn-install-hooks;
+          };
+
+          # `nix develop goodnet#app` — pre-wired shell for a
+          # downstream consumer that ran `init-app` + `bootstrap-env`.
+          # Exports `GOODNET_CORE_LIB` / `GOODNET_PLUGIN_PATH` /
+          # `GOODNET_IDENTITY` / `GOODNET_MANIFEST` + LD_LIBRARY_PATH
+          # so `cmake -B build && cmake --build build` + `./build
+          # /<target>` work out of the box. Reads the kernel shared
+          # object out of `self.packages.<system>.goodnet-core` so the
+          # shell pins the same kernel build the rest of the flake
+          # exposes.
+          gn-dev-shell-app = pkgs.callPackage ./nix/dev-shell-app.nix {
+            goodnet-core = self.packages.${system}.goodnet-core;
           };
         in
         {
@@ -885,6 +927,11 @@ GoodNet devShell  (gcc15, C++23)
 EOF
             '';
           };
+
+          # See `nix/dev-shell-app.nix`. Linked here rather than
+          # built inline so the kernel + downstream views of the
+          # shell stay in lockstep when one or the other changes.
+          app = gn-dev-shell-app;
         });
     };
 }
