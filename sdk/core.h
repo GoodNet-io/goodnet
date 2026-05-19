@@ -150,6 +150,58 @@ GN_EXPORT gn_result_t gn_core_install_identity_from_file(
     const char* path);
 
 /**
+ * @brief Install a `NodeIdentity` backed by a plugin-supplied signer.
+ *
+ * The kernel queries extension `extension_id` (typically a more
+ * specific name from the `gn.identity.*` family declared in
+ * `sdk/extensions/identity.h` — `gn.identity.pkcs11`,
+ * `gn.identity.tpm`, `gn.identity.keychain`, `gn.identity.webauthn`),
+ * reads the `gn_identity_signer_vtable_t` from the queried entry,
+ * and wraps it in an internal `IdentityPluginSigner` adapter that
+ * routes every `sign()` through the plugin. The user public key is
+ * eagerly fetched via the vtable's `get_pubkey` thunk so the
+ * `NodeIdentity`'s cached identifier is populated before the install
+ * returns. A fresh in-process device keypair is minted alongside —
+ * device-key handshake bytes always live inside the kernel because
+ * inline-crypto needs them available without a syscall.
+ *
+ * `key_label` is plugin-opaque: PKCS#11 plugins forward it as the
+ * `CKA_LABEL` of the target key, TPM plugins parse it as a
+ * persistent-handle string, Keychain plugins use it as the item
+ * name, and so on. The kernel never inspects the bytes.
+ *
+ * Must be called between `gn_core_create` and `gn_core_init`, and is
+ * mutually exclusive with `gn_core_install_identity_from_file` — the
+ * second install on the same kernel returns `GN_ERR_INVALID_STATE`.
+ *
+ * @param core         Kernel handle returned by `gn_core_create`.
+ * @param extension_id @borrowed NUL-terminated extension name under
+ *                     which the provider plugin registered its vtable.
+ * @param key_label    @borrowed NUL-terminated plugin-opaque key
+ *                     identifier handed to the vtable's `get_pubkey`
+ *                     and `sign` thunks.
+ *
+ * @return `GN_OK` on success;
+ *         `GN_ERR_NULL_ARG` when @p core / @p extension_id / @p
+ *         key_label are NULL or @p extension_id is the empty string;
+ *         `GN_ERR_NOT_FOUND` when no extension is registered under
+ *         @p extension_id;
+ *         `GN_ERR_INVALID_STATE` after `gn_core_init` has begun, or
+ *         when another identity is already installed;
+ *         `GN_ERR_VERSION_MISMATCH` when the producer-side `api_size`
+ *         is below the minimum that covers `get_pubkey` + `sign`
+ *         (vtable incompatible — peer SDK is too old);
+ *         `GN_ERR_NOT_IMPLEMENTED` when the vtable is missing one of
+ *         those two required thunks;
+ *         `GN_ERR_INTEGRITY_FAILED` when the eager pubkey query or
+ *         attestation signing through the plugin fails.
+ */
+GN_EXPORT gn_result_t gn_core_install_identity_from_provider(
+    gn_core_t*  core,
+    const char* extension_id,
+    const char* key_label);
+
+/**
  * @brief Bring the kernel to the `Ready` phase.
  *
  * Generates a fresh `NodeIdentity` (Ed25519 device keypair) when

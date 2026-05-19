@@ -59,6 +59,19 @@ public:
     [[nodiscard]] static ::gn::Result<NodeIdentity>
     compose(KeyPair&& user, KeyPair&& device, std::int64_t expiry_unix_ts);
 
+    /// Compose around a host-supplied `IdentitySigner`. The user
+    /// public key is whatever @p signer reports through `pubkey(...)`;
+    /// the user `KeyPair` stays pubkey-only (`has_secret() == false`)
+    /// because the private bytes live outside the process (PKCS#11
+    /// token, TPM handle, OS keychain, WebAuthn authenticator, ...).
+    /// A fresh in-process device keypair is minted for the transport
+    /// handshake — same shape as `generate` / `compose`, the device
+    /// keypair is always kernel-local because it has to be available
+    /// to inline crypto.
+    [[nodiscard]] static ::gn::Result<NodeIdentity>
+    from_signer(std::unique_ptr<IdentitySigner> signer,
+                std::int64_t                    expiry_unix_ts);
+
     [[nodiscard]] const KeyPair&            user()        const noexcept { return user_; }
     [[nodiscard]] const KeyPair&            device()      const noexcept { return device_; }
     [[nodiscard]] const Attestation&        attestation() const noexcept { return att_; }

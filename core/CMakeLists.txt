@@ -12,6 +12,7 @@ set(_goodnet_kernel_sources
     identity/derive.cpp
     identity/attestation.cpp
     identity/libsodium_signer.cpp
+    identity/identity_plugin_signer.cpp
     identity/node_identity.cpp
     identity/sub_key_registry.cpp
     identity/rotation.cpp

@@ -29,6 +29,9 @@
 #include <core/plugin/plugin_runtime.hpp>
 #include <core/util/log.hpp>
 
+#include <core/identity/identity_plugin_signer.hpp>
+
+#include <sdk/extensions/identity.h>
 #include <sdk/extensions/link.h>
 #include <sdk/plugin_runtime.h>
 
@@ -160,6 +163,88 @@ gn_result_t gn_core_install_identity_from_file(gn_core_t*  core,
     const auto pk = loaded->device().public_key();
     core->kernel.identities().add(pk);
     core->kernel.set_node_identity(std::move(*loaded));
+    return GN_OK;
+}
+
+gn_result_t gn_core_install_identity_from_provider(
+    gn_core_t* core, const char* extension_id, const char* key_label) {
+
+    if (core == nullptr) return GN_ERR_NULL_ARG;
+    if (extension_id == nullptr || *extension_id == '\0') return GN_ERR_NULL_ARG;
+    if (key_label == nullptr) return GN_ERR_NULL_ARG;
+
+    /// Same pre-init gate `gn_core_install_identity_from_file` uses —
+    /// the install has to land before `gn_core_init` runs the
+    /// fresh-keypair mint. Mutually exclusive with the file path: a
+    /// kernel that already carries an installed identity rejects a
+    /// second install so operators don't accidentally swap secrets
+    /// mid-startup.
+    if (core->init_done.load(std::memory_order_acquire)) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (core->kernel.has_node_identity()) {
+        return GN_ERR_INVALID_STATE;
+    }
+
+    /// Look up the extension by id under the canonical identity-signer
+    /// version pin from `sdk/extensions/identity.h`. The kernel
+    /// requires the registered major to match exactly and the minor
+    /// to be at least the pinned one (`abi-evolution.en.md` §2);
+    /// older plugins surface as `GN_ERR_VERSION_MISMATCH` here.
+    const void* vtable_raw = nullptr;
+    const auto query_rc = core->kernel.extensions().query_extension_checked(
+        extension_id, GN_EXT_IDENTITY_SIGNER_VERSION, &vtable_raw);
+    if (query_rc != GN_OK) {
+        return query_rc;
+    }
+    if (vtable_raw == nullptr) return GN_ERR_NOT_FOUND;
+
+    const auto* vtable =
+        static_cast<const gn_identity_signer_vtable_t*>(vtable_raw);
+
+    /// `api_size` minimum: producer struct must extend at least
+    /// through the `sign` thunk so both thunks are addressable. A
+    /// plugin built against a future SDK that appended more thunks
+    /// is still accepted — the kernel only uses the slots it knows.
+    constexpr std::size_t required_api_size =
+        offsetof(gn_identity_signer_vtable_t, sign) +
+        sizeof(static_cast<gn_identity_signer_vtable_t*>(nullptr)->sign);
+    if (vtable->api_size < required_api_size) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
+    /// `ctx` passed to plugin thunks is the vtable pointer itself —
+    /// plugins that need self-state embed the vtable as the first
+    /// member of a wrapper struct so `(void*)ctx == &wrapper` lets
+    /// them recover their state by cast. Plugins that don't need any
+    /// state simply ignore the argument. The kernel never
+    /// dereferences `ctx` directly.
+    void* const ctx =
+        const_cast<void*>(static_cast<const void*>(vtable));
+
+    auto signer = std::make_unique<gn::core::identity::IdentityPluginSigner>(
+        vtable, ctx, std::string{key_label});
+
+    /// `NodeIdentity::from_signer` runs the eager pubkey fetch
+    /// (plugin populates the user public key once and the kernel
+    /// caches it) plus the attestation signing pass through the
+    /// plugin, so a misbehaving provider surfaces as a deterministic
+    /// install-time failure rather than a runtime crash mid-session.
+    auto identity = gn::core::identity::NodeIdentity::from_signer(
+        std::move(signer), /*expiry*/ 0);
+    if (!identity) {
+        const auto err = identity.error().code;
+        /// Bubble up the precise diagnostic where possible —
+        /// `GN_ERR_NOT_IMPLEMENTED` from a vtable missing a thunk,
+        /// `GN_ERR_NULL_ARG` from a NULL output, etc. — and fall back
+        /// to `GN_ERR_INTEGRITY_FAILED` only for unexpected paths.
+        if (err != GN_OK) return err;
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+
+    const auto device_pk = identity->device().public_key();
+    core->kernel.identities().add(device_pk);
+    core->kernel.set_node_identity(std::move(*identity));
     return GN_OK;
 }
 

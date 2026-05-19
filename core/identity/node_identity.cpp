@@ -291,6 +291,49 @@ parse(std::span<const std::uint8_t> buf) {
     return out;
 }
 
+::gn::Result<NodeIdentity>
+NodeIdentity::from_signer(std::unique_ptr<IdentitySigner> signer,
+                          std::int64_t                    expiry_unix_ts) {
+    if (signer == nullptr) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_NULL_ARG,
+            "NodeIdentity::from_signer: signer is null"});
+    }
+
+    /// Pull the user public key through the plugin signer — this is
+    /// the binding identifier the kernel embeds in the attestation
+    /// and exposes through `node_identity()->user().public_key()`.
+    ::gn::PublicKey user_pk{};
+    const auto rc = signer->pubkey(
+        std::span<std::uint8_t, 32>{user_pk});
+    if (rc != GN_OK) {
+        return std::unexpected(::gn::Error{
+            rc, "NodeIdentity::from_signer: signer pubkey query failed"});
+    }
+
+    auto device_kp = KeyPair::generate();
+    if (!device_kp) return std::unexpected(device_kp.error());
+
+    NodeIdentity out;
+    out.user_   = KeyPair::from_public_key(user_pk);
+    out.device_ = std::move(*device_kp);
+
+    /// Sign the attestation through the plugin signer. The Phase-1
+    /// `IdentitySigner` overload of `Attestation::create` takes
+    /// `user_pk` separately so it works without a populated user
+    /// `KeyPair::sign` path.
+    out.signer_ = std::move(signer);
+    auto att = Attestation::create(*out.signer_,
+                                    user_pk,
+                                    out.device_.public_key(),
+                                    expiry_unix_ts);
+    if (!att) return std::unexpected(att.error());
+    out.att_ = *att;
+
+    out.address_ = derive_address(out.device_.public_key());
+    return out;
+}
+
 ::gn::Result<void>
 NodeIdentity::save_to_file(const NodeIdentity& self, const std::string& path) {
     if (path.empty()) {
