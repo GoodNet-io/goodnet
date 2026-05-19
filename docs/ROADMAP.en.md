@@ -61,7 +61,7 @@ to refresh the table.
 | Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
-| Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
+| Hardware key store | ◐ partial | plugins/security/pkcs11/ present (extension id 'gn.security.pkcs11'); TPM 2.0 + macOS Keychain still pending |
 | Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
 | OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
 | Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
@@ -440,8 +440,16 @@ that consume `sdk/*.h` without recompiling the kernel.
 - **Hardware key store** — TPM, YubiKey, secure-enclave backing
   for the Ed25519 identity key. The security-provider abstraction
   in [`security-trust.en.md`](contracts/security-trust.en.md)
-  already lets a plugin substitute the key source; a `gn.security.tpm`
-  plugin would wire it.
+  already lets a plugin substitute the key source. The PKCS#11
+  backend at `plugins/security/pkcs11/` covers the portable case
+  (YubiKey 5, SoftHSM2 for dev/CI, and any enterprise HSM that
+  exposes a PKCS#11 v3.0 module — AWS CloudHSM, Thales Luna, etc.);
+  it routes `C_Sign` to the on-token Ed25519 private key so the
+  secret half never materialises in process memory. Native TPM 2.0
+  (TSS/ESAPI) and macOS Keychain backings stay pending — each will
+  ship as its own sibling sub-repo under `plugins/security/<name>/`,
+  registering distinct extension ids (`gn.security.tpm`,
+  `gn.security.keychain`) alongside `gn.security.pkcs11`.
 - **Post-quantum security provider** — ML-KEM (FIPS 203) /
   ML-DSA (FIPS 204) provider when the standards settle and
   libsodium / OpenSSL ship vetted implementations. The Noise

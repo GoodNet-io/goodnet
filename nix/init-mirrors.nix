@@ -58,6 +58,7 @@ pkgs.writeShellApplication {
       [plugins/links/ice]=link-ice
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [plugins/security/pkcs11]=security-pkcs11
       [bridges/cpp]=bridges-cpp
       [bridges/python]=bridges-python
       [bridges/rust]=bridges-rust

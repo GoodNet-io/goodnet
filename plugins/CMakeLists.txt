@@ -43,6 +43,10 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/noise/CMakeLists.txt")
     add_subdirectory(security/noise)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/pkcs11/CMakeLists.txt")
+    add_subdirectory(security/pkcs11)
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tcp/CMakeLists.txt")
     add_subdirectory(links/tcp)
 endif()

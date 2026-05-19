@@ -132,6 +132,7 @@ plugins/links/portmap/
 plugins/links/quic/
 plugins/security/noise/
 plugins/security/null/
+plugins/security/pkcs11/
 
 # bridges/{cpp,python,rust,js}/ are the slots for the bridges-{cpp,
 # python,rust,js} repos — operator-side bindings over `sdk/core.h`
