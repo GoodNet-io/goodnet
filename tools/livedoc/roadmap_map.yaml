@@ -226,11 +226,11 @@ features:
 
   "Rust":
     rule:
-      file_exists: bindings/rust/Cargo.toml
+      file_exists: bridges/rust/Cargo.toml
 
   "Python":
     rule:
-      file_exists: bindings/python/pyproject.toml
+      file_exists: bridges/python/pyproject.toml
 
   "Go":
     rule:

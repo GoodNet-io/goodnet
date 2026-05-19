@@ -248,12 +248,12 @@
           # the kernel library is on the consumer's runtime closure;
           # users still need `GOODNET_CORE_LIB` or `LD_LIBRARY_PATH`
           # pointing at `${goodnet-core}/lib/` for the dlopen to
-          # resolve. See `bindings/python/README.md` for the runtime
+          # resolve. See `bridges/python/README.md` for the runtime
           # dependency notes.
           goodnet-python = pkgs.python3Packages.buildPythonPackage {
             pname   = "goodnet";
             version = "0.1.0";
-            src     = ./bindings/python;
+            src     = ./bridges/python;
             format  = "pyproject";
             nativeBuildInputs = with pkgs.python3Packages; [
               setuptools wheel
@@ -281,7 +281,7 @@
           };
 
           # Rust bindings — two-crate Cargo workspace under
-          # `bindings/rust/`. `goodnet-sys` runs `bindgen` over
+          # `bridges/rust/`. `goodnet-sys` runs `bindgen` over
           # `sdk/core.h` at build time; `goodnet` is the safe RAII
           # wrapper around the kernel handle. The derivation points the
           # crate at the already-built `goodnet-core` output through
@@ -292,13 +292,13 @@
             pname   = "goodnet-rust";
             version = "0.1.0";
             src     = pkgs.lib.cleanSourceWith {
-              src    = ./bindings/rust;
+              src    = ./bridges/rust;
               filter = path: type:
                 let b = builtins.baseNameOf path; in
                 !(b == "target" || b == "result");
             };
             cargoLock = {
-              lockFile = ./bindings/rust/Cargo.lock;
+              lockFile = ./bridges/rust/Cargo.lock;
             };
             nativeBuildInputs = with pkgs; [
               pkg-config

@@ -2,7 +2,7 @@
 
 # Dev-shell helper for the Rust bindings workspace.
 #
-#   cd bindings/rust
+#   cd bridges/rust
 #   nix-shell                  # rustc + cargo + libclang + kernel pointer
 #   cargo build --workspace
 #   cargo test  --workspace

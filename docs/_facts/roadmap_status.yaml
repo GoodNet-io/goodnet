@@ -125,10 +125,10 @@ features:
   evidence: sdk/c99/ absent
 - name: Rust
   status: done
-  evidence: bindings/rust/Cargo.toml present
+  evidence: bridges/rust/Cargo.toml present
 - name: Python
   status: done
-  evidence: bindings/python/pyproject.toml present
+  evidence: bridges/python/pyproject.toml present
 - name: Go
   status: missing
   evidence: bridges/goodnet-go/go.mod absent

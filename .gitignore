@@ -139,27 +139,27 @@ plugins/security/null/
 # submodule when something runs `git add -A` from the monorepo root.
 bridges/cpp/
 
-# bindings/rust — in-tree Rust crates (goodnet-sys + goodnet) built
+# bridges/rust — in-tree Rust crates (goodnet-sys + goodnet) built
 # in-tree with cargo; lockfile + Cargo.toml + .rs files all live in
 # the monorepo, no nested git.
-!bindings/rust/Cargo.toml
-!bindings/rust/Cargo.lock
-!bindings/rust/default.nix
-!bindings/rust/README.md
-!bindings/rust/.gitignore
-!bindings/rust/**/Cargo.toml
-!bindings/rust/**/*.rs
-!bindings/rust/**/*.h
+!bridges/rust/Cargo.toml
+!bridges/rust/Cargo.lock
+!bridges/rust/default.nix
+!bridges/rust/README.md
+!bridges/rust/.gitignore
+!bridges/rust/**/Cargo.toml
+!bridges/rust/**/*.rs
+!bridges/rust/**/*.h
 
-# bindings/python — in-tree Python wrapper over libgoodnet_kernel
+# bridges/python — in-tree Python wrapper over libgoodnet_kernel
 # through cffi. Pip-installable package, no compiled extensions, so
 # everything is plain-text and rides in the monorepo unlike the
 # nested-git plugin slots above.
-!bindings/python/**/*.py
-!bindings/python/**/*.toml
-!bindings/python/**/*.cfg
-!bindings/python/**/*.md
-!bindings/python/**/*.txt
+!bridges/python/**/*.py
+!bridges/python/**/*.toml
+!bridges/python/**/*.cfg
+!bridges/python/**/*.md
+!bridges/python/**/*.txt
 
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel

@@ -1,6 +1,6 @@
 # GoodNet — Rust bindings
 
-Two-crate Cargo workspace under `bindings/rust/`:
+Two-crate Cargo workspace under `bridges/rust/`:
 
 | crate | role |
 |-------|------|
@@ -149,7 +149,7 @@ plugin set assumes.
 ## Layout
 
 ```
-bindings/rust/
+bridges/rust/
 ├── Cargo.toml              workspace
 ├── README.md               this file
 ├── default.nix             Nix env wrapper (rustc + libclang + kernel hint)

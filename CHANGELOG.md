@@ -19,7 +19,7 @@ against the kernel link registry rather than through the
 `gn.link.<scheme>` extension's L2-composer `listen` slot (which
 returns `GN_ERR_NOT_IMPLEMENTED` on baseline links). Teardown rides on
 `gn_core_stop` / `gn_core_destroy`; no per-listener handle is
-exposed. The Python cffi binding and the bindings/rust surface
+exposed. The Python cffi binding and the bridges/rust surface
 inventory pick up the entry automatically.
 
 `tests/unit/integration/test_core_c.cpp::CoreListen.*` (5 tests)

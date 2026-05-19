@@ -57,8 +57,8 @@ to refresh the table.
 | Android build | ✓ done | nix/goodnet-android.nix present |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
-| Rust | ✓ done | bindings/rust/Cargo.toml present |
-| Python | ✓ done | bindings/python/pyproject.toml present |
+| Rust | ✓ done | bridges/rust/Cargo.toml present |
+| Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
 | Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
@@ -377,7 +377,7 @@ different sandboxing and performance trade-offs.
 The kernel ABI is C-ABI clean. Bindings ship as separate repos
 that consume `sdk/*.h` without recompiling the kernel.
 
-- **Rust** — landed under `bindings/rust/` as a two-crate Cargo
+- **Rust** — landed under `bridges/rust/` as a two-crate Cargo
   workspace. `goodnet-sys` runs `bindgen` over `sdk/core.h` at
   build time (no checked-in `bindings.rs`); `goodnet` is the
   safe RAII wrapper — `Core` owns `*mut gn_core_t`, `Drop` calls

@@ -8,7 +8,7 @@
 # register_protocol). Raw FFI is re-exported through `goodnet::sys::*`
 # for the long tail of entries that have not been hand-wrapped.
 #
-# Build-time prerequisites land in `bindings/rust/README.md`; the
+# Build-time prerequisites land in `bridges/rust/README.md`; the
 # short version is: `libgoodnet_kernel` must be locatable either
 # via pkg-config or through the `GOODNET_CORE_DIR` env var (with
 # `include/` + `lib/` subdirs under it).

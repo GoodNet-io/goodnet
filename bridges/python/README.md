@@ -33,7 +33,7 @@ part of the same gap.
 ## Install
 
 ```bash
-pip install -e bindings/python/
+pip install -e bridges/python/
 ```
 
 The package depends on `cffi>=1.16`; install pulls it transitively.
@@ -70,7 +70,7 @@ when the canonical name is missing.
 ```bash
 cd /path/to/goodnet-checkout
 export GOODNET_CORE_LIB=$PWD/build/core/libgoodnet_kernel.so
-pytest bindings/python/tests/
+pytest bridges/python/tests/
 ```
 
 `test_create_destroy` and `test_context_manager_round_trip` exercise
@@ -112,7 +112,7 @@ except Error as exc:
 ## Layout
 
 ```
-bindings/python/
+bridges/python/
 ├── pyproject.toml      — package metadata, depends on cffi>=1.16
 ├── README.md           — this file
 ├── goodnet/
