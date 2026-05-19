@@ -16,35 +16,47 @@ trap 'rm -rf $tmp' EXIT
 mkdir -p bench/reports
 
 echo "=== GoodNet plugin matrix ==="
-# `bench_udp` / `bench_dtls` / `bench_quic` crash on HEAD: a glibc
-# malloc.c:2610 heap-arena assertion in the UDP loopback path
-# pre-dates the bench overhaul (reproduces on c146231 too) and
-# DTLS / QUIC inherit it via their UDP carrier. The stub-JSON
-# below seeds the aggregator's `## Known crashes` section so the
-# missing rows are explicit in the report; the binaries themselves
-# are excluded from the auto-run so they don't poison the shell
-# with a coredump.
+# Sequential ordering: cheap / pure-CPU benches first, UDP-carrier
+# benches (bench_udp, bench_dtls, bench_quic) at the END. The earlier
+# rc5 cycle parked these three behind stub-JSON because a glibc
+# malloc.c:2610 heap-arena assertion in UdpLink crashed them; that
+# assertion was fixed in the rc5 bench-overhaul (bench_ice was unblocked
+# in the same cycle). Running them at the tail keeps any residual
+# instability from poisoning the cheaper-bench numbers above.
 #
-# `bench_ice` previously crashed on the same UDP arena bug; the
-# rc5 bench-overhaul cycle moved bench_ice off the auto-iter ramp
-# (explicit `Iterations()` caps) and the binary now runs to
-# completion. It joins the default_set below.
-for crashed in bench_udp bench_dtls bench_quic; do
-    # Tiny invalid-JSON marker — aggregator's parse_gbench raises
-    # JSONDecodeError, which `skipped_inputs` then captures and the
-    # `## Known crashes` section renders.
-    printf 'crashed: UdpLink malloc.c:2610 heap-arena assertion\n' \
-        > "$tmp/${crashed}.json"
-done
-# `bench_ice` and `bench_subprocess` and `bench_failover` join the
-# day-to-day set; `bench_sustained` stays opt-in because of its
-# ~60-second wall time (gate it through `GOODNET_BENCH_SUSTAINED`
-# so the runner only includes it when explicitly requested).
+# Belt-and-braces: between binaries we drain TIME_WAIT entries from
+# the prior run (capped at 30s) so the next binary's listen / bind
+# doesn't trip over a saturated ephemeral-port pool. asio's TCP
+# acceptor already sets `reuse_address(true)`; the wait below covers
+# the UDP-side ephemeral-port pressure that builds up in the
+# loopback-heavy benches.
+#
+# `bench_sustained` stays opt-in because of its ~60-second wall time
+# (gate via `GOODNET_BENCH_SUSTAINED` so the runner only includes it
+# when explicitly requested).
 default_set=(bench_tcp bench_tcp_scale bench_ipc bench_ws bench_tls
-             bench_ice bench_subprocess bench_failover)
+             bench_ice bench_subprocess bench_failover
+             bench_udp bench_dtls bench_quic)
 if [[ "${GOODNET_BENCH_SUSTAINED:-0}" == "1" ]]; then
     default_set+=(bench_sustained)
 fi
+
+# Drain wait between binaries. Polls `ss -tan state time-wait` and
+# sleeps until the count falls below 100, capped at 30s so a stuck
+# kernel doesn't stall the whole gauntlet. No-op if `ss` is absent
+# (sandboxed CI without iproute2).
+drain_time_wait() {
+    if ! command -v ss >/dev/null 2>&1; then return; fi
+    local waited=0
+    while [[ $waited -lt 30 ]]; do
+        local n
+        n=$(ss -tan state time-wait 2>/dev/null | wc -l)
+        if [[ $n -lt 100 ]]; then return; fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+}
+
 for b in "${default_set[@]}"; do
     # Prefer Release-build binaries when available. Debug runs
     # through the same syscalls and gets within ~5% on throughput
@@ -64,6 +76,7 @@ for b in "${default_set[@]}"; do
             --benchmark_min_time=0.3s \
             --benchmark_format=json 2>/dev/null \
             > "$tmp/$b.json" || echo "  $b failed (continuing)"
+        drain_time_wait
     fi
 done
 

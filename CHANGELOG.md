@@ -6,6 +6,24 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Bench gauntlet — sequential harness leak fixed
+
+`bench/comparison/runners/run_all.sh` no longer pre-stubs
+`bench_udp` / `bench_dtls` / `bench_quic` as crashed: the rc5 cycle
+fixed the `UdpLink` `malloc.c:2610` heap-arena assertion that
+originally parked them, and solo + sequential reproductions now
+produce valid google-benchmark JSON. The three are appended to the
+end of the default set so any residual UDP-carrier instability
+cannot poison the earlier benches' numbers, and a TIME_WAIT drain
+wait between binaries (`ss -tan state time-wait` capped at 30s)
+covers the ephemeral-port pressure that builds up across
+loopback-heavy benches. CPU governor pinned to `performance` for
+the run (matches `docs/perf/methodology.en.md` §Environmental
+controls) and restored to `powersave` afterwards. Fresh report at
+`bench/reports/4212f8d.md` carries populated rows for
+`bench_{tcp,udp,dtls,quic}` for the first time since rc5; the
+`## Known crashes` section is empty.
+
 ### `gn_core_listen` — public C ABI bind entry mirrors `gn_core_connect`
 
 `sdk/core.h` now exposes `gn_core_listen(core, uri)` as the inbound
