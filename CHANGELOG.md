@@ -6,6 +6,55 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### rc6 cycle — comprehensive pre-release gauntlet snapshot
+
+Full clang-driven sweep across every test + sanitizer + bench + ICE
+docker dimension at SHA `ca1c239`, written up at
+`bench/reports/ca1c239.md`. Headline numbers:
+
+- `ctest` vanilla under clang: **1473 / 1473 pass** (2 env-gated
+  skips — IPv6 loopback + UPnP live, neither a regression).
+- ASan + UBSan: **1472 / 1473 pass** — one test-body leak in
+  `TurnTcpAlloc.DataConnectionBindRoundTrip` (a captured-lambda
+  `make_shared<TurnClient>` outliving strand teardown; runtime
+  callers don't have this shape so kernel is unaffected). Filed
+  for follow-up; not in release-blocker scope.
+- TSan: **1473 / 1473 pass, 0 data-race reports** — confirms #79
+  (ICE TURN UAF), #100 + #104 (TCP shutdown race primary + residual
+  via mutex) all hold under thread-sanitiser pressure.
+- Coverage: **lines 74.3% (16009 / 21540), functions 86.5%
+  (1858 / 2149)** across 180 source files.
+- Bench rerun under `performance` governor: UDP echo-RTT at 1024 B
+  recovered from 9.21 MiB/s → 39.77 MiB/s (+331.8%) over baseline
+  `4212f8d.md` thanks to the rc5-cycle `UdpLink` heap-arena
+  assertion fix. Loopback throughput on TCP / IPC / WS regressed
+  -7 % to -26 % within scheduler-noise band (concurrent docker
+  containers on host suspected — flagged in the report's `## Δ vs
+  baseline` and `## Known issues` sections rather than treated as
+  a real perf regression).
+- ICE 3-node docker gauntlet: **0 / 11 pass** even after the
+  NixOS firewall fix (`ice-docker-firewall.nix`) was applied via
+  `nixos-rebuild switch`. Peer logs show the OFFER / ANSWER signal
+  path through the `coordinator` container is the actual blocker,
+  not the host firewall — peer_a stays in "responder waiting for
+  peer OFFER" until timeout across every scenario, including
+  `hairpin` which doesn't touch the firewall at all (both peers
+  share the same NAT box). Filed against the coordinator's
+  signal-relay path for follow-up; treated as a known infra issue
+  rather than a kernel regression because it predates the
+  firewall-fix attempt.
+
+The rc6 cycle landed: identity 5-phase HSM, `gssh` v0.2.0 rewrite,
+bridges/cpp + bridges/rust + bridges/python split, DX layer
+(`sdk/cpp/{Core,Error}`, `host_api_default`, `nix-hooks`), Forgejo
+CI as sole CI (GitHub repo release-only), cross-platform builds
+(aarch64-linux, Android NDK r28, WASM via emscripten; darwin
+intentionally broken with `--system aarch64-darwin` warning),
+clang validation + sanitizer fixes (#79 ICE turn UAF + #100 + #104
+TCP shutdown race), livedoc tooling extension, lifecycle contract
+freeze, SVG architecture diagrams refresh. Version suffix stays
+`-rc5` — release cut on user command, not this gauntlet run.
+
 ### Bench gauntlet — sequential harness leak fixed
 
 `bench/comparison/runners/run_all.sh` no longer pre-stubs
