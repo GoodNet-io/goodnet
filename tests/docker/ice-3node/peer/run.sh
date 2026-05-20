@@ -73,6 +73,7 @@ fi
 : "${ICE_PMTU_ACTIVE_PROBING:=false}"
 : "${ICE_PORT_PREDICTION_STRIDE_MAX:=0}"
 : "${ICE_TCP_TLS_ONLY:=false}"
+: "${ICE_SESSION_TIMEOUT_S:=10}"
 : "${TURN_USER:=goodnet}"
 : "${TURN_PASS:=bench-only-credentials}"
 
@@ -129,6 +130,10 @@ cat > /etc/goodnet/peer.json <<EOF
     "node_id": "${PEER_NAME}",
     "identity_path": "/var/lib/goodnet/identity-${PEER_NAME}.bin"
   },
+  "log": {
+    "level": "${ICE3_LOG_LEVEL:-info}",
+    "console_level": "${ICE3_LOG_LEVEL:-info}"
+  },
   "plugins": [
     { "name": "goodnet_security_null",     "path": "/plugins/libgoodnet_security_null.so"     },
     { "name": "goodnet_security_noise",    "path": "/plugins/libgoodnet_security_noise.so"    },
@@ -142,7 +147,7 @@ cat > /etc/goodnet/peer.json <<EOF
     "turn_servers": [ ${TURN_SERVERS_JSON} ],
     "turn_username": "${TURN_USER}",
     "turn_password": "${TURN_PASS}",
-    "session_timeout_s": 30,
+    "session_timeout_s": ${ICE_SESSION_TIMEOUT_S:-30},
     "keepalive_interval_s": 10,
     "consent_max_failures": 3,
     "consent_max_recovery": 3,
