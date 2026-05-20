@@ -397,6 +397,92 @@ integration findings. The reshape window in
 for development, `main` for releases (between tags `main` is
 quiet).
 
+### Cycle rc6 landed
+
+- **Identity 5-phase HSM refactor — all phases.** Phase 1
+  introduced the `IdentitySigner` abstraction
+  ([`a7013095`](https://github.com/GoodNet-io/goodnet/commit/a7013095)).
+  Phase 2 published the C ABI
+  ([`72e2185`](https://github.com/GoodNet-io/goodnet/commit/72e2185))
+  for plugin-provided signers via
+  `gn_core_install_identity_from_provider`. Phase 3 lit the dual-expose
+  in `security-pkcs11` — same `.so` registers `gn.identity.pkcs11` and
+  `gn.security.pkcs11`. Phase 4 surfaced operator UX in `goodnetd`
+  (`identity import-hsm` + `doctor` + `quickstart`). Phase 5 closed
+  the loop with `gn::sdk::Core::Identity::from_hsm()`
+  ([`1876654`](https://github.com/GoodNet-io/goodnet/commit/1876654)).
+- **`gssh` v0.2.0 — real SSH-2.0.** Dropped the openssh / ProxyCommand
+  tunnel from v0.1. `gssh --listen` is now a native SSH-2.0 server on
+  libssh; the host key IS the GoodNet device pubkey. Vanilla openssh
+  clients connect; two `gssh` peers also negotiate the custom
+  `gn.handler-ext@goodnet.io` subsystem channel for file transfer +
+  port forwarding.
+- **Bridges split into sub-repos.**
+  `bridges/{cpp,python,rust,js}` — each has its own git, its own
+  release cadence, all consume the kernel through `sdk/core.h`. The
+  Rust bridge gained the `WireSchema` trait mirroring the C++ side.
+  The JS bridge talks to `handler-web-api-proxy` over WS.
+- **`handler-web-api-proxy` (new).** Browser-as-thin-client gateway:
+  goodnetd loads it alongside `gn.link.ws`, the operator listens on
+  `ws://0.0.0.0:9100`, and browser tabs talk JSON-RPC into the kernel
+  through gnet envelopes. v0.1 ships the wire envelope; v0.2 fills the
+  dispatch.
+- **Forgejo CI is sole.** GitHub Actions has no role beyond `gh
+  release create` on tag push. The Forgejo runner runs `flake-check`
+  / `livedoc-check` / `build-and-test` / `plugin-verify` /
+  `windows-cross-build` on every PR, plus `bench-smoke` / `ice-3node`
+  / `fuzz-smoke` / `asan-smoke` / `tsan-smoke` on push-to-main or PR
+  label.
+- **SDK DX restoration.** `sdk/cpp/Core` RAII layer + `host_api_default`
+  + `Error` lifted operator-side ergonomics back to where the C ABI
+  rewrite had dropped them
+  ([`9ebaa4d`](https://github.com/GoodNet-io/goodnet/commit/9ebaa4d)).
+- **Plugin lifecycle contract.** `docs/contracts/lifecycle.en.md`
+  documents the canonical plugin shutdown ordering — kernel stops
+  accepting connects, drains in-flight envelopes, calls plugin
+  `gn_plugin_shutdown` thunks in reverse-registration order, then
+  unloads `.so`s.
+- **Full WASM kernel.** `nix build .#goodnet-wasm-emscripten` produces
+  a kernel image that runs inside a browser via Emscripten — same C ABI
+  surface, no native dependencies on the wire side.
+- **C ABI for external plugin runtimes.** `sdk/plugin_runtime.h`
+  publishes the `IPluginRuntime` contract so host programs that bundle
+  a custom runtime (WASM host, FFI-over-IPC bridge, per-process sandbox)
+  register it through `PluginManager::register_runtime` and the kernel
+  dispatches manifest entries through it without touching
+  `PluginManager` itself.
+- **`link-portmap`.** Explicit NAT port-mapping plugin — NAT-PMP
+  (RFC 6886) + PCP MAP (RFC 6887) + UPnP IGD (SSDP + SOAP). Used by
+  ICE before host-candidate gathering when STUN cannot punch.
+
+## Ecosystem repos
+
+The kernel tree stays library-only. Operator-facing binaries,
+language bridges, and each plugin live in their own GitHub repos
+under [`GoodNet-io/`](https://github.com/GoodNet-io). The bundled
+manifest links them together.
+
+| Repo | Role |
+|---|---|
+| **[goodnet](https://github.com/GoodNet-io/goodnet)** | Kernel, SDK, bundled plugin shims. This repo. |
+| **[goodnetd](https://github.com/GoodNet-io/goodnetd)** | Operator daemon + multicall CLI (`run`, `doctor`, `quickstart`, `identity import-hsm`, …). |
+| **[gssh](https://github.com/GoodNet-io/gssh)** | Native SSH-2.0 server + client with peer-pubkey identity. |
+| [link-tcp](https://github.com/GoodNet-io/link-tcp) · [link-udp](https://github.com/GoodNet-io/link-udp) · [link-ws](https://github.com/GoodNet-io/link-ws) · [link-tls](https://github.com/GoodNet-io/link-tls) · [link-ipc](https://github.com/GoodNet-io/link-ipc) | Single-protocol transport plugins. |
+| **[link-ice](https://github.com/GoodNet-io/link-ice)** | NAT-traversal — RFC 8445 + STUN + TURN + Trickle ICE + mDNS + auto-restart. |
+| **[link-quic](https://github.com/GoodNet-io/link-quic)** | QUIC over UDP / ICE — OpenSSL 3.6 native QUIC, composer pattern. |
+| **[security-noise](https://github.com/GoodNet-io/security-noise)** | Noise XX security provider (libsodium). |
+| **[security-null](https://github.com/GoodNet-io/security-null)** | Loopback / IntraNode pass-through provider. |
+| **[security-pkcs11](https://github.com/GoodNet-io/security-pkcs11)** | Hardware key store — PKCS#11 (`gn.identity.pkcs11` + `gn.security.pkcs11` dual-expose). |
+| **[handler-store](https://github.com/GoodNet-io/handler-store)** | Distributed key-value store (Memory + SQLite backends, first-writer-wins ACL). |
+| **[handler-dns](https://github.com/GoodNet-io/handler-dns)** | Typed RR storage on `gn.store` + three-tier resolver (local → cache → c-ares). |
+| **[handler-heartbeat](https://github.com/GoodNet-io/handler-heartbeat)** | Two-way liveness + RTT measurement; feeds the strategy chain through `notify_rtt_sample`. |
+| **[handler-ssh-modern](https://github.com/GoodNet-io/handler-ssh-modern)** | Native remote-shell handler (`SHELL_*` envelopes, peer-pubkey ACL — no openssh wire). |
+| **[handler-web-api-proxy](https://github.com/GoodNet-io/handler-web-api-proxy)** | Browser-gateway handler — WS endpoint + JSON-RPC over gnet envelopes. |
+| **[strategy-float-send-rtt](https://github.com/GoodNet-io/strategy-float-send-rtt)** | RTT-optimal multi-path picker (EWMA + 0.75 hysteresis + EncryptedPath tie-break). |
+| **[bridges-rust](https://github.com/GoodNet-io/bridges-rust)** | Rust bindings (`goodnet-sys` + safe `goodnet` crate) with `WireSchema` trait. |
+| **[bridges-python](https://github.com/GoodNet-io/bridges-python)** | Python bindings (cffi ABI mode) — `pip install`-able, no C compiler. |
+| **[bridges-js](https://github.com/GoodNet-io/bridges-js)** | TypeScript/JS client for the goodnetd WS gateway. |
+
 ## Documentation
 
 - [`docs/contracts/`](docs/contracts/) — authoritative
