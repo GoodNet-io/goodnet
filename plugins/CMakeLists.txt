@@ -44,7 +44,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/noise/CMakeLists.txt")
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/pkcs11/CMakeLists.txt")
-    add_subdirectory(security/pkcs11)
+    # PKCS#11 plugin needs `p11-kit-1` (pkg-config); skip silently
+    # when the devShell / sysroot doesn't carry it so vanilla `nix
+    # develop` shells (which don't pull p11-kit yet) still configure.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_P11_KIT QUIET p11-kit-1)
+    endif()
+    if(_GOODNET_HAVE_P11_KIT_FOUND)
+        add_subdirectory(security/pkcs11)
+    else()
+        message(STATUS "Skipping plugins/security/pkcs11: p11-kit-1 not found")
+    endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tcp/CMakeLists.txt")
