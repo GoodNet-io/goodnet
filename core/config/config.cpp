@@ -50,7 +50,7 @@ gn_limits_t server_profile() noexcept {
     L.pending_queue_bytes_low     = GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_LOW;
     L.pending_queue_bytes_hard    = GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_HARD;
     L.max_frame_bytes             = GN_LIMITS_DEFAULT_MAX_FRAME_BYTES;
-    L.max_payload_bytes           = GN_LIMITS_DEFAULT_MAX_FRAME_BYTES - 14u;
+    L.max_payload_bytes           = 0;
     L.max_handlers_per_msg_id     = GN_LIMITS_DEFAULT_MAX_HANDLERS_PER_MSG_ID;
     L.max_relay_ttl               = GN_LIMITS_DEFAULT_MAX_RELAY_TTL;
     L.max_plugins                 = GN_LIMITS_DEFAULT_MAX_PLUGINS;
@@ -82,7 +82,7 @@ gn_limits_t embedded_profile() noexcept {
     L.pending_queue_bytes_low     = 16u  * 1024;       //  16 KiB
     L.pending_queue_bytes_hard    = 256u * 1024;       // 256 KiB
     L.max_frame_bytes             = 8u   * 1024;       //   8 KiB
-    L.max_payload_bytes           = L.max_frame_bytes - 14u;
+    L.max_payload_bytes           = L.max_frame_bytes;
     L.max_handlers_per_msg_id     = 4;
     L.max_relay_ttl               = 2;
     L.max_plugins                 = 8;
@@ -278,20 +278,17 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         note("limits.max_relay_ttl out of range");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (L.max_storage_value_bytes > L.max_payload_bytes) {
+    if (L.max_payload_bytes != 0 &&
+        L.max_storage_value_bytes > L.max_payload_bytes) {
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
-    /// `limits.en.md §3` invariant: a payload plus the fixed 14-byte
-    /// GNET header must fit in one wire frame; otherwise a max-size
-    /// payload accepted at the inject path produces a frame that
-    /// the deframer rejects.
-    constexpr std::uint32_t kGnetFixedHeaderBytes = 14;
-    if (L.max_payload_bytes >
-        L.max_frame_bytes - kGnetFixedHeaderBytes) {
-        note("limits.max_payload_bytes + 14 > max_frame_bytes");
+    if (L.max_payload_bytes != 0 &&
+        L.max_payload_bytes > L.max_frame_bytes) {
+        note("limits.max_payload_bytes > max_frame_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
+
     /// Inject rate limiter: burst must cover at least half a second
     /// of refill so a momentary spike never starves the legitimate
     /// caller. With `rate=0` the bucket never refills (a valid
