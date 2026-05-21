@@ -139,6 +139,13 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_LOW      (256u << 10)  /* 256 KiB */
 #define GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_HARD     (4u  << 20)   /*  4 MiB */
 #define GN_LIMITS_DEFAULT_MAX_FRAME_BYTES              (64u << 10)   /* 64 KiB */
+/** Maximum application payload per message. Protocol plugins add their own
+ *  headers on top — 80 bytes reserves enough headroom for the worst-case
+ *  overhead of any bundled protocol (gnet worst-case: 78 bytes). Operators
+ *  may raise or lower this independently of max_frame_bytes; 0 disables the
+ *  kernel-level check and defers enforcement to the active protocol plugin. */
+#define GN_LIMITS_DEFAULT_MAX_PAYLOAD_BYTES \
+    (GN_LIMITS_DEFAULT_MAX_FRAME_BYTES - 80u)
 #define GN_LIMITS_DEFAULT_MAX_HANDLERS_PER_MSG_ID      8u
 #define GN_LIMITS_DEFAULT_MAX_RELAY_TTL                4u
 #define GN_LIMITS_DEFAULT_MAX_PLUGINS                  64u
