@@ -11,13 +11,22 @@ FROM debian:bookworm-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-        iptables iproute2 conntrack ipset netcat-openbsd \
-        python3 \
+        iptables iproute2 conntrack ipset netcat-openbsd nftables \
+        python3 miniupnpd-nftables \
     && rm -rf /var/lib/apt/lists/*
+
+# Pick the nftables-backed miniupnpd build because bookworm's
+# `iptables` alternative defaults to `iptables-nft` AND the docker
+# host kernel here only exposes the nf_tables (not legacy xtables)
+# subsystem — `iptables-legacy` aborts with "Table does not exist"
+# against this host. miniupnpd-nftables creates + manages its own
+# `inet miniupnpd` table at startup, so we don't need to pre-create
+# the legacy `MINIUPNPD` chains via iptables in init-nat.sh.
 
 COPY init-nat.sh /usr/local/bin/init-nat.sh
 COPY stride-nat.py /usr/local/bin/stride-nat.py
-RUN chmod +x /usr/local/bin/init-nat.sh /usr/local/bin/stride-nat.py
+RUN chmod +x /usr/local/bin/init-nat.sh /usr/local/bin/stride-nat.py \
+    && mkdir -p /etc/miniupnpd /var/lib/misc /var/log /var/run
 
 # NAT_MODE: full_cone | symmetric | shared | symmetric_stride.
 # Compose-override rewrites this env per scenario.

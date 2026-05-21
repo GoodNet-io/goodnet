@@ -49,6 +49,15 @@ LAN_IFACE="${LAN_DETECTED:-${LAN_IFACE:-eth0}}"
 
 echo "[init-nat] mode=${NAT_MODE} lan=${LAN_IFACE}(${LAN_SUBNET}) wan=${WAN_IFACE}(${WAN_SUBNET})"
 
+# Derive the LAN-side listening IP for miniupnpd as the .1 host of
+# the LAN subnet (e.g. 10.20.0.1 for nat-a, 10.30.0.1 for nat-b).
+LAN_PREFIX="${LAN_SUBNET%.*/*}"
+UPNP_LISTEN_IP="${LAN_PREFIX}.1"
+# Resolve the WAN-side IPv4 (the address miniupnpd reports as the
+# external IP in UPnP/PCP responses). See nat-a/init-nat.sh.
+UPNP_EXT_IP="$(ip -o -4 addr show dev "${WAN_IFACE}" 2>/dev/null \
+    | awk '{print $4}' | head -n1 | cut -d/ -f1)"
+
 # Enable IP forwarding regardless of mode. compose `sysctls:` block
 # already toggles `net.ipv4.ip_forward=1` per namespace, but write
 # directly to /proc/sys for belt-and-braces (and to keep the
@@ -62,6 +71,10 @@ echo 1 > /proc/sys/net/ipv4/conf/all/forwarding 2>/dev/null || true
 iptables -t nat -F
 iptables -t filter -F
 iptables -t mangle -F
+
+# miniupnpd (nftables backend) creates its own `inet miniupnpd`
+# table + chains. See nat-a/init-nat.sh for why we skip the legacy
+# `MINIUPNPD` iptables chain creation in this environment.
 
 # FORWARD chain default — docker's child-netns FORWARD policy is
 # inherited from the base image (debian: ACCEPT) but some hosts +
@@ -156,5 +169,27 @@ if [ "${PATH_MTU}" -gt 0 ]; then
     tc qdisc show dev "${WAN_IFACE}"
 fi
 
-# Keep the container alive after rules install.
-exec sleep infinity
+# Emit a minimal miniupnpd config tailored to this container's
+# (WAN, LAN) iface pair. The daemon serves UPnP IGD + NAT-PMP /
+# PCP on the LAN side so peers behind the NAT can request explicit
+# port mappings. See nat-a/init-nat.sh for the rationale.
+cat > /etc/miniupnpd/miniupnpd.conf <<EOF
+ext_ifname=${WAN_IFACE}
+ext_ip=${UPNP_EXT_IP}
+listening_ip=${UPNP_LISTEN_IP}
+enable_natpmp=yes
+enable_upnp=yes
+secure_mode=no
+system_uptime=yes
+allow 1024-65535 ${LAN_SUBNET} 1024-65535
+deny 0-65535 0.0.0.0/0 0-65535
+EOF
+
+echo "[init-nat] miniupnpd config:"
+cat /etc/miniupnpd/miniupnpd.conf
+echo "[init-nat] starting miniupnpd"
+
+# Foreground (`-d`) so docker treats miniupnpd as the container's
+# PID 1. `-f` is load-bearing — the package ships no default
+# /etc/miniupnpd.conf.
+exec miniupnpd -d -f /etc/miniupnpd/miniupnpd.conf
