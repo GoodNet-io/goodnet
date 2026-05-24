@@ -23,6 +23,7 @@ target_link_libraries(peer_harness
     PRIVATE
         GoodNet::sdk
         GoodNet::kernel
+        GoodNet::protocol_gnet
         OpenSSL::Crypto
         Threads::Threads
 )

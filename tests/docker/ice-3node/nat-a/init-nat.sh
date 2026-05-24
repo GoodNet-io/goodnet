@@ -139,13 +139,38 @@ iptables -A FORWARD -i "${WAN_IFACE}" -o "${LAN_IFACE}" -j ACCEPT
 
 case "${NAT_MODE}" in
     full_cone)
-        # Plain MASQUERADE — conntrack keeps the same (src-IP,
-        # src-port) → (NAT-IP, alloc-port) mapping for every
-        # destination. Full-cone behaviour because hairpin and
-        # destination-restricted variants would need extra rules
-        # we deliberately do NOT add.
+        # Full-cone behaviour requires endpoint-independent mapping
+        # AND endpoint-independent filtering: any external host may
+        # send to the NAT-allocated (ext-IP, ext-port) and reach the
+        # LAN endpoint, regardless of whether the LAN side has ever
+        # talked to that external host. Plain iptables MASQUERADE
+        # gives endpoint-independent mapping (same ext-port for every
+        # destination from a given internal flow) but
+        # endpoint-DEPENDENT filtering — conntrack only forwards
+        # inbound from peers the LAN endpoint already replied to.
+        #
+        # To synthesise true full-cone in the test harness:
+        #   1. SNAT to the WAN IP with `--persistent` so the source
+        #      port stays stable across destinations (already the
+        #      default behaviour of MASQUERADE in modern kernels;
+        #      kept explicit for documentation).
+        #   2. Static 1:1 DNAT for every inbound UDP on the WAN side
+        #      so unsolicited packets from a new peer get forwarded
+        #      to the LAN endpoint without needing a pre-existing
+        #      conntrack entry. The LAN_SUBNET has exactly one peer
+        #      (peer_a = 10.20.0.20 / peer_b = 10.30.0.20), so 1:1
+        #      DNAT is unambiguous.
+        #
+        # This is MORE permissive than RFC 4787 full-cone (it
+        # forwards every WAN-side UDP destination port, not just the
+        # NAT-allocated ones), but ICE only cares about the
+        # gathered srflx tuple, and the harness has no
+        # legitimate inbound traffic to other ports anyway.
+        LAN_PEER_IP="${LAN_PREFIX}.20"
         iptables -t nat -A POSTROUTING -s "${LAN_SUBNET}" \
             -o "${WAN_IFACE}" -j MASQUERADE
+        iptables -t nat -A PREROUTING -i "${WAN_IFACE}" -p udp \
+            -j DNAT --to-destination "${LAN_PEER_IP}"
         ;;
     symmetric)
         # SNAT with --random-fully — every (src-IP, src-port,
@@ -237,7 +262,6 @@ fi
 # to broaden the portmap-path coverage across scenarios.
 cat > /etc/miniupnpd/miniupnpd.conf <<EOF
 ext_ifname=${WAN_IFACE}
-ext_ip=${UPNP_EXT_IP}
 listening_ip=${UPNP_LISTEN_IP}
 enable_natpmp=yes
 enable_upnp=yes
@@ -261,4 +285,5 @@ echo "[init-nat] starting miniupnpd"
 # config we just emitted (default path is `/etc/miniupnpd.conf` —
 # singular — which the debian package does NOT ship, so the `-f`
 # is load-bearing).
+echo "[init-nat] ready" > /tmp/nat-ready
 exec miniupnpd -d -f /etc/miniupnpd/miniupnpd.conf

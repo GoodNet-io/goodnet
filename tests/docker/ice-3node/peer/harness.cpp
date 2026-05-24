@@ -6,7 +6,11 @@
 // ICE link plugin (plus dependencies), exchange pubkeys with the
 // peer via a shared volume, issue an outbound ICE connect, pump
 // candidate signals through the shared signal_dir, and write a
-// `.done` marker on the first inbound byte. Replaces the
+// per-peer `<PEER_NAME>.report.json` once nomination succeeds or
+// the deadline expires. The structured report carries the
+// nominated pair type / transport / rtt + per-type candidate counts
+// + the first-inbound-byte latency so `run.sh` can produce a real
+// table instead of a binary done/fail decision. Replaces the
 // `goodnetd` daemon for the docker compose ICE scenarios.
 //
 // Signalling
@@ -50,6 +54,7 @@
 
 #include <sdk/conn_events.h>
 #include <sdk/core.h>
+#include <sdk/gnet.h>
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 
@@ -65,6 +70,7 @@ std::atomic<bool>            g_inbound_seen{false};
 std::atomic<gn_conn_id_t>    g_active_conn{GN_INVALID_ID};
 std::atomic<bool>            g_conn_ready{false};
 clk::time_point              g_t0;
+std::atomic<int64_t>         g_first_byte_rx_us{-1};
 std::mutex                   g_log_mu;
 
 double seconds_since_start() {
@@ -234,6 +240,75 @@ struct gn_link_ice_signal_api_v2 {
 
 }  // extern "C"
 
+// ── gn.link.ice.metrics vtable shape ─────────────────────────────────────
+//
+// Mirror of `gn_link_ice_metrics_api_t` in `plugins/links/ice/link_ice.hpp`.
+// The plugin header pulls in asio; we only need the ABI-layout structs so
+// the extension vtable can be re-cast on the harness side.
+
+constexpr uint32_t    kIceMetricsVersion    = 0x00010000u;
+constexpr const char* kIceMetricsExtName    = "gn.link.ice.metrics";
+
+extern "C" {
+
+struct gn_ice_nomination_v1 {
+    uint32_t api_size;
+    uint8_t  nominated;
+    uint8_t  uses_relay;
+    uint8_t  local_type;
+    uint8_t  remote_type;
+    uint8_t  transport;
+    uint8_t  _pad[3];
+    uint64_t rtt_us;
+};
+
+struct gn_ice_candidate_counts_v1 {
+    uint32_t api_size;
+    uint32_t local_host;
+    uint32_t local_srflx;
+    uint32_t local_relay;
+    uint32_t local_prflx;
+    uint32_t remote_host;
+    uint32_t remote_srflx;
+    uint32_t remote_relay;
+    uint32_t remote_prflx;
+};
+
+struct gn_link_ice_metrics_api_v1 {
+    uint32_t api_size;
+    gn_result_t (*get_nomination)(void* ctx, gn_conn_id_t conn,
+                                    gn_ice_nomination_v1* out);
+    gn_result_t (*get_candidate_counts)(void* ctx, gn_conn_id_t conn,
+                                          gn_ice_candidate_counts_v1* out);
+    void* ctx;
+    void* _reserved[2];
+};
+
+}  // extern "C"
+
+// Map raw `CandidateType` byte to the lowercase string used by the
+// report. Matches the on-the-wire shape rc tests assert against.
+const char* candidate_type_name(uint8_t t) {
+    switch (t) {
+        case 0: return "host";
+        case 1: return "srflx";
+        case 2: return "relay";
+        case 3: return "prflx";
+        case 4: return "host_mdns";
+        default: return "unknown";
+    }
+}
+
+const char* transport_type_name(uint8_t t) {
+    switch (t) {
+        case 0: return "udp";
+        case 1: return "tcp_active";
+        case 2: return "tcp_passive";
+        case 3: return "tcp_so";
+        default: return "unknown";
+    }
+}
+
 // Inbox file name for a given role + kind. The producer side picks
 // the kind based on whether it's controlling (OFFER_EOC) or
 // responding (ANSWER_EOC); the consumer side dispatches all four
@@ -258,8 +333,13 @@ void on_inbound_msg(void*               /*user_data*/,
     (void)msg_id;
     (void)conn;
     if (!g_inbound_seen.exchange(true)) {
+        const auto us = std::chrono::duration_cast<std::chrono::microseconds>(
+            clk::now() - g_t0).count();
+        g_first_byte_rx_us.store(us, std::memory_order_release);
         std::string m = "first inbound byte (size=";
         m += std::to_string(payload_size);
+        m += " t_us=";
+        m += std::to_string(us);
         m += ")";
         timed_log(m);
     }
@@ -311,15 +391,82 @@ int main() {
                                   (peer_name + ".pk");
     const fs::path peer_pk_path = fs::path(signal_dir) /
                                   (wait_peer + ".pk");
-    const fs::path done_path    = fs::path(signal_dir) /
-                                  (peer_name + ".done");
-    const fs::path fail_path    = fs::path(signal_dir) /
-                                  (peer_name + ".fail");
+    const fs::path report_path  = fs::path(signal_dir) /
+                                  (peer_name + ".report.json");
+    const fs::path peer_report  = fs::path(signal_dir) /
+                                  (wait_peer + ".report.json");
+
+    /// Metrics-extension client. Bound lazily once the kernel reaches
+    /// `Ready`; until then any call must be skipped. The harness writes
+    /// a report even on early init failures, so the helper handles a
+    /// null vtable gracefully.
+    const gn_link_ice_metrics_api_v1* metrics_ext = nullptr;
+
+    /// Render the report JSON. `fail_reason` is the JSON-string body
+    /// of the field (without quotes); pass an empty string for success
+    /// so the field encodes as `null`. The metrics extension is
+    /// queried opportunistically — if `metrics_ext == nullptr` or
+    /// the call fails the nomination block is filled with defaults
+    /// (`nominated=false`).
+    auto write_report = [&](bool success, std::string_view fail_reason) {
+        gn_ice_nomination_v1 nm{};
+        nm.api_size = sizeof(nm);
+        gn_ice_candidate_counts_v1 cc{};
+        cc.api_size = sizeof(cc);
+        const gn_conn_id_t conn = g_active_conn.load();
+        if (metrics_ext != nullptr && conn != GN_INVALID_ID) {
+            (void)metrics_ext->get_nomination(metrics_ext->ctx, conn, &nm);
+            (void)metrics_ext->get_candidate_counts(metrics_ext->ctx, conn, &cc);
+        }
+        const int64_t fb = g_first_byte_rx_us.load(std::memory_order_acquire);
+
+        std::ostringstream o;
+        o << "{\n";
+        o << "  \"peer\": \"" << peer_name << "\",\n";
+        o << "  \"success\": " << (success ? "true" : "false") << ",\n";
+        o << "  \"nominated\": " << (nm.nominated ? "true" : "false") << ",\n";
+        o << "  \"local_type\": \""
+          << candidate_type_name(nm.local_type) << "\",\n";
+        o << "  \"remote_type\": \""
+          << candidate_type_name(nm.remote_type) << "\",\n";
+        o << "  \"transport\": \""
+          << transport_type_name(nm.transport) << "\",\n";
+        o << "  \"uses_relay\": "
+          << (nm.uses_relay ? "true" : "false") << ",\n";
+        o << "  \"rtt_us\": " << nm.rtt_us << ",\n";
+        o << "  \"first_byte_rx_us\": ";
+        if (fb < 0) o << "null"; else o << fb;
+        o << ",\n";
+        o << "  \"fail_reason\": ";
+        if (fail_reason.empty()) {
+            o << "null";
+        } else {
+            o << "\"";
+            for (char c : fail_reason) {
+                if (c == '"' || c == '\\') o << '\\' << c;
+                else if (c == '\n') o << "\\n";
+                else if (c == '\r') o << "\\r";
+                else o << c;
+            }
+            o << "\"";
+        }
+        o << ",\n";
+        o << "  \"candidates\": {\n";
+        o << "    \"local\":  { \"host\": " << cc.local_host
+          <<              ", \"srflx\": " << cc.local_srflx
+          <<              ", \"relay\": " << cc.local_relay
+          <<              ", \"prflx\": " << cc.local_prflx << " },\n";
+        o << "    \"remote\": { \"host\": " << cc.remote_host
+          <<              ", \"srflx\": " << cc.remote_srflx
+          <<              ", \"relay\": " << cc.remote_relay
+          <<              ", \"prflx\": " << cc.remote_prflx << " }\n";
+        o << "  }\n";
+        o << "}\n";
+        (void)write_file_atomic(report_path, o.str());
+    };
 
     auto write_fail = [&](std::string_view reason) {
-        std::string body(reason);
-        body.push_back('\n');
-        (void)write_file_atomic(fail_path, body);
+        write_report(false, reason);
     };
 
     timed_log("start");
@@ -451,6 +598,15 @@ int main() {
     }
     timed_log("plugins loaded");
 
+    if (gn_result_t rc = gn_gnet_register_protocol(core); rc != GN_OK) {
+        std::string m = "gn_gnet_register_protocol rc=";
+        m += std::to_string(rc);
+        timed_log(m);
+        write_fail("gnet registration failed");
+        gn_core_destroy(core);
+        return 1;
+    }
+
     if (gn_result_t rc = gn_core_start(core); rc != GN_OK) {
         std::string m = "gn_core_start rc=";
         m += std::to_string(rc);
@@ -514,6 +670,24 @@ int main() {
         return 1;
     }
     timed_log("ice signal extension bound");
+
+    /// Best-effort metrics extension bind. Missing is non-fatal — the
+    /// report falls back to default-init metrics in that case so we
+    /// still get a JSON document that downstream tools can parse.
+    if (const void* mv = gn_core_query_extension_checked(
+            core, kIceMetricsExtName, kIceMetricsVersion); mv != nullptr) {
+        const auto* m = static_cast<const gn_link_ice_metrics_api_v1*>(mv);
+        if (m->api_size >= sizeof(gn_link_ice_metrics_api_v1)
+            && m->get_nomination != nullptr
+            && m->get_candidate_counts != nullptr) {
+            metrics_ext = m;
+            timed_log("ice metrics extension bound");
+        } else {
+            timed_log("ice metrics extension shape mismatch — degrading");
+        }
+    } else {
+        timed_log("ice metrics extension absent — degrading");
+    }
 
     // Poll for the peer's pubkey.
     std::string peer_pk_hex;
@@ -616,10 +790,7 @@ int main() {
     //     (offer / offer_eoc / answer / answer_eoc).
     //   * data: once the FSM reaches Connected we send a single
     //     ping byte and wait for the peer's ping; first inbound
-    //     msg materialises a .done file.
-    const fs::path peer_done = fs::path(signal_dir) /
-                               (wait_peer + ".done");
-
+    //     msg materialises the success-side report.json.
     const auto deadline =
         clk::now() + std::chrono::duration_cast<clk::duration>(
                          std::chrono::duration<double>(timeout_s));
@@ -713,27 +884,32 @@ int main() {
         }
 
         // ── Data plane ─────────────────────────────────────────────
-        if (g_conn_ready.load() && !ping_sent) {
-            const uint8_t one = 0x42;
-            const gn_conn_id_t target = g_active_conn.load();
-            const gn_result_t rc =
-                gn_core_send_to(core, target, kPingMsgId, &one, 1);
-            if (rc == GN_OK) {
-                ping_sent = true;
-                timed_log("sent ping byte");
+        // Retry every ~1s until the peer confirms receipt.  The first
+        // send may succeed (ICE Connected on our side) but the remote
+        // session may not exist yet; without retries the ping is
+        // silently dropped and the test times out.
+        if (g_conn_ready.load() && !g_inbound_seen.load()) {
+            static int ping_ticks = 0;
+            ++ping_ticks;
+            if (!ping_sent || (ping_ticks % 20 == 0)) {
+                const uint8_t one = 0x42;
+                const gn_conn_id_t target = g_active_conn.load();
+                const gn_result_t rc =
+                    gn_core_send_to(core, target, kPingMsgId, &one, 1);
+                if (rc == GN_OK && !ping_sent) {
+                    ping_sent = true;
+                    timed_log("sent ping byte");
+                }
             }
-            // Transient invalid-state from a still-handshaking
-            // security session is retried on the next loop iteration.
         }
         if (g_inbound_seen.load()) {
             std::error_code ec;
-            if (!fs::exists(done_path, ec)) {
-                if (write_file_atomic(done_path, "ok\n")) {
-                    timed_log(".done written");
-                }
+            if (!fs::exists(report_path, ec)) {
+                write_report(true, {});
+                timed_log("report.json written (success)");
             }
-            if (fs::exists(peer_done, ec)) {
-                timed_log("peer .done observed — exit 0");
+            if (fs::exists(peer_report, ec)) {
+                timed_log("peer report.json observed — exit 0");
                 gn_core_off_conn_state(core, sub_state);
                 gn_core_unsubscribe(core, sub_msg);
                 gn_core_stop(core);
@@ -744,7 +920,7 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    timed_log("timeout — writing .fail");
+    timed_log("timeout — writing report (fail)");
     write_fail("harness timeout");
     gn_core_off_conn_state(core, sub_state);
     gn_core_unsubscribe(core, sub_msg);

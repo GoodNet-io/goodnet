@@ -106,13 +106,17 @@ iptables -A FORWARD -i "${WAN_IFACE}" -o "${LAN_IFACE}" -j ACCEPT
 
 case "${NAT_MODE}" in
     full_cone)
-        # Plain MASQUERADE — conntrack keeps the same (src-IP,
-        # src-port) → (NAT-IP, alloc-port) mapping for every
-        # destination. Full-cone behaviour because hairpin and
-        # destination-restricted variants would need extra rules
-        # we deliberately do NOT add.
+        # See nat-a/init-nat.sh full_cone branch for the rationale —
+        # plain MASQUERADE gives endpoint-independent mapping but
+        # endpoint-DEPENDENT filtering, which is address-restricted
+        # cone, not full-cone. Adding a static 1:1 DNAT for every
+        # inbound UDP packet on the WAN side synthesises full-cone
+        # filtering for the single LAN peer.
+        LAN_PEER_IP="${LAN_PREFIX}.20"
         iptables -t nat -A POSTROUTING -s "${LAN_SUBNET}" \
             -o "${WAN_IFACE}" -j MASQUERADE
+        iptables -t nat -A PREROUTING -i "${WAN_IFACE}" -p udp \
+            -j DNAT --to-destination "${LAN_PEER_IP}"
         ;;
     symmetric)
         # SNAT with --random-fully — every (src-IP, src-port,
@@ -175,7 +179,6 @@ fi
 # port mappings. See nat-a/init-nat.sh for the rationale.
 cat > /etc/miniupnpd/miniupnpd.conf <<EOF
 ext_ifname=${WAN_IFACE}
-ext_ip=${UPNP_EXT_IP}
 listening_ip=${UPNP_LISTEN_IP}
 enable_natpmp=yes
 enable_upnp=yes
@@ -192,4 +195,5 @@ echo "[init-nat] starting miniupnpd"
 # Foreground (`-d`) so docker treats miniupnpd as the container's
 # PID 1. `-f` is load-bearing — the package ships no default
 # /etc/miniupnpd.conf.
+echo "[init-nat] ready" > /tmp/nat-ready
 exec miniupnpd -d -f /etc/miniupnpd/miniupnpd.conf
