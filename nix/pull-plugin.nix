@@ -17,7 +17,8 @@
 #
 #   handler-heartbeat       → plugins/handlers/heartbeat/
 #   link-tcp                → plugins/links/tcp/
-#   protocol-raw            → plugins/protocols/raw/
+#   protocol-gnet           → plugins/protocols/gnet/  (extracted: GoodNet-io/protocol-gnet)
+#   protocol-raw            → plugins/protocols/raw/   (extracted: GoodNet-io/protocol-raw)
 #   security-noise          → plugins/security/noise/
 #   strategy-float_send_rtt → plugins/strategies/float_send_rtt/
 #

@@ -200,9 +200,9 @@ pkgs.stdenv.mkDerivation {
     # emcc $CXXFLAGS -c -o obj/gnet_wire.o \
     #   plugins/protocols/gnet/wire.cpp
 
-    # ── Protocols: raw (1:1) layer ─────────────────────────────
-    emcc $CXXFLAGS -c -o obj/raw_protocol.o \
-      plugins/protocols/raw/raw.cpp
+    # TODO: raw extracted to GoodNet-io/protocol-raw — wire WASM build separately
+    # emcc $CXXFLAGS -c -o obj/raw_protocol.o \
+    #   plugins/protocols/raw/raw.cpp
 
     # ── Header-only proof TUs ──────────────────────────────────
     # `plugins/links/ws/wire.hpp` (RFC-6455 frame codec) and
@@ -254,7 +254,6 @@ pkgs.stdenv.mkDerivation {
     # invocations consume.
     emar rcs lib/libgoodnet-wasm-emscripten.a \
       obj/wire_codec.o \
-      obj/raw_protocol.o \
       $_ws_obj
 
     # ── Link into goodnet.wasm + goodnet.js loader ─────────────
@@ -348,10 +347,11 @@ pkgs.stdenv.mkDerivation {
     #   plugins/protocols/gnet/wire.hpp \
     #   $out/include/goodnet/plugins/protocols/gnet/
 
-    mkdir -p $out/include/goodnet/plugins/protocols/raw
-    install -m 0644 \
-      plugins/protocols/raw/raw.hpp \
-      $out/include/goodnet/plugins/protocols/raw/
+    # TODO: raw extracted to GoodNet-io/protocol-raw — wire WASM build separately
+    # mkdir -p $out/include/goodnet/plugins/protocols/raw
+    # install -m 0644 \
+    #   plugins/protocols/raw/raw.hpp \
+    #   $out/include/goodnet/plugins/protocols/raw/
 
     if [ -f plugins/links/ws/wire.hpp ]; then
       mkdir -p $out/include/goodnet/plugins/links/ws
@@ -388,7 +388,7 @@ pkgs.stdenv.mkDerivation {
   passthru.scope = [
     "core/plugin/wire_codec.cpp"
     # "plugins/protocols/gnet/wire.cpp"  # extracted to GoodNet-io/protocol-gnet
-    "plugins/protocols/raw/raw.cpp"
+    # "plugins/protocols/raw/raw.cpp"    # extracted to GoodNet-io/protocol-raw
     # `plugins/links/ws/{wire,ws_http_parse}.hpp` get a build-time
     # header-parse check IF the standalone link-ws git is
     # populated under `plugins/links/ws/` at flake-input time.
