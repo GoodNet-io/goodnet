@@ -19,6 +19,7 @@
 #include <sdk/cpp/core.hpp>
 #include <sdk/cpp/errors.hpp>
 #include <sdk/cpp/subscription.hpp>
+#include <sdk/gnet.h>
 
 #include <atomic>
 #include <chrono>
@@ -68,6 +69,14 @@ int main() {
         };
         gn::sdk::Core alice(opts);
         gn::sdk::Core bob  (opts);
+
+        // Register the gnet-v1 protocol layer on both kernel instances.
+        // gn_core_init no longer auto-registers it; the host program owns
+        // the protocol composition.
+        if (const auto rc = gn_gnet_register_protocol(alice.raw()); rc != GN_OK)
+            throw gn::sdk::Error(rc, "alice: gn_gnet_register_protocol");
+        if (const auto rc = gn_gnet_register_protocol(bob.raw()); rc != GN_OK)
+            throw gn::sdk::Error(rc, "bob: gn_gnet_register_protocol");
 
         Inbox alice_inbox;
         auto alice_sub = alice.subscribe(

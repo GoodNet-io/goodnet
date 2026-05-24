@@ -17,6 +17,7 @@ target_link_libraries(goodnet_demo
         GoodNet::sdk
         GoodNet::sdk_dx
         GoodNet::kernel_shared
+        GoodNet::protocol_gnet
         PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}
 )
