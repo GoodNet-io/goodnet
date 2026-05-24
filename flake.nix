@@ -70,7 +70,7 @@
         , config ? null
         , identity ? null
         , pname ? "goodnet-node"
-        , version ? "1.0.0-rc3"
+        , version ? "1.0.0-rc6"
         }:
         pkgs.stdenv.mkDerivation {
           inherit pname version;
@@ -161,14 +161,15 @@
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
           # Kernel-only build. Skips iterating `plugins/` so this
-          # derivation produces just `goodnet_kernel` + SDK + GNET
-          # (mandatory mesh framing) + `GoodNet::ctx_accessors` + the
-          # operator CLI. Loadable plugins live in their own flakes;
-          # this derivation does not depend on plugin source being
-          # present in the monorepo's git tree.
+          # derivation produces just `goodnet_kernel` + SDK +
+          # `GoodNet::ctx_accessors` + the operator CLI. The gnet
+          # mesh-framing protocol has been extracted to
+          # GoodNet-io/protocol-gnet. Loadable plugins live in
+          # their own flakes; this derivation does not depend on
+          # plugin source being present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
-            version = "1.0.0-rc3";
+            version = "1.0.0-rc6";
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -212,7 +213,7 @@
           # in-tree build consumes.
           sdk-headers = pkgs.stdenvNoCC.mkDerivation {
             pname   = "goodnet-sdk-headers";
-            version = "1.0.0-rc4";
+            version = "1.0.0-rc6";
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -320,7 +321,8 @@
           # WASM / WASI cross-build via `pkgs.pkgsCross.wasi32`.
           # First of three WASM directions tracked in
           # `docs/ROADMAP.en.md` §WASM-web — kernel-core wire codec
-          # + GNET framing compile to wasm32-wasi. Sockets, dlopen,
+          # compiles to wasm32-wasi. GNET framing extracted to
+          # GoodNet-io/protocol-gnet; wire separately. Sockets, dlopen,
           # and fork-using runtimes are gated out at the source
           # layer (`__wasi__` / `__EMSCRIPTEN__` guards in
           # `core/plugin/dl_compat.hpp`, `runtimes/dynamic.cpp`,
@@ -341,10 +343,11 @@
           # WASM / Emscripten cross-build — second of three WASM
           # directions in `docs/ROADMAP.en.md` §WASM-web. Targets
           # `wasm32-emscripten` (browser host) rather than the WASI
-          # server-side route above. Builds the same dep-free kernel-
-          # core subset (CBOR codec + GNET framing) plus the raw
-          # protocol layer and the header-only ws plugin parsers
-          # (wire / http handshake); kernel TUs that pull libsodium
+          # server-side route above. Builds the dep-free kernel-core
+          # subset (CBOR codec) plus the raw protocol layer and the
+          # header-only ws plugin parsers; GNET framing extracted to
+          # GoodNet-io/protocol-gnet (wire separately).
+          # Kernel TUs that pull libsodium
           # (identity, session) or asio (kernel.cpp, plugin_manager,
           # timer_registry) stay scoped out — see the derivation's
           # `passthru.gaps` for the honest gap list. Output pair is

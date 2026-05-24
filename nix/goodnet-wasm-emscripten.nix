@@ -196,9 +196,9 @@ pkgs.stdenv.mkDerivation {
     emcc $CXXFLAGS -c -o obj/wire_codec.o \
       core/plugin/wire_codec.cpp
 
-    # ── Protocols: gnet framing ────────────────────────────────
-    emcc $CXXFLAGS -c -o obj/gnet_wire.o \
-      plugins/protocols/gnet/wire.cpp
+    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
+    # emcc $CXXFLAGS -c -o obj/gnet_wire.o \
+    #   plugins/protocols/gnet/wire.cpp
 
     # ── Protocols: raw (1:1) layer ─────────────────────────────
     emcc $CXXFLAGS -c -o obj/raw_protocol.o \
@@ -254,7 +254,6 @@ pkgs.stdenv.mkDerivation {
     # invocations consume.
     emar rcs lib/libgoodnet-wasm-emscripten.a \
       obj/wire_codec.o \
-      obj/gnet_wire.o \
       obj/raw_protocol.o \
       $_ws_obj
 
@@ -343,10 +342,11 @@ pkgs.stdenv.mkDerivation {
       core/plugin/dl_compat.hpp \
       $out/include/goodnet/core/plugin/
 
-    mkdir -p $out/include/goodnet/plugins/protocols/gnet
-    install -m 0644 \
-      plugins/protocols/gnet/wire.hpp \
-      $out/include/goodnet/plugins/protocols/gnet/
+    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
+    # mkdir -p $out/include/goodnet/plugins/protocols/gnet
+    # install -m 0644 \
+    #   plugins/protocols/gnet/wire.hpp \
+    #   $out/include/goodnet/plugins/protocols/gnet/
 
     mkdir -p $out/include/goodnet/plugins/protocols/raw
     install -m 0644 \
@@ -387,7 +387,7 @@ pkgs.stdenv.mkDerivation {
   passthru.route = "emscripten";
   passthru.scope = [
     "core/plugin/wire_codec.cpp"
-    "plugins/protocols/gnet/wire.cpp"
+    # "plugins/protocols/gnet/wire.cpp"  # extracted to GoodNet-io/protocol-gnet
     "plugins/protocols/raw/raw.cpp"
     # `plugins/links/ws/{wire,ws_http_parse}.hpp` get a build-time
     # header-parse check IF the standalone link-ws git is

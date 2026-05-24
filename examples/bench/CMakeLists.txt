@@ -9,10 +9,12 @@ add_executable(goodnet_bench main.cpp)
 target_link_libraries(goodnet_bench
     PRIVATE
         goodnet_kernel
-        GoodNet::protocol_gnet
         goodnet_tcp_objects
         ${CMAKE_DL_LIBS}
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(goodnet_bench PRIVATE GoodNet::protocol_gnet)
+endif()
 
 target_compile_features(goodnet_bench PRIVATE cxx_std_23)
 

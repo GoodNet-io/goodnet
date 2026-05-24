@@ -61,7 +61,6 @@ add_executable(bench_showcase bench_showcase.cpp)
 target_link_libraries(bench_showcase PRIVATE
     goodnet_bench_harness
     goodnet_kernel
-    GoodNet::protocol_gnet
     goodnet_tcp_objects
     goodnet_udp_objects
     goodnet_ipc_objects
@@ -71,6 +70,9 @@ target_link_libraries(bench_showcase PRIVATE
     benchmark::benchmark
     ${CMAKE_DL_LIBS}
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(bench_showcase PRIVATE GoodNet::protocol_gnet)
+endif()
 add_dependencies(bench_showcase goodnet_security_noise)
 target_compile_definitions(bench_showcase PRIVATE
     "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""

@@ -19,17 +19,17 @@
 #     find_package(GoodNet REQUIRED)
 #     # ... include plugins/helper.cmake or define the target manually
 #
-# The mandatory mesh-framing plugin (plugins/protocols/gnet) is added
-# directly from the root CMakeLists; it links statically into the
-# kernel binary and is not a `dlopen`-able plugin.
+# The gnet mesh-framing protocol (plugins/protocols/gnet) has been
+# extracted to GoodNet-io/protocol-gnet; it is consumed as an
+# external plugin and is not bundled in this tree.
 #
 # Windows MVP (mingw cross-build) currently skips plugins that need
 # OpenSSL mingw (TLS, QUIC, WS) or rely on POSIX-only resolver
 # subsystems (handler/dns via c-ares). ICE and store/strategies stay
 # off the first cut until their CI smoke is wired. The lean Windows
-# bundle is kernel + gnet + Noise + Null + TCP + UDP + IPC +
-# Heartbeat; the rest will lift in a follow-up cut once each plugin's
-# mingw build is verified.
+# bundle is kernel + Noise + Null + TCP + UDP + IPC + Heartbeat;
+# the rest will lift in a follow-up cut once each plugin's mingw
+# build is verified.
 set(_GOODNET_WINDOWS_SKIP FALSE)
 if(WIN32)
     set(_GOODNET_WINDOWS_SKIP TRUE)

@@ -9,7 +9,7 @@ project(GoodNet
 # string is published (CLI banner, package metadata, Nix derivation).
 # CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
 # rides separately. Drop to empty when cutting `v1.0.0` final.
-set(GOODNET_VERSION_SUFFIX "-rc4" CACHE STRING "Pre-release suffix (e.g. -rc4); empty for stable")
+set(GOODNET_VERSION_SUFFIX "-rc6" CACHE STRING "Pre-release suffix (e.g. -rc6); empty for stable")
 set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
@@ -254,13 +254,6 @@ endif()
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────
 add_subdirectory(sdk)
 add_subdirectory(core)
-
-# Mandatory mesh-framing plugin lives in plugins/protocols/gnet/ but is
-# statically linked into the kernel binary. Added directly so the kernel
-# build does not depend on GOODNET_BUILD_BUNDLED_PLUGINS.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/protocols/gnet/CMakeLists.txt")
-    add_subdirectory(plugins/protocols/gnet)
-endif()
 
 # Raw protocol — alternative layer for simulation harnesses, PCAP replay,
 # foreign-protocol passthrough. Built unconditionally so tests can link

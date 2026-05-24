@@ -36,17 +36,19 @@ if(COMMAND goodnet_apply_pch)
     goodnet_apply_pch(gen_noise_xx)
 endif()
 
-add_executable(gen_gnet_wire gen_gnet_wire.cpp)
-target_link_libraries(gen_gnet_wire PRIVATE
-    GoodNet::sdk
-    GoodNet::protocol_gnet
-    goodnet_kernel
-    PkgConfig::SODIUM)
-target_include_directories(gen_gnet_wire PRIVATE
-    "${CMAKE_SOURCE_DIR}/plugins/protocols/gnet")
-target_compile_features(gen_gnet_wire PRIVATE cxx_std_23)
-if(COMMAND goodnet_apply_pch)
-    goodnet_apply_pch(gen_gnet_wire)
+if(TARGET GoodNet::protocol_gnet)
+    add_executable(gen_gnet_wire gen_gnet_wire.cpp)
+    target_link_libraries(gen_gnet_wire PRIVATE
+        GoodNet::sdk
+        GoodNet::protocol_gnet
+        goodnet_kernel
+        PkgConfig::SODIUM)
+    target_include_directories(gen_gnet_wire PRIVATE
+        "${CMAKE_SOURCE_DIR}/plugins/protocols/gnet")
+    target_compile_features(gen_gnet_wire PRIVATE cxx_std_23)
+    if(COMMAND goodnet_apply_pch)
+        goodnet_apply_pch(gen_gnet_wire)
+    endif()
 endif()
 
 add_executable(gen_attestation gen_attestation.cpp)
@@ -78,16 +80,19 @@ endif()
 add_executable(test_vectors_consume test_vectors_consume.cpp)
 target_link_libraries(test_vectors_consume PRIVATE
     GoodNet::sdk
-    GoodNet::protocol_gnet
     goodnet_kernel
     goodnet_noise_objects
     nlohmann_json::nlohmann_json
     PkgConfig::SODIUM
     GTest::gtest
     GTest::gtest_main)
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(test_vectors_consume PRIVATE GoodNet::protocol_gnet)
+    target_include_directories(test_vectors_consume PRIVATE
+        "${CMAKE_SOURCE_DIR}/plugins/protocols/gnet")
+endif()
 target_include_directories(test_vectors_consume PRIVATE
-    "${CMAKE_SOURCE_DIR}/plugins/security/noise"
-    "${CMAKE_SOURCE_DIR}/plugins/protocols/gnet")
+    "${CMAKE_SOURCE_DIR}/plugins/security/noise")
 target_compile_features(test_vectors_consume PRIVATE cxx_std_23)
 target_compile_definitions(test_vectors_consume PRIVATE
     "GOODNET_VECTORS_DIR=\"${_vectors_dir}\"")

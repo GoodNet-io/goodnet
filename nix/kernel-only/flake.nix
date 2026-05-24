@@ -146,10 +146,10 @@
               topLevel = builtins.head (pkgs.lib.splitString "/" rel);
               # `plugins` dir itself + plugins/CMakeLists.txt +
               # everything under plugins/protocols/ is in scope so
-              # gnet/raw (statically linked into the kernel binary)
-              # build with the rest of the kernel; loadable plugins
-              # under plugins/handlers, plugins/links, plugins/
-              # security live in their own flakes and stay out.
+              # raw (still in-tree) builds with the rest of the kernel;
+              # gnet has been extracted to GoodNet-io/protocol-gnet.
+              # Loadable plugins under plugins/handlers, plugins/links,
+              # plugins/security live in their own flakes and stay out.
               isKeptPlugin =
                 rel == "plugins"
                 || rel == "plugins/CMakeLists.txt"

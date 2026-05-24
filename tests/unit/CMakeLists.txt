@@ -42,7 +42,6 @@ add_executable(goodnet_unit_tests ${goodnet_unit_test_sources})
 target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
-        GoodNet::protocol_gnet
         GoodNet::sdk_dx
         GTest::gtest
         GTest::gtest_main
@@ -50,6 +49,9 @@ target_link_libraries(goodnet_unit_tests
         rapidcheck_gtest
         ${CMAKE_DL_LIBS}
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(goodnet_unit_tests PRIVATE GoodNet::protocol_gnet)
+endif()
 
 # raw_inject integration test pulls the link's OBJECT lib plus the
 # raw-v1 protocol layer. The OBJECT lib is only present when the

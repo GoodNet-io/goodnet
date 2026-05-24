@@ -131,12 +131,13 @@ wasi.stdenv.mkDerivation {
 
     set -x
     $CXX $CXXFLAGS -c -o obj/wire_codec.o core/plugin/wire_codec.cpp
-    $CXX $CXXFLAGS -c -o obj/gnet_wire.o   plugins/protocols/gnet/wire.cpp
+    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
+    # $CXX $CXXFLAGS -c -o obj/gnet_wire.o   plugins/protocols/gnet/wire.cpp
 
     # Archive into a single `.a`. `ranlib` is implicit through the
     # wasm32-unknown-wasi-ar wrapper.
     ${ccPrefix}ar rcs lib/libgoodnet-wasm.a \
-      obj/wire_codec.o obj/gnet_wire.o
+      obj/wire_codec.o
     set +x
 
     runHook postBuild
@@ -167,10 +168,11 @@ wasi.stdenv.mkDerivation {
       core/plugin/dl_compat.hpp \
       $out/include/goodnet/core/plugin/
 
-    mkdir -p $out/include/goodnet/plugins/protocols/gnet
-    install -m 0644 \
-      plugins/protocols/gnet/wire.hpp \
-      $out/include/goodnet/plugins/protocols/gnet/
+    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
+    # mkdir -p $out/include/goodnet/plugins/protocols/gnet
+    # install -m 0644 \
+    #   plugins/protocols/gnet/wire.hpp \
+    #   $out/include/goodnet/plugins/protocols/gnet/
 
     runHook postInstall
   '';
@@ -198,7 +200,7 @@ wasi.stdenv.mkDerivation {
   passthru.route = "pkgsCross.wasi32";
   passthru.scope = [
     "core/plugin/wire_codec.cpp"
-    "plugins/protocols/gnet/wire.cpp"
+    # "plugins/protocols/gnet/wire.cpp"  # extracted to GoodNet-io/protocol-gnet
   ];
   # `skip_reason` stays empty when the build succeeds. A non-empty
   # value here is the convention the CI `wasm-cross-build` job

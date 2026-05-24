@@ -300,7 +300,6 @@ if(NOT GOODNET_STATIC_PLUGINS
     target_link_libraries(bench_real_e2e PRIVATE
         goodnet_bench_harness
         goodnet_kernel
-        GoodNet::protocol_gnet
         goodnet_tcp_objects
         goodnet_udp_objects
         goodnet_ipc_objects
@@ -309,6 +308,9 @@ if(NOT GOODNET_STATIC_PLUGINS
         benchmark::benchmark_main
         ${CMAKE_DL_LIBS}
     )
+    if(TARGET GoodNet::protocol_gnet)
+        target_link_libraries(bench_real_e2e PRIVATE GoodNet::protocol_gnet)
+    endif()
     add_dependencies(bench_real_e2e goodnet_security_noise)
     target_compile_definitions(bench_real_e2e PRIVATE
         "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
