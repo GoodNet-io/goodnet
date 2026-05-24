@@ -69,6 +69,7 @@ target_include_directories(goodnet_ctx_accessors PUBLIC
 set_target_properties(goodnet_ctx_accessors PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME ctx_accessors
+    INTERPROCEDURAL_OPTIMIZATION OFF
 )
 add_library(GoodNet::ctx_accessors ALIAS goodnet_ctx_accessors)
 goodnet_apply_pch(goodnet_ctx_accessors)
