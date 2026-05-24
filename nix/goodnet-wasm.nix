@@ -85,7 +85,7 @@ in
 # which goes through `cross.stdenv.mkDerivation`.
 wasi.stdenv.mkDerivation {
   pname   = "goodnet-wasm";
-  version = "1.0.0-rc4";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

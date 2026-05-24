@@ -94,7 +94,7 @@ let
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-android-aarch64";
-  version = "1.0.0-rc4";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

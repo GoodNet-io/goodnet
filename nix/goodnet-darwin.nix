@@ -39,7 +39,7 @@ let
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-darwin-${arch}";
-  version = "1.0.0-rc4";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

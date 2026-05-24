@@ -128,7 +128,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname   = "goodnet-wasm-emscripten";
-  version = "1.0.0-rc4";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

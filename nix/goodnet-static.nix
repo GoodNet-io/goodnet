@@ -68,7 +68,7 @@ let
 in
 static.gcc15Stdenv.mkDerivation {
   pname   = "goodnet-core-static";
-  version = "1.0.0-rc4";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;
