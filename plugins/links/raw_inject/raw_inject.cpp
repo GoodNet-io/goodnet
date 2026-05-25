@@ -18,6 +18,20 @@
 namespace gn::link::raw_inject {
 namespace {
 
+/// Derive a deterministic 32-byte public key from a peer URI string.
+/// Uses four rounds of FNV-1a 64-bit with different salts so each 8-byte
+/// block of the output is independently mixed. No external crypto dependency.
+void derive_source_pk(std::string_view uri,
+                      std::uint8_t out[GN_PUBLIC_KEY_BYTES]) noexcept {
+    constexpr std::uint64_t kBasis = 14695981039346656037ULL;
+    constexpr std::uint64_t kPrime = 1099511628211ULL;
+    for (int round = 0; round < 4; ++round) {
+        std::uint64_t h = kBasis ^ static_cast<std::uint64_t>(round);
+        for (unsigned char c : uri) { h ^= c; h *= kPrime; }
+        std::memcpy(out + round * 8, &h, 8);
+    }
+}
+
 struct HostPort {
     std::string  host;
     std::uint16_t port = 0;
@@ -106,12 +120,14 @@ void RawInjectLink::set_host_api(const host_api_t* api) noexcept {
             cfg.encode_msg_id = str;
             if (freefn) freefn(ud, str);
         }
+        if (gn_config_get_string(api_, "raw_inject.target_ns",
+                                  &str, &ud, &freefn) == GN_OK &&
+            str != nullptr) {
+            cfg.target_ns = str;
+            if (freefn) freefn(ud, str);
+        }
     }
     set_config(cfg);
-}
-
-void RawInjectLink::set_default_trust_class(gn_trust_class_t t) noexcept {
-    default_trust_ = t;
 }
 
 void RawInjectLink::set_config(const Config& cfg) noexcept {
@@ -223,11 +239,13 @@ void RawInjectLink::on_carrier_accept(gn_conn_id_t carrier_id,
         ? std::string{"raw-inject://anonymous"}
         : make_peer_uri(peer_uri);
 
-    std::uint8_t remote_pk[GN_PUBLIC_KEY_BYTES] = {};
+    std::uint8_t derived_pk[GN_PUBLIC_KEY_BYTES] = {};
+    derive_source_pk(session->peer_uri, derived_pk);
+
     gn_conn_id_t kernel_conn = GN_INVALID_ID;
     const gn_result_t rc = api_->notify_connect(
-        api_->host_ctx, remote_pk, session->peer_uri.c_str(),
-        default_trust_, GN_ROLE_RESPONDER, &kernel_conn);
+        api_->host_ctx, derived_pk, session->peer_uri.c_str(),
+        GN_TRUST_LOOPBACK, GN_ROLE_RESPONDER, &kernel_conn);
     if (rc != GN_OK || kernel_conn == GN_INVALID_ID) {
         (void)carrier_->disconnect(carrier_id, 1);
         return;
@@ -299,6 +317,7 @@ void RawInjectLink::dispatch_inject(
         api_->host_ctx,
         GN_INJECT_LAYER_MESSAGE,
         session->kernel_id,
+        cfg.target_ns.c_str(),
         msg_id,
         payload, size);
 

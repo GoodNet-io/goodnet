@@ -193,6 +193,7 @@ struct Stub : ::gn::sdk::test::LinkStub {
     struct InjectRecord {
         gn_inject_layer_t        layer;
         gn_conn_id_t             source;
+        std::string              target_ns;
         std::uint32_t            msg_id;
         std::vector<std::uint8_t> payload;
     };
@@ -206,14 +207,16 @@ struct Stub : ::gn::sdk::test::LinkStub {
     static gn_result_t on_inject(void* host_ctx,
                                    gn_inject_layer_t layer,
                                    gn_conn_id_t source,
+                                   const char* target_ns,
                                    std::uint32_t msg_id,
                                    const std::uint8_t* bytes,
                                    std::size_t size) {
         auto* h = static_cast<Stub*>(host_ctx);
         InjectRecord r;
-        r.layer  = layer;
-        r.source = source;
-        r.msg_id = msg_id;
+        r.layer     = layer;
+        r.source    = source;
+        r.target_ns = target_ns ? target_ns : "";
+        r.msg_id    = msg_id;
         r.payload.assign(bytes, bytes + size);
         {
             std::lock_guard lk(h->inject_mu);
@@ -286,7 +289,7 @@ TEST(RawInjectLink, CarrierAcceptDispatchesNotifyConnect) {
     {
         std::lock_guard lk(h.mu);
         ASSERT_EQ(h.trusts.size(), 1u);
-        EXPECT_EQ(h.trusts.front(), GN_TRUST_ANONYMOUS_LOOPBACK);
+        EXPECT_EQ(h.trusts.front(), GN_TRUST_LOOPBACK);
         EXPECT_EQ(h.roles.front(),  GN_ROLE_RESPONDER);
     }
     EXPECT_EQ(carrier.data_subs.load(), 1);

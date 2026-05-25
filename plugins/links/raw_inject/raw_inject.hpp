@@ -48,6 +48,9 @@ struct Config {
     ///             a big-endian msg_id, the remainder becomes the
     ///             injected payload.
     std::string  encode_msg_id   = "config";
+    /// Handler-registry namespace for dispatch. Must be non-empty.
+    /// Examples: "gnet-v1", "mqtt.v1", "sensor.v1".
+    std::string  target_ns       = "raw-v1";
 };
 
 class RawInjectLink : public std::enable_shared_from_this<RawInjectLink> {
@@ -77,7 +80,6 @@ public:
     [[nodiscard]] gn_result_t disconnect(gn_conn_id_t conn);
 
     void set_host_api(const host_api_t* api) noexcept;
-    void set_default_trust_class(gn_trust_class_t t) noexcept;
     void shutdown();
 
     void set_config(const Config& cfg) noexcept;
@@ -139,8 +141,6 @@ private:
 
     mutable std::mutex cfg_mu_;
     Config              cfg_;
-
-    gn_trust_class_t   default_trust_ = GN_TRUST_ANONYMOUS_LOOPBACK;
 };
 
 }  // namespace gn::link::raw_inject

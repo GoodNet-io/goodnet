@@ -293,7 +293,7 @@ struct LinkThunks {
 
 // ─── End-to-end inject round-trip via fake TCP carrier ──────────────────
 
-TEST(RawInjectIntegration, AnonymousLoopbackRoundTripsThroughCarrier) {
+TEST(RawInjectIntegration, LoopbackRoundTripsThroughCarrier) {
     Kernel kernel;
     auto raw_layer = std::make_shared<RawProtocolLayer>();
     ::gn::test::util::register_default_protocol(kernel, raw_layer);
@@ -336,11 +336,11 @@ TEST(RawInjectIntegration, AnonymousLoopbackRoundTripsThroughCarrier) {
 
     auto link = std::make_shared<RawInjectLink>();
     link->set_host_api(&api);
-    link->set_default_trust_class(GN_TRUST_ANONYMOUS_LOOPBACK);
 
     gn::link::raw_inject::Config cfg;
     cfg.default_msg_id = 0x10FF;
     cfg.encode_msg_id  = "config";
+    cfg.target_ns      = "raw-v1";
     link->set_config(cfg);
 
     static auto link_vt = LinkThunks::make_vtable();
@@ -360,9 +360,8 @@ TEST(RawInjectIntegration, AnonymousLoopbackRoundTripsThroughCarrier) {
     ASSERT_EQ(carrier.listens.load(), 1);
 
     /// Drive an accept + a payload through the captured carrier
-    /// callbacks. The L2 plugin calls `notify_connect` with
-    /// `GN_TRUST_ANONYMOUS_LOOPBACK` + zero remote_pk so the
-    /// router relaxation accepts the resulting envelope.
+    /// callbacks. The L2 plugin calls `notify_connect` with a
+    /// deterministic pk derived from the peer URI under GN_TRUST_LOOPBACK.
     carrier.deliver_accept(0x7001, "tcp://127.0.0.1:55580");
 
     const std::uint8_t payload[] = {'h','e','l','l','o'};
