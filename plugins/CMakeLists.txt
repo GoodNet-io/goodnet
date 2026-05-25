@@ -104,6 +104,12 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/ws)
 endif()
 
+# ws_inject after ws: composes over gn.link.ws carrier.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws_inject/CMakeLists.txt")
+    add_subdirectory(links/ws_inject)
+endif()
+
 # ICE before QUIC so that QUIC's `test_quic` fixture (which now
 # integrates an `IceCarrierBridge` for the `quic://<peer-pk-hex>`
 # route per Q.1) sees `goodnet_ice_objects` at conditional time.
