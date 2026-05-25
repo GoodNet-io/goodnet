@@ -85,7 +85,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/raw_inject/CMakeLists.txt")
-    add_subdirectory(links/raw_inject)
+    # raw_inject plugin needs `libzstd` (pkg-config); skip silently
+    # when the kernel's base devShell / sysroot doesn't carry it so
+    # top-level unified development builds still configure.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_ZSTD QUIET libzstd)
+    endif()
+    if(_GOODNET_HAVE_ZSTD_FOUND)
+        add_subdirectory(links/raw_inject)
+    else()
+        message(STATUS "Skipping plugins/links/raw_inject: libzstd not found")
+    endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/udp/CMakeLists.txt")
