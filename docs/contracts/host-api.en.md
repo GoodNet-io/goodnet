@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
 **Implements:** size-prefix evolution per `abi-evolution.en.md`
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-25
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---
@@ -182,6 +182,7 @@ typedef struct host_api_s {
     gn_result_t (*inject)(void* host_ctx,
                           gn_inject_layer_t layer,
                           gn_conn_id_t source,
+                          const char* target_ns,
                           uint32_t msg_id,
                           const uint8_t* bytes,
                           size_t size);
@@ -389,7 +390,7 @@ libclang, refreshed by `make livedoc`:
 | [notify_disconnect](../../sdk/host_api.h#L325) | `gn_result_t (*)(void *, gn_conn_id_t, gn_result_t)` | Link-side notifications |
 | [register_security](../../sdk/host_api.h#L345) | `gn_result_t (*)(void *, const char *, const struct gn_security_provider_vtable_s *, void *)` | Security registration |
 | [unregister_security](../../sdk/host_api.h#L350) | `gn_result_t (*)(void *, const char *)` | Security registration |
-| [inject](../../sdk/host_api.h#L380) | `gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, uint32_t, const uint8_t *, size_t)` | Foreign-payload injection |
+| [inject](../../sdk/host_api.h#L380) | `gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, const char *, uint32_t, const uint8_t *, size_t)` | Foreign-payload injection |
 | [kick_handshake](../../sdk/host_api.h#L400) | `gn_result_t (*)(void *, gn_conn_id_t)` | Foreign-payload injection |
 | [set_timer](../../sdk/host_api.h#L416) | `gn_result_t (*)(void *, uint32_t, gn_task_fn_t, void *, gn_timer_id_t *)` | Service executor |
 | [cancel_timer](../../sdk/host_api.h#L426) | `gn_result_t (*)(void *, gn_timer_id_t)` | Service executor |
@@ -557,16 +558,22 @@ typedef enum gn_inject_layer_e {
 gn_result_t (*inject)(void* host_ctx,
                       gn_inject_layer_t layer,
                       gn_conn_id_t source,
+                      const char* target_ns,
                       uint32_t msg_id,
                       const uint8_t* bytes,
                       size_t size);
 ```
 
+`target_ns` is the handler-registry namespace (virtual protocol_id string)
+used as the routing key for `lookup(target_ns, msg_id)`. It must be a
+non-NULL, non-empty string; `NULL` or `""` returns `GN_ERR_INVALID_ENVELOPE`.
+The namespace need not correspond to any wire protocol — any string the
+handler registry was told to listen under is valid.
+
 `GN_INJECT_LAYER_MESSAGE` builds an envelope `(sender_pk =
 source.remote_pk, receiver_pk = local_identity, msg_id, bytes)` and
-dispatches it through the router as if the bytes had arrived from
-the source connection's link. `msg_id` must be non-zero; `size` is
-bounded by `limits.max_payload_bytes`.
+dispatches it through the router to handlers registered under `target_ns`.
+`msg_id` must be non-zero; `size` is bounded by `limits.max_payload_bytes`.
 
 `GN_INJECT_LAYER_FRAME` accepts a fully formed wire-side frame, hands
 it to the active protocol layer's `deframe`, and dispatches the
@@ -588,6 +595,7 @@ Failure modes:
 | Condition | Result |
 |---|---|
 | `source` does not refer to a known connection | `GN_ERR_NOT_FOUND` |
+| `target_ns == NULL` or `*target_ns == '\0'` | `GN_ERR_INVALID_ENVELOPE` |
 | `bytes == NULL && size > 0` (MESSAGE) or `bytes == NULL || size == 0` (FRAME) | `GN_ERR_NULL_ARG` |
 | `size > limits.max_payload_bytes` (MESSAGE) or `size > limits.max_frame_bytes` (FRAME) | `GN_ERR_PAYLOAD_TOO_LARGE` |
 | `msg_id == 0` (MESSAGE; envelope invariant per `protocol-layer.en.md` §2) | `GN_ERR_INVALID_ENVELOPE` |
@@ -635,9 +643,20 @@ payload-size limits as the regular inbound path.
 Implementations live in `core/kernel/host_api/` (the slim wire-up
 itself is in `core/kernel/host_api_builder.cpp`); the rate
 limiter primitive is `core/util/token_bucket.hpp`. The pure-C
-convenience wrappers `gn_inject_external_message` and
-`gn_inject_frame` in `sdk/convenience.h` expand to the corresponding
-`inject(LAYER, …)` call.
+convenience wrappers in `sdk/convenience.h` expand to the corresponding
+`inject(LAYER, …)` call:
+
+```c
+/* Dispatch a message to handlers registered under target_ns. */
+#define gn_inject_message(api, source, ns, msg_id, payload, size) \
+    (api)->inject((api)->host_ctx, GN_INJECT_LAYER_MESSAGE, \
+                  (source), (ns), (msg_id), (payload), (size))
+
+/* Feed a raw frame through the protocol deframer with target_ns routing. */
+#define gn_inject_frame(api, source, ns, frame, size) \
+    (api)->inject((api)->host_ctx, GN_INJECT_LAYER_FRAME, \
+                  (source), (ns), 0, (frame), (size))
+```
 
 ### 8.1 Shippable bridge shape
 
@@ -656,11 +675,13 @@ canonical shape:
    No Noise handshake runs on the bridge edge.
 3. For every foreign-system message the bridge wants to publish to
    the mesh, the bridge calls `inject(LAYER_MESSAGE, source =
-   ipc_conn, msg_id, bytes)`. The kernel routes the envelope
-   through the active protocol layer's handler chain exactly as if
-   the bytes had arrived from the bridge's `remote_pk` — see §8 for
-   per-conn rate limiting and `gn_message_t::conn_id` doc for the
-   stamping invariant.
+   ipc_conn, target_ns, msg_id, bytes)`. `target_ns` is the
+   handler-registry namespace (e.g. `"mqtt.v1"`) the handler was
+   registered under; it is independent of the transport's wire
+   protocol. The kernel routes the envelope through the handler
+   chain exactly as if the bytes had arrived from the bridge's
+   `remote_pk` — see §8 for per-conn rate limiting and
+   `gn_message_t::conn_id` doc for the stamping invariant.
 
 A second shape — bridge installs a `subscribe_data` callback on
 another plugin's link conn through `sdk/extensions/link.h` composer
@@ -677,6 +698,50 @@ Bridges that fan in many foreign clients through one IPC source
 share a single rate-limit bucket per the §8 paragraph above; the
 bridge plugin layers its own per-foreign-client limiter on top.
 The kernel never sees foreign-client identity.
+
+### 8.2 Device-bridge pattern
+
+The device-bridge pattern connects embedded hardware, sensors, or
+local IoT gateways directly to the mesh without a Noise handshake.
+It differs from the IPC bridge in §8.1 in that each physical device
+connection becomes its own kernel `conn_id` with a stable identity:
+
+1. **Transport**: the bridge plugin composes over an existing link
+   carrier (e.g. `gn.link.tcp` or `gn.link.ws`) via
+   `sdk/cpp/link_carrier.hpp`. It calls `carrier->on_accept` and
+   forwards accepted connections to the kernel.
+
+2. **Identity without Noise**: each accepted peer URI is mapped to a
+   deterministic 32-byte public key via FNV-1a (four 8-byte rounds
+   with distinct salts; implementation in `raw_inject.cpp` and
+   `ws_inject.cpp`). The key is non-zero, stable across reconnects
+   for the same address, and requires no crypto negotiation.
+
+3. **Trust class**: the bridge passes `GN_TRUST_LOOPBACK` to
+   `notify_connect`. The null security provider admits
+   `GN_TRUST_LOOPBACK` without a handshake
+   (`null_allowed_trust_mask = LOOPBACK | INTRA_NODE`).
+
+4. **Dispatch via `target_ns`**: each inbound device frame is
+   forwarded through `inject(LAYER_MESSAGE, conn_id, target_ns,
+   msg_id, bytes)`. `target_ns` is a virtual namespace string
+   configured by the operator (e.g. `"sensor.v1"`, `"mqtt.v1"`);
+   handlers register under the same string. The namespace is
+   independent of the wire protocol.
+
+5. **Reply path**: handlers call `host_api->send(conn_id, msg_id,
+   bytes)` to push a response back. The bridge's `send` method
+   forwards the bytes to the device as raw binary frames — no GNET
+   framing is added on the outbound path (`raw-v1` transport).
+
+Reference implementations: `plugins/links/raw_inject/` (TCP) and
+`plugins/links/ws_inject/` (WebSocket). Configuration keys:
+
+| Key | Default | Description |
+|---|---|---|
+| `raw_inject.target_ns` | `"raw-v1"` | Handler namespace for dispatch |
+| `ws_inject.target_ns` | `"gnet-v1"` | Handler namespace for dispatch |
+| `*.encode_msg_id` | `"config"` | `"config"`: every frame uses `default_msg_id`; `"stream"`: first 4 bytes are a big-endian uint32 `msg_id` |
 
 ---
 

@@ -502,6 +502,109 @@ surface, на остаток escape hatch'и `core.host_api()` и
 ведёт к double-destroy. Либо binding owns lifecycle, либо raw —
 но не оба одновременно.
 
+## Интеграция внешних устройств
+
+Помимо language-bindings для operator-side app'ов, термин «bridge» в
+GoodNet применяется ко второму типу адаптеров — **device bridges**:
+плагинам, которые принимают подключения от встроенных устройств,
+датчиков и IoT-шлюзов и доставляют их кадры напрямую в handler-pipeline
+ядра, минуя Noise-рукопожатие.
+
+### Концепт
+
+Устройство (MQTT-клиент, датчик по проприетарному протоколу, PLC) не
+имеет Ed25519-идентификатора. Device-bridge создаёт для него
+**виртуальную идентичность** на стороне ядра:
+
+```
+device → TCP/WS connection → bridge plugin
+                                ↓
+                       notify_connect(derived_pk, GN_TRUST_LOOPBACK)
+                                ↓
+                       inject(LAYER_MESSAGE, conn_id, target_ns, msg_id, bytes)
+                                ↓
+                       handler(ns="sensor.v1", msg_id=0x0001) → mesh
+```
+
+Обратный путь: handler вызывает `host_api->send(conn_id, …)` — bridge
+пересылает байты устройству как raw-binary, без GNET-заголовка.
+
+### Derived public key
+
+Каждое принятое соединение получает детерминированный 32-байтный
+public key из peer URI через FNV-1a (четыре раунда по 8 байт с
+различными salt'ами). Ключ:
+
+- **не нулевой** — нулевой pk нарушает auth-инвариант ядра;
+- **стабильный** — то же устройство с того же адреса получает тот же pk
+  после переподключения, что позволяет handler'у строить per-device state;
+- **не требует криптографии** — только детерминированная hash-функция.
+
+### Trust class
+
+Bridge передаёт `GN_TRUST_LOOPBACK` в `notify_connect`. Null security
+provider допускает `LOOPBACK` и `INTRA_NODE` без handshake'а.
+`GN_TRUST_ANONYMOUS_LOOPBACK` (нулевой pk) не входит в разрешённую
+маску — connection будет отклонён в полных сборках с активным security.
+
+### target_ns — виртуальный namespace
+
+`inject` принимает `target_ns` — строку, под которой
+зарегистрированы handler'ы. Это **не** wire-протокол, а виртуальный
+ключ диспатча: handler регистрируется под `"sensor.v1"`, bridge
+передаёт `target_ns = "sensor.v1"` — routing не зависит от того, какой
+транспорт (TCP / WS / IPC) доставил байты.
+
+### encode_msg_id
+
+Две стратегии разбора msg_id из входящего кадра:
+
+| `encode_msg_id` | Поведение |
+|---|---|
+| `"config"` | каждый кадр получает `default_msg_id` из конфига |
+| `"stream"` | первые 4 байта кадра — big-endian uint32 msg_id; остаток — payload |
+
+### Пример конфигурации
+
+```toml
+# raw_inject — TCP-устройства
+[raw_inject]
+listen         = "raw-inject://0.0.0.0:9999"
+target_ns      = "sensor.v1"
+encode_msg_id  = "stream"
+default_msg_id = 0x0001
+
+# ws_inject — браузер / WebSocket-устройства
+[ws_inject]
+listen         = "ws-inject://0.0.0.0:9100"
+target_ns      = "gnet-v1"
+encode_msg_id  = "config"
+default_msg_id = 0x0700
+```
+
+Handler регистрируется под тем же namespace:
+
+```cpp
+gn_register_meta_t meta{};
+meta.name   = "sensor.v1";   // = target_ns
+meta.msg_id = 0x0001;
+api.register_vtable(ctx, GN_REGISTER_HANDLER, &meta, &vtable, self, &id);
+```
+
+### Реализации
+
+| Плагин | Транспорт | Источник |
+|---|---|---|
+| `plugins/links/raw_inject/` | TCP (через `gn.link.tcp`) | `raw_inject.cpp` |
+| `plugins/links/ws_inject/` | WebSocket (через `gn.link.ws`) | `ws_inject.cpp` |
+
+Известное ограничение: `carrier->on_accept()` является глобальным для
+всего WS-carrier'а — два экземпляра `ws_inject` на разных портах
+будут видеть все WS-соединения друг друга. Поддержка per-listener
+scoping запланирована.
+
+Полный контракт inject-API — `docs/contracts/host-api.en.md` §8 и §8.2.
+
 ## Cross-references
 
 - [`overview`](overview.ru.md) — kernel = ABI table + 4 vtable kinds
