@@ -99,8 +99,14 @@ contract, alphabetised by name to make merge conflicts loud.
 | `0x0000` | `transport-set` | bitmap of `1u << GN_LINK_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
 | `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs in declaration order; `protocol-list` (type `0x0002`) carries the canonical ordering |
 | `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
+| `0x0003` | `compression-set` | `u8` bitmask: bit 0 = ZSTD (`0x01`) |
 | `0x0100 – 0x01ff` | _reserved_ | do not allocate; the range is held for future cross-cutting families |
 | `0x0200` | `heartbeat-interval-ms` | u32 big-endian; the peer's preferred PING cadence |
+
+Type `0x0003` is advertised via `present_capability_blob` after connection
+establishment. A plugin enables a compression algorithm on a connection only
+when both sides have advertised the corresponding bit. The extension that
+provides compression services is `gn.compress` (see `sdk/extensions/compress.h`).
 
 A consumer that receives an unknown type **must** skip the record
 (advance by `length`) and continue parsing. This is what makes

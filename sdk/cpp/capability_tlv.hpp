@@ -107,4 +107,10 @@ parse_tlv(std::span<const std::uint8_t> blob) {
     return out;
 }
 
+/// TLV type for compression capability advertisement (capability-tlv.en.md §2.3).
+/// Value: one-byte bitmask. Exchange via present_capability_blob after connect.
+inline constexpr std::uint16_t kTlvTypeCompressionSet = 0x0003u;
+/// Bit 0 of compression-set value: ZSTD algorithm supported.
+inline constexpr std::uint8_t  kCompressionSetZstd    = 0x01u;
+
 }  // namespace gn::sdk
