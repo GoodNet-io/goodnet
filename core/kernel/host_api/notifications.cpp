@@ -394,6 +394,7 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
 gn_result_t inject(void* host_ctx,
                     gn_inject_layer_t layer_kind,
                     gn_conn_id_t source,
+                    const char* target_ns,
                     std::uint32_t msg_id,
                     const std::uint8_t* bytes,
                     std::size_t size) {
@@ -410,6 +411,8 @@ gn_result_t inject(void* host_ctx,
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     const auto& limits = pc->kernel->limits();
+
+    if (!target_ns || !*target_ns) return GN_ERR_INVALID_ENVELOPE;
 
     switch (layer_kind) {
     case GN_INJECT_LAYER_MESSAGE:
@@ -476,7 +479,7 @@ gn_result_t inject(void* host_ctx,
         env.api_size = sizeof(gn_message_t);
         env.conn_id  = source;
 
-        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        route_one_envelope(*pc->kernel, target_ns, env);
         return GN_OK;
     }
 
@@ -504,7 +507,7 @@ gn_result_t inject(void* host_ctx,
         gn_message_t stamped  = env;
         stamped.api_size      = sizeof(gn_message_t);
         stamped.conn_id       = source;
-        route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
+        route_one_envelope(*pc->kernel, target_ns, stamped);
     }
     return GN_OK;
 }
