@@ -342,21 +342,15 @@
 
           # WASM / Emscripten cross-build — second of three WASM
           # directions in `docs/ROADMAP.en.md` §WASM-web. Targets
-          # `wasm32-emscripten` (browser host) rather than the WASI
-          # server-side route above. Builds the dep-free kernel-core
-          # subset (CBOR codec) plus the raw protocol layer and the
-          # header-only ws plugin parsers; GNET framing extracted to
-          # GoodNet-io/protocol-gnet (wire separately).
-          # Kernel TUs that pull libsodium
-          # (identity, session) or asio (kernel.cpp, plugin_manager,
-          # timer_registry) stay scoped out — see the derivation's
-          # `passthru.gaps` for the honest gap list. Output pair is
-          # `goodnet.wasm` + `goodnet.js` loader; the future JS SDK
-          # (direction 3) calls `await Goodnet()` to instantiate it.
-          # Linux-host-only (pkgs.emscripten runs on Linux). CI gates
-          # this under `continue-on-error: true` because the
-          # emscripten port surface is volatile (sysroot rebuilds on
-          # llvm bumps, asio/libsodium port availability shifts).
+          # `wasm32-emscripten` (browser host). Builds the full
+          # kernel C ABI (sdk/core.h): libsodium compiled from source
+          # via emconfigure/emmake inside the derivation; Asio headers
+          # compile under emcc; threading via -sUSE_PTHREADS=1 (Web
+          # Workers). Excluded: remote_host.cpp + runtimes/remote.cpp
+          # (fork/execve). Output: `goodnet.js` factory + `goodnet.wasm`
+          # + `goodnet.worker.js`. Hosting page requires COOP/COEP
+          # headers for SharedArrayBuffer. Linux-host-only. CI gates
+          # under `continue-on-error: true` (volatile emscripten pin).
           goodnet-wasm-emscripten = import ./nix/goodnet-wasm-emscripten.nix {
             inherit pkgs;
           };

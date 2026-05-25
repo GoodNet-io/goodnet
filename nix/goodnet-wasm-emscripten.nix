@@ -1,122 +1,47 @@
 # Browser-ready WASM build via Emscripten (`emcc`).
 #
-# Companion to `nix/goodnet-wasm.nix` — that derivation targets
-# `wasm32-wasi` for server-side WASI hosts (wasmtime, wasmer). This
-# one targets `wasm32-emscripten` for **browser** integration:
-# downstream JS code does
+# Produces a self-contained WASM module exposing the full GoodNet
+# kernel C ABI (`sdk/core.h`) as `Module._gn_core_*`. Downstream
+# JS/TS code loads the pair:
 #
-#     <script src="goodnet.js"></script>
-#     <script>
-#       Module.onRuntimeInitialized = () => {
-#         /* GoodNet kernel C ABI is callable as Module._gn_*  */
-#       };
-#     </script>
+#     const M = await Goodnet();   // goodnet.js factory
+#     const core = M._gn_core_create();
+#     M._gn_core_init(core);
+#     M._gn_core_start(core);
 #
-# and gets a peer node running inside a browser tab. The JS SDK
-# (direction 3 of `docs/ROADMAP.en.md` §Web — browser integration)
-# wraps these calls into a typed API.
+# and gets a peer kernel running inside a browser tab or a Node.js
+# process. The `bridges/js/src/WasmTransport.ts` wrapper provides a
+# typed API over these raw calls.
 #
-# Route: `pkgs.emscripten` (v4.x at the current pin). The toolchain
-# ships `emcc` / `em++` / `emar` plus an `EM_CACHE`-driven on-disk
-# port store (`embuilder build sysroot`). The Nix derivation
-# materialises a writable cache inside the build sandbox because
-# `pkgs.emscripten` itself is store-immutable.
+# Threading: the kernel drives an asio io_context thread pool.
+# Emscripten maps pthreads to Web Workers. The hosting page MUST
+# serve two response headers:
 #
-# Scope today (subject to libsodium-emscripten port + asio
-# wasm32-emscripten head-tracking; both move under us):
+#     Cross-Origin-Opener-Policy: same-origin
+#     Cross-Origin-Embedder-Policy: require-corp
 #
-#   * `core/plugin/wire_codec.cpp`        — CBOR codec, dep-free.
-#   * `plugins/protocols/gnet/wire.cpp`   — GNET v1 deframer, dep-free.
-#   * `plugins/protocols/raw/raw.cpp`     — raw (1:1) protocol, dep-free
-#                                            modulo `sdk/protocol.h`.
-#   * `plugins/links/ws/wire.hpp`         — header-only RFC-6455 frame
-#                                            codec; compiled through a
-#                                            small adapter TU so the
-#                                            archive carries proof the
-#                                            header parses clean under
-#                                            emcc's wasm-libc++.
-#   * `plugins/links/ws/ws_http_parse.hpp`— header-only HTTP/1.1
-#                                            handshake parser; same
-#                                            adapter-TU treatment.
-#
-# Scope NOT in today (documented honestly per the project's
-# "honesty > fictional check-mark" policy):
-#
-#   * libsodium — neither `pkgs.emscripten` ships a libsodium port
-#     (the `share/emscripten/tools/ports/` tree carries sdl2,
-#     zlib, ogg, sqlite3, libpng, etc. but no sodium), nor does
-#     nixpkgs expose a `libsodium-emscripten` package. Compiling
-#     libsodium from source under `emcc` is feasible but a
-#     non-trivial dependency closure (autoconf cross-compile under
-#     `emconfigure`); it stays out of scope until the JS SDK
-#     surface explicitly demands it. Consequence: every TU that
-#     `#include <sodium.h>` (the identity/, security/inline_crypto,
-#     plugin_manifest set) is excluded from the source list. See
-#     `passthru.gaps.libsodium` below.
-#
-#   * Asio — header-only but the asio headers reach for
-#     `<sys/socket.h>` / `<netinet/in.h>` / pthread types. The
-#     wasm32-emscripten libc DOES provide POSIX socket headers
-#     (they're stubbed to JS WebSocket-ish APIs at runtime), so
-#     the *headers* compile, but the asio reactor's runtime
-#     primitives (`io_context::run`) call into the JS event loop
-#     in a way that needs `-pthread` + `SharedArrayBuffer` + the
-#     cross-origin isolated COOP/COEP headers on the hosting page.
-#     The kernel's IO surface (`kernel/timer_registry.cpp`,
-#     `crypto/crypto_worker_pool.cpp`) is excluded today; bringing
-#     them in lights up direction-3 work the JS SDK consumer
-#     drives, not the kernel-side artefact.
-#
-#   * `core/plugin/remote_host.cpp` — fork/execve/socketpair.
-#     Already gated by `_WIN32`-vs-POSIX in the source. Excluded
-#     from the WASM source list outright (no fork in browser).
-#
-#   * `core/plugin/runtimes/dynamic.cpp` — dlopen path. The TU
-#     itself is already gated under `__EMSCRIPTEN__` (returns
-#     `GN_ERR_NOT_FOUND` stubs), but the Emscripten branch still
-#     pulls `plugin_manager.hpp` which transitively reaches asio.
-#     Excluded until the kernel side compiles in this build.
-#
-# Threading: when the asio-driven kernel TUs land here, the build
-# will flip on `-pthread`. The JS host then needs cross-origin
-# isolation (COOP/COEP headers — `Cross-Origin-Embedder-Policy:
-# require-corp` + `Cross-Origin-Opener-Policy: same-origin`) so
-# `SharedArrayBuffer` is available. Documented in the operator
-# guide that ships with the JS SDK (direction 3).
+# so that `SharedArrayBuffer` (required by Emscripten pthreads) is
+# available. Without these headers the module will throw on init.
 #
 # Output artefacts:
 #
-#   * `$out/lib/goodnet.wasm`      — the WebAssembly module.
-#   * `$out/lib/goodnet.js`        — emcc-emitted JS glue loader
-#                                     that instantiates `.wasm`
-#                                     and exposes the C ABI as
-#                                     `Module._gn_*`.
-#   * `$out/include/goodnet/...`   — header tree mirroring the
-#                                     in-tree layout, same shape
-#                                     as `goodnet-wasm.nix`'s WASI
-#                                     install.
+#   $out/lib/goodnet.js        — emcc-emitted loader (factory function)
+#   $out/lib/goodnet.wasm      — WebAssembly module
+#   $out/lib/goodnet.worker.js — pthread Web Worker bootstrap
+#   $out/lib/libgoodnet-wasm-emscripten.a — intermediate archive
+#   $out/include/goodnet/      — SDK headers mirroring in-tree layout
 #
-# Linux-host-only: `pkgs.emscripten` runs on Linux; the parent
-# flake gates this attribute under `isLinux`.
+# Linux-host-only: `pkgs.emscripten` runs on Linux; the flake gates
+# this output under `isLinux`.
 { pkgs, ... }:
 
 let
   emscripten = pkgs.emscripten;
 
-  # Emscripten's `emcc` insists on a writable `EM_CACHE`. The
-  # `pkgs.emscripten` store path is immutable; point `EM_CACHE`
-  # at a sandbox-local tmpdir so `embuilder` writes there.
-  #
-  # The Nixpkgs emscripten ships a `.emscripten` config under
-  # `share/emscripten/` that already wires LLVM_ROOT / NODE_JS /
-  # BINARYEN_ROOT / CLOSURE_COMPILER / JAVA / EMSCRIPTEN_ROOT to
-  # their proper store paths (separate from this derivation —
-  # `LLVM_ROOT` points at `emscripten-llvm` which is its own
-  # output). Don't hand-roll a config that would miss those; copy
-  # the upstream one and append a writable `CACHE` line. Same
-  # pattern the official Emscripten docs at
-  # https://emscripten.org/docs/building_from_source/...html
-  # recommend for Nix.
+  # Emscripten's `emcc` insists on a writable `EM_CACHE`. Copy the
+  # upstream config (which already wires LLVM_ROOT / NODE_JS /
+  # BINARYEN_ROOT / EMSCRIPTEN_ROOT to their store paths) and append
+  # a writable CACHE line pointing into the sandbox tmpdir.
   emcacheSetup = ''
     export EM_CACHE="$TMPDIR/em-cache"
     export EM_CONFIG="$TMPDIR/.emscripten"
@@ -125,6 +50,78 @@ let
     chmod u+w "$EM_CONFIG"
     echo "CACHE = '$EM_CACHE'" >> "$EM_CONFIG"
   '';
+
+  # Full C ABI surface from sdk/core.h — every GN_EXPORT symbol.
+  # `_malloc` / `_free` are included so JS can allocate buffers for
+  # binary payloads passed into `gn_core_send_to` / callbacks.
+  exportedFunctions = [
+    "_gn_core_create"
+    "_gn_core_create_from_json"
+    "_gn_core_destroy"
+    "_gn_core_install_identity_from_file"
+    "_gn_core_install_identity_from_provider"
+    "_gn_core_init"
+    "_gn_core_start"
+    "_gn_core_stop"
+    "_gn_core_wait"
+    "_gn_core_is_running"
+    "_gn_core_reload_config_json"
+    "_gn_core_limits"
+    "_gn_core_set_limits"
+    "_gn_core_get_pubkey"
+    "_gn_core_connect"
+    "_gn_core_listen"
+    "_gn_core_send_to"
+    "_gn_core_broadcast"
+    "_gn_core_disconnect"
+    "_gn_core_get_stats"
+    "_gn_core_connection_count"
+    "_gn_core_handler_count"
+    "_gn_core_link_count"
+    "_gn_core_subscribe"
+    "_gn_core_unsubscribe"
+    "_gn_core_on_conn_state"
+    "_gn_core_off_conn_state"
+    "_gn_core_load_plugin"
+    "_gn_core_load_plugins_batch"
+    "_gn_core_unload_plugin"
+    "_gn_core_register_runtime"
+    "_gn_core_register_security"
+    "_gn_core_register_protocol"
+    "_gn_core_register_handler"
+    "_gn_core_register_link"
+    "_gn_core_query_extension_checked"
+    "_gn_core_register_extension"
+    "_gn_core_unregister_extension"
+    "_gn_core_host_api"
+    "_gn_version"
+    "_gn_version_packed"
+    "_malloc"
+    "_free"
+  ];
+
+  # emscripten accepts JSON arrays with either ' or " quoting.
+  # Double-quote variants are used here so the strings can be passed
+  # inside bash single-quoted arguments without breaking shell quoting.
+  exportedFunctionsStr =
+    "[" + pkgs.lib.concatMapStringsSep "," (f: "\"${f}\"") exportedFunctions + "]";
+
+  # Runtime helpers the JS SDK uses to marshal values across the
+  # WASM / JS boundary:
+  #   ccall/cwrap     — call C functions from JS with type conversion
+  #   UTF8ToString    — read a const char* from WASM memory
+  #   stringToUTF8    — write a JS string into a WASM buffer
+  #   lengthBytesUTF8 — measure UTF-8 length without writing
+  #   getValue/setValue — read/write typed scalars from WASM memory
+  #   addFunction     — wrap a JS function as a C function pointer
+  #                     (used by WasmTransport for callbacks / link
+  #                     vtables passed to gn_core_subscribe et al.)
+  #   removeFunction  — release a wrapped function pointer slot
+  exportedRuntimeMethods =
+    "[\"ccall\",\"cwrap\",\"UTF8ToString\",\"stringToUTF8\","
+    + "\"lengthBytesUTF8\",\"getValue\",\"setValue\","
+    + "\"addFunction\",\"removeFunction\"]";
+
 in
 pkgs.stdenv.mkDerivation {
   pname   = "goodnet-wasm-emscripten";
@@ -137,44 +134,29 @@ pkgs.stdenv.mkDerivation {
         rel = pkgs.lib.removePrefix (toString ./.. + "/") (toString path);
         top = builtins.head (pkgs.lib.splitString "/" rel);
       in
-        # Same shape as `goodnet-wasm.nix` — only the subset the
-        # WASM/emcc build touches reaches the sandbox.
         builtins.elem top [
           "sdk" "core" "plugins" "cmake"
           "CMakeLists.txt" "LICENSE" "README.md"
         ];
   };
 
-  # `emscripten` ships `emcc` (which itself wraps clang). No
-  # separate compiler bootstrap; just need the SDK on PATH. Also
-  # need `nodejs` for `emcc`'s internal cache-init step (it spawns
-  # node to run `embuilder` on first compile).
-  nativeBuildInputs = [ emscripten pkgs.nodejs ];
+  nativeBuildInputs = [
+    emscripten
+    pkgs.nodejs
+    # Header-only / header-primary deps. emcc is invoked directly
+    # (no cmake) so include paths are passed explicitly in CXXFLAGS.
+    pkgs.asio          # header-only; ASIO_STANDALONE avoids Boost
+    pkgs.spdlog        # multi-output; headers via .dev
+    pkgs.spdlog.dev
+    pkgs.fmt           # multi-output; headers via .dev
+    pkgs.fmt.dev
+    pkgs.nlohmann_json # header-only
+    # libsodium is compiled from source inside the derivation via
+    # emconfigure / emmake — see buildPhase below.
+  ];
 
   dontConfigure = true;
 
-  # Compile-link single-pass. emcc consumes the C++ TUs directly
-  # and emits `.wasm` + `.js` glue. `SIDE_MODULE=0` (default)
-  # produces a self-contained main module — what a `<script>` tag
-  # loads.
-  #
-  # `-O2` matches the WASI build's optimisation level; deeper opts
-  # (`-O3` / `-Os`) trip the emscripten link step on TUs that
-  # reach for `__cxa_throw` (the wasm-libc++ exception ABI is
-  # opt-in via `-fexceptions`; we stay `-fno-exceptions` to match
-  # the kernel's policy and the WASI route).
-  #
-  # `-sEXPORTED_FUNCTIONS=['_gn_core_create', ...]` enumerates the
-  # C ABI symbols the JS loader exposes as `Module._gn_*`. Today
-  # the buildable subset has no kernel C ABI to export — only the
-  # wire codec and protocol framing internals — so we let emcc
-  # auto-detect (no explicit list). When the kernel TUs land,
-  # this turns into an explicit allow-list.
-  #
-  # `-sMODULARIZE=1` wraps the emitted loader in a function that
-  # returns a `Promise<Module>` — the modern JS / TS consumer
-  # shape. `-sEXPORT_NAME=Goodnet` sets the wrapper name so the
-  # JS SDK can do `const M = await Goodnet();`.
   buildPhase = ''
     runHook preBuild
 
@@ -182,133 +164,142 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p obj lib
 
-    # Common flags for every compile: `-std=c++23` matches the
-    # native kernel build's dialect, `-fno-exceptions` matches
-    # the wasi route + libc++ build config (the wire codec's lone
-    # try/catch sits behind a `__cpp_exceptions` guard already).
-    # `-I.` makes `#include <sdk/types.h>` resolve against the
-    # source root, same as the in-tree CMake graph does.
-    CXXFLAGS="-std=c++23 -O2 -fno-exceptions -I."
+    # ── Step 1: build libsodium for wasm32-emscripten ─────────────────────
+    # No nixpkgs package provides a pre-built emscripten libsodium.
+    # `emconfigure ./configure` injects emcc/ar/ranlib into the
+    # autoconf environment; `emmake make` drives the cross-compile.
+    # The result is a static archive at sodium-install/lib/libsodium.a
+    # that the final link step consumes.
+    echo "==> building libsodium for wasm32-emscripten"
+    # libsodium.src is a release tarball; extract it into sodium-src/.
+    mkdir -p sodium-src
+    tar xf ${pkgs.libsodium.src} -C sodium-src --strip-components=1
+    chmod -R u+w sodium-src
+    mkdir -p sodium-install
+    pushd sodium-src
+    emconfigure ./configure \
+      --prefix="$PWD/../sodium-install" \
+      --disable-shared \
+      --enable-static \
+      --host=wasm32-unknown-emscripten \
+      CFLAGS="-O2 -pthread"
+    emmake make -j$NIX_BUILD_CORES
+    emmake make install
+    popd
+    SODIUM_INC="$PWD/sodium-install/include"
+    SODIUM_LIB="$PWD/sodium-install/lib/libsodium.a"
+
+    # ── Step 2: compile the full kernel ───────────────────────────────────
+    # Flags common to every TU:
+    #   -std=c++23         matches the native kernel's dialect
+    #   -fno-exceptions    kernel policy; try/catch behind __cpp_exceptions
+    #   -O2                matches native Release build
+    #   -pthread           required when linking with -sUSE_PTHREADS=1;
+    #                      emcc maps this to Emscripten pthreads / Web Workers
+    #   -I.                resolves <sdk/...> <core/...> against source root
+    #   ASIO_STANDALONE    disables Boost; kernel uses standalone Asio
+    #   SPDLOG_HEADER_ONLY makes spdlog a pure header library (no libspdlog)
+    #   SPDLOG_FMT_EXTERNAL use external fmt (nixpkgs spdlog configured so)
+    #   FMT_HEADER_ONLY    makes fmt a pure header library (no libfmt)
+    CXXFLAGS="-std=c++23 -O2 -fno-exceptions -pthread"
+    CXXFLAGS="$CXXFLAGS -I."
+    CXXFLAGS="$CXXFLAGS -I${pkgs.asio}/include"
+    CXXFLAGS="$CXXFLAGS -I${pkgs.spdlog.dev}/include"
+    CXXFLAGS="$CXXFLAGS -I${pkgs.fmt.dev}/include"
+    CXXFLAGS="$CXXFLAGS -I${pkgs.nlohmann_json}/include"
+    CXXFLAGS="$CXXFLAGS -I$SODIUM_INC"
+    CXXFLAGS="$CXXFLAGS -DASIO_STANDALONE"
+    CXXFLAGS="$CXXFLAGS -DSPDLOG_HEADER_ONLY -DSPDLOG_FMT_EXTERNAL"
+    CXXFLAGS="$CXXFLAGS -DFMT_HEADER_ONLY"
 
     set -x
 
-    # ── Core: CBOR wire codec ──────────────────────────────────
-    emcc $CXXFLAGS -c -o obj/wire_codec.o \
+    # Kernel TUs — mirrors core/CMakeLists.txt _goodnet_kernel_sources.
+    # Excluded:
+    #   plugin/remote_host.cpp     — fork/execve/socketpair; no process model in WASM
+    #   plugin/runtimes/remote.cpp — includes remote_host.hpp; same exclusion
+    # Included with guard:
+    #   plugin/runtimes/dynamic.cpp — __EMSCRIPTEN__ branch stubs dlopen to GN_ERR_NOT_FOUND
+    KERNEL_SRCS="
+      core/config/config.cpp
+      core/identity/keypair.cpp
+      core/identity/derive.cpp
+      core/identity/attestation.cpp
+      core/identity/libsodium_signer.cpp
+      core/identity/identity_plugin_signer.cpp
+      core/identity/node_identity.cpp
+      core/identity/sub_key_registry.cpp
+      core/identity/rotation.cpp
+      core/kernel/capability_blob.cpp
+      core/kernel/connection_context.cpp
+      core/registry/connection.cpp
+      core/registry/extension.cpp
+      core/registry/handler.cpp
+      core/registry/security.cpp
+      core/registry/link.cpp
+      core/registry/protocol_layer.cpp
+      core/registry/send_queue.cpp
+      core/security/session.cpp
+      core/security/inline_crypto.cpp
+      core/crypto/crypto_worker_pool.cpp
+      core/kernel/link_capability.cpp
+      core/kernel/router.cpp
+      core/kernel/kernel.cpp
+      core/kernel/core_c.cpp
+      core/kernel/host_api_builder.cpp
+      core/kernel/host_api/internal.cpp
+      core/kernel/host_api/messaging.cpp
+      core/kernel/host_api/identity.cpp
+      core/kernel/host_api/control.cpp
+      core/kernel/host_api/notifications.cpp
+      core/kernel/service_resolver.cpp
+      core/kernel/timer_registry.cpp
+      core/kernel/attestation_dispatcher.cpp
+      core/kernel/metrics_registry.cpp
+      core/plugin/plugin_manager.cpp
+      core/plugin/plugin_manifest.cpp
       core/plugin/wire_codec.cpp
+      core/plugin/runtimes/dynamic.cpp
+      core/plugin/runtimes/static.cpp
+      core/plugin/static_registry_default.cpp
+      core/util/log.cpp
+      core/util/log_config.cpp
+    "
 
-    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
-    # emcc $CXXFLAGS -c -o obj/gnet_wire.o \
-    #   plugins/protocols/gnet/wire.cpp
+    for src in $KERNEL_SRCS; do
+      obj="obj/$(echo "$src" | tr '/' '_' | sed 's/\.cpp$/.o/')"
+      emcc $CXXFLAGS -c -o "$obj" "$src"
+    done
 
-    # TODO: raw extracted to GoodNet-io/protocol-raw — wire WASM build separately
-    # emcc $CXXFLAGS -c -o obj/raw_protocol.o \
-    #   plugins/protocols/raw/raw.cpp
+    # ── Step 3: archive ───────────────────────────────────────────────────
+    emar rcs lib/libgoodnet-wasm-emscripten.a obj/*.o
 
-    # ── Header-only proof TUs ──────────────────────────────────
-    # `plugins/links/ws/wire.hpp` (RFC-6455 frame codec) and
-    # `ws_http_parse.hpp` (HTTP/1.1 handshake parser) live in the
-    # separate `link-ws` git the kernel does not vendor; the
-    # parent `cleanSourceWith` filter drops `plugins/links/*`
-    # (except `raw_inject` which is in-tree) along with every
-    # other standalone-git plugin slot. Building those headers
-    # under emcc is part of the eventual JS-SDK landing on the
-    # plugin's own side, not this kernel-side derivation.
-    # Conditionally include them when present so a future in-tree
-    # arrangement (or a CI invocation that pre-populates the
-    # plugin slot before `nix build`) picks them up automatically.
-    if [ -f plugins/links/ws/wire.hpp ] \
-       && [ -f plugins/links/ws/ws_http_parse.hpp ]; then
-      cat > obj/ws_header_check.cpp <<'EOF'
-    // Forces template instantiation of the header-only ws-wire
-    // and ws-http-parse codecs under emcc's wasm-libc++. No
-    // runtime surface — symbol presence in the archive is just
-    // evidence the headers parse + link.
-    #include <plugins/links/ws/wire.hpp>
-    #include <plugins/links/ws/ws_http_parse.hpp>
-
-    namespace {
-    [[maybe_unused]] auto force_instantiate() {
-        std::vector<std::uint8_t> bytes;
-        bytes.push_back(0x81);
-        bytes.push_back(0x00);
-        std::size_t consumed = 0;
-        auto frame = gn::plugins::link_ws::wire::parse_frame(bytes, consumed);
-        (void)frame;
-        std::string raw = "GET / HTTP/1.1\r\nHost: x\r\n\r\n";
-        auto req = gn::plugins::link_ws::http::parse_request_head(raw);
-        (void)req;
-        return consumed;
-    }
-    }
-    EOF
-      emcc $CXXFLAGS -c -o obj/ws_header_check.o obj/ws_header_check.cpp
-      _ws_obj="obj/ws_header_check.o"
-    else
-      echo "INFO: plugins/links/ws/ not in source tree — ws header check skipped."
-      _ws_obj=""
-    fi
-
-    # ── Archive into a single `.a` for downstream link ─────────
-    # `emar` is the emscripten-flavoured `ar` wrapper; produces
-    # a wasm-object archive that subsequent `emcc -o foo.wasm`
-    # invocations consume.
-    emar rcs lib/libgoodnet-wasm-emscripten.a \
-      obj/wire_codec.o \
-      $_ws_obj
-
-    # ── Link into goodnet.wasm + goodnet.js loader ─────────────
-    # The output pair is what a `<script src="goodnet.js">` tag
-    # consumes. The current subset has no `main()` entry — the
-    # eventual JS SDK calls into exported C ABI functions — so
-    # `-sNO_EXIT_RUNTIME=1` keeps the runtime alive after init.
-    # `-sMODULARIZE=1` wraps the loader as a factory function;
-    # `-sEXPORT_NAME=Goodnet` names the wrapper. `-sALLOW_MEMORY_GROWTH=1`
-    # lets the WASM heap grow past the initial 16 MiB (a node app
-    # with a long-running goodnet peer needs more).
-    #
-    # Symbol export. The buildable subset today exposes C++-
-    # namespaced wire-codec entries (`gn::core::wire::*`,
-    # `gn::plugins::gnet::wire::*`, `gn::protocol::raw::*`)
-    # rather than the `gn_core_*` C ABI — that lives in the
-    # kernel-side `core/kernel/core_c.cpp` which sits behind
-    # libsodium and asio (see `passthru.gaps`). To keep the
-    # archive content in the wasm output instead of being
-    # dead-stripped by `wasm-ld`, two-pronged approach:
-    #
-    #   * `-Wl,--whole-archive` keeps every object file's symbols
-    #     reachable from the link's perspective.
-    #   * `-sEXPORT_ALL=1` instructs emcc to mark every public
-    #     symbol as exported on the wasm `(export "...")` table,
-    #     so the JS loader can reach them as `Module._ZN2gn...`
-    #     by mangled name (the JS SDK will demangle).
-    #
-    # When `core_c.cpp` lands here, `EXPORT_ALL` flips off and an
-    # explicit `EXPORTED_FUNCTIONS=['_gn_core_create', ...]` list
-    # takes over — at that point the wasm-export table contains
-    # only the C ABI surface, not every internal helper.
-    #
-    # `-sLINKABLE=1` is the toggle that keeps `EXPORT_ALL`'s
-    # effects past `wasm-ld`'s dead-symbol pass. Emscripten 5.x
-    # marks it deprecated (issue
-    # github.com/emscripten-core/emscripten/25262 tracks
-    # alternatives); without it the linker still drops every
-    # `--whole-archive`-pulled symbol that no kernel-side TU
-    # references — `goodnet.wasm` shrinks back to the empty
-    # emscripten stub. Keep `-sLINKABLE=1` until either the issue
-    # closes with a replacement or `core_c.cpp` lands and the
-    # explicit `EXPORTED_FUNCTIONS` list pins what the link must
-    # keep.
+    # ── Step 4: link → goodnet.wasm + goodnet.js ──────────────────────────
+    # -sUSE_PTHREADS=1         Emscripten pthreads via Web Workers
+    # -sPTHREAD_POOL_SIZE=4    pre-create 4 workers (avoids first-use latency)
+    # -sALLOW_MEMORY_GROWTH=1  heap grows past the initial 16 MiB
+    # -sNO_EXIT_RUNTIME=1      keep runtime alive after init (library, not app)
+    # -sMODULARIZE=1           emit a factory function (returns Promise<Module>)
+    # -sEXPORT_NAME=Goodnet    factory is `const M = await Goodnet()`
+    # -sALLOW_TABLE_GROWTH     function table grows as addFunction() is called
+    #                          (needed for subscribe callbacks + link vtables)
+    # -sEXPORTED_FUNCTIONS     only the C ABI surface (no internal symbols)
+    # -sEXPORTED_RUNTIME_METHODS  JS helpers for memory / callback marshalling
+    # -sENVIRONMENT='web,worker'  omit Node.js-only startup paths
     emcc $CXXFLAGS \
-      -sMODULARIZE=1 \
-      -sEXPORT_NAME=Goodnet \
+      -sUSE_PTHREADS=1 \
+      -sPTHREAD_POOL_SIZE=4 \
       -sALLOW_MEMORY_GROWTH=1 \
       -sNO_EXIT_RUNTIME=1 \
-      -sEXPORT_ALL=1 \
-      -sLINKABLE=1 \
+      -sMODULARIZE=1 \
+      -sEXPORT_NAME=Goodnet \
+      -sALLOW_TABLE_GROWTH \
+      -sEXPORTED_FUNCTIONS='${exportedFunctionsStr}' \
+      -sEXPORTED_RUNTIME_METHODS='${exportedRuntimeMethods}' \
       -sENVIRONMENT='web,worker' \
       -o lib/goodnet.js \
       -Wl,--whole-archive lib/libgoodnet-wasm-emscripten.a -Wl,--no-whole-archive \
-      || echo "WARN: emcc link step exited non-zero — archive still installed"
+      "$SODIUM_LIB"
 
     set +x
 
@@ -320,106 +311,104 @@ pkgs.stdenv.mkDerivation {
 
     mkdir -p $out/lib $out/include/goodnet
 
-    # Archive + (best-effort) emitted goodnet.wasm/goodnet.js.
-    # The archive is the authoritative artefact; the .wasm/.js
-    # pair is the convenience output for browser-side consumers.
     cp lib/libgoodnet-wasm-emscripten.a $out/lib/
-    if [ -f lib/goodnet.wasm ]; then
-      cp lib/goodnet.wasm $out/lib/
-    fi
-    if [ -f lib/goodnet.js ]; then
-      cp lib/goodnet.js   $out/lib/
-    fi
+    for f in lib/goodnet.wasm lib/goodnet.js lib/goodnet.worker.js; do
+      [ -f "$f" ] && cp "$f" $out/lib/
+    done
 
-    # Mirror the source-tree header layout. Same shape as the
-    # WASI route's install.
+    # SDK headers — same layout as the WASI build's install.
     cp -r sdk $out/include/goodnet/
 
-    mkdir -p $out/include/goodnet/core/plugin
-    install -m 0644 \
-      core/plugin/wire_codec.hpp \
-      core/plugin/dl_compat.hpp \
-      $out/include/goodnet/core/plugin/
-
-    # TODO: gnet extracted to GoodNet-io/protocol-gnet — wire WASM build separately
-    # mkdir -p $out/include/goodnet/plugins/protocols/gnet
-    # install -m 0644 \
-    #   plugins/protocols/gnet/wire.hpp \
-    #   $out/include/goodnet/plugins/protocols/gnet/
-
-    # TODO: raw extracted to GoodNet-io/protocol-raw — wire WASM build separately
-    # mkdir -p $out/include/goodnet/plugins/protocols/raw
-    # install -m 0644 \
-    #   plugins/protocols/raw/raw.hpp \
-    #   $out/include/goodnet/plugins/protocols/raw/
-
-    if [ -f plugins/links/ws/wire.hpp ]; then
-      mkdir -p $out/include/goodnet/plugins/links/ws
-      install -m 0644 \
-        plugins/links/ws/wire.hpp \
-        plugins/links/ws/ws_http_parse.hpp \
-        $out/include/goodnet/plugins/links/ws/
-    fi
+    # Core headers: public-facing kernel/ and plugin/ interfaces.
+    mkdir -p \
+      $out/include/goodnet/core/kernel \
+      $out/include/goodnet/core/plugin \
+      $out/include/goodnet/core/plugin/runtimes \
+      $out/include/goodnet/core/registry \
+      $out/include/goodnet/core/identity \
+      $out/include/goodnet/core/security \
+      $out/include/goodnet/core/crypto \
+      $out/include/goodnet/core/config \
+      $out/include/goodnet/core/util
+    find core -name '*.hpp' -o -name '*.h' | while read -r hdr; do
+      dest="$out/include/goodnet/$hdr"
+      mkdir -p "$(dirname "$dest")"
+      install -m 0644 "$hdr" "$dest"
+    done
 
     runHook postInstall
   '';
 
   doCheck = false;
 
-  # Unlike `goodnet-wasm.nix` (which uses `pkgsCross.wasi32` so the
-  # hostPlatform IS wasi32 and `lib.platforms.wasi` matches), this
-  # derivation runs under the native Linux stdenv and shells out to
-  # `emcc` — the binary produced is wasm but the build host is
-  # Linux. Setting `meta.platforms = lib.platforms.wasi` would trip
-  # check-meta with "package is not available on hostPlatform =
-  # x86_64-linux". Use `lib.platforms.linux` to match what the
-  # build host actually is; the WASM artefact inside `$out` is
-  # documented in the description.
   meta = {
     description =
-      "GoodNet kernel-core + protocol subset built for browser "
-      + "WebAssembly via Emscripten (companion to goodnet-wasm "
-      + "WASI build).";
+      "Full GoodNet kernel built for browser WebAssembly via Emscripten. "
+      + "Exposes the complete gn_core_* C ABI as Module._gn_core_*. "
+      + "Hosting page requires COOP/COEP headers for SharedArrayBuffer "
+      + "(pthread / Web Worker support).";
     platforms = pkgs.lib.platforms.linux;
     license   = pkgs.lib.licenses.mit;
   };
 
   passthru.route = "emscripten";
+
   passthru.scope = [
+    # ctx_accessors
+    "core/kernel/connection_context.cpp"
+    # kernel sources (remote_host.cpp + runtimes/remote.cpp excluded)
+    "core/config/config.cpp"
+    "core/identity/keypair.cpp"
+    "core/identity/derive.cpp"
+    "core/identity/attestation.cpp"
+    "core/identity/libsodium_signer.cpp"
+    "core/identity/identity_plugin_signer.cpp"
+    "core/identity/node_identity.cpp"
+    "core/identity/sub_key_registry.cpp"
+    "core/identity/rotation.cpp"
+    "core/kernel/capability_blob.cpp"
+    "core/registry/connection.cpp"
+    "core/registry/extension.cpp"
+    "core/registry/handler.cpp"
+    "core/registry/security.cpp"
+    "core/registry/link.cpp"
+    "core/registry/protocol_layer.cpp"
+    "core/registry/send_queue.cpp"
+    "core/security/session.cpp"
+    "core/security/inline_crypto.cpp"
+    "core/crypto/crypto_worker_pool.cpp"
+    "core/kernel/link_capability.cpp"
+    "core/kernel/router.cpp"
+    "core/kernel/kernel.cpp"
+    "core/kernel/core_c.cpp"
+    "core/kernel/host_api_builder.cpp"
+    "core/kernel/host_api/internal.cpp"
+    "core/kernel/host_api/messaging.cpp"
+    "core/kernel/host_api/identity.cpp"
+    "core/kernel/host_api/control.cpp"
+    "core/kernel/host_api/notifications.cpp"
+    "core/kernel/service_resolver.cpp"
+    "core/kernel/timer_registry.cpp"
+    "core/kernel/attestation_dispatcher.cpp"
+    "core/kernel/metrics_registry.cpp"
+    "core/plugin/plugin_manager.cpp"
+    "core/plugin/plugin_manifest.cpp"
     "core/plugin/wire_codec.cpp"
-    # "plugins/protocols/gnet/wire.cpp"  # extracted to GoodNet-io/protocol-gnet
-    # "plugins/protocols/raw/raw.cpp"    # extracted to GoodNet-io/protocol-raw
-    # `plugins/links/ws/{wire,ws_http_parse}.hpp` get a build-time
-    # header-parse check IF the standalone link-ws git is
-    # populated under `plugins/links/ws/` at flake-input time.
-    # The `cleanSourceWith` filter accepts the directory; whether
-    # the files appear depends on operator-side `goodnet-plugin
-    # pull` having materialised the slot. Listed here as the
-    # advertised scope even when absent at build time so a CI run
-    # with the slot populated can verify.
-    "plugins/links/ws/wire.hpp"
-    "plugins/links/ws/ws_http_parse.hpp"
+    "core/plugin/runtimes/dynamic.cpp"  # __EMSCRIPTEN__ stub
+    "core/plugin/runtimes/static.cpp"
+    "core/plugin/static_registry_default.cpp"
+    "core/util/log.cpp"
+    "core/util/log_config.cpp"
   ];
+
   passthru.gaps = {
-    libsodium =
-      "No libsodium port in pkgs.emscripten and no "
-      + "libsodium-emscripten package in nixpkgs. Identity, "
-      + "session, manifest hashing, attestation dispatch are "
-      + "excluded from the source list. Compiling libsodium from "
-      + "source under emconfigure is a follow-up.";
-    asio =
-      "Asio headers parse under emcc but the reactor needs "
-      + "-pthread + SharedArrayBuffer + COOP/COEP host headers. "
-      + "Kernel TUs that drive io_context (kernel.cpp, "
-      + "plugin_manager.cpp, timer_registry.cpp) excluded today.";
     subprocess =
-      "remote_host.cpp (fork+execve+socketpair) excluded — no "
-      + "process model in browser WASM. dynamic.cpp (dlopen) has "
-      + "an __EMSCRIPTEN__ stub but transitively pulls "
-      + "plugin_manager.hpp → asio, so excluded too.";
+      "core/plugin/remote_host.cpp (fork+execve+socketpair) and "
+      + "core/plugin/runtimes/remote.cpp (RemoteHost client) are "
+      + "excluded — no process model in browser WASM. "
+      + "core/plugin/runtimes/dynamic.cpp compiles with its "
+      + "__EMSCRIPTEN__ stub (returns GN_ERR_NOT_FOUND for all calls).";
   };
-  # `skip_reason` follows the same protocol as goodnet-wasm.nix —
-  # empty when the build succeeds, populated when a toolchain
-  # regression should print "skipped" in CI instead of failing.
+
   passthru.skip_reason = "";
 }
