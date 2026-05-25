@@ -371,15 +371,23 @@ typedef struct host_api_s {
      *
      * Per `host-api.en.md` §8.
      *
-     * @param layer    @ref GN_INJECT_LAYER_MESSAGE or @ref GN_INJECT_LAYER_FRAME
-     * @param source   existing connection that originated the foreign bytes
-     * @param msg_id   envelope routing key (MESSAGE only; ignored for FRAME)
-     * @param bytes    @borrowed; copied internally before return
-     * @param size     length of @p bytes
+     * @param layer      @ref GN_INJECT_LAYER_MESSAGE or @ref GN_INJECT_LAYER_FRAME
+     * @param source     existing connection that originated the foreign bytes
+     * @param target_ns  handler-registry namespace for dispatch (the virtual
+     *                   protocol_id the router uses for `lookup(ns, msg_id)`).
+     *                   Must be non-NULL and non-empty; decouples the routing
+     *                   namespace from the transport connection's wire protocol.
+     *                   For LAYER_FRAME the deframer still uses the source
+     *                   connection's protocol layer; target_ns is used for the
+     *                   subsequent handler dispatch of each deframed envelope.
+     * @param msg_id     envelope routing key (MESSAGE only; ignored for FRAME)
+     * @param bytes      @borrowed; copied internally before return
+     * @param size       length of @p bytes
      */
     gn_result_t (*inject)(void* host_ctx,
                           gn_inject_layer_t layer,
                           gn_conn_id_t source,
+                          const char* target_ns,
                           uint32_t msg_id,
                           const uint8_t* bytes,
                           size_t size);
