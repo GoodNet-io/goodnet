@@ -14,6 +14,9 @@ if(NOT TARGET GoodNet::sdk)
     endif()
 endif()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZSTD REQUIRED libzstd)
+
 # Apache-2.0 — the raw-inject bridge follows the same licence as the
 # other transport-adjacent plugins (noise/quic/tls).
 # OBJECT lib for in-tree tests + SHARED plugin entry that the kernel
@@ -23,7 +26,10 @@ add_library(goodnet_raw_inject_objects OBJECT
     raw_inject.cpp
 )
 target_link_libraries(goodnet_raw_inject_objects
-    PUBLIC GoodNet::sdk Threads::Threads)
+    PUBLIC  GoodNet::sdk Threads::Threads
+    PRIVATE ${ZSTD_LIBRARIES})
+target_include_directories(goodnet_raw_inject_objects
+    PRIVATE ${ZSTD_INCLUDE_DIRS})
 target_compile_features(goodnet_raw_inject_objects PUBLIC cxx_std_23)
 target_compile_options(goodnet_raw_inject_objects PRIVATE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter)
@@ -36,7 +42,7 @@ add_plugin(goodnet_link_raw_inject
     plugin_entry.cpp
 )
 target_link_libraries(goodnet_link_raw_inject
-    PRIVATE goodnet_raw_inject_objects Threads::Threads)
+    PRIVATE goodnet_raw_inject_objects Threads::Threads ${ZSTD_LIBRARIES})
 
 if(GOODNET_BUILD_TESTS)
     add_subdirectory(tests)

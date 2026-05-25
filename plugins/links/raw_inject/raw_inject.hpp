@@ -51,6 +51,12 @@ struct Config {
     /// Handler-registry namespace for dispatch. Must be non-empty.
     /// Examples: "gnet-v1", "mqtt.v1", "sensor.v1".
     std::string  target_ns       = "raw-v1";
+
+    /// When true, inbound data is ZSTD-decompressed before inject and outbound
+    /// data from send() is ZSTD-compressed before writing to the carrier.
+    bool          zstd_compress         = false;
+    std::uint32_t zstd_level            = 3;
+    std::uint32_t zstd_max_decompress   = 4u * 1024u * 1024u;
 };
 
 class RawInjectLink : public std::enable_shared_from_this<RawInjectLink> {
@@ -107,6 +113,7 @@ private:
         gn_conn_id_t carrier_id = GN_INVALID_ID;
         gn_conn_id_t kernel_id  = GN_INVALID_ID;
         std::string  peer_uri;
+        bool         zstd_active = false;
     };
 
     [[nodiscard]] gn_result_t ensure_carrier();

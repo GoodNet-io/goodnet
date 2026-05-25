@@ -9,6 +9,8 @@
 #include <sdk/convenience.h>
 #include <sdk/cpp/uri.hpp>
 
+#include <zstd.h>
+
 #include <algorithm>
 #include <cstring>
 #include <exception>
@@ -126,6 +128,14 @@ void RawInjectLink::set_host_api(const host_api_t* api) noexcept {
             cfg.target_ns = str;
             if (freefn) freefn(ud, str);
         }
+        if (gn_config_get_int64(api_, "raw_inject.zstd_compress", &v) == GN_OK)
+            cfg.zstd_compress = (v != 0);
+        if (gn_config_get_int64(api_, "raw_inject.zstd_level", &v) == GN_OK
+            && v >= 1 && v <= 22)
+            cfg.zstd_level = static_cast<std::uint32_t>(v);
+        if (gn_config_get_int64(api_, "raw_inject.zstd_max_decompress", &v) == GN_OK
+            && v > 0)
+            cfg.zstd_max_decompress = static_cast<std::uint32_t>(v);
     }
     set_config(cfg);
 }
@@ -250,7 +260,8 @@ void RawInjectLink::on_carrier_accept(gn_conn_id_t carrier_id,
         (void)carrier_->disconnect(carrier_id, 1);
         return;
     }
-    session->kernel_id = kernel_conn;
+    session->kernel_id  = kernel_conn;
+    session->zstd_active = config().zstd_compress;
 
     {
         std::lock_guard lk(sessions_mu_);
@@ -313,6 +324,60 @@ void RawInjectLink::dispatch_inject(
         size    -= 4;
     }
 
+    std::vector<std::uint8_t> decompressed;
+    if (session->zstd_active) {
+        const unsigned long long expected =
+            ZSTD_getFrameContentSize(payload, size);
+        if (expected == ZSTD_CONTENTSIZE_ERROR ||
+            (expected != ZSTD_CONTENTSIZE_UNKNOWN &&
+             expected > cfg.zstd_max_decompress)) {
+            if (api_->emit_counter)
+                api_->emit_counter(api_->host_ctx, "raw_inject.drop.zstd_error");
+            return;
+        }
+        if (expected != ZSTD_CONTENTSIZE_UNKNOWN) {
+            decompressed.resize(static_cast<std::size_t>(expected));
+            const std::size_t r = ZSTD_decompress(
+                decompressed.data(), decompressed.size(), payload, size);
+            if (ZSTD_isError(r)) {
+                if (api_->emit_counter)
+                    api_->emit_counter(api_->host_ctx, "raw_inject.drop.zstd_error");
+                return;
+            }
+            decompressed.resize(r);
+        } else {
+            ZSTD_DStream* ds = ZSTD_createDStream();
+            if (!ds) {
+                if (api_->emit_counter)
+                    api_->emit_counter(api_->host_ctx, "raw_inject.drop.zstd_error");
+                return;
+            }
+            ZSTD_initDStream(ds);
+            ZSTD_inBuffer in{payload, size, 0};
+            const std::size_t chunk = ZSTD_DStreamOutSize();
+            decompressed.resize(chunk);
+            std::size_t written = 0;
+            bool err = false;
+            while (in.pos < in.size) {
+                if (written + chunk > cfg.zstd_max_decompress) { err = true; break; }
+                if (written + chunk > decompressed.size()) decompressed.resize(written + chunk);
+                ZSTD_outBuffer out{decompressed.data() + written, chunk, 0};
+                const std::size_t r = ZSTD_decompressStream(ds, &out, &in);
+                if (ZSTD_isError(r)) { err = true; break; }
+                written += out.pos;
+            }
+            ZSTD_freeDStream(ds);
+            if (err) {
+                if (api_->emit_counter)
+                    api_->emit_counter(api_->host_ctx, "raw_inject.drop.zstd_error");
+                return;
+            }
+            decompressed.resize(written);
+        }
+        payload = decompressed.data();
+        size    = decompressed.size();
+    }
+
     const gn_result_t rc = api_->inject(
         api_->host_ctx,
         GN_INJECT_LAYER_MESSAGE,
@@ -331,6 +396,25 @@ gn_result_t RawInjectLink::send(gn_conn_id_t conn,
     auto session = session_by_kernel(conn);
     if (!session) return GN_ERR_NOT_FOUND;
     if (!carrier_) return GN_ERR_INVALID_STATE;
+
+    if (session->zstd_active) {
+        const auto cfg = config();
+        const std::size_t bound = ZSTD_compressBound(bytes.size());
+        std::vector<std::uint8_t> compressed(bound);
+        const std::size_t r = ZSTD_compress(
+            compressed.data(), bound,
+            bytes.data(), bytes.size(),
+            static_cast<int>(cfg.zstd_level));
+        if (ZSTD_isError(r)) return GN_ERR_INVALID_ENVELOPE;
+        compressed.resize(r);
+        const gn_result_t rc = carrier_->send(session->carrier_id, compressed);
+        if (rc == GN_OK) {
+            bytes_out_.fetch_add(compressed.size(), std::memory_order_relaxed);
+            frames_out_.fetch_add(1,                std::memory_order_relaxed);
+        }
+        return rc;
+    }
+
     const gn_result_t rc = carrier_->send(session->carrier_id, bytes);
     if (rc == GN_OK) {
         bytes_out_.fetch_add(bytes.size(), std::memory_order_relaxed);
