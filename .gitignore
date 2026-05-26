@@ -116,9 +116,11 @@ plugins/handlers/store/
 plugins/handlers/dns/
 plugins/handlers/mycelium/
 plugins/handlers/web_api_proxy/
+plugins/handlers/zstd_decompress/
 plugins/links/tcp/
 plugins/links/udp/
 plugins/links/ws/
+plugins/links/ws_inject/
 plugins/links/ipc/
 plugins/links/tls/
 plugins/links/ice/
@@ -181,6 +183,7 @@ tests/integration/
 !examples/**/*.md
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
+!examples/**/*.nix
 
 # Bench suite
 !bench/**/*.cpp
