@@ -25,11 +25,22 @@ target_link_libraries(goodnet_demo
 target_compile_features(goodnet_demo PRIVATE cxx_std_23)
 
 if(TARGET goodnet_security_noise AND TARGET goodnet_link_tcp)
+    # in-tree build: use generator expressions to point at build-tree .so files
     add_dependencies(goodnet_demo goodnet_security_noise goodnet_link_tcp)
     target_compile_definitions(goodnet_demo
         PRIVATE
             "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
             "GOODNET_TCP_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_link_tcp>\""
+    )
+else()
+    # standalone build: resolve plugin paths via pkg-config
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(GOODNET_NOISE REQUIRED goodnet-security-noise)
+    pkg_check_modules(GOODNET_TCP   REQUIRED goodnet-link-tcp)
+    target_compile_definitions(goodnet_demo
+        PRIVATE
+            "GOODNET_NOISE_PLUGIN_PATH=\"${GOODNET_NOISE_LIBDIR}/libgoodnet_security_noise.so\""
+            "GOODNET_TCP_PLUGIN_PATH=\"${GOODNET_TCP_LIBDIR}/libgoodnet_link_tcp.so\""
     )
 endif()
 
