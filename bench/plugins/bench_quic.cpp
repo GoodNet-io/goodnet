@@ -103,7 +103,7 @@ BENCHMARK_DEFINE_F(QuicFixture, HandshakeTime)(::benchmark::State& state) {
             state.SkipWithError("connect failed");
             break;
         }
-        if (!::gn::sdk::test::wait_for_fast(
+        if (!::gn::sdk::test::wait_for_bench(
                 [&] {
                     return accept_count.load(std::memory_order_acquire) >= 1;
                 }, 10s)) {
