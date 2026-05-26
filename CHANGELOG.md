@@ -911,6 +911,28 @@ single teardown-race surface.
 
 ### Added
 
+- **`GN_ERR_OUTPUT_TOO_SMALL` (-18)** — new error code in `gn_result_t`.
+  Distinguishes "caller's `out_cap` is smaller than the size required to
+  hold the result; retry with a larger buffer" from
+  `GN_ERR_PAYLOAD_TOO_LARGE` (an *input*-side limit where retrying with
+  the same payload is pointless).  Used by the `gn.compress` extension
+  vtable (`sdk/extensions/compress.h`).
+
+### Documentation
+
+- `docs/contracts/compressed-object.en.md` §7 added: scope locked to
+  GNET-shaped carriers (discrete payloads routed by `msg_id`);
+  cross-protocol compression explicitly out of scope for v1.
+- `docs/contracts/compressed-object.en.md` §3: added note clarifying that
+  the algo byte (enum-shaped, names the encoding of a single frame) and
+  the `compression-set` TLV `0x0003` (bit-shaped, advertises peer
+  capability) are semantically distinct; numeric coincidence at `0x01` is
+  allocation convention, not an invariant.
+- `docs/contracts/compressed-object.en.md` §4: documents that inband
+  `target_msg_id` is rejected by `inject(LAYER_MESSAGE)` when it falls in
+  the identity range (`0x10..0x1F`); decompression is never attempted for
+  reserved system handler ids.
+
 - **Plugin logging vtable** — `host_api_t::log` is a size-prefixed
   substruct (`gn_log_api_t`) with two slots:
   `should_log(host_ctx, level)` for the hot-path level filter and

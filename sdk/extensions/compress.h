@@ -57,6 +57,26 @@ extern "C" {
 #define GN_COMPRESS_ALGO_ZSTD       0x01u  /**< ZSTD algorithm supported */
 
 /**
+ * @defgroup compress_env Compressed-object envelope (compressed-object.en.md §2)
+ *
+ * Layout of the 5-byte header that precedes compressed data when the
+ * "inband" routing mode is in use:
+ *
+ *   [0]     algo byte (GN_COMPRESS_ENV_*)
+ *   [1..4]  target msg_id (big-endian uint32)
+ *   [5..]   algorithm-specific compressed bytes (never compressed together
+ *           with the header — the header is always uncompressed)
+ *
+ * The header is parsed from the raw GNET payload BEFORE decompression.
+ * @{
+ */
+/** Algo byte: ZSTD (RFC 8878). Matches bit 0 of GN_COMPRESS_ALGO_ZSTD. */
+#define GN_COMPRESS_ENV_ZSTD        0x01u
+/** Total byte length of the compressed-object envelope header. */
+#define GN_COMPRESS_ENV_HDR_SIZE    5u
+/** @} */
+
+/**
  * @brief Vtable surfaced as the `gn.compress` extension.
  *
  * The `ctx` field is the provider's `self` pointer; every entry takes
@@ -84,8 +104,9 @@ typedef struct gn_compress_api_s {
      *               faster (ZSTD convention).
      *
      * @return @ref GN_OK on success.
-     * @return @ref GN_ERR_BUFFER_TOO_SMALL when @p out_cap is less than
-     *         `compress_bound(ctx, in_sz)`.
+     * @return @ref GN_ERR_OUTPUT_TOO_SMALL when @p out_cap is less than
+     *         `compress_bound(ctx, in_sz)`; caller may retry with a
+     *         larger buffer.
      */
     gn_result_t (*compress)(void*          ctx,
                              const uint8_t* in,
@@ -110,8 +131,9 @@ typedef struct gn_compress_api_s {
      * success writes the decompressed byte count to @p out_sz.
      *
      * @return @ref GN_OK on success.
-     * @return @ref GN_ERR_BUFFER_TOO_SMALL when @p out_cap is too small
-     *         to hold the decompressed data.
+     * @return @ref GN_ERR_OUTPUT_TOO_SMALL when @p out_cap is too small
+     *         to hold the decompressed data; caller may retry with a
+     *         larger buffer.
      * @return @ref GN_ERR_INVALID_ENVELOPE when @p in contains data
      *         that is not a valid compressed frame.
      */
