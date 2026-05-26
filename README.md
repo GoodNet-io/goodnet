@@ -104,8 +104,8 @@ when your change touches concurrency-sensitive code.
   on every send; WireGuard's mainline data plane pins to one
   softirq CPU per peer, so its single-tunnel throughput
   saturates one core no matter how many you give it. Multi-conn
-  aggregate on this 12-thread laptop hits **~34 Gb/s** parody
-  (static + LTO), already 7× WireGuard's single-tunnel ceiling
+  aggregate on this 12-thread laptop hits **~60 Gb/s** parody
+  (static + LTO, CPU `performance` governor), already 12× WireGuard's single-tunnel ceiling
   on the same machine, with crypto-ready architecture.
 - **Relay → direct upgrade.** Connections start through a relay
   when needed and walk themselves to a direct path within a few
@@ -151,7 +151,7 @@ when your change touches concurrency-sensitive code.
 loopback): single-conn with crypto sits at **~2 Gb/s**, single
 WireGuard tunnel on the same hardware tops out at **~4.9 Gb/s**
 because its softirq pins one CPU. GoodNet's aggregate scales
-across cores — **~34 Gb/s** static-LTO multi-conn parody, and
+across cores — **~60 Gb/s** static-LTO multi-conn parody (CPU `performance` governor), and
 the legacy 4-conn inline-crypto bench reached **~19.84 Gb/s
 with crypto**. Single-conn through Noise the kernel pays for
 the userspace plugin model; aggregate through `CryptoWorkerPool`
@@ -208,9 +208,9 @@ pay for different things.
 | Surface | Throughput | Parallelism | What it carries |
 |---|---|---|---|
 | `veth` loopback baseline (no crypto, `iperf3 -P 8`)              | **~80 Gb/s**  | 8 streams, kernel splice + `MSG_ZEROCOPY` | raw IP frames |
-| **GoodNet UDP parody, static + LTO, 8 parallel procs, no crypto** | **~34 Gb/s** | 8 procs × 1 strand each, plugin calls inlined | raw datagrams through link plugin |
+| **GoodNet UDP parody, static + LTO, 8 parallel procs, no crypto** | **~60 Gb/s** | 8 procs × 1 strand each, plugin calls inlined; CPU `performance` governor | raw datagrams through link plugin |
 | **GoodNet UDP parody, dynamic, 8 parallel procs, no crypto**     | **~28 Gb/s**  | 8 procs × 1 strand each | raw datagrams through link plugin |
-| **GoodNet UDP parody single conn, static + LTO, no crypto**      | **~8.1 Gb/s** | one asio strand, plugin calls inlined | raw datagrams through link plugin |
+| **GoodNet UDP parody single conn, static + LTO, no crypto**      | **~13.5 Gb/s** | single strand on isolated core (`isolcpus`); ~8.7 Gb/s shared scheduler | raw datagrams through link plugin |
 | **GoodNet UDP parody single conn, dynamic, no crypto**           | **~8.7 Gb/s** | one asio strand | raw datagrams through link plugin |
 | **WireGuard single tunnel, kernel, with crypto**                 | **~4.9 Gb/s** | one softirq CPU pinned | IP tunnel, ChaCha20-Poly1305 per packet |
 | GoodNet Noise transport (encrypt+decrypt round, single-thread)   | ~1.7 Gb/s     | one thread, libsodium ChaCha20-Poly1305 | seal + open in a tight loop, no I/O |
@@ -286,6 +286,10 @@ partially overlap.
 Reproduce:
 
 ```sh
+# Pin CPU governor to performance for reproducible parody numbers
+# (scaling governor adds ~40% variance on i5-1235U pstate)
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+
 # Dynamic-plugin release build (default; the noise plugin's .so
 # is dlopen'd by bench_real_e2e + bench_showcase)
 nix run .#build -- release

@@ -17,10 +17,12 @@ target_link_libraries(goodnet_demo
         GoodNet::sdk
         GoodNet::sdk_dx
         GoodNet::kernel_shared
-        GoodNet::protocol_gnet
         PkgConfig::SODIUM
         ${CMAKE_DL_LIBS}
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(goodnet_demo PRIVATE GoodNet::protocol_gnet)
+endif()
 
 target_compile_features(goodnet_demo PRIVATE cxx_std_23)
 
