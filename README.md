@@ -148,14 +148,14 @@ when your change touches concurrency-sensitive code.
 ## Performance
 
 **TL;DR on this machine** (i5-1235U, 6-core / 12-thread,
-loopback): single-conn with crypto sits at **~2 Gb/s**, single
-WireGuard tunnel on the same hardware tops out at **~4.9 Gb/s**
+loopback, CPU `performance` governor): single-conn with full crypto
+(Noise XX + gnet framing) sits at **~3 Gb/s** (IPC, 32 KiB payload);
+single WireGuard tunnel on the same hardware tops out at **~4.9 Gb/s**
 because its softirq pins one CPU. GoodNet's aggregate scales
-across cores — **~60 Gb/s** static-LTO multi-conn parody (CPU `performance` governor), and
-the legacy 4-conn inline-crypto bench reached **~19.84 Gb/s
-with crypto**. Single-conn through Noise the kernel pays for
-the userspace plugin model; aggregate through `CryptoWorkerPool`
-it earns it back by going parallel.
+across cores — **~60 Gb/s** static-LTO multi-conn parody,
+already 12× WireGuard's single-tunnel ceiling. Single-conn through
+Noise the kernel pays for the userspace plugin model; aggregate
+through `CryptoWorkerPool` it earns it back by going parallel.
 
 Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
 libsodium. Release build, median of 3 runs. Two measurement
@@ -170,10 +170,10 @@ shapes are reported separately on purpose — see
 
 | Payload | TCP one-way | TCP echo RT | UDP one-way | IPC one-way | IPC echo RT |
 |---|---|---|---|---|---|
-| 64 B    | 22 μs / 2.3 MiB/s    | 36 μs / 2.9 MiB/s    | 18 μs / 2.8 MiB/s | 14 μs / 3.7 MiB/s    | 44 μs / 1.9 MiB/s |
-| 1 KiB   | 21 μs / 35 MiB/s     | 43 μs / 35 MiB/s     | 20 μs / 38 MiB/s  | 16 μs / 51 MiB/s     | 50 μs / 32 MiB/s |
-| 8 KiB   | 40 μs / 142 MiB/s    | 80 μs / 155 MiB/s    | —                 | 33 μs / 181 MiB/s    | 101 μs / 147 MiB/s |
-| 32 KiB  | 135 μs / 213 MiB/s   | 245 μs / 250 MiB/s   | —                 | 118 μs / 246 MiB/s   | 319 μs / 192 MiB/s |
+| 64 B    | 20 μs / 3.0 MiB/s    | 39 μs / 3.2 MiB/s    | 17 μs / 3.5 MiB/s | 15 μs / 4.2 MiB/s    | 27 μs / 4.5 MiB/s |
+| 1 KiB   | 19 μs / 50 MiB/s     | 43 μs / 46 MiB/s     | 19 μs / 51 MiB/s  | 16 μs / 60 MiB/s     | 32 μs / 62 MiB/s |
+| 8 KiB   | 33 μs / 235 MiB/s    | 75 μs / 207 MiB/s    | —                 | 32 μs / 241 MiB/s    | 66 μs / 236 MiB/s |
+| 32 KiB  | 91 μs / 344 MiB/s    | 197 μs / 317 MiB/s   | —                 | 86 μs / 362 MiB/s    | 184 μs / 340 MiB/s |
 
 UDP caps at 1 KiB on the MTU floor (`udp.hpp::kDefaultMtu = 1200`).
 
@@ -214,8 +214,8 @@ pay for different things.
 | **GoodNet UDP parody single conn, dynamic, no crypto**           | **~8.7 Gb/s** | one asio strand | raw datagrams through link plugin |
 | **WireGuard single tunnel, kernel, with crypto**                 | **~4.9 Gb/s** | one softirq CPU pinned | IP tunnel, ChaCha20-Poly1305 per packet |
 | GoodNet Noise transport (encrypt+decrypt round, single-thread)   | ~1.7 Gb/s     | one thread, libsodium ChaCha20-Poly1305 | seal + open in a tight loop, no I/O |
-| **GoodNet IPC real @ 32 KiB, dynamic, with crypto**              | **~2.0 Gb/s** | one strand, single conn | typed `gn_message_t` envelopes, peer-pk addressing |
-| **GoodNet TCP real @ 32 KiB, dynamic, with crypto**              | **~1.7 Gb/s** | one strand, single conn | same, over TCP loopback |
+| **GoodNet IPC real @ 32 KiB, dynamic, with crypto**              | **~3.0 Gb/s** | one strand, single conn; CPU `performance` governor | typed `gn_message_t` envelopes, Noise XX + gnet framing |
+| **GoodNet TCP real @ 32 KiB, dynamic, with crypto**              | **~2.9 Gb/s** | one strand, single conn; CPU `performance` governor | same, over TCP loopback |
 
 **Two reads of the table.**
 

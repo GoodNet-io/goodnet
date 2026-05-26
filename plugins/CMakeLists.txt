@@ -158,6 +158,10 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(strategies/float_send_rtt)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protocols/gnet/CMakeLists.txt")
+    add_subdirectory(protocols/gnet)
+endif()
+
 # Subprocess workers — separate executables (not `.so` plugins) that
 # the kernel spawns over `sdk/remote/wire.h`. Tracked under
 # `plugins/workers/` so they ride the same `add_subdirectory` walk as
