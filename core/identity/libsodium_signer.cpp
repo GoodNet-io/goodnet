@@ -3,6 +3,7 @@
 
 #include "libsodium_signer.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 

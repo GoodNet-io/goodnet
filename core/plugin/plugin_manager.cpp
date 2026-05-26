@@ -14,10 +14,12 @@
 #include <utility>
 
 #include <core/kernel/kernel.hpp>
-#include <core/plugin/remote_host.hpp>
 #include <core/plugin/runtimes/dynamic.hpp>
-#include <core/plugin/runtimes/remote.hpp>
 #include <core/plugin/runtimes/static.hpp>
+#ifndef __EMSCRIPTEN__
+#  include <core/plugin/remote_host.hpp>
+#  include <core/plugin/runtimes/remote.hpp>
+#endif
 #include <core/plugin/static_registry.hpp>
 #include <core/util/log.hpp>
 
@@ -34,7 +36,9 @@ PluginManager::PluginManager(Kernel& kernel) noexcept : kernel_(kernel) {
     /// through `PluginInstance::runtime`.
     runtimes_.emplace("dynamic", std::make_unique<DynamicRuntime>());
     runtimes_.emplace("static",  std::make_unique<StaticRuntime>());
+#ifndef __EMSCRIPTEN__
     runtimes_.emplace("remote",  std::make_unique<RemoteRuntime>());
+#endif
 }
 
 PluginManager::~PluginManager() { shutdown(); }

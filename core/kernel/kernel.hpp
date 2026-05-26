@@ -252,7 +252,7 @@ private:
 
     /// Atomic-shared like `protocol_layer_`: secrets stay alive for
     /// the caller's snapshot scope across concurrent identity install.
-    std::atomic<std::shared_ptr<const identity::NodeIdentity>> node_identity_;
+    util::AtomicSharedPtr<const identity::NodeIdentity> node_identity_;
 
     /// Per-source rate limiter for `host_api->inject_*` per
     /// `host-api.en.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.

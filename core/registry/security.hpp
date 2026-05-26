@@ -18,14 +18,15 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <sdk/security.h>
 #include <sdk/types.h>
+#include <core/util/atomic_shared_ptr.hpp>
 
 namespace gn::core {
 
@@ -86,7 +87,7 @@ public:
 
 private:
     using EntryVec = std::vector<SecurityEntry>;
-    std::atomic<std::shared_ptr<const EntryVec>> entries_{nullptr};
+    util::AtomicSharedPtr<const EntryVec> entries_;
 };
 
 } // namespace gn::core

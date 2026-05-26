@@ -171,9 +171,9 @@ pkgs.stdenv.mkDerivation {
     # The result is a static archive at sodium-install/lib/libsodium.a
     # that the final link step consumes.
     echo "==> building libsodium for wasm32-emscripten"
-    # libsodium.src is a release tarball; extract it into sodium-src/.
+    # libsodium.src is a Nix store directory (fetched source tree).
     mkdir -p sodium-src
-    tar xf ${pkgs.libsodium.src} -C sodium-src --strip-components=1
+    cp -r ${pkgs.libsodium.src}/. sodium-src/
     chmod -R u+w sodium-src
     mkdir -p sodium-install
     pushd sodium-src
@@ -192,7 +192,7 @@ pkgs.stdenv.mkDerivation {
     # ── Step 2: compile the full kernel ───────────────────────────────────
     # Flags common to every TU:
     #   -std=c++23         matches the native kernel's dialect
-    #   -fno-exceptions    kernel policy; try/catch behind __cpp_exceptions
+    #   -fexceptions       WASM supports Wasm EH natively; spdlog requires it
     #   -O2                matches native Release build
     #   -pthread           required when linking with -sUSE_PTHREADS=1;
     #                      emcc maps this to Emscripten pthreads / Web Workers
@@ -201,7 +201,7 @@ pkgs.stdenv.mkDerivation {
     #   SPDLOG_HEADER_ONLY makes spdlog a pure header library (no libspdlog)
     #   SPDLOG_FMT_EXTERNAL use external fmt (nixpkgs spdlog configured so)
     #   FMT_HEADER_ONLY    makes fmt a pure header library (no libfmt)
-    CXXFLAGS="-std=c++23 -O2 -fno-exceptions -pthread"
+    CXXFLAGS="-std=c++23 -O2 -fexceptions -pthread"
     CXXFLAGS="$CXXFLAGS -I."
     CXXFLAGS="$CXXFLAGS -I${pkgs.asio}/include"
     CXXFLAGS="$CXXFLAGS -I${pkgs.spdlog.dev}/include"

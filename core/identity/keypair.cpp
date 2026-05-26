@@ -3,6 +3,7 @@
 
 #include "keypair.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 

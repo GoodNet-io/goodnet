@@ -46,7 +46,9 @@
 namespace gn::core {
 
 class Kernel;
+#ifndef __EMSCRIPTEN__
 class RemoteHost;
+#endif
 
 /// One loaded plugin shared object plus its kernel-side state.
 ///
@@ -82,7 +84,9 @@ struct PluginInstance {
     /// `docs/contracts/remote-plugin.en.md`. The unique_ptr's
     /// dtor calls `terminate()` so a leaked instance still reaps
     /// its child process.
+#ifndef __EMSCRIPTEN__
     std::unique_ptr<RemoteHost>       remote;
+#endif
 
     /// Borrowed pointer to the runtime that loaded this instance.
     /// PluginManager owns the runtime singletons (kept alive for

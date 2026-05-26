@@ -17,6 +17,8 @@
 #include <mutex>
 #include <vector>
 
+#include <core/util/atomic_shared_ptr.hpp>
+
 namespace gn::log {
 
 namespace {
@@ -139,8 +141,8 @@ make_default_logger() {
     return logger;
 }
 
-std::atomic<std::shared_ptr<spdlog::logger>>& storage() {
-    static std::atomic<std::shared_ptr<spdlog::logger>> instance;
+gn::core::util::AtomicSharedPtr<spdlog::logger>& storage() {
+    static gn::core::util::AtomicSharedPtr<spdlog::logger> instance;
     return instance;
 }
 std::once_flag g_init_once;
