@@ -178,6 +178,7 @@ tests/integration/
 !pytest.ini
 
 # Examples
+examples/.goodnet/
 !examples/**/*.cpp
 !examples/**/*.hpp
 !examples/**/*.md

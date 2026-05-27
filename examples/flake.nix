@@ -23,8 +23,9 @@
         if [ -d .goodnet/goodnet ]; then
           echo "goodnet-examples: local .goodnet/ overrides present."
           echo "  nix develop \\"
-          echo "    --override-input goodnet path:.goodnet/goodnet \\"
-          echo "    --override-input protocol-gnet path:.goodnet/protocol-gnet"
+          echo "    --override-input goodnet         path:.goodnet/goodnet \\"
+          echo "    --override-input protocol-gnet   path:.goodnet/protocol-gnet \\"
+          echo "    --override-input link-tcp         path:.goodnet/link-tcp"
         fi
       '';
 
