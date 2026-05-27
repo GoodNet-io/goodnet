@@ -149,13 +149,12 @@ when your change touches concurrency-sensitive code.
 
 **TL;DR on this machine** (i5-1235U, 6-core / 12-thread,
 loopback, CPU `performance` governor): single-conn with full crypto
-(Noise XX + gnet framing) sits at **~3 Gb/s** (IPC, 32 KiB payload);
-single WireGuard tunnel on the same hardware tops out at **~4.9 Gb/s**
-because its softirq pins one CPU. GoodNet's aggregate scales
-across cores — **~60 Gb/s** static-LTO multi-conn parody,
-already 12× WireGuard's single-tunnel ceiling. Single-conn through
-Noise the kernel pays for the userspace plugin model; aggregate
-through `CryptoWorkerPool` it earns it back by going parallel.
+(Noise XX + gnet framing) sits at **~3 Gb/s** dynamic build /
+**~5 Gb/s** static+LTO (TCP, 64 KiB payload); 4-conn static+LTO
+reaches **~10 Gb/s** — already 2× the single WireGuard tunnel
+ceiling (**~4.9 Gb/s**, one softirq CPU). GoodNet's no-crypto
+aggregate scales further — **~60 Gb/s** static-LTO parody,
+12× WireGuard's single-tunnel ceiling.
 
 Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
 libsodium. Release build, median of 3 runs. Two measurement
@@ -216,17 +215,21 @@ pay for different things.
 | GoodNet Noise transport (encrypt+decrypt round, single-thread)   | ~1.7 Gb/s     | one thread, libsodium ChaCha20-Poly1305 | seal + open in a tight loop, no I/O |
 | **GoodNet IPC real @ 32 KiB, dynamic, with crypto**              | **~3.0 Gb/s** | one strand, single conn; CPU `performance` governor | typed `gn_message_t` envelopes, Noise XX + gnet framing |
 | **GoodNet TCP real @ 32 KiB, dynamic, with crypto**              | **~2.9 Gb/s** | one strand, single conn; CPU `performance` governor | same, over TCP loopback |
+| **GoodNet TCP real @ 32 KiB, static+LTO, with crypto**           | **~4.9 Gb/s** | static kernel + LTO, single conn; `goodnet-bench` | same; plugin-boundary dispatch inlined by LTO |
+| **GoodNet TCP real @ 64 KiB, static+LTO, with crypto**           | **~5.1 Gb/s** | static kernel + LTO, single conn; `goodnet-bench` | same, larger payload amortises framing overhead |
+| **GoodNet TCP real @ 64 KiB, static+LTO, 4 conn, with crypto**   | **~10 Gb/s**  | static kernel + LTO, 4 parallel conns; `goodnet-bench` | 2× WireGuard single-tunnel ceiling on the same hardware |
 
 **Two reads of the table.**
 
 *Per-connection.* WireGuard's single-tunnel ceiling (~4.9 Gb/s)
 is also single-CPU: the softirq context that runs the tunnel
 pins one core, encryption serialises on it. GoodNet's
-single-connection-with-crypto sits at ~1.7-2.0 Gb/s through the
-production stack — slower per byte because every send walks
-`host_api->send()`, `gn.protocol.gnet` framing, Noise AEAD,
-strand-per-conn write pump. The 2-3× gap is the cost of the
-userspace plugin model on this hardware.
+single-connection-with-crypto sits at ~2.9 Gb/s (dynamic build)
+or **~5 Gb/s (static+LTO)** through the production stack — the
+dynamic build pays a vtable dispatch at every plugin boundary;
+static+LTO eliminates those calls at link time. With 4 parallel
+connections static+LTO already **exceeds WireGuard's per-peer
+ceiling** at ~10 Gb/s on the same hardware.
 
 *Aggregate.* WireGuard's single tunnel cannot saturate more
 than one CPU regardless of how many cores you give it. GoodNet's
@@ -329,6 +332,20 @@ for i in $(seq 1 8); do
         --benchmark_min_time=2s &
 done
 wait
+
+# goodnet-bench — end-to-end crypto throughput (Noise XX + gnet + TCP),
+# static kernel + LTO. Noise .so is still dlopen'd at runtime so the
+# bench measures real production latency through the full plugin stack.
+# The kernel and TCP are statically linked with LTO (all plugin-boundary
+# calls inlined).
+nix develop --command cmake --build build-release \
+    --target goodnet_bench -j$(nproc)
+
+# Single-conn peak (64 KiB, ~5.1 Gb/s on i5-1235U)
+./build-release/bin/goodnet-bench 200000 64 1
+
+# 4-conn aggregate (~10 Gb/s — exceeds WireGuard single-tunnel ceiling)
+./build-release/bin/goodnet-bench 200000 64 4
 ```
 
 Full per-bench numbers in [`bench/reports/<sha>.md` § "А.
