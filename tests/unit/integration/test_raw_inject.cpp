@@ -9,6 +9,14 @@
 /// captured carrier accept + data callbacks directly. The success
 /// criterion: an inbound payload round-trips through the kernel
 /// router and out the carrier's send slot.
+///
+/// Compiled only when the monorepo includes the protocol-raw plugin
+/// (TARGET GoodNet::protocol_raw → cmake sets GOODNET_HAS_PROTOCOL_RAW).
+/// Kernel-only checkouts skip the whole suite at the preprocessor level.
+
+#include <gtest/gtest.h>
+
+#ifdef GOODNET_HAS_PROTOCOL_RAW
 
 #include <atomic>
 #include <cstring>
@@ -17,8 +25,6 @@
 #include <span>
 #include <string_view>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include <core/kernel/host_api_builder.hpp>
 #include <core/kernel/kernel.hpp>
@@ -384,3 +390,5 @@ TEST(RawInjectIntegration, LoopbackRoundTripsThroughCarrier) {
     (void)api.unregister_vtable(api.host_ctx, hid);
     (void)api.unregister_extension(api.host_ctx, "gn.link.tcp");
 }
+
+#endif // GOODNET_HAS_PROTOCOL_RAW

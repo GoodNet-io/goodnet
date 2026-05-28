@@ -65,6 +65,8 @@ endif()
 if(TARGET GoodNet::protocol_raw)
     target_link_libraries(goodnet_unit_tests
         PRIVATE GoodNet::protocol_raw)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE GOODNET_HAS_PROTOCOL_RAW)
 endif()
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)

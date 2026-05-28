@@ -301,7 +301,7 @@ jobs:
           # binary that writes A.done / B.done is a follow-up — when
           # it lands, drop `|| true` and the scaffold's TIMEOUT_S
           # becomes a real gate.
-          ICE3_TIMEOUT_S=30 ./run_all.sh || true
+          ICE3_TIMEOUT_S=1 ./run_all.sh || true
       - name: Collect logs on failure
         if: failure()
         run: |

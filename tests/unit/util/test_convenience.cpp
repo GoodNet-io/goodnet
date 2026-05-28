@@ -86,7 +86,8 @@ struct StubHost {
         return &L;
     }
     static gn_result_t s_inject(void* ctx, gn_inject_layer_t,
-                                  gn_conn_id_t, std::uint32_t,
+                                  gn_conn_id_t, const char* /*target_ns*/,
+                                  std::uint32_t,
                                   const std::uint8_t*, std::size_t) {
         static_cast<StubHost*>(ctx)->inject_calls++;
         return GN_OK;
@@ -203,10 +204,12 @@ TEST(SdkCppConvenience, InjectForwardsLayerKind) {
 
     const std::uint8_t bytes[] = {0xAA};
     EXPECT_EQ(gn::inject_external_message(&api, /*source=*/3,
+                                            /*target_ns=*/"gnet-v1",
                                             /*msg_id=*/0xC0DE,
                                             std::span<const std::uint8_t>(bytes)),
               GN_OK);
     EXPECT_EQ(gn::inject_frame(&api, /*source=*/3,
+                                 /*target_ns=*/"gnet-v1",
                                  std::span<const std::uint8_t>(bytes)),
               GN_OK);
     EXPECT_EQ(h.inject_calls, 2);

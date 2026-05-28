@@ -52,8 +52,21 @@ CI as sole CI (GitHub repo release-only), cross-platform builds
 intentionally broken with `--system aarch64-darwin` warning),
 clang validation + sanitizer fixes (#79 ICE turn UAF + #100 + #104
 TCP shutdown race), livedoc tooling extension, lifecycle contract
-freeze, SVG architecture diagrams refresh. Version suffix stays
-`-rc5` — release cut on user command, not this gauntlet run.
+freeze, SVG architecture diagrams refresh. Version suffix bumped to
+`-rc6` with this commit batch.
+
+### inject `target_ns` — all call sites updated
+
+`inject()` gained a `const char* target_ns` parameter (between
+`conn_id` and `msg_id`) for explicit handler-namespace routing.
+Updated all call sites: `tests/unit/integration/test_inject_api.cpp`
+(12), `test_inject_limits.cpp` (21), `test_raw_inject.cpp`
+(guarded behind `GOODNET_HAS_PROTOCOL_RAW` after protocol-raw
+extraction), `tests/unit/util/test_convenience.cpp` stub + calls,
+and `sdk/cpp/convenience.hpp` wrappers (`inject_external_message`,
+`inject_frame`). CI ice-3node timeout reduced 30 s → 1 s (non-blocking
+step; saves ~5 min per run while coordinator path is still tracked in
+the issue queue).
 
 ### Bench gauntlet — sequential harness leak fixed
 
