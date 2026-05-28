@@ -81,7 +81,7 @@ pkgs.writeShellApplication {
 
     xdg_data="''${XDG_DATA_HOME:-$HOME/.local/share}"
     plugin_path="$xdg_data/goodnet/plugins"
-    if ! compgen -G "$plugin_path/lib*.so" >/dev/null; then
+    if ! ls "$plugin_path"/lib*.so >/dev/null 2>&1; then
       echo "sample-peer: no plugins at $plugin_path." >&2
       echo "  Run \`nix run goodnet#bootstrap-env\` first." >&2
       exit 1

@@ -117,7 +117,7 @@ endif()
 
 # ws_inject after ws: composes over gn.link.ws carrier.
 if(NOT _GOODNET_WINDOWS_SKIP
-   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws_inject/CMakeLists.txt")
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws_inject/ws_inject.cpp")
     add_subdirectory(links/ws_inject)
 endif()
 
