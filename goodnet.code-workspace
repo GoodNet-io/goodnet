@@ -1,0 +1,33 @@
+{
+    "folders": [
+        { "name": "kernel",                   "path": "." },
+        { "name": "link-tcp",                  "path": "plugins/links/tcp" },
+        { "name": "link-udp",                  "path": "plugins/links/udp" },
+        { "name": "link-ws",                   "path": "plugins/links/ws" },
+        { "name": "link-ws-inject",            "path": "plugins/links/ws_inject" },
+        { "name": "link-raw-inject",           "path": "plugins/links/raw_inject" },
+        { "name": "link-ipc",                  "path": "plugins/links/ipc" },
+        { "name": "link-tls",                  "path": "plugins/links/tls" },
+        { "name": "link-quic",                 "path": "plugins/links/quic" },
+        { "name": "link-ice",                  "path": "plugins/links/ice" },
+        { "name": "link-portmap",              "path": "plugins/links/portmap" },
+        { "name": "handler-heartbeat",         "path": "plugins/handlers/heartbeat" },
+        { "name": "handler-dns",               "path": "plugins/handlers/dns" },
+        { "name": "handler-store",             "path": "plugins/handlers/store" },
+        { "name": "handler-web-api-proxy",     "path": "plugins/handlers/web_api_proxy" },
+        { "name": "handler-zstd-decompress",   "path": "plugins/handlers/zstd_decompress" },
+        { "name": "security-noise",            "path": "plugins/security/noise" },
+        { "name": "security-null",             "path": "plugins/security/null" },
+        { "name": "security-pkcs11",           "path": "plugins/security/pkcs11" },
+        { "name": "strategy-float-send-rtt",   "path": "plugins/strategies/float_send_rtt" },
+        { "name": "goodnetd",                  "path": "apps/goodnetd" },
+        { "name": "gssh",                      "path": "apps/gssh" }
+    ],
+    "settings": {
+        "clangd.path": "clangd",
+        "clangd.arguments": [
+            "--compile-commands-dir=${workspaceFolder:kernel}/build-release",
+            "--header-insertion=never"
+        ]
+    }
+}

@@ -25,6 +25,7 @@
 
 # Editor configs
 !.vscode/*.json
+!goodnet.code-workspace
 
 # Build / output dirs (re-block after top-level rules)
 build/
