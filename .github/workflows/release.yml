@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  artifacts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v9
+
+      - name: Build static Linux x86_64
+        run: nix build .#goodnet-core-static -o result-static
+
+      - name: Build Windows x86_64 (mingw cross)
+        run: nix build .#goodnet-windows -o result-windows
+        continue-on-error: true
+
+      - name: Build WASM (emscripten)
+        run: nix build .#goodnet-wasm-emscripten -o result-wasm-em
+        continue-on-error: true
+
+      - name: Build WASM (WASI)
+        run: nix build .#goodnet-wasm -o result-wasm-wasi
+        continue-on-error: true
+
+      - name: Package artifacts
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+
+          # Static Linux binary
+          if [ -f result-static/bin/goodnetd ]; then
+            cp result-static/bin/goodnetd "dist/goodnetd-linux-x86_64-static"
+            chmod +x "dist/goodnetd-linux-x86_64-static"
+          fi
+
+          # Windows exe
+          if [ -f result-windows/bin/goodnet.exe ]; then
+            cp result-windows/bin/goodnet.exe "dist/goodnet-windows-x86_64.exe"
+          fi
+
+          # WASM emscripten — zip the whole output
+          if [ -d result-wasm-em ]; then
+            (cd result-wasm-em && zip -r "../dist/goodnet-wasm-emscripten.zip" .)
+          fi
+
+          # WASM WASI — zip the whole output
+          if [ -d result-wasm-wasi ]; then
+            (cd result-wasm-wasi && zip -r "../dist/goodnet-wasm-wasi.zip" .)
+          fi
+
+          ls -lh dist/
+
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') }}
+          fail_on_unmatched_files: false

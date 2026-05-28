@@ -1,0 +1,25 @@
+name: CI
+
+# Runs only on main — dev branch uses Forgejo CI exclusively.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: DeterminateSystems/nix-installer-action@v16
+
+      - uses: DeterminateSystems/magic-nix-cache-action@v9
+
+      - name: Install canonical plugins
+        run: nix run .#plugin -- install
+        continue-on-error: true
+
+      - name: Build
+        run: nix build
