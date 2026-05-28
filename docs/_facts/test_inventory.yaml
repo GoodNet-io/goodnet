@@ -1,8 +1,8 @@
-total: 1497
+total: 1518
 groups:
 - tree: kernel
-  count: 922
-  files: 83
+  count: 928
+  files: 84
 - tree: plugins/handlers/dns
   count: 73
   files: 4
@@ -16,8 +16,8 @@ groups:
   count: 7
   files: 1
 - tree: plugins/links/ice
-  count: 140
-  files: 11
+  count: 162
+  files: 13
 - tree: plugins/links/ipc
   count: 8
   files: 2
@@ -42,12 +42,12 @@ groups:
 - tree: plugins/links/ws
   count: 15
   files: 2
+- tree: plugins/links/ws_inject
+  count: 4
+  files: 1
 - tree: plugins/protocols/gnet
   count: 63
   files: 4
-- tree: plugins/protocols/raw
-  count: 11
-  files: 1
 - tree: plugins/security/noise
   count: 56
   files: 5
@@ -68,7 +68,7 @@ by_plugin:
   handlers/heartbeat: 11
   handlers/store: 48
   handlers/web_api_proxy: 7
-  links/ice: 140
+  links/ice: 162
   links/ipc: 8
   links/portmap: 26
   links/quic: 11
@@ -77,8 +77,8 @@ by_plugin:
   links/tls: 21
   links/udp: 21
   links/ws: 15
+  links/ws_inject: 4
   protocols/gnet: 63
-  protocols/raw: 11
   security/noise: 56
   security/null: 18
   security/pkcs11: 8

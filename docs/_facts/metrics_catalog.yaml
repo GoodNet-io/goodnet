@@ -9,17 +9,51 @@ counters:
   - file: plugins/links/ipc/ipc.cpp
     line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 728
+    line: 730
   - file: plugins/links/tcp/tcp.cpp
-    line: 768
+    line: 770
   - file: plugins/links/tls/tls.cpp
     line: 868
   - file: plugins/links/tls/tls.cpp
     line: 906
+- name: raw_inject.drop.zstd_error
+  family: raw_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 335
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 344
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 352
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 372
 - name: raw_inject.inject.error
   family: raw_inject
   kinds:
   - emit_counter
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 306
+    line: 390
+- name: ws_inject.drop.short_stream
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 300
+- name: ws_inject.drop.too_large
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 289
+- name: ws_inject.inject.error
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 320

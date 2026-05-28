@@ -390,31 +390,31 @@ libclang, refreshed by `make livedoc`:
 | [notify_disconnect](../../sdk/host_api.h#L325) | `gn_result_t (*)(void *, gn_conn_id_t, gn_result_t)` | Link-side notifications |
 | [register_security](../../sdk/host_api.h#L345) | `gn_result_t (*)(void *, const char *, const struct gn_security_provider_vtable_s *, void *)` | Security registration |
 | [unregister_security](../../sdk/host_api.h#L350) | `gn_result_t (*)(void *, const char *)` | Security registration |
-| [inject](../../sdk/host_api.h#L380) | `gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, const char *, uint32_t, const uint8_t *, size_t)` | Foreign-payload injection |
-| [kick_handshake](../../sdk/host_api.h#L400) | `gn_result_t (*)(void *, gn_conn_id_t)` | Foreign-payload injection |
-| [set_timer](../../sdk/host_api.h#L416) | `gn_result_t (*)(void *, uint32_t, gn_task_fn_t, void *, gn_timer_id_t *)` | Service executor |
-| [cancel_timer](../../sdk/host_api.h#L426) | `gn_result_t (*)(void *, gn_timer_id_t)` | Service executor |
-| [subscribe_conn_state](../../sdk/host_api.h#L447) | `gn_result_t (*)(void *, gn_conn_state_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Channel subscription |
-| [subscribe_config_reload](../../sdk/host_api.h#L462) | `gn_result_t (*)(void *, gn_config_reload_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Channel subscription |
-| [unsubscribe](../../sdk/host_api.h#L474) | `gn_result_t (*)(void *, gn_subscription_id_t)` | Channel subscription |
-| [for_each_connection](../../sdk/host_api.h#L484) | `gn_result_t (*)(void *, gn_conn_visitor_t, void *)` | Connection iteration |
-| [notify_backpressure](../../sdk/host_api.h#L502) | `gn_result_t (*)(void *, gn_conn_id_t, gn_conn_event_kind_t, uint64_t)` | Connection iteration |
-| [emit_counter](../../sdk/host_api.h#L524) | `void (*)(void *, const char *)` | Metrics |
-| [iterate_counters](../../sdk/host_api.h#L535) | `uint64_t (*)(void *, gn_counter_visitor_t, void *)` | Metrics |
-| [is_shutdown_requested](../../sdk/host_api.h#L559) | `int32_t (*)(void *)` | Cooperative cancellation |
-| [register_local_key](../../sdk/host_api.h#L585) | `gn_result_t (*)(void *, gn_key_purpose_t, const char *, gn_key_id_t *)` | Identity primitives |
-| [delete_local_key](../../sdk/host_api.h#L590) | `gn_result_t (*)(void *, gn_key_id_t)` | Identity primitives |
-| [list_local_keys](../../sdk/host_api.h#L593) | `gn_result_t (*)(void *, gn_key_descriptor_t *, size_t, size_t *)` | Identity primitives |
-| [sign_local](../../sdk/host_api.h#L598) | `gn_result_t (*)(void *, gn_key_purpose_t, const uint8_t *, size_t, uint8_t[64])` | Identity primitives |
-| [sign_local_by_id](../../sdk/host_api.h#L603) | `gn_result_t (*)(void *, gn_key_id_t, const uint8_t *, size_t, uint8_t[64])` | Identity primitives |
-| [get_peer_user_pk](../../sdk/host_api.h#L623) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
-| [get_peer_device_pk](../../sdk/host_api.h#L627) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
-| [get_handshake_hash](../../sdk/host_api.h#L631) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
-| [present_capability_blob](../../sdk/host_api.h#L654) | `gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)` | Capability TLV transport |
-| [subscribe_capability_blob](../../sdk/host_api.h#L660) | `gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Capability TLV transport |
-| [announce_rotation](../../sdk/host_api.h#L686) | `gn_result_t (*)(void *, int64_t)` | Identity rotation |
-| [send_to](../../sdk/host_api.h#L724) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Peer-addressed messaging |
-| [notify_rtt_sample](../../sdk/host_api.h#L764) | `gn_result_t (*)(void *, gn_conn_id_t, uint64_t)` | Path observability |
+| [inject](../../sdk/host_api.h#L387) | `gn_result_t (*)(void *, gn_inject_layer_t, gn_conn_id_t, const char *, uint32_t, const uint8_t *, size_t)` | Foreign-payload injection |
+| [kick_handshake](../../sdk/host_api.h#L408) | `gn_result_t (*)(void *, gn_conn_id_t)` | Foreign-payload injection |
+| [set_timer](../../sdk/host_api.h#L424) | `gn_result_t (*)(void *, uint32_t, gn_task_fn_t, void *, gn_timer_id_t *)` | Service executor |
+| [cancel_timer](../../sdk/host_api.h#L434) | `gn_result_t (*)(void *, gn_timer_id_t)` | Service executor |
+| [subscribe_conn_state](../../sdk/host_api.h#L455) | `gn_result_t (*)(void *, gn_conn_state_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Channel subscription |
+| [subscribe_config_reload](../../sdk/host_api.h#L470) | `gn_result_t (*)(void *, gn_config_reload_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Channel subscription |
+| [unsubscribe](../../sdk/host_api.h#L482) | `gn_result_t (*)(void *, gn_subscription_id_t)` | Channel subscription |
+| [for_each_connection](../../sdk/host_api.h#L492) | `gn_result_t (*)(void *, gn_conn_visitor_t, void *)` | Connection iteration |
+| [notify_backpressure](../../sdk/host_api.h#L510) | `gn_result_t (*)(void *, gn_conn_id_t, gn_conn_event_kind_t, uint64_t)` | Connection iteration |
+| [emit_counter](../../sdk/host_api.h#L532) | `void (*)(void *, const char *)` | Metrics |
+| [iterate_counters](../../sdk/host_api.h#L543) | `uint64_t (*)(void *, gn_counter_visitor_t, void *)` | Metrics |
+| [is_shutdown_requested](../../sdk/host_api.h#L567) | `int32_t (*)(void *)` | Cooperative cancellation |
+| [register_local_key](../../sdk/host_api.h#L593) | `gn_result_t (*)(void *, gn_key_purpose_t, const char *, gn_key_id_t *)` | Identity primitives |
+| [delete_local_key](../../sdk/host_api.h#L598) | `gn_result_t (*)(void *, gn_key_id_t)` | Identity primitives |
+| [list_local_keys](../../sdk/host_api.h#L601) | `gn_result_t (*)(void *, gn_key_descriptor_t *, size_t, size_t *)` | Identity primitives |
+| [sign_local](../../sdk/host_api.h#L606) | `gn_result_t (*)(void *, gn_key_purpose_t, const uint8_t *, size_t, uint8_t[64])` | Identity primitives |
+| [sign_local_by_id](../../sdk/host_api.h#L611) | `gn_result_t (*)(void *, gn_key_id_t, const uint8_t *, size_t, uint8_t[64])` | Identity primitives |
+| [get_peer_user_pk](../../sdk/host_api.h#L631) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
+| [get_peer_device_pk](../../sdk/host_api.h#L635) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
+| [get_handshake_hash](../../sdk/host_api.h#L639) | `gn_result_t (*)(void *, gn_conn_id_t, uint8_t[32])` | Peer identity readers |
+| [present_capability_blob](../../sdk/host_api.h#L662) | `gn_result_t (*)(void *, gn_conn_id_t, const uint8_t *, size_t, int64_t)` | Capability TLV transport |
+| [subscribe_capability_blob](../../sdk/host_api.h#L668) | `gn_result_t (*)(void *, gn_capability_blob_cb_t, void *, void (*)(void *), gn_subscription_id_t *)` | Capability TLV transport |
+| [announce_rotation](../../sdk/host_api.h#L694) | `gn_result_t (*)(void *, int64_t)` | Identity rotation |
+| [send_to](../../sdk/host_api.h#L732) | `gn_result_t (*)(void *, const uint8_t[32], uint32_t, const uint8_t *, size_t)` | Peer-addressed messaging |
+| [notify_rtt_sample](../../sdk/host_api.h#L772) | `gn_result_t (*)(void *, gn_conn_id_t, uint64_t)` | Path observability |
 <!-- /livedoc:host_api_slots -->
 
 ### 2.1 `config_get` — typed read with `(out_user_data, out_free)` pair

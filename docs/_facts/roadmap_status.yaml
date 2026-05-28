@@ -51,11 +51,12 @@ features:
   evidence: core/kernel/link_capability.hpp present
 - name: DynamicRuntime dlsym cache
   status: done
-  evidence: 'symbol ''DynamicPluginSymbols'' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...)'
+  evidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct
+    DynamicPluginSymbols {)
 - name: Required-plugin manifest pinning
   status: done
-  evidence: 'symbol ''ManifestEntry'' present (core/plugin/plugin_manager.cpp:65:    const
-    ManifestEntry* me = nullptr;)'
+  evidence: 'symbol ''ManifestEntry'' present (core/plugin/plugin_manifest.cpp:195:    ManifestEntry
+    me{};)'
 - name: gn_core_unload_plugin hot-reload
   status: done
   evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t
@@ -83,8 +84,8 @@ features:
   status: done
   evidence: nix/plugin.nix present
 - name: Test vectors
-  status: missing
-  evidence: tests/vectors/ absent; docs/test-vectors/ absent
+  status: done
+  evidence: tests/vectors/ present
 - name: Raw inject bridge
   status: done
   evidence: plugins/links/raw_inject/ present

@@ -7,7 +7,7 @@ bridges:
 - name: js
   path: bridges/js
   lang: js
-  notes: '`npm`-installable wrapper that talks the JSON-RPC dialect served by'
+  notes: TypeScript / JavaScript client for the GoodNet kernel. Two transports,
 - name: python
   path: bridges/python
   lang: python

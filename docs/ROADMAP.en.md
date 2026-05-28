@@ -35,8 +35,8 @@ to refresh the table.
 | Subprocess SECURITY/HANDLER worker proxy | ✓ done | symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const gn_security_provider_vtable_t* RemoteHos...) |
 | Recv-side parallel decrypt | ✓ done | symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...) |
 | Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
-| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...) |
-| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manager.cpp:65:    const ManifestEntry* me = nullptr;) |
+| DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {) |
+| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manifest.cpp:195:    ManifestEntry me{};) |
 | gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
 | Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
 | Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...) |
@@ -44,7 +44,7 @@ to refresh the table.
 | Fuzz harness | ✓ done | tests/fuzz/CMakeLists.txt present |
 | Coverage gating | ✓ done | token 'gcov' found (CMakeLists.txt:142:option(GOODNET_COVERAGE "Build with gcov line+function cov...) |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
-| Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
+| Test vectors | ✓ done | tests/vectors/ present |
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
 | Full WASM kernel build | ✓ done | nix/goodnet-wasm.nix present |
 | JS SDK + WebSocket bridge | ✓ done | plugins/handlers/web_api_proxy/ present; bridges/js/package.json present; extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define GN_EXT_WEB_API_...) |

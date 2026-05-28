@@ -126,16 +126,19 @@ for override in "${SCENARIOS[@]}"; do
     # attempt produced a deterministic error — so we break
     # early rather than waste the full timeout.
     deadline=$(( $(date +%s) + TIMEOUT_S ))
-    a_fail=n; b_fail=n
+    a_done=n; b_done=n; a_fail=n; b_fail=n
+    # Read marker files from the shared signal volume directly — avoids
+    # the `docker compose exec` race where the command fails on an already-
+    # stopped container and the &&-chain echoes n even if the file exists.
+    sig_read() {
+        docker run --rm -v "${SIGNAL_VOL}:/sig" busybox \
+            sh -c "test -f /sig/$1 && echo y || echo n" 2>/dev/null || echo n
+    }
     while [ "$(date +%s)" -lt "${deadline}" ]; do
-        a_done=$(docker compose -f docker-compose.yml exec -T peer_a \
-            test -f /var/lib/ice3-signal/A.done && echo y || echo n)
-        b_done=$(docker compose -f docker-compose.yml exec -T peer_b \
-            test -f /var/lib/ice3-signal/B.done && echo y || echo n)
-        a_fail=$(docker compose -f docker-compose.yml exec -T peer_a \
-            test -f /var/lib/ice3-signal/A.fail && echo y || echo n)
-        b_fail=$(docker compose -f docker-compose.yml exec -T peer_b \
-            test -f /var/lib/ice3-signal/B.fail && echo y || echo n)
+        a_done=$(sig_read A.done)
+        b_done=$(sig_read B.done)
+        a_fail=$(sig_read A.fail)
+        b_fail=$(sig_read B.fail)
         if [ "${a_done}" = "y" ] && [ "${b_done}" = "y" ]; then
             break
         fi

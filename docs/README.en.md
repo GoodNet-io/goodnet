@@ -143,6 +143,7 @@ manual edits.
 | tls | `tls` | [`plugins/links/tls`](../../plugins/links/tls) | yes | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | `udp` | [`plugins/links/udp`](../../plugins/links/udp) | yes | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
 | ws | `ws` | [`plugins/links/ws`](../../plugins/links/ws) | yes | WebSocket transport for GoodNet. Wraps a `ws://host:port/path` |
+| ws_inject | `ws_inject` | [`plugins/links/ws_inject`](../../plugins/links/ws_inject) | no | WebSocket device/browser bridge for goodnetd. Composes over the |
 <!-- /livedoc:link_carriers_list -->
 
 ### All plugin kinds
@@ -156,9 +157,9 @@ manual edits.
 |---|---|---|
 | dns | [`plugins/handlers/dns`](../../plugins/handlers/dns) | Real DNS service for a GoodNet cluster. Typed RR storage on top of |
 | heartbeat | [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat) | Two-way liveness check between connected peers. Emits PING on |
-| ssh-modern | [`plugins/handlers/ssh-modern`](../../plugins/handlers/ssh-modern) |  |
 | store | [`plugins/handlers/store`](../../plugins/handlers/store) | Distributed key-value store handler — brings the legacy |
 | web_api_proxy | [`plugins/handlers/web_api_proxy`](../../plugins/handlers/web_api_proxy) | Browser-gateway handler plugin for the GoodNet kernel. A goodnetd |
+| zstd_decompress | [`plugins/handlers/zstd_decompress`](../../plugins/handlers/zstd_decompress) | Middleware handler that decompresses ZSTD-wrapped payloads and |
 
 ### Links plugins
 
@@ -173,6 +174,7 @@ manual edits.
 | tls | [`plugins/links/tls`](../../plugins/links/tls) | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | [`plugins/links/udp`](../../plugins/links/udp) | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
 | ws | [`plugins/links/ws`](../../plugins/links/ws) | WebSocket transport for GoodNet. Wraps a `ws://host:port/path` |
+| ws_inject | [`plugins/links/ws_inject`](../../plugins/links/ws_inject) | WebSocket device/browser bridge for goodnetd. Composes over the |
 
 ### Security plugins
 

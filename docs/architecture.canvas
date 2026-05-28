@@ -13,7 +13,7 @@
 		{
 			"id": "g_sdk",
 			"type": "group",
-			"x": 9783,
+			"x": 10400,
 			"y": 877,
 			"width": 3707,
 			"height": 1463,
@@ -53,9 +53,9 @@
 		{
 			"id": "g_signal",
 			"type": "group",
-			"x": 6540,
+			"x": 6850,
 			"y": 1821,
-			"width": 1702,
+			"width": 1701,
 			"height": 400,
 			"color": "6",
 			"label": "SIGNAL INFRASTRUCTURE (core/kernel/)"
@@ -63,7 +63,7 @@
 		{
 			"id": "g_proto",
 			"type": "group",
-			"x": 12563,
+			"x": 13180,
 			"y": 394,
 			"width": 1209,
 			"height": 340,
@@ -73,7 +73,7 @@
 		{
 			"id": "g_security",
 			"type": "group",
-			"x": 6023,
+			"x": 6579,
 			"y": 334,
 			"width": 1195,
 			"height": 460,
@@ -85,7 +85,7 @@
 			"type": "group",
 			"x": 4370,
 			"y": 1077,
-			"width": 5434,
+			"width": 6052,
 			"height": 400,
 			"color": "2",
 			"label": "LINK PLUGINS"
@@ -103,7 +103,7 @@
 		{
 			"id": "g_ext_tests",
 			"type": "group",
-			"x": 5636,
+			"x": 6191,
 			"y": -210,
 			"width": 640,
 			"height": 400,
@@ -113,9 +113,9 @@
 		{
 			"id": "g_roadmap",
 			"type": "group",
-			"x": 6253,
+			"x": 6809,
 			"y": -170,
-			"width": 32794,
+			"width": 32695,
 			"height": 320,
 			"color": "4",
 			"label": "ROADMAP STATUS (auto, see roadmap_status.yaml)"
@@ -151,7 +151,7 @@
 			"id": "n_host_api",
 			"type": "text",
 			"text": "# host_api_t\n`sdk/host_api.h`\n\nPublic host vtable — **41 named slots** + `8` reserved.\nКарточка перерисовывается из `docs/_facts/host_api.yaml`\nчерез `make livedoc` (libclang AST walk → YAML).\n\n**Семейства slot'ов:**\n- Capability TLV transport: `present_capability_blob`, `subscribe_capability_blob`\n- Channel subscription: `subscribe_conn_state`, `subscribe_config_reload`, `unsubscribe`\n- Configuration: `config_get`\n- Connection iteration: `for_each_connection`, `notify_backpressure`\n- Cooperative cancellation: `is_shutdown_requested`\n- Extension API: `query_extension_checked`, `register_extension`, `unregister_extension`\n- Foreign-payload injection: `inject`, `kick_handshake`\n- Identity primitives: `register_local_key`, `delete_local_key`, `list_local_keys`, `sign_local`, `sign_local_by_id`\n- Identity rotation: `announce_rotation`\n- Limits read access: `limits`\n- Link-side notifications: `notify_connect`, `notify_inbound_bytes`, `notify_disconnect`\n- Messaging: `send`, `disconnect`\n- Metrics: `emit_counter`, `iterate_counters`\n- Path observability: `notify_rtt_sample`\n- Peer identity readers: `get_peer_user_pk`, `get_peer_device_pk`, `get_handshake_hash`\n- Peer-addressed messaging: `send_to`\n- Registry queries: `find_conn_by_pk`, `get_endpoint`\n- Security registration: `register_security`, `unregister_security`\n- Service executor: `set_timer`, `cancel_timer`\n- Universal handler / link registration: `register_vtable`, `unregister_vtable`\n\nКаждая запись принимает `host_ctx` первым аргументом — тот\nже указатель, что плагин получил на init.",
-			"x": 11665,
+			"x": 12282,
 			"y": 947,
 			"width": 540,
 			"height": 680
@@ -160,7 +160,7 @@
 			"id": "n_handler_iface",
 			"type": "text",
 			"text": "# gn_handler_vtable_t\n`sdk/handler.h`\n\nHandler — обработчик envelope'ов на конкретный `msg_id`.\n\n```c\nconst char* (*protocol_id)(void* self);\nvoid (*supported_msg_ids)(void* self,\n                           const uint32_t** out_ids,\n                           size_t* out_count);\ngn_propagation_t (*handle_message)(void* self,\n                                    const gn_message_t* envelope);\nvoid (*on_result)(void* self, const gn_message_t* env,\n                  gn_propagation_t result);\nvoid (*on_init)(void* self);\nvoid (*on_shutdown)(void* self);\n```\n\nРегистрируется через `register_vtable(GN_REGISTER_HANDLER,\nmeta{name=protocol_id, msg_id, priority, namespace_id},\nvt, self, &id)`.",
-			"x": 10449,
+			"x": 11067,
 			"y": 1047,
 			"width": 535,
 			"height": 480
@@ -169,7 +169,7 @@
 			"id": "n_link_iface",
 			"type": "text",
 			"text": "# gn_link_vtable_t\n`sdk/link.h`\n\nLink — единица «открыть/закрыть/отправить» поверх какого-то транспорта.\n\n```c\nconst char* (*scheme)(void* self);\ngn_result_t (*listen)(void* self, const char* uri);\ngn_result_t (*connect)(void* self, const char* uri);\ngn_result_t (*send)(void* self, gn_conn_id_t conn,\n                    const uint8_t* bytes, size_t size);\ngn_result_t (*send_batch)(void* self, gn_conn_id_t conn,\n                          const gn_byte_span_t* batch, size_t count);\ngn_result_t (*disconnect)(void* self, gn_conn_id_t conn);\nconst char* (*extension_name)(void* self);\nconst void* (*extension_vtable)(void* self);\nvoid        (*destroy)(void* self);\n```\n\nРегистрируется по URI scheme (`tcp://`, `udp://`, `ws://`, `ipc://`, `tls://`, `ice://`, `quic://`).\nConn-id ownership gate: только владелец схемы может звать\n`notify_inbound_bytes` / `notify_disconnect` для своих conn_id\n(`security-trust.en.md` §6a).",
-			"x": 9833,
+			"x": 10450,
 			"y": 1771,
 			"width": 540,
 			"height": 520
@@ -178,7 +178,7 @@
 			"id": "n_security_iface",
 			"type": "text",
 			"text": "# gn_security_provider_vtable_t\n`sdk/security.h`\n\nSecurity provider — handshake + AEAD.\n\n```c\nprovider_id(self) -> const char*;\nhandshake_open(self, conn, trust, role,\n               local_sk, local_pk, remote_pk, &state);\nhandshake_step(self, state, in, in_size, &out_msg);\nhandshake_complete(self, state) -> int;\nexport_transport_keys(self, state, &keys);\nencrypt(self, state, plain, plain_size, &out);\ndecrypt(self, state, cipher, cipher_size, &out);\nrekey(self, state); handshake_close(self, state);\ndestroy(self);\nallowed_trust_mask(self) -> uint32_t;\n```\n\nMulti-provider StackRegistry — kernel picks the first registered\nprovider whose `allowed_trust_mask` admits the conn's trust class\n(`null` on Loopback / IntraNode, `noise` on Untrusted / Peer in\nthe same process).",
-			"x": 11061,
+			"x": 11678,
 			"y": 1027,
 			"width": 527,
 			"height": 520
@@ -187,7 +187,7 @@
 			"id": "n_protocol_iface",
 			"type": "text",
 			"text": "# gn_protocol_layer_t\n`sdk/protocol.h`\n\nFraming layer — режет байтовый поток на envelope'ы.\n\nРеализаций две, обе линкуются в kernel binary как STATIC\n(не отдельные `.so`):\n- **GnetProtocol** — каноничный wire-формат (header + payload)\n- **RawProtocol** — passthrough для локальных стеков (loopback / intra-node).\n\n`allowed_trust_mask()` ограничивает класс trust, на который\nформат соглашается принять конн (raw — только Loopback / IntraNode).",
-			"x": 12900,
+			"x": 13517,
 			"y": 1137,
 			"width": 540,
 			"height": 300
@@ -196,7 +196,7 @@
 			"id": "n_trust",
 			"type": "text",
 			"text": "# TrustClass\n`sdk/trust.h` + `docs/contracts/security-trust.en.md`\n\n```c\nGN_TRUST_UNTRUSTED  = 0,  // публичный TCP/UDP до handshake\nGN_TRUST_PEER       = 1,  // pk известен + Noise complete + attestation\nGN_TRUST_LOOPBACK   = 2,  // 127.0.0.1 / IPC\nGN_TRUST_INTRA_NODE = 3   // bridge IPC, между плагинами одного ядра\n```\n\n**Один путь апгрейда:** `Untrusted → Peer` после успешной\nвзаимной аттестации (см. `attestation.en.md`). Любой другой\nпереход отбит ядром синхронно.\n\nLoopback и IntraNode фиксируются на `notify_connect`\nи не меняются.",
-			"x": 12282,
+			"x": 12900,
 			"y": 1097,
 			"width": 540,
 			"height": 380
@@ -205,7 +205,7 @@
 			"id": "n_limits",
 			"type": "text",
 			"text": "# gn_limits_t\n`sdk/limits.h`\n\nResource bounds: max_connections, pending_queue_bytes_high/low/hard,\nmax_payload_bytes, max_handlers_per_msg_id, max_relay_ttl,\nmax_plugins, max_extensions, max_timers, max_counter_names,\ninject_rate_per_source/burst/lru_cap, ...\n\nДоступен через `host_api->limits()` — borrowed `const`-указатель\nна всё время жизни плагина. Hard-coded параллельные пороги в\ncore/plugins запрещены.",
-			"x": 9833,
+			"x": 10450,
 			"y": 1147,
 			"width": 540,
 			"height": 280
@@ -322,7 +322,7 @@
 			"id": "n_conn_events",
 			"type": "text",
 			"text": "# ConnEvents\n`sdk/conn_events.h` + `core/kernel/conn_event.hpp`\n\nОдин pub/sub поток — `subscribe_conn_state(cb, ud, &id)`.\nШесть событий: `CONNECTED`, `DISCONNECTED`, `TRUST_UPGRADED`\n(Untrusted → Peer), `BACKPRESSURE_SOFT` / `_CLEAR` (queue\nwatermark crossings), `IDENTITY_ROTATED`.\n\nПодписки парятся с lifetime_anchor подписчика —\n`unsubscribe(id)` идемпотентен, и weak-кратко срабатывает,\nесли плагин уже выгрузился.",
-			"x": 7703,
+			"x": 8012,
 			"y": 1891,
 			"width": 490,
 			"height": 280
@@ -331,7 +331,7 @@
 			"id": "n_metrics",
 			"type": "text",
 			"text": "# MetricsRegistry\n`core/kernel/metrics_registry.{hpp,cpp}`\n\nПлоский UTF-8 keyed counter store. Плагины зовут\n`emit_counter(name)` для cross-cutting телеметрии,\nexporter (отдельный плагин) ходит через `iterate_counters`.\n\nCardinality cap = `limits.max_counter_names` (8192 default);\nчерез cliff — `metrics.cardinality_rejected` поднимается.",
-			"x": 6590,
+			"x": 6900,
 			"y": 1911,
 			"width": 490,
 			"height": 240
@@ -340,7 +340,7 @@
 			"id": "n_timer",
 			"type": "text",
 			"text": "# TimerRegistry\n`core/kernel/timer_registry.{hpp,cpp}`\n\nОдин shared service executor (`timer.en.md`). Все таймеры\nплагинов парятся с их lifetime_anchor.\nПосле shutdown_requested — pending fire'ы дропаются\nдо того как зайдут в плагин.",
-			"x": 7158,
+			"x": 7467,
 			"y": 1931,
 			"width": 467,
 			"height": 200
@@ -349,7 +349,7 @@
 			"id": "n_gnet_proto",
 			"type": "text",
 			"text": "# gnet protocol\n`plugins/protocols/gnet/`\n\nКаноничный wire-формат — header + payload + framing.\nЛинкуется как **STATIC** в kernel binary (kernel-internal),\nне отдельный `.so`.\n\n`allowed_trust_mask = Untrusted | Peer | Loopback | IntraNode`.",
-			"x": 13210,
+			"x": 13828,
 			"y": 464,
 			"width": 512,
 			"height": 220
@@ -358,7 +358,7 @@
 			"id": "n_raw_proto",
 			"type": "text",
 			"text": "# raw protocol\n`plugins/protocols/raw/`\n\nPassthrough — payload = envelope. Без framing'а, без reassembly.\nТолько для локальных стеков.\n\n`allowed_trust_mask = Loopback | IntraNode` —\nядро отбивает попытки использовать raw на `Untrusted`.",
-			"x": 12613,
+			"x": 13230,
 			"y": 464,
 			"width": 520,
 			"height": 220
@@ -367,7 +367,7 @@
 			"id": "n_noise_plugin",
 			"type": "text",
 			"text": "# security-noise\n`plugins/security/noise/`\n\nIndependent git unit (mirror `GoodNet-io/security-noise`).\nGPL-2 + linking exception.\n\nРеализует `gn_security_provider_vtable_t`:\n- Noise_XX_25519_ChaChaPoly_BLAKE2b (3-message handshake)\n- libsodium для AEAD / KDF / random\n- export_transport_keys → передаёт ключи в kernel-side\n  `InlineCrypto` для post-handshake fast path\n\n`allowed_trust_mask = Untrusted | Peer` — ставится на провайдера\nи проверяется ядром на каждый `Sessions::create`.",
-			"x": 6073,
+			"x": 6629,
 			"y": 404,
 			"width": 520,
 			"height": 340
@@ -376,7 +376,7 @@
 			"id": "n_null_plugin",
 			"type": "text",
 			"text": "# security-null\n`plugins/security/null/`\n\nIndependent git unit. MIT.\n\nPassthrough provider — `needs_handshake = false`,\nencrypt/decrypt = identity copy.\n\n`allowed_trust_mask = Loopback | IntraNode` —\nпод канонический v1 stack включается **только** для локальных\nконн'ов; попытка взять null на `Untrusted` отбивается ядром\nсинхронно. Plain-text-on-untrusted в v1 unreachable.",
-			"x": 6671,
+			"x": 7227,
 			"y": 424,
 			"width": 497,
 			"height": 300
@@ -385,7 +385,7 @@
 			"id": "n_tcp_plugin",
 			"type": "text",
 			"text": "# link-tcp\n`plugins/links/tcp/`\n\nIndependent git unit (`GoodNet-io/link-tcp`). GPL-2 + lex.\n\n`scheme = \"tcp\"`. Standalone Asio:\n- async accept / connect / read / write\n- per-connection strand + send queue\n- TrustClass из observable: 127.0.0.1 → Loopback, иначе → Untrusted\n\nBench: см. `bench/reports/` (`bench_tcp` fixture).",
-			"x": 7486,
+			"x": 8598,
 			"y": 1147,
 			"width": 540,
 			"height": 280
@@ -394,7 +394,7 @@
 			"id": "n_udp_plugin",
 			"type": "text",
 			"text": "# link-udp\n`plugins/links/udp/`\n\nIndependent git unit. GPL-2 + lex.\n\n`scheme = \"udp\"`. Datagram link — без reliability, без ordering.\nApplication-level reassembly через protocol layer.",
-			"x": 5037,
+			"x": 7493,
 			"y": 1187,
 			"width": 520,
 			"height": 200
@@ -403,7 +403,7 @@
 			"id": "n_ws_plugin",
 			"type": "text",
 			"text": "# link-ws\n`plugins/links/ws/`\n\nIndependent git unit. GPL-2 + lex.\n\n`scheme = \"ws\"` / `\"wss\"`. In-house RFC 6455 framing\n(plugins/links/ws/wire.hpp) — binary frames только.\nBrowser-friendly путь к ядру.",
-			"x": 8720,
+			"x": 8090,
 			"y": 1177,
 			"width": 430,
 			"height": 220
@@ -412,7 +412,7 @@
 			"id": "n_ipc_plugin",
 			"type": "text",
 			"text": "# link-ipc\n`plugins/links/ipc/`\n\nIndependent git unit. MIT.\n\n`scheme = \"ipc\"`. Unix domain socket. Default trust = `Loopback`.\n\nBridge-плагины поверх IPC объявляют `IntraNode` на\n`notify_connect` — null security их пропустит без handshake'а\n(`security-trust.en.md` §3, bridge-плагины).",
-			"x": 9228,
+			"x": 5037,
 			"y": 1157,
 			"width": 527,
 			"height": 260
@@ -421,7 +421,7 @@
 			"id": "n_tls_plugin",
 			"type": "text",
 			"text": "# link-tls\n`plugins/links/tls/`\n\nIndependent git unit. Apache-2.0 (OpenSSL compat).\n\n`scheme = \"tls\"`. Identity authentication — задача security pipeline'а,\nне TLS. По умолчанию `verify_peer = true` (OpenSSL trust store);\n`links.tls.verify_peer = false` — opt-out для случая, когда Noise\nповерху берёт identity на себя.",
-			"x": 8103,
+			"x": 9215,
 			"y": 1167,
 			"width": 540,
 			"height": 240
@@ -439,7 +439,7 @@
 			"id": "n_int_tests",
 			"type": "text",
 			"text": "# goodnet-integration-tests\n`tests/integration/` (sibling repo,\nmirror `GoodNet-io/integration-tests`).\n\nCross-plugin тесты — где живой сценарий нужен поверх двух+ плагинов\n(например, noise+tcp end-to-end). 5 plugin-bound тестов на текущий\nмомент.\n\nПодтягивается тем же `nix run .#setup` через slot map.\nЧисто-kernel \"integration\" тесты живут в `tests/unit/integration/`\nи линкуются с kernel напрямую.",
-			"x": 5686,
+			"x": 6241,
 			"y": -140,
 			"width": 540,
 			"height": 280
@@ -457,7 +457,7 @@
 			"id": "n_portmap_plugin",
 			"type": "text",
 			"text": "# gn.link.portmap\n`plugins/links/portmap/`\n\nDiscovered at canvas-render time from the plugin tree. Run `make livedoc` to refresh after adding or removing a link plugin checkout.",
-			"x": 5634,
+			"x": 5641,
 			"y": 1207,
 			"width": 540,
 			"height": 160
@@ -466,7 +466,7 @@
 			"id": "n_quic_plugin",
 			"type": "text",
 			"text": "# gn.link.quic\n`plugins/links/quic/`\n\nDiscovered at canvas-render time from the plugin tree. Run `make livedoc` to refresh after adding or removing a link plugin checkout.",
-			"x": 6251,
+			"x": 6259,
 			"y": 1207,
 			"width": 540,
 			"height": 160
@@ -475,7 +475,16 @@
 			"id": "n_raw_inject_plugin",
 			"type": "text",
 			"text": "# gn.link.raw_inject\n`plugins/links/raw_inject/`\n\nDiscovered at canvas-render time from the plugin tree. Run `make livedoc` to refresh after adding or removing a link plugin checkout.",
-			"x": 6868,
+			"x": 6876,
+			"y": 1207,
+			"width": 540,
+			"height": 160
+		},
+		{
+			"id": "n_ws_inject_plugin",
+			"type": "text",
+			"text": "# gn.link.ws_inject\n`plugins/links/ws_inject/`\n\nDiscovered at canvas-render time from the plugin tree. Run `make livedoc` to refresh after adding or removing a link plugin checkout.",
+			"x": 9833,
 			"y": 1207,
 			"width": 540,
 			"height": 160
@@ -484,7 +493,7 @@
 			"id": "n_rm_nat_traversal_pipeline",
 			"type": "text",
 			"text": "# ✓ NAT-traversal pipeline\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6303,
+			"x": 6859,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -493,7 +502,7 @@
 			"id": "n_rm_multi_path_scheduler",
 			"type": "text",
 			"text": "# ✓ Multi-path scheduler\n\nstatus: **done**\n\nevidence: plugins/strategies/float_send_rtt/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 6758,
+			"x": 7314,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -502,7 +511,7 @@
 			"id": "n_rm_directed_relay_direct_upgrade",
 			"type": "text",
 			"text": "# ✓ Directed relay → direct upgrade\n\nstatus: **done**\n\nevidence: plugins/links/ice/session.cpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7265,
+			"x": 7821,
 			"y": -100,
 			"width": 392,
 			"height": 200
@@ -511,7 +520,7 @@
 			"id": "n_rm_dplpmtud_active_path_mtu_probing",
 			"type": "text",
 			"text": "# ✓ DPLPMTUD active path-MTU probing\n\nstatus: **done**\n\nevidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 7734,
+			"x": 8290,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -520,7 +529,7 @@
 			"id": "n_rm_multi_turn_fallback",
 			"type": "text",
 			"text": "# ✓ Multi-TURN fallback\n\nstatus: **done**\n\nevidence: token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8351,
+			"x": 8907,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -529,7 +538,7 @@
 			"id": "n_rm_ipv6_mdns_dual_stack",
 			"type": "text",
 			"text": "# ✓ IPv6 mDNS dual-stack\n\nstatus: **done**\n\nevidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 8968,
+			"x": 9524,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -538,7 +547,7 @@
 			"id": "n_rm_port_mapping_upnp_pcp_nat_pmp",
 			"type": "text",
 			"text": "# ✓ Port mapping (UPnP / PCP / NAT-PMP)\n\nstatus: **done**\n\nevidence: plugins/links/portmap/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 9602,
+			"x": 10158,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -547,7 +556,7 @@
 			"id": "n_rm_kademlia_style_dht",
 			"type": "text",
 			"text": "# ✗ Kademlia-style DHT\n\nstatus: **missing**\n\nevidence: plugins/handlers/kademlia/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 10072,
+			"x": 10628,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -556,7 +565,7 @@
 			"id": "n_rm_address_based_forwarding",
 			"type": "text",
 			"text": "# ✗ Address-based forwarding\n\nstatus: **missing**\n\nevidence: plugins/handlers/router/ absent; symbol 'route_to_pk' not found in core/ + sdk/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 10527,
+			"x": 11082,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -565,7 +574,7 @@
 			"id": "n_rm_kv_storage_handler",
 			"type": "text",
 			"text": "# ✓ KV storage handler\n\nstatus: **done**\n\nevidence: plugins/handlers/store/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11145,
+			"x": 11701,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -574,7 +583,7 @@
 			"id": "n_rm_gossip_sync_handler",
 			"type": "text",
 			"text": "# ✗ Gossip sync handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/gossip/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 11599,
+			"x": 12155,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -583,7 +592,7 @@
 			"id": "n_rm_offline_outbound_queue",
 			"type": "text",
 			"text": "# ✗ Offline outbound queue\n\nstatus: **missing**\n\nevidence: token 'outbound_queue' absent; token 'offline_queue' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 12054,
+			"x": 12610,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -592,7 +601,7 @@
 			"id": "n_rm_subprocess_security_handler_worker_proxy",
 			"type": "text",
 			"text": "# ✓ Subprocess SECURITY/HANDLER worker proxy\n\nstatus: **done**\n\nevidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const gn_security_provider_vtable_t* RemoteHos...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 12671,
+			"x": 13227,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -601,7 +610,7 @@
 			"id": "n_rm_recv_side_parallel_decrypt",
 			"type": "text",
 			"text": "# ✓ Recv-side parallel decrypt\n\nstatus: **done**\n\nevidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 13289,
+			"x": 13844,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -610,7 +619,7 @@
 			"id": "n_rm_link_capability_gate",
 			"type": "text",
 			"text": "# ✓ Link capability gate\n\nstatus: **done**\n\nevidence: core/kernel/link_capability.hpp present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 13905,
+			"x": 14461,
 			"y": -100,
 			"width": 407,
 			"height": 200
@@ -618,8 +627,8 @@
 		{
 			"id": "n_rm_dynamicruntime_dlsym_cache",
 			"type": "text",
-			"text": "# ✓ DynamicRuntime dlsym cache\n\nstatus: **done**\n\nevidence: symbol 'DynamicPluginSymbols' present (core/plugin/plugin_manager.hpp:64:    DynamicPluginSymbols              symbo...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 14390,
+			"text": "# ✓ DynamicRuntime dlsym cache\n\nstatus: **done**\n\nevidence: symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 14946,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -627,8 +636,8 @@
 		{
 			"id": "n_rm_required_plugin_manifest_pinning",
 			"type": "text",
-			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/plugin_manager.cpp:65:    const ManifestEntry* me = nullptr;)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 15007,
+			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/plugin_manifest.cpp:195:    ManifestEntry me{};)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 15563,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -637,7 +646,7 @@
 			"id": "n_rm_gn_core_unload_plugin_hot_reload",
 			"type": "text",
 			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 15624,
+			"x": 16180,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -646,7 +655,7 @@
 			"id": "n_rm_subprocess_host_call_slot_completion",
 			"type": "text",
 			"text": "# ✓ Subprocess HOST_CALL slot completion\n\nstatus: **done**\n\nevidence: symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 16242,
+			"x": 16797,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -655,7 +664,7 @@
 			"id": "n_rm_per_slot_reply_timeout_override",
 			"type": "text",
 			"text": "# ✓ Per-slot reply-timeout override\n\nstatus: **done**\n\nevidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 16859,
+			"x": 17415,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -664,7 +673,7 @@
 			"id": "n_rm_wire_codec_gn_err_wire_decode",
 			"type": "text",
 			"text": "# ✓ Wire codec GN_ERR_WIRE_DECODE\n\nstatus: **done**\n\nevidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 17476,
+			"x": 18032,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -673,7 +682,7 @@
 			"id": "n_rm_fuzz_harness",
 			"type": "text",
 			"text": "# ✓ Fuzz harness\n\nstatus: **done**\n\nevidence: tests/fuzz/CMakeLists.txt present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 18093,
+			"x": 18650,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -682,7 +691,7 @@
 			"id": "n_rm_coverage_gating",
 			"type": "text",
 			"text": "# ✓ Coverage gating\n\nstatus: **done**\n\nevidence: token 'gcov' found (CMakeLists.txt:142:option(GOODNET_COVERAGE \"Build with gcov line+function cov...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 18548,
+			"x": 19104,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -691,7 +700,7 @@
 			"id": "n_rm_plugin_templates_and_scaffolder",
 			"type": "text",
 			"text": "# ✓ Plugin templates and scaffolder\n\nstatus: **done**\n\nevidence: nix/plugin.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 19166,
+			"x": 19721,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -699,17 +708,17 @@
 		{
 			"id": "n_rm_test_vectors",
 			"type": "text",
-			"text": "# ✗ Test vectors\n\nstatus: **missing**\n\nevidence: tests/vectors/ absent; docs/test-vectors/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 19621,
+			"text": "# ✓ Test vectors\n\nstatus: **done**\n\nevidence: tests/vectors/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"x": 20176,
 			"y": -100,
-			"width": 475,
+			"width": 377,
 			"height": 200
 		},
 		{
 			"id": "n_rm_raw_inject_bridge",
 			"type": "text",
 			"text": "# ✓ Raw inject bridge\n\nstatus: **done**\n\nevidence: plugins/links/raw_inject/ present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 20174,
+			"x": 20631,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -718,7 +727,7 @@
 			"id": "n_rm_full_wasm_kernel_build",
 			"type": "text",
 			"text": "# ✓ Full WASM kernel build\n\nstatus: **done**\n\nevidence: nix/goodnet-wasm.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 20629,
+			"x": 21086,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -727,7 +736,7 @@
 			"id": "n_rm_js_sdk_websocket_bridge",
 			"type": "text",
 			"text": "# ✓ JS SDK + WebSocket bridge\n\nstatus: **done**\n\nevidence: plugins/handlers/web_api_proxy/ present; bridges/js/package.json present; extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define GN_EXT_WEB_API_...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 21083,
+			"x": 21540,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -736,7 +745,7 @@
 			"id": "n_rm_c_abi_version_of_ipluginruntime",
 			"type": "text",
 			"text": "# ✓ C ABI version of `IPluginRuntime`\n\nstatus: **done**\n\nevidence: sdk/plugin_runtime.h present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 21700,
+			"x": 22158,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -745,7 +754,7 @@
 			"id": "n_rm_subprocess_sandbox",
 			"type": "text",
 			"text": "# ✗ Subprocess sandbox\n\nstatus: **missing**\n\nevidence: token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 22155,
+			"x": 22612,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -754,7 +763,7 @@
 			"id": "n_rm_bridge_kind_first_class_plugin_taxonomy",
 			"type": "text",
 			"text": "# ✗ BRIDGE kind first-class plugin taxonomy\n\nstatus: **missing**\n\nevidence: token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 22772,
+			"x": 23229,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -763,7 +772,7 @@
 			"id": "n_rm_io_uring_runtime",
 			"type": "text",
 			"text": "# ✗ io_uring runtime\n\nstatus: **missing**\n\nevidence: token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 23390,
+			"x": 23847,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -772,7 +781,7 @@
 			"id": "n_rm_aarch64_linux",
 			"type": "text",
 			"text": "# ✓ aarch64 Linux\n\nstatus: **done**\n\nevidence: nix/goodnet-aarch64-linux.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 24006,
+			"x": 24464,
 			"y": -100,
 			"width": 392,
 			"height": 200
@@ -781,7 +790,7 @@
 			"id": "n_rm_macos_x86_64_aarch64_cross_from_linux",
 			"type": "text",
 			"text": "# ✓ macOS x86_64 / aarch64 (cross from Linux)\n\nstatus: **done**\n\nevidence: nix/goodnet-darwin.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 24515,
+			"x": 24973,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -790,7 +799,7 @@
 			"id": "n_rm_android_build",
 			"type": "text",
 			"text": "# ✓ Android build\n\nstatus: **done**\n\nevidence: nix/goodnet-android.nix present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 25010,
+			"x": 25467,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -799,7 +808,7 @@
 			"id": "n_rm_mcu_port",
 			"type": "text",
 			"text": "# ✗ MCU port\n\nstatus: **missing**\n\nevidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 25464,
+			"x": 25921,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -808,7 +817,7 @@
 			"id": "n_rm_c99_sdk_subset",
 			"type": "text",
 			"text": "# ✗ C99 SDK subset\n\nstatus: **missing**\n\nevidence: sdk/c99/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 26081,
+			"x": 26539,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -817,7 +826,7 @@
 			"id": "n_rm_rust",
 			"type": "text",
 			"text": "# ✓ Rust\n\nstatus: **done**\n\nevidence: bridges/rust/Cargo.toml present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 26536,
+			"x": 26993,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -826,7 +835,7 @@
 			"id": "n_rm_python",
 			"type": "text",
 			"text": "# ✓ Python\n\nstatus: **done**\n\nevidence: bridges/python/pyproject.toml present\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 26990,
+			"x": 27448,
 			"y": -100,
 			"width": 392,
 			"height": 200
@@ -835,7 +844,7 @@
 			"id": "n_rm_go",
 			"type": "text",
 			"text": "# ✗ Go\n\nstatus: **missing**\n\nevidence: bridges/goodnet-go/go.mod absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 27459,
+			"x": 27916,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -844,7 +853,7 @@
 			"id": "n_rm_zig",
 			"type": "text",
 			"text": "# ✗ Zig\n\nstatus: **missing**\n\nevidence: bridges/goodnet-zig/build.zig absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 27914,
+			"x": 28371,
 			"y": -100,
 			"width": 385,
 			"height": 200
@@ -853,7 +862,7 @@
 			"id": "n_rm_phase_1_identitysigner_abstraction_in_flight",
 			"type": "text",
 			"text": "# ✗ Phase 1 — `IdentitySigner` abstraction (in flight)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 28408,
+			"x": 28865,
 			"y": -100,
 			"width": 445,
 			"height": 200
@@ -862,7 +871,7 @@
 			"id": "n_rm_phase_2_c_abi_for_identity_providers_pending",
 			"type": "text",
 			"text": "# ✗ Phase 2 — C ABI for identity providers (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 28999,
+			"x": 29456,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -871,7 +880,7 @@
 			"id": "n_rm_phase_3_pkcs_11_plugin_dual_expose_pending",
 			"type": "text",
 			"text": "# ✗ Phase 3 — PKCS#11 plugin dual-expose (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 29596,
+			"x": 30053,
 			"y": -100,
 			"width": 415,
 			"height": 200
@@ -880,7 +889,7 @@
 			"id": "n_rm_phase_4_goodnetd_operator_ux_pending",
 			"type": "text",
 			"text": "# ✗ Phase 4 — `goodnetd` operator UX (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 30184,
+			"x": 30641,
 			"y": -100,
 			"width": 385,
 			"height": 200
@@ -889,7 +898,7 @@
 			"id": "n_rm_phase_5_sdk_cpp_core_dx_noise_xx_integration_pending",
 			"type": "text",
 			"text": "# ✗ Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 30751,
+			"x": 31209,
 			"y": -100,
 			"width": 520,
 			"height": 200
@@ -898,7 +907,7 @@
 			"id": "n_rm_hardware_key_store_pkcs_11",
 			"type": "text",
 			"text": "# ✗ Hardware key store — PKCS#11\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 31411,
+			"x": 31868,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -907,7 +916,7 @@
 			"id": "n_rm_hardware_key_store_tpm_2_0",
 			"type": "text",
 			"text": "# ✗ Hardware key store — TPM 2.0\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 31865,
+			"x": 32323,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -916,7 +925,7 @@
 			"id": "n_rm_hardware_key_store_macos_keychain",
 			"type": "text",
 			"text": "# ✗ Hardware key store — macOS Keychain\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 32341,
+			"x": 32798,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -925,7 +934,7 @@
 			"id": "n_rm_hardware_key_store_webauthn_passkey",
 			"type": "text",
 			"text": "# ✗ Hardware key store — WebAuthn / passkey\n\nstatus: **missing**\n\nevidence: no rule in roadmap_map.yaml\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 32851,
+			"x": 33308,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -934,7 +943,7 @@
 			"id": "n_rm_post_quantum_security_provider",
 			"type": "text",
 			"text": "# ✗ Post-quantum security provider\n\nstatus: **missing**\n\nevidence: plugins/security/pq/ absent; token 'ML_KEM' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 33341,
+			"x": 33798,
 			"y": -100,
 			"width": 490,
 			"height": 200
@@ -943,7 +952,7 @@
 			"id": "n_rm_opentelemetry_trace_propagation_across_mesh_hops",
 			"type": "text",
 			"text": "# ✗ OpenTelemetry trace propagation across mesh hops\n\nstatus: **missing**\n\nevidence: token 'otel_span_propagate' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 33961,
+			"x": 34417,
 			"y": -100,
 			"width": 430,
 			"height": 200
@@ -952,7 +961,7 @@
 			"id": "n_rm_concrete_exporter_plugins",
 			"type": "text",
 			"text": "# ✗ Concrete exporter plugins\n\nstatus: **missing**\n\nevidence: plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 34520,
+			"x": 34978,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -961,7 +970,7 @@
 			"id": "n_rm_file_transfer_handler",
 			"type": "text",
 			"text": "# ✗ File transfer handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/file_transfer/ absent; extension id 'gn.transfer' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 35137,
+			"x": 35595,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -970,7 +979,7 @@
 			"id": "n_rm_identity_registration_handler",
 			"type": "text",
 			"text": "# ✗ Identity registration handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/identity/ absent; extension id 'gn.identity' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 35754,
+			"x": 36212,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -979,7 +988,7 @@
 			"id": "n_rm_group_membership_handler",
 			"type": "text",
 			"text": "# ✗ Group membership handler\n\nstatus: **missing**\n\nevidence: plugins/handlers/group/ absent; extension id 'gn.group' not registered in plugins/\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 36372,
+			"x": 36830,
 			"y": -100,
 			"width": 540,
 			"height": 200
@@ -988,7 +997,7 @@
 			"id": "n_rm_goodnetd_binary_roadmap",
 			"type": "text",
 			"text": "# ✗ Goodnetd binary roadmap\n\nstatus: **missing**\n\nevidence: token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 36989,
+			"x": 37446,
 			"y": -100,
 			"width": 482,
 			"height": 200
@@ -997,7 +1006,7 @@
 			"id": "n_rm_cli_introspection_tool",
 			"type": "text",
 			"text": "# ✗ CLI introspection tool\n\nstatus: **missing**\n\nevidence: tools/goodnetctl/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 37549,
+			"x": 38006,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -1006,7 +1015,7 @@
 			"id": "n_rm_config_validator",
 			"type": "text",
 			"text": "# ✗ Config validator\n\nstatus: **missing**\n\nevidence: tools/config_validator/ absent\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 38003,
+			"x": 38461,
 			"y": -100,
 			"width": 377,
 			"height": 200
@@ -1015,7 +1024,7 @@
 			"id": "n_rm_tcp_turn_rfc_6062",
 			"type": "text",
 			"text": "# ✓ TCP-TURN (RFC 6062)\n\nstatus: **done**\n\nevidence: token 'REQUESTED_TRANSPORT_TCP' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
-			"x": 38458,
+			"x": 38915,
 			"y": -100,
 			"width": 540,
 			"height": 200

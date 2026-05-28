@@ -497,7 +497,6 @@ manifest links them together.
 | **[handler-store](https://github.com/GoodNet-io/handler-store)** | Distributed key-value store (Memory + SQLite backends, first-writer-wins ACL). |
 | **[handler-dns](https://github.com/GoodNet-io/handler-dns)** | Typed RR storage on `gn.store` + three-tier resolver (local → cache → c-ares). |
 | **[handler-heartbeat](https://github.com/GoodNet-io/handler-heartbeat)** | Two-way liveness + RTT measurement; feeds the strategy chain through `notify_rtt_sample`. |
-| **[handler-ssh-modern](https://github.com/GoodNet-io/handler-ssh-modern)** | Native remote-shell handler (`SHELL_*` envelopes, peer-pubkey ACL — no openssh wire). |
 | **[handler-web-api-proxy](https://github.com/GoodNet-io/handler-web-api-proxy)** | Browser-gateway handler — WS endpoint + JSON-RPC over gnet envelopes. |
 | **[strategy-float-send-rtt](https://github.com/GoodNet-io/strategy-float-send-rtt)** | RTT-optimal multi-path picker (EWMA + 0.75 hysteresis + EncryptedPath tie-break). |
 | **[bridges-rust](https://github.com/GoodNet-io/bridges-rust)** | Rust bindings (`goodnet-sys` + safe `goodnet` crate) with `WireSchema` trait. |
