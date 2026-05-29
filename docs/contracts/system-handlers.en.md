@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel/` interception sites + per-handler subsystems
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the `msg_id` range is locked, individual handler
               wire formats evolve through their own contracts.
 

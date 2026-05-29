@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin
 **Implements:** size-prefix evolution per `abi-evolution.en.md`
-**Last verified:** 2026-05-25
+**Last verified:** 2026-05-26
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---

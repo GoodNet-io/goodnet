@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/cpp/uri.hpp` (parser), `core/util/uri_query.hpp` (peer-pk decode)
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-25
 **Stability:** v1.x; new schemes append to the recognition table without changing the grammar.
 
 ---

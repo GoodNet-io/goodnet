@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel/attestation_dispatcher`, `core/identity/attestation`
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the wire payload may grow only at the tail through
 `_reserved` slot promotion.
 

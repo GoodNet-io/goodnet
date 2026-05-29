@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** every transport plugin, `core/registry/connection`,
 plugins that push bytes through `host_api->send`
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-19
 **Stability:** v1.x; watermark thresholds are configuration-driven
 and additive event kinds extend `conn-events.en.md` at the tail.
 

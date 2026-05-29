@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/links/*`
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-19
 **Stability:** v1.x; new links plug in without changing this contract.
 
 ---

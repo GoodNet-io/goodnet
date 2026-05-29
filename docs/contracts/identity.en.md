@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/identity/`
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-29
 **Stability:** stable for v1.x. Mesh-address derivation, attestation
 wire form, sub-key registry layout, and rotation-proof wire form
 are all locked at the rc1 surface.
@@ -354,43 +354,33 @@ the motivation for §12.
 
 ---
 
-## 12. Roadmap to pluggable backends
+## 12. Pluggable backends — shipped
 
-A 5-phase refactor moves identity from a file-backed primitive to
-a pluggable backend with HSM and platform-keystore variants. The
-phases are sequential; each is shippable in isolation and does
-not regress prior behaviour.
+The 5-phase refactor that moved identity from a file-backed primitive
+to a pluggable backend is complete. All phases landed before rc6.
 
-| Phase | Scope | Status |
+| Phase | Scope | Where |
 |---|---|---|
-| 1 | `core/identity/IdentitySigner` interface + `LibsodiumSigner` default. No behaviour change — kernel calls the new interface, default impl wraps the same `crypto_sign_detached` path. | in flight |
-| 2 | `sdk/extensions/identity.h` + `gn_core_install_identity_from_provider()` public C ABI. Lets a plugin or embedding host install an external `IdentitySigner` before the first attestation runs. | pending |
-| 3 | PKCS#11 plugin (`plugins/security/pkcs11/`) dual-exposes a `gn.identity.pkcs11` extension alongside its existing `gn.security.pkcs11` registration. Identity-side path becomes the operator-recommended use. | pending |
-| 4 | `goodnetd identity import-hsm`, `goodnetd doctor` HSM-presence checks, `goodnetd quickstart` HSM option. Operator-facing surface for HSM-backed identity. | pending |
-| 5 | `gn::sdk::Core` ctor gains `Identity::from_hsm()` factory so embedding apps select an HSM identity declaratively. | pending |
+| 1 | `core/identity/IdentitySigner` interface + `LibsodiumSigner` default. All in-kernel `crypto_sign_*` callers route through the abstraction. | `core/identity/identity_plugin_signer.{hpp,cpp}` |
+| 2 | `sdk/extensions/identity.h` + `gn_core_install_identity_from_provider()` public C ABI. Embedding hosts and plugins install external signers before the first attestation runs. | `sdk/core.h:199`, `core/kernel/core_c.cpp:169` |
+| 3 | `plugins/security/pkcs11/` dual-exposes `gn.identity.pkcs11` alongside `gn.security.pkcs11`. Same `.so`, two extensions. Operator-recommended HSM path. | `plugins/security/pkcs11/pkcs11_identity_ext.{hpp,cpp}` |
+| 4 | `goodnetd identity import-hsm`, `goodnetd doctor` HSM-presence checks, `goodnetd quickstart` HSM option. | `apps/goodnetd/subcommands/identity_import_hsm.cpp` |
+| 5 | `gn::sdk::Core` ctor + `Identity::from_hsm()` factory. Embedding apps select an HSM identity declaratively. | `sdk/cpp/identity.hpp:125`, `sdk/cpp/core.cpp:336` |
 
-After Phase 5 lands the `plugins/identity/<backend>/` tree opens
-for additional backends: TPM 2.0 (TSS/ESAPI), macOS Keychain,
-Windows DPAPI / NCrypt, WebAuthn. Each registers under a distinct
-`gn.identity.<backend>` extension id; the file-backed default
-stays as the bootstrap path and is never removed.
+The `IdentitySigner` interface takes the narrowest shape the existing
+call sites need — `sign(purpose, payload, out_sig)`,
+`public_key(purpose, out_pk)`, `describe()` — so a backend (PKCS#11,
+TPM, Keychain, WebAuthn) implements the interface without ever
+materialising the secret bytes. The file-backed `LibsodiumSigner`
+default stays as the bootstrap path and is never removed.
 
-The `IdentitySigner` interface (Phase 1) intentionally takes the
-narrowest shape that the existing signing call sites need —
-`sign(purpose, payload, out_sig)`, `public_key(purpose, out_pk)`,
-`describe()` — so a backend can implement the interface without
-materialising secret bytes (PKCS#11 / TPM forward `sign` to
-`C_Sign` / `TPM2_Sign`; the public key is read from the token's
-descriptor). The kernel-internal `LibsodiumSigner` wraps the
-existing `KeyPair` path 1:1 and is the only impl at the end of
-Phase 1 — the on-disk file format §7 stays the canonical default.
+The `plugins/identity/<backend>/` tree is open for additional backends:
+TPM 2.0 (TSS/ESAPI), macOS Keychain / Secure Enclave, Windows NCrypt,
+WebAuthn. Each registers under a distinct `gn.identity.<backend>`
+extension id.
 
-Cross-references for the in-flight series:
-- Forward-looking operator workflow: `operator/identity-hsm-setup.en.md`
-  (draft, gated until Phase 4 lands).
-- Audit cross-cut: `Dev/audit-2026-05-13/108-identity-phase-plan.md`
-  in the project's Obsidian vault (5-phase ordering, where each
-  landed item slots in).
+Tracking: goodnet-io/goodnet#6 (closed).
+Operator workflow: `operator/identity-hsm-setup.en.md`.
 
 ---
 

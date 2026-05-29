@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** every C ABI structure in `sdk/`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-19
 **Stability:** the rules in this document do not change inside the v1.x line.
 
 ---

@@ -1,6 +1,7 @@
 # Contract: SignalChannel
 
 **Status:** active · v1
+**Last verified:** 2026-05-19
 **Owner:** `core/signal/`
 **Header:** `core/signal/signal_channel.hpp`
 **Stability:** stable for v1.x.

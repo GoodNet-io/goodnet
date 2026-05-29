@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every plugin author
-**Last verified:** 2026-05-19
+**Last verified:** 2026-05-25
 **Stability:** v1.x; phase table and shutdown ordering are stable.
 
 ---

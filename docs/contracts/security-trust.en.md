@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel` (TrustClass propagation), `plugins/security/*`,
             `plugins/links/*` (TrustClass declaration on connect)
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the TrustClass enum may grow only by appending values.
 
 ---

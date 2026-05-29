@@ -1,6 +1,7 @@
 # Plugin linkage modes
 
 **Status:** active · v1
+**Last verified:** 2026-05-19
 **Implements:** `sdk/plugin.h` + `core/plugin/plugin_manager.{hpp,cpp}`
 **Stability:** stable for v1.x; the three shipped modes
 (`dynamic`, `static`, `remote`) and the design slot for a fourth

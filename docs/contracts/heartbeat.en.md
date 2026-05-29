@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/handlers/heartbeat/`
-**Last verified:** 2026-05-18
+**Last verified:** 2026-05-19
 **Stability:** v1.x; wire envelope shape is locked (`kFlagPing`,
               `kFlagPong`, 21-byte fixed header). The extension
               vtable (`gn_heartbeat_api_t`) grows through

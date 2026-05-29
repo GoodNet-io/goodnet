@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/test/conformance/`
-**Last verified:** 2026-05-06
+**Last verified:** 2026-05-25
 **Stability:** v1.x; new typed-test contracts may be added without
               breaking existing instantiations.
 

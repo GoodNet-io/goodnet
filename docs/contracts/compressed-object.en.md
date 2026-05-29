@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `plugins/handlers/zstd_decompress/` + any sender that emits
            compressed frames into a GNET connection.
-**Last verified:** 2026-05-25
+**Last verified:** 2026-05-26
 **Stability:** v1.x; algo byte registry is append-only.
 
 ---

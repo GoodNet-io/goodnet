@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel/metrics_registry`, every plugin
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-26
 **Stability:** stable for v1.x; counter set is additive
 
 ---

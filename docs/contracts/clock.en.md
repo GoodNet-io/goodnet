@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** every time-dependent component in `core/` and `plugins/`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-19
 **Stability:** v1.x
 
 ---

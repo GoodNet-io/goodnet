@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/limits.h`, every code path that enforces a bound
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-19
 **Stability:** v1.x; new fields added at the end of the struct.
 
 ---

@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every plugin
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-25
 **Stability:** v1.x; lifecycle phases stable, hooks are size-prefix-evolvable
 
 ---

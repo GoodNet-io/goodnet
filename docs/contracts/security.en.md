@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel`, `core/identity/`, `core/security/`,
             `core/registry/security`, `plugins/security/*`
-**Last verified:** 2026-05-20
+**Last verified:** 2026-05-29
 **Stability:** stable for v1.x
 
 ---
@@ -261,11 +261,11 @@ register. The phased rollout (also tracked at
 
 | Phase | Surface | Status |
 |---|---|---|
-| 1 (#87) | `IdentitySigner` interface + `LibsodiumSigner` default. Zero observable change; all in-kernel `crypto_sign_*` callers route through the abstraction. | in flight |
-| 2 (#89) | `sdk/extensions/identity.h` + `gn_core_install_identity_from_provider(core, ext_id, key_label)`. Embedding hosts and plugins install external signers before the first attestation runs. | pending |
-| 3 (#91) | `plugins/security/pkcs11/` dual-exposes `gn.identity.pkcs11` alongside the existing `gn.security.pkcs11`. Operator-recommended HSM path. | pending |
-| 4 (#92) | `goodnetd identity import-hsm`, `goodnetd doctor` HSM presence, `goodnetd quickstart` HSM option. Operator-facing UX. | pending |
-| 5 (#94) | `gn::sdk::Core` ctor gains `Identity::from_hsm({ext_id, key_label})` factory. Downstream apps select HSM identity declaratively. | pending |
+| 1 | `IdentitySigner` interface + `LibsodiumSigner` default. All in-kernel `crypto_sign_*` callers route through the abstraction. | done |
+| 2 | `sdk/extensions/identity.h` + `gn_core_install_identity_from_provider(core, ext_id, key_label)`. Embedding hosts and plugins install external signers before the first attestation runs. | done |
+| 3 | `plugins/security/pkcs11/` dual-exposes `gn.identity.pkcs11` alongside the existing `gn.security.pkcs11`. Operator-recommended HSM path. | done |
+| 4 | `goodnetd identity import-hsm`, `goodnetd doctor` HSM presence, `goodnetd quickstart` HSM option. Operator-facing UX. | done |
+| 5 | `gn::sdk::Core` ctor gains `Identity::from_hsm({ext_id, key_label})` factory. Downstream apps select HSM identity declaratively. | done |
 
 `IdentitySigner` exposes the narrowest shape that the existing
 call sites need — `sign(purpose, payload, out_sig)`,

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/config/`
 **Header:** `core/config/config.hpp`
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-26
 **Stability:** stable for v1.x; key paths land at semver-minor
 boundaries with the corresponding limit / feature.
 

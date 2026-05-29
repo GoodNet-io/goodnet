@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/strategies/`
-**Last verified:** 2026-05-18
+**Last verified:** 2026-05-19
 **Stability:** v1.x; vtable shape grows through size-prefix
               evolution per `abi-evolution.en.md` §3. The
               `gn_path_event_t` enum admits new tail values; the
