@@ -321,7 +321,7 @@ std::optional<nlohmann::json> Config::resolve(std::string_view dotted_key) const
         auto it = node->find(std::string{seg});
         if (it == node->end()) return std::nullopt;
         if (end == std::string_view::npos) {
-            return *it;
+            return std::optional<nlohmann::json>{*it};
         }
         node = &(*it);
         start = end + 1;

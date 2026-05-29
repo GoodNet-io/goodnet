@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "gcc16-nixpkgs": {
+      "locked": {
+        "lastModified": 1778200158,
+        "narHash": "sha256-eaymG35ywDe+uLd37Lyt0JcDrz09x+UoFJL9b6k1REs=",
+        "owner": "sempiternal-aurora",
+        "repo": "nixpkgs",
+        "rev": "ebb08a80cf044c127bc6a85ce51e2abf1219febe",
+        "type": "github"
+      },
+      "original": {
+        "owner": "sempiternal-aurora",
+        "repo": "nixpkgs",
+        "rev": "ebb08a80cf044c127bc6a85ce51e2abf1219febe",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1779560665,
@@ -18,6 +34,7 @@
     },
     "root": {
       "inputs": {
+        "gcc16-nixpkgs": "gcc16-nixpkgs",
         "nixpkgs": "nixpkgs"
       }
     }
