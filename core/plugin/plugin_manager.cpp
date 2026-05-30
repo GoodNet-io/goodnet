@@ -206,7 +206,6 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         }
     }
 
-    /// Phase 5: register_all.
     for (auto& inst : instances_) {
         const auto rc = register_one(inst);
         if (rc != GN_OK) {

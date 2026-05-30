@@ -8,7 +8,7 @@
 
 #include <cstdint>
 #include <cstring>
-#include <scope>
+#include <experimental/scope>
 #include <span>
 #include <string>
 #include <string_view>
@@ -424,7 +424,7 @@ gn_result_t inject(void* host_ctx,
             return GN_ERR_LIMIT_REACHED;
         }
     }
-    std::scope_exit _guard([&]() noexcept { --inject_depth; });
+    std::experimental::scope_exit _guard([&]() noexcept { --inject_depth; });
 
     if (!target_ns || !*target_ns) return GN_ERR_INVALID_ENVELOPE;
 

@@ -59,6 +59,7 @@
 #include <vector>
 
 #include <sdk/abi.h>
+#include <sdk/cpp/contract.hpp>
 #include <sdk/cpp/dispatcher.hpp>
 #include <sdk/extensions/link.h>
 #include <sdk/host_api.h>
@@ -158,18 +159,24 @@ template <class T>
                                                                                \
     /* ── kernel-facing link vtable ──────────────────────── */          \
     const char* _gn_link_scheme_thunk(void*) { return _gn_link_scheme; }           \
-    gn_result_t _gn_link_listen(void* self, const char* uri) noexcept {          \
+    gn_result_t _gn_link_listen(void* self, const char* uri) noexcept           \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
         if (!self || !uri) return GN_ERR_NULL_ARG;                             \
         try { return _gn_link_of(self).listen(uri); }                            \
         catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
-    gn_result_t _gn_link_connect(void* self, const char* uri) noexcept {         \
+    gn_result_t _gn_link_connect(void* self, const char* uri) noexcept          \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
         if (!self || !uri) return GN_ERR_NULL_ARG;                             \
         try { return _gn_link_of(self).connect(uri); }                           \
         catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_send(void* self, gn_conn_id_t conn,                     \
-                             const std::uint8_t* bytes, std::size_t size) noexcept { \
+                             const std::uint8_t* bytes, std::size_t size) noexcept \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
         if (!self) return GN_ERR_NULL_ARG;                                     \
         if (!bytes && size > 0) return GN_ERR_NULL_ARG;                        \
         try { return _gn_link_of(self).send(conn,                                \

@@ -267,7 +267,7 @@ namespace {
         // Otherwise fall through to the default-constructed `Identity`
         // (IdentityFromFile with empty path) — the install dispatch
         // treats an empty path as "skip; let `gn_core_init` mint a
-        // fresh keypair", which matches the pre-Phase-5 behaviour.
+        // fresh keypair" — kernel mints a fresh Ed25519 keypair.
     }
     {
         std::error_code ec;
@@ -282,7 +282,7 @@ namespace {
 }
 
 /// `std::visit` overload helper. Lives here rather than in a public
-/// SDK header because the Phase 5 ctor is the only place the SDK
+/// SDK header because the Core ctor is the only place the SDK
 /// needs it; downstream embedders prefer their own visitor patterns.
 template <class... Ts>
 struct overloaded : Ts... { using Ts::operator()...; };
@@ -308,20 +308,17 @@ Core::Core(Options opts) {
             }
         }
 
-        // Phase 5 install dispatch: pick the C ABI entry per the
+        // Identity install dispatch: pick the C ABI entry per the
         // identity-source variant. File / provider land on the
         // matching `gn_core_install_identity_from_*` thunks; memory
-        // is reserved for a Phase 5.1 C ABI entry and currently
-        // surfaces as `GN_ERR_NOT_IMPLEMENTED` — the on-disk format
-        // expects a signed attestation that we cannot mint from a
-        // bare 64-byte secret without touching kernel-private code.
+        // is not yet supported (`gn_core_install_identity_from_memory`
+        // not available) and surfaces as `GN_ERR_NOT_IMPLEMENTED`.
         std::visit(overloaded{
             [&](const IdentityFromFile& f) {
                 if (f.path.empty()) {
                     // Empty path = "kernel mints a fresh keypair
-                    // inside gn_core_init". Matches pre-Phase-5
-                    // behaviour when no identity.bin exists in
-                    // $XDG_CONFIG_HOME.
+                    // inside gn_core_init" — default when no
+                    // identity.bin exists under $XDG_CONFIG_HOME.
                     return;
                 }
                 if (const auto rc = gn_core_install_identity_from_file(
@@ -345,18 +342,13 @@ Core::Core(Options opts) {
                 }
             },
             [&](const IdentityFromMemory&) {
-                // TODO(sdk-ext / Phase 5.1): add
-                // `gn_core_install_identity_from_memory` C ABI that
-                // takes the 64-byte secret directly and reconstructs
-                // a signed `NodeIdentity` in-place. The tempfile shim
-                // discussed in the Phase 5 plan is not viable because
-                // `NodeIdentity::load_from_file` verifies an
-                // attestation signature we cannot mint without
-                // re-running the kernel's keypair-derive +
-                // attestation flow — which lives behind the C ABI.
+                // TODO(sdk-ext): gn_core_install_identity_from_memory
+                // requires a signed attestation the C++ layer cannot
+                // mint — `NodeIdentity::load_from_file` verifies it
+                // and the derive+attest flow is behind the C ABI.
                 throw Error(GN_ERR_NOT_IMPLEMENTED,
-                    "Core: IdentityFromMemory: needs Phase 5.1 "
-                    "gn_core_install_identity_from_memory C ABI");
+                    "Core: IdentityFromMemory: "
+                    "gn_core_install_identity_from_memory not available");
             },
         }, opts.identity.source());
 

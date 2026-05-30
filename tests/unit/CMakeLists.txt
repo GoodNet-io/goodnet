@@ -32,6 +32,16 @@ if(NOT TARGET goodnet_security_null)
          EXCLUDE REGEX "test_plugin_manager\\.cpp$")
 endif()
 
+# test_inject_depth.cpp requires GCC ≥ 16 (C++26 toolchain). Exclude it on
+# older compilers so builds on GCC 15 (devShell fallback, plugin-repo CI)
+# still succeed. The source carries a matching #error as backstop for
+# out-of-tree inclusion without this guard.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS "16.0")
+    list(FILTER goodnet_unit_test_sources
+         EXCLUDE REGEX "test_inject_depth\\.cpp$")
+endif()
+
 if(NOT goodnet_unit_test_sources)
     message(STATUS "tests/unit: no test_*.cpp sources found; skipping")
     return()

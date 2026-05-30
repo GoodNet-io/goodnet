@@ -17,6 +17,8 @@
 #include <string>
 #include <string_view>
 
+#include <sdk/cpp/contract.hpp>
+
 namespace gn {
 
 /// Parsed connection URI per uri.en.md §3.
@@ -119,7 +121,9 @@ struct UriParts {
 /// `docs/contracts/uri.en.md` §5; never throws, never writes through a
 /// partial result.
 [[nodiscard]] inline std::optional<UriParts>
-parse_uri(std::string_view uri) {
+parse_uri(std::string_view uri)
+    GN_EXPECTS(!uri.empty())
+{
     UriParts out;
 
     if (uri_has_control_bytes(uri)) return std::nullopt;
@@ -215,7 +219,9 @@ parse_uri(std::string_view uri) {
 /// Returns `nullopt` on either malformed URI or scheme mismatch.
 [[nodiscard]] inline std::optional<UriParts>
 parse_uri_strict(std::string_view uri,
-                  std::string_view expected_scheme) noexcept {
+                  std::string_view expected_scheme) noexcept
+    GN_EXPECTS(!uri.empty() && !expected_scheme.empty())
+{
     auto parts = parse_uri(uri);
     if (!parts) return std::nullopt;
     if (parts->scheme != expected_scheme) return std::nullopt;

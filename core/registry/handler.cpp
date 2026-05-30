@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <mutex>
+#include <vector>
 
 #include <core/kernel/system_handler_ids.hpp>
 
@@ -172,24 +173,16 @@ HandlerRegistry::LookupResult HandlerRegistry::lookup_with_generation(
 
 std::size_t HandlerRegistry::drain_by_namespace(std::string_view ns) noexcept {
     std::unique_lock lock(mu_);
-    std::size_t removed = 0;
 
-    /// Two-pass: collect the keys whose namespace matches, then
-    /// erase. erase_if on the map mid-iteration is fine but the
-    /// by_id_ map needs the same per-entry erasures, so doing the
-    /// match in one pass keeps the by_id_ updates aligned.
     std::vector<gn_handler_id_t> ids_to_drop;
-    for (auto chain_it = chains_.begin(); chain_it != chains_.end();) {
-        if (chain_it->first.namespace_id == ns) {
-            for (const auto& entry : chain_it->second) {
-                ids_to_drop.push_back(entry.id);
-            }
-            chain_it = chains_.erase(chain_it);
-        } else {
-            ++chain_it;
-        }
-    }
+    std::erase_if(chains_, [&](const auto& pair) {
+        if (pair.first.namespace_id != ns) return false;
+        for (const auto& entry : pair.second)
+            ids_to_drop.push_back(entry.id);
+        return true;
+    });
 
+    std::size_t removed = 0;
     for (auto id : ids_to_drop) {
         if (by_id_.erase(id) == 1) {
             ++removed;

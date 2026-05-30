@@ -74,7 +74,7 @@ public:
         bool             is_loopback    = false;
     };
     using ConnLookup =
-        std::function<bool(gn_conn_id_t, ConnInfo&)>;
+        std::move_only_function<bool(gn_conn_id_t, ConnInfo&)>;
 
     Router(LocalIdentityRegistry& identities,
            HandlerRegistry&  handlers) noexcept;
@@ -110,7 +110,7 @@ private:
     LocalIdentityRegistry&     identities_;
     HandlerRegistry&      handlers_;
     mutable std::atomic<bool> relay_available_{false};
-    ConnLookup                conn_lookup_;
+    mutable ConnLookup        conn_lookup_;
 };
 
 } // namespace gn::core

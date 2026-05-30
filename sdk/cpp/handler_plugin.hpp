@@ -54,6 +54,7 @@
 #include <vector>
 
 #include <sdk/abi.h>
+#include <sdk/cpp/contract.hpp>
 #include <sdk/cpp/dispatcher.hpp>
 #include <sdk/handler.h>
 #include <sdk/host_api.h>
@@ -237,22 +238,34 @@ consteval bool validate_inject_targets(const gn_inject_dep_t* arr) noexcept {
         if (out_count) *out_count = inst->msg_ids.size();                      \
     }                                                                          \
     gn_propagation_t _gn_handler_handle_thunk(                                 \
-        void* self, const gn_message_t* env) noexcept {                        \
+        void* self, const gn_message_t* env) noexcept                          \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return GN_PROPAGATION_REJECT;                               \
         return ::gn::sdk::detail::handle_message_dispatch(                     \
             _gn_handler_of(self), env);                                        \
     }                                                                          \
     void _gn_handler_on_result_thunk(                                          \
         void* self, const gn_message_t* env,                                   \
-        gn_propagation_t r) noexcept {                                         \
+        gn_propagation_t r) noexcept                                           \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
         ::gn::sdk::detail::on_result_dispatch(                                 \
             _gn_handler_of(self), env, r);                                     \
     }                                                                          \
-    void _gn_handler_on_init_thunk(void* self) noexcept {                      \
+    void _gn_handler_on_init_thunk(void* self) noexcept                        \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
         try { ::gn::sdk::detail::dispatch_void<                                \
             &_gn_handler_class_t::on_init>(_gn_handler_of(self)); }            \
         catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
     }                                                                          \
-    void _gn_handler_on_shutdown_thunk(void* self) noexcept {                  \
+    void _gn_handler_on_shutdown_thunk(void* self) noexcept                    \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
         try { ::gn::sdk::detail::dispatch_void<                                \
             &_gn_handler_class_t::on_shutdown>(_gn_handler_of(self)); }        \
         catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \

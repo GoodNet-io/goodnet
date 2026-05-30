@@ -12,8 +12,6 @@
 #include <gtest/gtest.h>
 
 #include <array>
-#include <cstdint>
-#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <string>
@@ -144,7 +142,7 @@ TEST(SdkCore, MissingIdentityFileThrowsWithPath) {
     }
 }
 
-// ─── Phase 5 identity variants ────────────────────────────────────
+// ─── Identity variants ─────────────────────────────────────────────
 
 TEST(SdkCore, DefaultIdentityIsFile) {
     // Default-constructed Options carries
@@ -171,9 +169,7 @@ TEST(SdkCore, DefaultIdentityIsFile) {
 TEST(SdkCore, IdentityFromFileExplicitPath) {
     // `Identity::from_file({.path = ...})` must land on the file
     // dispatch and forward the path to
-    // `gn_core_install_identity_from_file`. The DX layer has no
-    // "dump installed identity back to disk" helper today (that
-    // sits behind a Phase 5.1 C ABI), so we exercise the dispatch
+    // `gn_core_install_identity_from_file`. We exercise the dispatch
     // by pointing at a deliberately non-existent file and
     // asserting the file thunk returned `NOT_FOUND` with the path
     // echoed back in the error context. The path-echo is the
@@ -222,10 +218,10 @@ TEST(SdkCore, IdentityFromProviderNotFoundThrows) {
 }
 
 TEST(SdkCore, IdentityFromMemoryNotImplemented) {
-    // Phase 5.1 will add `gn_core_install_identity_from_memory`.
-    // Until then the SDK dispatch throws NOT_IMPLEMENTED so
-    // embedders see the missing-feature signal at construction
-    // time instead of a silent fallback to "kernel mints fresh".
+    // `gn_core_install_identity_from_memory` is not yet available.
+    // The SDK dispatch throws NOT_IMPLEMENTED so embedders see the
+    // missing-feature signal at construction time instead of a
+    // silent fallback to "kernel mints fresh".
     gn::sdk::Core::Options opts;
     opts.identity = gn::sdk::Identity::from_memory({
         .secret_key = {},  // zero-filled; content irrelevant here
@@ -236,7 +232,7 @@ TEST(SdkCore, IdentityFromMemoryNotImplemented) {
     } catch (const gn::sdk::Error& e) {
         EXPECT_EQ(e.code(), GN_ERR_NOT_IMPLEMENTED);
         const std::string what = e.what();
-        EXPECT_NE(what.find("Phase 5.1"), std::string::npos);
+        EXPECT_NE(what.find("IdentityFromMemory"), std::string::npos);
     }
 }
 

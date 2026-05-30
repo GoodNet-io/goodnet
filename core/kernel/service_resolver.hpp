@@ -18,6 +18,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <utility>
 
 #include <sdk/plugin.h>
 #include <vector>
@@ -34,6 +35,16 @@ struct ServiceDescriptor {
     std::vector<std::string> ext_requires;
     std::vector<std::string> ext_provides;
     gn_plugin_kind_t         kind{GN_PLUGIN_KIND_UNKNOWN};
+
+    /// (protocol_id, msg_id) pairs this plugin injects into.
+    /// msg_id == 0 is wildcard — the plugin may inject any msg_id
+    /// into that protocol. Populated from gn_plugin_descriptor_t::inject_targets.
+    std::vector<std::pair<std::string, std::uint32_t>> inject_targets;
+
+    /// (protocol_id, msg_id) pairs this plugin handles via register_vtable.
+    /// msg_id == 0 is wildcard. Populated by the plugin manager from the
+    /// vtable registration calls or the handler descriptor's protocol_id/msg_id.
+    std::vector<std::pair<std::string, std::uint32_t>> inject_handles;
 };
 
 class ServiceResolver {

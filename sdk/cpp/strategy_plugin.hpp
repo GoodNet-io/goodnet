@@ -54,6 +54,7 @@
 #include <type_traits>
 
 #include <sdk/abi.h>
+#include <sdk/cpp/contract.hpp>
 #include <sdk/cpp/dispatcher.hpp>
 #include <sdk/extensions/strategy.h>
 #include <sdk/host_api.h>
@@ -166,7 +167,10 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         const std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],                       \
         const gn_path_sample_t* candidates,                                    \
         std::size_t candidate_count,                                           \
-        gn_conn_id_t* out_chosen) noexcept {                                   \
+        gn_conn_id_t* out_chosen) noexcept                                     \
+        GN_EXPECTS(ctx != nullptr)                                             \
+    {                                                                          \
+        if (!ctx) return GN_ERR_NULL_ARG;                                      \
         return ::gn::sdk::detail::pick_conn_dispatch(                          \
             _gn_strategy_of(ctx),                                              \
             peer_pk, candidates, candidate_count, out_chosen);                 \
@@ -176,7 +180,10 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         void* ctx,                                                             \
         const std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],                       \
         gn_path_event_t ev,                                                    \
-        const gn_path_sample_t* sample) noexcept {                             \
+        const gn_path_sample_t* sample) noexcept                               \
+        GN_EXPECTS(ctx != nullptr)                                             \
+    {                                                                          \
+        if (!ctx) return GN_ERR_NULL_ARG;                                      \
         return ::gn::sdk::detail::on_path_event_dispatch(                      \
             _gn_strategy_of(ctx), peer_pk, ev, sample);                        \
     }                                                                          \

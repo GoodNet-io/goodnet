@@ -2,14 +2,10 @@
 /// @file   sdk/cpp/identity.hpp
 /// @brief  Identity source variants for `gn::sdk::Core`.
 ///
-/// Pre-Phase-5 `Core::Options` carried a single `identity_path`
-/// field — the only knob the embedder had was "which file on disk
-/// holds the libsodium-formatted secret". After the 5-phase HSM
-/// refactor (`docs/contracts/identity.en.md` §12) the operator
-/// picks among three sources:
+/// `Core::Options::identity` selects among three key-material sources:
 ///
-///   * `IdentityFromFile`     — the legacy default. The kernel
-///                              reads the libsodium blob with
+///   * `IdentityFromFile`     — file-backed default. The kernel reads
+///                              the libsodium blob via
 ///                              `gn_core_install_identity_from_file`.
 ///                              An empty path defers to the XDG
 ///                              default (`$XDG_CONFIG_HOME/goodnet/
@@ -24,14 +20,10 @@
 ///                              private key never enters process
 ///                              memory.
 ///   * `IdentityFromMemory`   — in-process secret bytes. Test
-///                              fixtures and ephemeral nodes only;
-///                              the kernel writes the buffer to a
-///                              `0600` tempfile under the runtime
-///                              dir and forwards through
-///                              `install_identity_from_file`, then
-///                              unlinks the tempfile before the
-///                              ctor returns. A dedicated C ABI
-///                              entry is on the Phase 5.1 roadmap.
+///                              fixtures and ephemeral nodes only.
+///                              `gn_core_install_identity_from_memory`
+///                              is not yet available; see
+///                              `docs/contracts/identity.en.md` §12.
 ///
 /// `Identity` is a thin tagged-union over the three variants with
 /// readable static factories:
@@ -46,8 +38,8 @@
 /// @endcode
 ///
 /// The default-constructed `Identity` is `IdentityFromFile{}` with
-/// an empty path — i.e. the XDG default — so a downstream that
-/// passes `Options{}` keeps the pre-Phase-5 behaviour.
+/// an empty path (XDG default), so passing `Options{}` preserves
+/// file-backed key material behaviour.
 
 #pragma once
 
@@ -62,8 +54,8 @@ namespace gn::sdk {
 
 /// File-backed identity. An empty @ref path resolves against
 /// `$XDG_CONFIG_HOME/goodnet/identity.bin` (or
-/// `$HOME/.config/goodnet/identity.bin`) at ctor time, matching the
-/// pre-Phase-5 default. A non-empty path is taken verbatim.
+/// `$HOME/.config/goodnet/identity.bin`) at ctor time.
+/// A non-empty path is taken verbatim.
 struct IdentityFromFile {
     std::filesystem::path path;
 };
@@ -89,15 +81,9 @@ struct IdentityFromProvider {
 };
 
 /// In-process identity — 64-byte libsodium-layout Ed25519 secret.
-/// Used by unit tests and ephemeral nodes that mint a keypair on
-/// the fly. The `Core` ctor writes the bytes to a `0600` tempfile
-/// under the system runtime directory, calls
-/// `gn_core_install_identity_from_file` against it, and unlinks
-/// the tempfile before returning — the secret never lives on disk
-/// past the install call. A dedicated
-/// `gn_core_install_identity_from_memory` C ABI is reserved for
-/// Phase 5.1; until then the tempfile shim keeps the kernel
-/// surface untouched.
+/// Intended for unit tests and ephemeral nodes.
+/// `gn_core_install_identity_from_memory` is not yet available;
+/// construction throws `Error(GN_ERR_NOT_IMPLEMENTED)`.
 struct IdentityFromMemory {
     std::array<std::uint8_t, 64> secret_key{};
 };
@@ -110,8 +96,7 @@ public:
                                 IdentityFromProvider,
                                 IdentityFromMemory>;
 
-    /// Default = file-backed at the XDG path. Matches the
-    /// pre-Phase-5 behaviour for hosts that pass `Options{}`.
+    /// Default = file-backed at the XDG path.
     Identity() noexcept : src_{IdentityFromFile{}} {}
 
     explicit Identity(Source s) noexcept : src_{std::move(s)} {}
@@ -126,8 +111,12 @@ public:
         return Identity{Source{std::move(p)}};
     }
 
-    /// In-memory factory (tests, ephemeral nodes).
-    [[nodiscard]] static Identity from_memory(IdentityFromMemory m) {
+    /// In-memory identity factory — not yet implemented.
+    /// @warning Throws gn::sdk::Error(GN_ERR_NOT_IMPLEMENTED) at runtime.
+    ///          Do not use in production code.
+    [[nodiscard]]
+    [[deprecated("from_memory is not yet implemented — throws at runtime")]]
+    static Identity from_memory(IdentityFromMemory m) {
         return Identity{Source{std::move(m)}};
     }
 

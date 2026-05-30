@@ -61,7 +61,7 @@ public:
     /// conn) plus the payload bytes. The msg id is implicit in the
     /// subscription filter.
     using Callback =
-        std::function<void(gn_conn_id_t, std::span<const std::uint8_t>)>;
+        std::move_only_function<void(gn_conn_id_t, std::span<const std::uint8_t>)>;
 
     /// Type-erased storage for the kernel's `user_data` block. The
     /// implementation lives in `core.cpp`; the header only sees the
@@ -133,8 +133,7 @@ public:
         /// `Identity::from_file({...})`, or
         /// `Identity::from_memory({...})` to override. See
         /// `sdk/cpp/identity.hpp` for the variant catalogue —
-        /// Phase 5 of the rc6 identity refactor surfaced the HSM
-        /// path here so embedders pick a backend declaratively
+        /// use `Identity::from_hsm(...)` to pick a hardware backend
         /// instead of unfolding the
         /// `gn_core_install_identity_from_provider` C ABI by hand.
         Identity identity{};
