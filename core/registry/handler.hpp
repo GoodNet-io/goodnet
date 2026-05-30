@@ -10,12 +10,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <flat_map>
 #include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -201,25 +201,13 @@ private:
         std::string   protocol_id;
         std::uint32_t msg_id = 0;
 
-        bool operator==(const Key& o) const noexcept {
-            return namespace_id == o.namespace_id
-                && protocol_id  == o.protocol_id
-                && msg_id       == o.msg_id;
-        }
-    };
-    struct KeyHash {
-        [[nodiscard]] std::size_t operator()(const Key& k) const noexcept {
-            const std::size_t h_ns    = std::hash<std::string>{}(k.namespace_id);
-            const std::size_t h_proto = std::hash<std::string>{}(k.protocol_id);
-            const std::size_t h_msg   = std::hash<std::uint32_t>{}(k.msg_id);
-            return h_ns ^ (h_proto << 1) ^ (h_msg << 2);
-        }
+        auto operator<=>(const Key&) const noexcept = default;
     };
     using Chain = std::vector<HandlerEntry>;
 
-    mutable std::shared_mutex                    mu_;
-    std::unordered_map<Key, Chain, KeyHash>      chains_;
-    std::unordered_map<gn_handler_id_t, Key>     by_id_;
+    mutable std::shared_mutex                              mu_;
+    std::flat_map<Key, Chain>                              chains_;
+    std::flat_map<gn_handler_id_t, Key>                    by_id_;
 
     std::atomic<gn_handler_id_t> next_id_{1};
     std::atomic<std::uint64_t>   generation_{0};

@@ -13,7 +13,7 @@ set(GOODNET_VERSION_SUFFIX "-rc6" CACHE STRING "Pre-release suffix (e.g. -rc6); 
 set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
-set(CMAKE_CXX_STANDARD          23)
+set(CMAKE_CXX_STANDARD          26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS         OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

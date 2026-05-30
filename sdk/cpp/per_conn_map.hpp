@@ -41,7 +41,7 @@ namespace gn::sdk {
 template <class State>
 class PerConnMap {
 public:
-    using DisconnectHandler = std::function<void(gn_conn_id_t)>;
+    using DisconnectHandler = std::move_only_function<void(gn_conn_id_t)>;
 
     /// Subscribes to `conn_state` immediately. Pass a custom @p
     /// on_disconnect if the default `erase` semantics aren't right
@@ -49,20 +49,22 @@ public:
     explicit PerConnMap(const host_api_t* api,
                         DisconnectHandler on_disconnect = {})
         : impl_(std::make_shared<Impl>()) {
-        impl_->on_disconnect = std::move(on_disconnect);
+        if (on_disconnect)
+            impl_->on_disconnect =
+                std::make_shared<DisconnectHandler>(std::move(on_disconnect));
         std::weak_ptr<Impl> weak = impl_;
         sub_ = Subscription::on_conn_state(api,
             [weak](const gn_conn_event_t& ev) {
                 if (ev.kind != GN_CONN_EVENT_DISCONNECTED) return;
                 auto self = weak.lock();
                 if (!self) return;
-                DisconnectHandler hook;
+                std::shared_ptr<DisconnectHandler> hook;
                 {
                     std::lock_guard lk(self->mu);
                     self->m.erase(ev.conn);
                     hook = self->on_disconnect;
                 }
-                if (hook) hook(ev.conn);
+                if (hook) (*hook)(ev.conn);
             });
     }
 
@@ -114,7 +116,11 @@ public:
     /// The hook runs after the entry is erased; pass `{}` to disable.
     void set_disconnect_handler(DisconnectHandler hook) {
         std::lock_guard lk(impl_->mu);
-        impl_->on_disconnect = std::move(hook);
+        if (hook)
+            impl_->on_disconnect =
+                std::make_shared<DisconnectHandler>(std::move(hook));
+        else
+            impl_->on_disconnect.reset();
     }
 
     /// Iterate over every (conn, state) pair under the internal
@@ -132,7 +138,7 @@ private:
     struct Impl {
         mutable std::mutex mu;
         std::unordered_map<gn_conn_id_t, std::shared_ptr<State>> m;
-        DisconnectHandler on_disconnect;
+        std::shared_ptr<DisconnectHandler> on_disconnect;
     };
 
     std::shared_ptr<Impl> impl_;

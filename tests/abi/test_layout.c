@@ -81,8 +81,16 @@ _Static_assert(offsetof(gn_conn_event_t, remote_pk) == 20,
                "gn_conn_event_t::remote_pk offset pinned at 20");
 _Static_assert(offsetof(gn_conn_event_t, pending_bytes) == 56,
                "gn_conn_event_t::pending_bytes offset pinned at 56");
-_Static_assert(offsetof(gn_conn_event_t, _reserved) == 64,
-               "gn_conn_event_t::_reserved offset pinned at 64");
+_Static_assert(offsetof(gn_conn_event_t, user_pk_prev) == 64,
+               "gn_conn_event_t::user_pk_prev offset pinned at 64");
+_Static_assert(offsetof(gn_conn_event_t, user_pk_next) == 72,
+               "gn_conn_event_t::user_pk_next offset pinned at 72");
+_Static_assert(offsetof(gn_conn_event_t, rotation_seq) == 80,
+               "gn_conn_event_t::rotation_seq offset pinned at 80");
+_Static_assert(offsetof(gn_conn_event_t, _reserved) == 88,
+               "gn_conn_event_t::_reserved offset pinned at 88");
+_Static_assert(sizeof(((gn_conn_event_t*)0)->_reserved) == sizeof(void*),
+               "gn_conn_event_t::_reserved holds 1 evolution slot after rc");
 
 /* ── sdk/endpoint.h ────────────────────────────────────────────────────────── */
 
@@ -313,8 +321,12 @@ _Static_assert(offsetof(gn_plugin_descriptor_t, ext_provides) == 32,
                "gn_plugin_descriptor_t::ext_provides offset pinned at 32");
 _Static_assert(offsetof(gn_plugin_descriptor_t, kind) == 40,
                "gn_plugin_descriptor_t::kind offset pinned at 40");
-_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 48,
-               "gn_plugin_descriptor_t::_reserved offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, inject_targets) == 48,
+               "gn_plugin_descriptor_t::inject_targets offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 56,
+               "gn_plugin_descriptor_t::_reserved offset pinned at 56");
+_Static_assert(sizeof(((gn_plugin_descriptor_t*)0)->_reserved) == 4 * sizeof(void*),
+               "gn_plugin_descriptor_t::_reserved holds 4 evolution slots");
 
 /* ── sdk/protocol.h ────────────────────────────────────────────────────────── */
 

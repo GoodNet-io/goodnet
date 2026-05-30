@@ -81,6 +81,8 @@ cross.stdenv.mkDerivation {
     "-DGOODNET_USE_MOLD=OFF"
     "-DGOODNET_USE_LTO=OFF"
     "-DGOODNET_USE_PCH=OFF"
+    # apple cross stdenv does not support c++26 yet
+    "-DCMAKE_CXX_STANDARD=23"
   ];
 
   doCheck = false;

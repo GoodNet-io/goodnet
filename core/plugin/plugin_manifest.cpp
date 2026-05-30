@@ -26,17 +26,8 @@ namespace {
 
 constexpr std::size_t kReadChunkBytes = std::size_t{64} * 1024;
 
-/// RAII wrapper around `std::FILE*` so an early return — or a
-/// future libsodium update that throws — cannot leak the
-/// descriptor. `fclose`'s return value is intentionally ignored;
-/// the manifest only reads, so a close error has no semantic
-/// recovery path.
-struct FileCloser {
-    void operator()(std::FILE* f) const noexcept {
-        if (f) (void)std::fclose(f);
-    }
-};
-using FilePtr = std::unique_ptr<std::FILE, FileCloser>;
+using FilePtr = std::unique_ptr<
+    std::FILE, decltype([](std::FILE* f) noexcept { if (f) (void)std::fclose(f); })>;
 
 /// Canonicalise @p path so manifest entries match across trivial
 /// representational differences (`./foo.so` vs `foo.so`,

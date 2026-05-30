@@ -95,8 +95,8 @@ public:
     [[nodiscard]] const std::vector<RotationEntry>&
     rotation_history() const noexcept { return rotation_history_; }
 
-    /// Bump the rotation counter (Phase 5 calls this when announcing
-    /// or applying a rotation). Returns the new value.
+    /// Bump the rotation counter (called when announcing or applying
+    /// a rotation). Returns the new value.
     std::uint64_t bump_rotation_counter() noexcept {
         return ++rotation_counter_;
     }

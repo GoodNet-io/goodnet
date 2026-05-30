@@ -2,8 +2,11 @@
   description = "GoodNet kernel + SDK with bundled baseline plugins.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # gcc 16.1.0 (PR #515877) — not yet in nixpkgs-unstable main.
+  # Drop this input and switch to pkgs.gcc16Stdenv once it lands.
+  inputs.gcc16-nixpkgs.url = "github:sempiternal-aurora/nixpkgs/ebb08a80cf044c127bc6a85ce51e2abf1219febe";
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, gcc16-nixpkgs }:
     let
       # Cross-platform posture (honest):
       #
@@ -33,6 +36,14 @@
           [ "x86_64-linux" "aarch64-linux"
             "x86_64-darwin" "aarch64-darwin" ]
           (system: f system (import nixpkgs { inherit system; }));
+
+      # Select gcc16Stdenv for x86_64-linux (the only system the PR
+      # packages today); fall back to gcc15Stdenv elsewhere until
+      # gcc16 lands in nixpkgs-unstable main.
+      mkStdenv = system: pkgs:
+        if system == "x86_64-linux"
+        then (import gcc16-nixpkgs { system = system; }).gcc16Stdenv
+        else pkgs.gcc15Stdenv;
 
       # `goodnet.lib.compose` — operator-facing constructor.
       # Bundles a daemon binary + a chosen plugin set + an optional
@@ -134,7 +145,7 @@
 
       packages = forAllSystems (system: pkgs:
         let
-          stdenv = pkgs.gcc15Stdenv;
+          stdenv = mkStdenv system pkgs;
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
             # External bench baselines — iperf3 for raw TCP/UDP
@@ -760,7 +771,7 @@
 
       devShells = forAllSystems (system: pkgs:
         let
-          stdenv = pkgs.gcc15Stdenv;
+          stdenv = mkStdenv system pkgs;
           # Explicit toolchain — kernel build deps plus the test
           # framework. Loadable plugin source is not in the
           # monorepo's git tree any more (each lives in its own
@@ -902,7 +913,7 @@
 
               cat <<'EOF'
 
-GoodNet devShell  (gcc15, C++23)
+GoodNet devShell  (gcc16, C++26)
 
   Setup / refresh:
     nix run .#setup            mirrors + plugins + hooks (one-shot)

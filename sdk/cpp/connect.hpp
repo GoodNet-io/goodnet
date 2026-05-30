@@ -34,6 +34,7 @@
 
 #include <sdk/cpp/connection.hpp>
 #include <sdk/cpp/link_carrier.hpp>
+#include <sdk/cpp/uri.hpp>
 #include <sdk/host_api.h>
 #include <sdk/types.h>
 
@@ -79,33 +80,22 @@ private:
     Connection                   conn_;
 };
 
-namespace detail {
-
-/// Extract the scheme prefix from @p uri ("wss://host:443" → "wss").
-/// Returns empty when no `://` separator is present.
-[[nodiscard]] inline std::string_view parse_scheme(
-    std::string_view uri) noexcept {
-    const auto pos = uri.find("://");
-    if (pos == std::string_view::npos) return {};
-    return uri.substr(0, pos);
-}
-
-}  // namespace detail
-
 /// Synchronous URI-driven connect. Parses the scheme, queries the
 /// matching `gn.link.<scheme>` extension, calls `connect`, wraps
 /// the result in a `ConnectedSession`.
 ///
 /// Returns `nullopt` on:
-///   * empty / malformed URI
+///   * empty / malformed URI (including control bytes or invalid scheme)
 ///   * no plugin registered under `gn.link.<scheme>`
 ///   * underlying `connect` failure (use `connect_to_err` if you
 ///     need the failure code surfaced)
 [[nodiscard]] inline std::optional<ConnectedSession>
 connect_to(const host_api_t* api, std::string_view uri) {
     if (!api) return std::nullopt;
-    const auto scheme = detail::parse_scheme(uri);
-    if (scheme.empty()) return std::nullopt;
+    if (uri_has_control_bytes(uri)) return std::nullopt;
+    const auto parts = parse_uri(uri);
+    if (!parts || !is_valid_scheme(parts->scheme)) return std::nullopt;
+    const auto& scheme = parts->scheme;
 
     auto carrier_opt = LinkCarrier::query(api, scheme);
     if (!carrier_opt) return std::nullopt;
@@ -130,11 +120,16 @@ connect_to_err(const host_api_t* api,
         if (out_err) *out_err = GN_ERR_NULL_ARG;
         return std::nullopt;
     }
-    const auto scheme = detail::parse_scheme(uri);
-    if (scheme.empty()) {
+    if (uri_has_control_bytes(uri)) {
         if (out_err) *out_err = GN_ERR_INVALID_ENVELOPE;
         return std::nullopt;
     }
+    const auto parts = parse_uri(uri);
+    if (!parts || !is_valid_scheme(parts->scheme)) {
+        if (out_err) *out_err = GN_ERR_INVALID_ENVELOPE;
+        return std::nullopt;
+    }
+    const auto& scheme = parts->scheme;
 
     auto carrier_opt = LinkCarrier::query(api, scheme);
     if (!carrier_opt) {
@@ -151,8 +146,8 @@ connect_to_err(const host_api_t* api,
     return ConnectedSession(std::move(*carrier_opt), conn);
 }
 
-/// Peer-pk-level outbound send. Wraps `host_api->send_to`, the
-/// Walks live conns to @p peer_pk, asks the registered
+/// Peer-pk-level outbound send. Wraps `host_api->send_to`. Walks live
+/// conns to @p peer_pk, asks the registered
 /// `gn.strategy.*` extensions to pick one, dispatches through
 /// `host_api->send`. Returns the kernel's `gn_result_t` verbatim.
 ///
@@ -175,8 +170,10 @@ send_to(const host_api_t* api,
 [[nodiscard]] inline std::optional<LinkCarrier>
 listen_to(const host_api_t* api, std::string_view uri) {
     if (!api) return std::nullopt;
-    const auto scheme = detail::parse_scheme(uri);
-    if (scheme.empty()) return std::nullopt;
+    if (uri_has_control_bytes(uri)) return std::nullopt;
+    const auto parts = parse_uri(uri);
+    if (!parts || !is_valid_scheme(parts->scheme)) return std::nullopt;
+    const auto& scheme = parts->scheme;
     auto carrier_opt = LinkCarrier::query(api, scheme);
     if (!carrier_opt) return std::nullopt;
     if (carrier_opt->listen(uri) != GN_OK) return std::nullopt;

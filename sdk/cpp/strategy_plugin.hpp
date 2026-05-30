@@ -54,6 +54,8 @@
 #include <type_traits>
 
 #include <sdk/abi.h>
+#include <sdk/cpp/contract.hpp>
+#include <sdk/cpp/dispatcher.hpp>
 #include <sdk/extensions/strategy.h>
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
@@ -67,6 +69,9 @@ struct StrategyPluginInstance {
     void*             host_ctx             = nullptr;
     std::unique_ptr<T> strategy;
     bool              extension_registered = false;
+    // Per-instance vtable — not static, so hot-reload gets a fresh instance
+    // with correct ctx pointer rather than reusing a stale function-local static.
+    gn_strategy_api_t vtable               = {};
 };
 
 template <class T>
@@ -109,23 +114,6 @@ template <class T>
     }
 }
 
-template <class T>
-void strategy_on_init_dispatch(T& s) noexcept {
-    if constexpr (requires { s.on_init(); }) {
-        try { s.on_init(); } catch (...) {  // NOLINT(bugprone-empty-catch)
-            // C ABI boundary — exceptions must not unwind into kernel.
-        }
-    } else { (void)s; }
-}
-
-template <class T>
-void strategy_on_shutdown_dispatch(T& s) noexcept {
-    if constexpr (requires { s.on_shutdown(); }) {
-        try { s.on_shutdown(); } catch (...) {  // NOLINT(bugprone-empty-catch)
-            // C ABI boundary — exceptions must not unwind into kernel.
-        }
-    } else { (void)s; }
-}
 
 template <class T>
 constexpr bool strategy_has_required_v =
@@ -179,7 +167,10 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         const std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],                       \
         const gn_path_sample_t* candidates,                                    \
         std::size_t candidate_count,                                           \
-        gn_conn_id_t* out_chosen) noexcept {                                   \
+        gn_conn_id_t* out_chosen) noexcept                                     \
+        GN_EXPECTS(ctx != nullptr)                                             \
+    {                                                                          \
+        if (!ctx) return GN_ERR_NULL_ARG;                                      \
         return ::gn::sdk::detail::pick_conn_dispatch(                          \
             _gn_strategy_of(ctx),                                              \
             peer_pk, candidates, candidate_count, out_chosen);                 \
@@ -189,7 +180,10 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         void* ctx,                                                             \
         const std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES],                       \
         gn_path_event_t ev,                                                    \
-        const gn_path_sample_t* sample) noexcept {                             \
+        const gn_path_sample_t* sample) noexcept                               \
+        GN_EXPECTS(ctx != nullptr)                                             \
+    {                                                                          \
+        if (!ctx) return GN_ERR_NULL_ARG;                                      \
         return ::gn::sdk::detail::on_path_event_dispatch(                      \
             _gn_strategy_of(ctx), peer_pk, ev, sample);                        \
     }                                                                          \
@@ -217,7 +211,8 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         /* ext_requires      */ nullptr,                                       \
         /* ext_provides      */ &_gn_strategy_provides[0],                     \
         /* kind              */ GN_PLUGIN_KIND_STRATEGY,                       \
-        /* _reserved         */ {nullptr, nullptr, nullptr, nullptr},          \
+        /* inject_targets    */ nullptr,                                       \
+        /* _reserved         */ {},                                              \
     };                                                                         \
     }  /* anonymous namespace */                                               \
                                                                                \
@@ -244,7 +239,9 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
             delete p;                                                          \
             return GN_ERR_OUT_OF_MEMORY;                                       \
         }                                                                      \
-        ::gn::sdk::detail::strategy_on_init_dispatch(*p->strategy);            \
+        try { ::gn::sdk::detail::dispatch_void<                                 \
+            &_gn_strategy_class_t::on_init>(*p->strategy); }                   \
+        catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
         *out_self = p;                                                         \
         return GN_OK;                                                          \
     }                                                                          \
@@ -255,13 +252,12 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         if (!p->api || !p->api->register_extension) {                          \
             return GN_ERR_NOT_IMPLEMENTED;                                     \
         }                                                                      \
-        static gn_strategy_api_t vt = _gn_strategy_make_vtable(p);             \
-        vt.ctx = p;                                                            \
+        p->vtable = _gn_strategy_make_vtable(p);                               \
         const gn_result_t rc = p->api->register_extension(                     \
             p->host_ctx,                                                       \
             _gn_strategy_class_t::extension_name(),                            \
             _gn_strategy_class_t::extension_version(),                         \
-            &vt);                                                              \
+            &p->vtable);                                                              \
         if (rc != GN_OK) return rc;                                            \
         p->extension_registered = true;                                        \
         return GN_OK;                                                          \
@@ -284,7 +280,9 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         if (!self) return;                                                     \
         auto* p = static_cast<_gn_strategy_instance_t*>(self);                 \
         if (p->strategy) {                                                     \
-            ::gn::sdk::detail::strategy_on_shutdown_dispatch(*p->strategy);    \
+            try { ::gn::sdk::detail::dispatch_void<                            \
+                &_gn_strategy_class_t::on_shutdown>(*p->strategy); }           \
+            catch (...) {}  /* NOLINT(bugprone-empty-catch) */                 \
         }                                                                      \
         delete p;                                                              \
     }                                                                          \

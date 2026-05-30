@@ -6,11 +6,15 @@
 
 #include "../host_api_internal.hpp"
 
+#include <cstdint>
 #include <cstring>
+#include <experimental/scope>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <sdk/limits.h>
 
 #include <core/identity/node_identity.hpp>
 #include <core/identity/rotation.hpp>
@@ -365,15 +369,9 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                 ev.conn      = conn;
                 ev.trust     = rec->trust;
                 ev.remote_pk = rec->remote_pk;
-                ev._reserved[0] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->prev_user_pk.data()));
-                ev._reserved[1] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->new_user_pk.data()));
-                ev._reserved[2] =
-                    const_cast<void*>(static_cast<const void*>(
-                        &verified->counter));
+                ev.user_pk_prev = verified->prev_user_pk.data();
+                ev.user_pk_next = verified->new_user_pk.data();
+                ev.rotation_seq = &verified->counter;
                 pc->kernel->on_conn_event().fire(ev);
                 continue;
             }
@@ -400,6 +398,11 @@ gn_result_t inject(void* host_ctx,
                     std::size_t size) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
 
+    // Limit synchronous inject-chain depth. Each inject fires a full
+    // handler-dispatch pass on the same thread; cost scales linearly.
+    // Configurable via limits.max_inject_depth (0 → GN_INJECT_MAX_DEPTH).
+    thread_local std::uint8_t inject_depth{0};
+
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
@@ -411,6 +414,17 @@ gn_result_t inject(void* host_ctx,
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     const auto& limits = pc->kernel->limits();
+
+    {
+        const std::uint8_t max_depth = (limits.max_inject_depth != 0)
+            ? static_cast<std::uint8_t>(limits.max_inject_depth)
+            : static_cast<std::uint8_t>(GN_INJECT_MAX_DEPTH);
+        if (++inject_depth > max_depth) {
+            --inject_depth;
+            return GN_ERR_LIMIT_REACHED;
+        }
+    }
+    std::experimental::scope_exit _guard([&]() noexcept { --inject_depth; });
 
     if (!target_ns || !*target_ns) return GN_ERR_INVALID_ENVELOPE;
 

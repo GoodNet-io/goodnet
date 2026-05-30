@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include <sdk/cpp/endian.hpp>
+
 namespace gn::sdk {
 
 /// One TLV record. The encoder validates `value.size() <= 0xffff` and
@@ -83,12 +85,10 @@ parse_tlv(std::span<const std::uint8_t> blob) {
                 TlvError::Kind::Truncated, pos,
                 "header runs past blob end"});
         }
-        const std::uint16_t type =
-            static_cast<std::uint16_t>(blob[pos] << 8 |
-                                        blob[pos + 1]);
-        const std::uint16_t length =
-            static_cast<std::uint16_t>(blob[pos + 2] << 8 |
-                                        blob[pos + 3]);
+        const std::uint16_t type   = gn::endian::read_be_ptr<std::uint16_t>(
+                                         blob.data() + pos);
+        const std::uint16_t length = gn::endian::read_be_ptr<std::uint16_t>(
+                                         blob.data() + pos + 2);
         const std::size_t value_off = pos + 4;
         if (blob.size() - value_off < length) {
             return std::unexpected(TlvError{
