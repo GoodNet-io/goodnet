@@ -71,8 +71,13 @@ public:
     /// pairs under a shared lock; the lock is held for the
     /// duration of the call so the visitor must not re-enter the
     /// registry.
+#if defined(__cpp_lib_function_ref)
     void for_each(std::function_ref<void(std::string_view,
                                          std::uint64_t)> visitor) const;
+#else
+    void for_each(const std::function<void(std::string_view,
+                                            std::uint64_t)>& visitor) const;
+#endif
 
     /// C-ABI variant for the `host_api->iterate_counters` slot.
     /// Returns the number of counters visited; stops early when the

@@ -160,8 +160,13 @@ std::uint64_t MetricsRegistry::value(std::string_view name) const {
     return 0;
 }
 
+#if defined(__cpp_lib_function_ref)
 void MetricsRegistry::for_each(
     std::function_ref<void(std::string_view, std::uint64_t)> visitor) const {
+#else
+void MetricsRegistry::for_each(
+    const std::function<void(std::string_view, std::uint64_t)>& visitor) const {
+#endif
     std::shared_lock lk(mu_);
     for (const auto& [name, slot] : counters_) {
         visitor(name, slot->load(std::memory_order_relaxed));
