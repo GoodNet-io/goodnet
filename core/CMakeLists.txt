@@ -108,7 +108,7 @@ endif()
 
 target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_26)
 target_compile_options(goodnet_kernel_objects PRIVATE
-    $<$<CXX_COMPILER_ID:GNU>:-fcontracts>)
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:-fcontracts>)
 
 # Precompiled-header umbrella for the asio / spdlog / fmt block plus
 # the C++23 stdlib slices the kernel reaches everywhere. Single

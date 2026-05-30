@@ -43,7 +43,7 @@ target_link_libraries(goodnet_sdk_dx
 )
 target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_26)
 target_compile_options(goodnet_sdk_dx PRIVATE
-    $<$<CXX_COMPILER_ID:GNU>:-fcontracts>)
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:-fcontracts>)
 
 # ── Subprocess plugin worker stub ────────────────────────────────────────────
 # Static library a worker binary links to inherit the wire-protocol

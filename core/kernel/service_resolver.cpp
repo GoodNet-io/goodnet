@@ -10,21 +10,16 @@
 
 namespace gn::core {
 
-namespace {
+std::expected<std::vector<ServiceDescriptor>, ServiceResolver::Error>
+ServiceResolver::resolve(std::span<const ServiceDescriptor> input) {
 
-void note(std::string* sink, std::string_view msg) {
-    if (sink) *sink = msg;
-}
+    if (input.empty()) return std::vector<ServiceDescriptor>{};
 
-} // namespace
-
-gn_result_t ServiceResolver::resolve(
-    std::span<const ServiceDescriptor> input,
-    std::vector<ServiceDescriptor>& out_ordered,
-    std::string* out_diagnostic) {
-
-    out_ordered.clear();
-    if (input.empty()) return GN_OK;
+    std::vector<ServiceDescriptor> out_ordered;
+    auto fail = [&](gn_result_t code, std::string msg)
+        -> std::expected<std::vector<ServiceDescriptor>, Error> {
+        return std::unexpected(Error{code, std::move(msg)});
+    };
 
     /// Map every provided extension name to the plugin index that
     /// provides it. Duplicate provider → reject.
@@ -39,8 +34,7 @@ gn_result_t ServiceResolver::resolve(
                 diag += input[it->second].plugin_name;
                 diag += " and ";
                 diag += input[i].plugin_name;
-                note(out_diagnostic, diag);
-                return GN_ERR_LIMIT_REACHED;
+                return fail(GN_ERR_LIMIT_REACHED, std::move(diag));
             }
         }
     }
@@ -58,8 +52,7 @@ gn_result_t ServiceResolver::resolve(
                 diag += req;
                 diag += "' required by ";
                 diag += input[i].plugin_name;
-                note(out_diagnostic, diag);
-                return GN_ERR_NOT_FOUND;
+                return fail(GN_ERR_NOT_FOUND, std::move(diag));
             }
             const std::size_t provider_idx = it->second;
             if (provider_idx == i) continue; // self-provide is fine
@@ -94,9 +87,7 @@ gn_result_t ServiceResolver::resolve(
                 diag += input[i].plugin_name;
             }
         }
-        note(out_diagnostic, diag);
-        out_ordered.clear();
-        return GN_ERR_INVALID_ENVELOPE;
+        return fail(GN_ERR_INVALID_ENVELOPE, std::move(diag));
     }
 
     // ── Inject-cycle pass ─────────────────────────────────────────────────────
@@ -196,12 +187,10 @@ gn_result_t ServiceResolver::resolve(
                 diag += input[i].plugin_name;
             }
         }
-        note(out_diagnostic, diag);
-        out_ordered.clear();
-        return GN_ERR_INVALID_ENVELOPE;
+        return fail(GN_ERR_INVALID_ENVELOPE, std::move(diag));
     }
 
-    return GN_OK;
+    return out_ordered;
 }
 
 } // namespace gn::core

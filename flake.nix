@@ -913,7 +913,7 @@
 
               cat <<'EOF'
 
-GoodNet devShell  (gcc15, C++23)
+GoodNet devShell  (gcc16, C++26)
 
   Setup / refresh:
     nix run .#setup            mirrors + plugins + hooks (one-shot)

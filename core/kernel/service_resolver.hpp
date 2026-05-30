@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <expected>
 #include <span>
 #include <string>
 #include <string_view>
@@ -49,23 +50,21 @@ struct ServiceDescriptor {
 
 class ServiceResolver {
 public:
+    struct Error {
+        gn_result_t code    = GN_OK;
+        std::string message;
+    };
+
     /// Sort @p input topologically over the ext-graph.
     ///
-    /// Writes the ordered set into @p out_ordered on success.
-    /// On any structural failure, @p out_diagnostic (if non-null)
-    /// receives a human-readable description of the offending
-    /// node.
-    ///
-    /// Return codes:
-    ///   - `GN_OK` — sorted set written to @p out_ordered.
+    /// Returns the ordered set on success.
+    /// On any structural failure returns an `Error` with a
+    /// human-readable description and the matching result code:
     ///   - `GN_ERR_LIMIT_REACHED` — duplicate provider for a name.
-    ///   - `GN_ERR_NOT_FOUND` — required extension has no
-    ///     provider.
+    ///   - `GN_ERR_NOT_FOUND` — required extension has no provider.
     ///   - `GN_ERR_INVALID_ENVELOPE` — graph contains a cycle.
-    [[nodiscard]] static gn_result_t resolve(
-        std::span<const ServiceDescriptor> input,
-        std::vector<ServiceDescriptor>& out_ordered,
-        std::string* out_diagnostic = nullptr);
+    [[nodiscard]] static std::expected<std::vector<ServiceDescriptor>, Error>
+    resolve(std::span<const ServiceDescriptor> input);
 };
 
 } // namespace gn::core
