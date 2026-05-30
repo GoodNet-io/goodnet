@@ -161,6 +161,25 @@ typedef enum gn_plugin_kind_e {
 } gn_plugin_kind_t;
 
 /**
+ * @brief Declare an inject dependency for load-time cycle detection.
+ *
+ * A handler plugin that calls `host_api->inject()` targeting a specific
+ * protocol namespace should list those targets in a null-terminated array
+ * of `gn_inject_dep_t` and expose it through `gn_plugin_descriptor_t`.
+ * The kernel's service resolver builds an inject-dependency graph from
+ * these declarations and rejects load if a cycle is detected, long before
+ * any plugin state is constructed.
+ *
+ * `msg_id == 0` is a wildcard — the plugin may inject any message ID
+ * into `protocol_id`. Use the minimal required scope to keep the graph
+ * as precise as possible.
+ */
+typedef struct gn_inject_dep_s {
+    const char* protocol_id;  /**< target protocol namespace, e.g. "gnet-v1" */
+    uint32_t    msg_id;       /**< 0 = wildcard (any msg_id in this protocol) */
+} gn_inject_dep_t;
+
+/**
  * @brief Static metadata declared inside the plugin shared object.
  *
  * Read by the kernel through a sixth, optional, exported symbol
@@ -181,7 +200,14 @@ typedef struct gn_plugin_descriptor_s {
     /** Plugin role; gates loader-side host_api entries. */
     gn_plugin_kind_t kind;
 
-    void* _reserved[4];
+    /** Null-pointer-terminated array of inject targets — (protocol_id, msg_id)
+     *  pairs this plugin may pass to `host_api->inject()`. NULL means the
+     *  plugin never calls inject. Used for load-time inject-cycle detection
+     *  in `ServiceResolver`. The pointed-to array must be statically allocated
+     *  (lifetime ≥ plugin shared object). See `gn_inject_dep_t`. */
+    const gn_inject_dep_t* inject_targets;
+
+    void* _reserved[4];  /**< ABI evolution slots; MUST be zero-initialised; frozen after rc. */
 } gn_plugin_descriptor_t;
 
 /**

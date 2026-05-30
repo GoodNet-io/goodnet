@@ -313,8 +313,12 @@ _Static_assert(offsetof(gn_plugin_descriptor_t, ext_provides) == 32,
                "gn_plugin_descriptor_t::ext_provides offset pinned at 32");
 _Static_assert(offsetof(gn_plugin_descriptor_t, kind) == 40,
                "gn_plugin_descriptor_t::kind offset pinned at 40");
-_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 48,
-               "gn_plugin_descriptor_t::_reserved offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, inject_targets) == 48,
+               "gn_plugin_descriptor_t::inject_targets offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 56,
+               "gn_plugin_descriptor_t::_reserved offset pinned at 56");
+_Static_assert(sizeof(((gn_plugin_descriptor_t*)0)->_reserved) == 4 * sizeof(void*),
+               "gn_plugin_descriptor_t::_reserved holds 4 evolution slots");
 
 /* ── sdk/protocol.h ────────────────────────────────────────────────────────── */
 

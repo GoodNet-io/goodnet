@@ -41,7 +41,9 @@ target_link_libraries(goodnet_sdk_dx
         nlohmann_json::nlohmann_json
         PkgConfig::SODIUM
 )
-target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_23)
+target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_26)
+target_compile_options(goodnet_sdk_dx PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-fcontracts>)
 
 # ── Subprocess plugin worker stub ────────────────────────────────────────────
 # Static library a worker binary links to inherit the wire-protocol
@@ -70,7 +72,7 @@ if(NOT WIN32)
         "$<INSTALL_INTERFACE:include/goodnet>"
     )
     target_link_libraries(goodnet_remote_plugin_stub PUBLIC GoodNet::sdk)
-    target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_23)
+    target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_26)
 endif()
 
 # ── Install ──────────────────────────────────────────────────────────────────

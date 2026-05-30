@@ -62,6 +62,7 @@ gn_result_t DynamicRuntime::resolve_symbols_(void*,
 #endif
 #endif
 
+#include <ranges>
 #include <string>
 
 #include <core/kernel/host_api_builder.hpp>
@@ -76,6 +77,12 @@ gn_result_t DynamicRuntime::resolve_symbols_(void*,
 namespace gn::core {
 
 namespace {
+
+/// Lazy range over a null-terminated `const char*` array.
+constexpr auto cstr_array_range(const char* const* p) noexcept {
+    return std::ranges::subrange(p, std::unreachable_sentinel)
+         | std::views::take_while([](const char* s) { return s != nullptr; });
+}
 
 [[nodiscard]] bool sdk_version_compatible(
     const DynamicPluginSymbols& syms) noexcept {
@@ -92,16 +99,12 @@ ServiceDescriptor descriptor_from_symbol(const DynamicPluginSymbols& syms,
         if (const auto* d = syms.descriptor()) {
             sd.plugin_name = d->name ? d->name : path_fallback;
             sd.kind        = d->kind;
-            if (d->ext_requires) {
-                for (const char* const* p = d->ext_requires; *p != nullptr; ++p) {
-                    sd.ext_requires.emplace_back(*p);
-                }
-            }
-            if (d->ext_provides) {
-                for (const char* const* p = d->ext_provides; *p != nullptr; ++p) {
-                    sd.ext_provides.emplace_back(*p);
-                }
-            }
+            if (d->ext_requires)
+                for (auto s : cstr_array_range(d->ext_requires))
+                    sd.ext_requires.emplace_back(s);
+            if (d->ext_provides)
+                for (auto s : cstr_array_range(d->ext_provides))
+                    sd.ext_provides.emplace_back(s);
             return sd;
         }
     }

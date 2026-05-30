@@ -106,7 +106,9 @@ if(WIN32)
     target_link_libraries(goodnet_kernel_objects PUBLIC ws2_32 mswsock)
 endif()
 
-target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_23)
+target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_26)
+target_compile_options(goodnet_kernel_objects PRIVATE
+    $<$<CXX_COMPILER_ID:GNU>:-fcontracts>)
 
 # Precompiled-header umbrella for the asio / spdlog / fmt block plus
 # the C++23 stdlib slices the kernel reaches everywhere. Single
