@@ -369,15 +369,9 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                 ev.conn      = conn;
                 ev.trust     = rec->trust;
                 ev.remote_pk = rec->remote_pk;
-                ev._reserved[0] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->prev_user_pk.data()));
-                ev._reserved[1] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->new_user_pk.data()));
-                ev._reserved[2] =
-                    const_cast<void*>(static_cast<const void*>(
-                        &verified->counter));
+                ev.user_pk_prev = verified->prev_user_pk.data();
+                ev.user_pk_next = verified->new_user_pk.data();
+                ev.rotation_seq = &verified->counter;
                 pc->kernel->on_conn_event().fire(ev);
                 continue;
             }
