@@ -18,6 +18,11 @@ target_include_directories(goodnet_sdk INTERFACE
 )
 
 target_compile_features(goodnet_sdk INTERFACE cxx_std_23)
+# GCC 16 defines __cpp_contracts in C++26 mode, making GN_EXPECTS expand
+# to pre() annotations that reference handle_contract_violation at link time.
+# libstdc++exp provides the weak default implementation.
+target_link_libraries(goodnet_sdk INTERFACE
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:stdc++exp>)
 
 # ── DX (developer-experience) layer ──────────────────────────────────────────
 # `sdk/cpp/core.hpp` + `sdk/cpp/errors.hpp` + `sdk/cpp/host_api_default.hpp`
@@ -44,6 +49,8 @@ target_link_libraries(goodnet_sdk_dx
 target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_26)
 target_compile_options(goodnet_sdk_dx PRIVATE
     $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:-fcontracts>)
+target_link_libraries(goodnet_sdk_dx PUBLIC
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:stdc++exp>)
 
 # ── Subprocess plugin worker stub ────────────────────────────────────────────
 # Static library a worker binary links to inherit the wire-protocol
