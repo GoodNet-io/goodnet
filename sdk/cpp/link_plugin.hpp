@@ -400,9 +400,8 @@ template <class T>
             p->api      = api;                                                 \
             p->host_ctx = api->host_ctx;                                       \
             p->link = std::make_shared<Class>();                          \
-            ::gn::sdk::detail::dispatch_void<                                  \
-                &Class::set_default_trust_class>(                               \
-                    *p->link, _gn_link_default_trust);                             \
+            ::gn::sdk::detail::dispatch_set_default_trust_class(              \
+                *p->link, _gn_link_default_trust);                             \
             p->link->set_host_api(api);                                   \
             p->caps = Class::capabilities();                                   \
             _gn_link_install_ext(p);                                             \

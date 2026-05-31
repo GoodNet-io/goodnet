@@ -239,8 +239,7 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
             delete p;                                                          \
             return GN_ERR_OUT_OF_MEMORY;                                       \
         }                                                                      \
-        try { ::gn::sdk::detail::dispatch_void<                                 \
-            &_gn_strategy_class_t::on_init>(*p->strategy); }                   \
+        try { ::gn::sdk::detail::dispatch_on_init(*p->strategy); }              \
         catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
         *out_self = p;                                                         \
         return GN_OK;                                                          \
@@ -280,8 +279,7 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         if (!self) return;                                                     \
         auto* p = static_cast<_gn_strategy_instance_t*>(self);                 \
         if (p->strategy) {                                                     \
-            try { ::gn::sdk::detail::dispatch_void<                            \
-                &_gn_strategy_class_t::on_shutdown>(*p->strategy); }           \
+            try { ::gn::sdk::detail::dispatch_on_shutdown(*p->strategy); }     \
             catch (...) {}  /* NOLINT(bugprone-empty-catch) */                 \
         }                                                                      \
         delete p;                                                              \

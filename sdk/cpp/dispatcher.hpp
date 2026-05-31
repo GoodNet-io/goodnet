@@ -34,6 +34,7 @@
 
 #pragma once
 
+#include <sdk/trust.h>
 #include <sdk/types.h>
 
 namespace gn::sdk::detail {
@@ -62,6 +63,27 @@ void dispatch_void(T& obj, Args&&... args) noexcept {
         (obj.*MethodPtr)(static_cast<Args&&>(args)...);
     else
         (void)obj;
+}
+
+/// Call `obj.on_init()` if the method exists; otherwise do nothing.
+/// Template wrapper so `if constexpr` is evaluated per-instantiation.
+template <class T>
+void dispatch_on_init(T& obj) noexcept {
+    if constexpr (requires { obj.on_init(); }) obj.on_init();
+}
+
+/// Call `obj.on_shutdown()` if the method exists; otherwise do nothing.
+template <class T>
+void dispatch_on_shutdown(T& obj) noexcept {
+    if constexpr (requires { obj.on_shutdown(); }) obj.on_shutdown();
+}
+
+/// Call `obj.set_default_trust_class(tc)` if the method exists; otherwise
+/// do nothing.
+template <class T>
+void dispatch_set_default_trust_class(T& obj, gn_trust_class_t tc) noexcept {
+    if constexpr (requires { obj.set_default_trust_class(tc); })
+        obj.set_default_trust_class(tc);
 }
 
 } // namespace gn::sdk::detail

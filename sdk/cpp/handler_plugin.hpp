@@ -177,6 +177,15 @@ struct handler_provides<T, true> {
     static constexpr const char* const* value = &names[0];
 };
 
+/// Returns the class's `inject_targets` if it declares one, else nullptr.
+template <class T>
+consteval const gn_inject_dep_t* get_inject_targets() noexcept {
+    if constexpr (requires { T::inject_targets; })
+        return T::inject_targets;
+    else
+        return nullptr;
+}
+
 /// Compile-time validation for a null-terminated `gn_inject_dep_t` array.
 /// Returns false if any entry before the sentinel has an empty protocol_id
 /// or if any two entries share the same (protocol_id, msg_id) pair.
@@ -258,16 +267,14 @@ consteval bool validate_inject_targets(const gn_inject_dep_t* arr) noexcept {
         GN_EXPECTS(self != nullptr)                                            \
     {                                                                          \
         if (!self) return;                                                     \
-        try { ::gn::sdk::detail::dispatch_void<                                \
-            &_gn_handler_class_t::on_init>(_gn_handler_of(self)); }            \
+        try { ::gn::sdk::detail::dispatch_on_init(_gn_handler_of(self)); }     \
         catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
     }                                                                          \
     void _gn_handler_on_shutdown_thunk(void* self) noexcept                    \
         GN_EXPECTS(self != nullptr)                                            \
     {                                                                          \
         if (!self) return;                                                     \
-        try { ::gn::sdk::detail::dispatch_void<                                \
-            &_gn_handler_class_t::on_shutdown>(_gn_handler_of(self)); }        \
+        try { ::gn::sdk::detail::dispatch_on_shutdown(_gn_handler_of(self)); } \
         catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
     }                                                                          \
                                                                                \
@@ -295,21 +302,13 @@ consteval bool validate_inject_targets(const gn_inject_dep_t* arr) noexcept {
         /* ext_provides      */ ::gn::sdk::detail::handler_provides<           \
                                     _gn_handler_class_t>::value,               \
         /* kind              */ GN_PLUGIN_KIND_HANDLER,                        \
-        /* inject_targets    */ [] () -> const gn_inject_dep_t* {              \
-            if constexpr (requires { _gn_handler_class_t::inject_targets; })   \
-                return _gn_handler_class_t::inject_targets;                    \
-            else                                                               \
-                return nullptr;                                                \
-        }(),                                                                   \
+        /* inject_targets    */ ::gn::sdk::detail::get_inject_targets<          \
+                                    _gn_handler_class_t>(),                    \
         /* _reserved         */ {},                                              \
     };                                                                         \
     static_assert(                                                             \
         ::gn::sdk::detail::validate_inject_targets(                            \
-            [] () -> const gn_inject_dep_t* {                                  \
-                if constexpr (requires { _gn_handler_class_t::inject_targets; })\
-                    return _gn_handler_class_t::inject_targets;                \
-                else return nullptr;                                           \
-            }()),                                                              \
+            ::gn::sdk::detail::get_inject_targets<_gn_handler_class_t>()),     \
         #ClassName ": inject_targets has empty protocol_id or duplicate entry");\
     } /* anonymous namespace */                                                \
                                                                                \
