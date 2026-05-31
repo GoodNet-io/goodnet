@@ -121,6 +121,57 @@ template <class T>
     }
 }
 
+/// Optional composer (L2) method dispatchers. Each returns
+/// GN_ERR_NOT_IMPLEMENTED when the link class doesn't define the method.
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_listen(T& l, const char* uri) noexcept {
+    if constexpr (requires { l.composer_listen(uri); }) return l.composer_listen(uri);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_connect(
+    T& l, const char* uri, gn_conn_id_t* out) noexcept {
+    if constexpr (requires { l.composer_connect(uri, out); })
+        return l.composer_connect(uri, out);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_subscribe_data(
+    T& l, gn_conn_id_t conn, gn_link_data_cb_t cb, void* user) noexcept {
+    if constexpr (requires { l.composer_subscribe_data(conn, cb, user); })
+        return l.composer_subscribe_data(conn, cb, user);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_unsubscribe_data(
+    T& l, gn_conn_id_t conn) noexcept {
+    if constexpr (requires { l.composer_unsubscribe_data(conn); })
+        return l.composer_unsubscribe_data(conn);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_subscribe_accept(
+    T& l, gn_link_accept_cb_t cb, void* user,
+    gn_subscription_id_t* out) noexcept {
+    if constexpr (requires { l.composer_subscribe_accept(cb, user, out); })
+        return l.composer_subscribe_accept(cb, user, out);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_unsubscribe_accept(
+    T& l, gn_subscription_id_t token) noexcept {
+    if constexpr (requires { l.composer_unsubscribe_accept(token); })
+        return l.composer_unsubscribe_accept(token);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+template <class T>
+[[nodiscard]] gn_result_t dispatch_composer_listen_port(
+    T& l, std::uint16_t* out) noexcept {
+    if constexpr (requires { l.composer_listen_port(out); })
+        return l.composer_listen_port(out);
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
@@ -264,65 +315,56 @@ template <class T>
     gn_result_t _gn_link_ext_listen(                                           \
         void* ctx, const char* uri) noexcept {                                 \
         if (!ctx || !uri) return GN_ERR_NULL_ARG;                              \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_listen>(_gn_link_of(ctx), uri);               \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_listen(               \
+                _gn_link_of(ctx), uri); }                                      \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_connect(                                          \
         void* ctx, const char* uri, gn_conn_id_t* out) noexcept {              \
         if (!ctx || !uri || !out) return GN_ERR_NULL_ARG;                      \
         *out = GN_INVALID_ID;                                                  \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_connect>(_gn_link_of(ctx), uri, out);         \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_connect(              \
+                _gn_link_of(ctx), uri, out); }                                 \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_subscribe(                                        \
         void* ctx, gn_conn_id_t conn,                                          \
         gn_link_data_cb_t cb, void* user) noexcept {                           \
         if (!ctx || !cb) return GN_ERR_NULL_ARG;                               \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_subscribe_data>(                               \
-                    _gn_link_of(ctx), conn, cb, user);                         \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_subscribe_data(       \
+                _gn_link_of(ctx), conn, cb, user); }                           \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_unsubscribe(                                      \
         void* ctx, gn_conn_id_t conn) noexcept {                               \
         if (!ctx) return GN_ERR_NULL_ARG;                                      \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_unsubscribe_data>(_gn_link_of(ctx), conn);    \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_unsubscribe_data(     \
+                _gn_link_of(ctx), conn); }                                     \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_subscribe_accept(                                 \
         void* ctx, gn_link_accept_cb_t cb, void* user,                         \
         gn_subscription_id_t* out_token) noexcept {                            \
         if (!ctx || !cb || !out_token) return GN_ERR_NULL_ARG;                 \
         *out_token = GN_INVALID_SUBSCRIPTION_ID;                               \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_subscribe_accept>(                             \
-                    _gn_link_of(ctx), cb, user, out_token);                    \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_subscribe_accept(     \
+                _gn_link_of(ctx), cb, user, out_token); }                      \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_unsubscribe_accept(                               \
         void* ctx, gn_subscription_id_t token) noexcept {                      \
         if (!ctx) return GN_ERR_NULL_ARG;                                      \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_unsubscribe_accept>(_gn_link_of(ctx), token); \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_unsubscribe_accept(   \
+                _gn_link_of(ctx), token); }                                    \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
     gn_result_t _gn_link_ext_listen_port(                                      \
         void* ctx, std::uint16_t* out_port) noexcept {                         \
         if (!ctx || !out_port) return GN_ERR_NULL_ARG;                         \
         *out_port = 0;                                                         \
-        try {                                                                  \
-            return ::gn::sdk::detail::dispatch_result<                         \
-                &Class::composer_listen_port>(_gn_link_of(ctx), out_port);     \
-        } catch (...) { return GN_ERR_INTERNAL; }                              \
+        try { return ::gn::sdk::detail::dispatch_composer_listen_port(          \
+                _gn_link_of(ctx), out_port); }                                 \
+        catch (...) { return GN_ERR_INTERNAL; }                                \
     }                                                                          \
                                                                                \
     void _gn_link_install_ext(_gn_link_instance_t* inst) noexcept {                \
