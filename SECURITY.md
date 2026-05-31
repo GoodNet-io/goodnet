@@ -22,8 +22,9 @@ staged sooner.
 In scope:
 
 - The kernel (`core/`) and the SDK (`sdk/`).
-- The bundled link plugins
-  (`plugins/links/{tcp,udp,ipc,ws,tls,ice,quic}`).
+- The bundled link plugins (TCP, UDP, IPC, WS, TLS, ICE, QUIC) — these now
+  live in their own repos under the GoodNet-io org; paths like
+  `plugins/links/{tcp,udp,...}` are historical / in-tree shim layer only.
 - The bundled security plugins (`plugins/security/{noise,null}`).
 - The bundled handler plugins
   (`plugins/handlers/{heartbeat,store,dns}`).

@@ -2,7 +2,7 @@
 
 [![CI (Forgejo)](http://localhost:3000/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost:3000/goodnet-io/goodnet/actions)
 
-A small networking kernel with pluggable transports, security
+A networking integrator kernel with pluggable transports, security
 providers, protocol layers, and handlers. Applications embed it
 as a library or run the standalone daemon. The C ABI between
 kernel and plugins is the only stable boundary; everything else
@@ -155,6 +155,12 @@ reaches **~10 Gb/s** — already 2× the single WireGuard tunnel
 ceiling (**~4.9 Gb/s**, one softirq CPU). GoodNet's no-crypto
 aggregate scales further — **~60 Gb/s** static-LTO parody,
 12× WireGuard's single-tunnel ceiling.
+
+The no-crypto parody numbers (e.g. ~60 Gb/s aggregate) are an upper bound on
+the transport path, not a like-for-like with WireGuard. The like-for-like is the
+crypto row: ~5 Gb/s single-conn static+LTO with Noise. WireGuard is a kernel
+zero-copy datapath; a userspace plugin model is not trying to beat it on raw
+throughput, it is trading some of that for the plugin boundary.
 
 Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
 libsodium. Release build, median of 3 runs. Two measurement
@@ -350,25 +356,30 @@ nix develop --command cmake --build build-release \
 
 Full per-bench numbers in [`bench/reports/<sha>.md` § "А.
 Comparable echo round-trip"](bench/reports/) and the
-showcase report at `bench/reports/showcase-<sha>.md`.
+showcase methodology at [`bench/showcase/README.md`](bench/showcase/README.md).
 
 ## Architecture
 
-The kernel is eight subsystems at the same level: connection
-registry, signal bus, plugin manager, service resolver,
-session registry (security state), send-queue manager,
-extension registry, metrics exporter. None of them know the name
-of any specific plugin. The only entry points are the SDK
-contracts under [`docs/contracts/`](docs/contracts/), which the
-tree treats as authoritative — contracts change first, code
-catches up.
+The kernel is a set of registries and buses at the same level, each owned
+directly by `Kernel` (`core/kernel/kernel.hpp` is the source of truth). The
+registries: connection, link, handler, protocol-layer, security, session
+(security state), send-queue, extension, and local-identity. The buses and
+dispatchers: a signal channel for connection events, a signal channel for
+config reload, the attestation dispatcher, and the capability-blob bus. Plus
+the router, the timer registry, and the metrics registry. None of them know
+the name of any specific plugin; the `PluginManager` (under `core/plugin/`)
+loads shared objects against the C ABI and names no specific plugin either.
+The only entry points are the SDK contracts under
+[`docs/contracts/`](docs/contracts/), which the tree treats as authoritative —
+contracts change first, code catches up.
 
 Layout:
 
 ```
 core/        kernel and primitives
 sdk/         public C ABI (host_api, link, security, protocol, handler, ...)
-plugins/     bundled link / security / protocol / handler plugins
+plugins/     in-tree plugin shims + test stubs (real transports, security,
+             and handlers live in their own org repos — see the repo table below)
 examples/    bench harness, two-node demo
 docs/        contracts (authoritative), architecture (narrative), operator
 tests/       unit, integration, property, conformance
@@ -523,14 +534,14 @@ Russian: see [`README.ru.md`](README.ru.md).
 ## License
 
 GPL-2.0 with linking exception for the strategic baseline:
-kernel, the gnet protocol layer, and the GPL-2-licensed bundled
-plugins — TCP / UDP / WS / ICE link plugins, Noise security
-provider, Heartbeat / Store / DNS handlers. The linking exception
-lets out-of-tree plugins ship under any license — the boundary is
-the C ABI, not the license. Periphery plugins (raw protocol,
-null security, IPC link) are MIT for ecosystem reach. The
-OpenSSL-tied plugins (TLS link, QUIC link) and the reference
-strategy (float-send-rtt) are Apache-2.0.
+kernel, the gnet protocol layer, and the in-tree plugin shims.
+The full plugin implementations (TCP / UDP / WS / ICE link,
+Noise security, Heartbeat / Store / DNS handlers, TLS, QUIC,
+float-send-rtt) now live in their own repos under the GoodNet-io
+org, each with its own LICENSE file. The linking exception lets
+out-of-tree plugins ship under any license — the boundary is the
+C ABI, not the license. In-tree periphery shims (raw protocol,
+null security, IPC link) are MIT for ecosystem reach.
 
 The strategic licensing rationale is the same one Linux applied
 in 1991: GPL on the kernel keeps the substrate open, the linking

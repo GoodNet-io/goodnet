@@ -1,6 +1,6 @@
 # GoodNet
 
-Маленькое сетевое ядро с подключаемыми транспортами,
+Интеграторное сетевое ядро с подключаемыми транспортами,
 криптопровайдерами, протокольными слоями и обработчиками.
 Приложения встраивают его как библиотеку или запускают
 standalone-демон. Стабильна ровно одна граница — C ABI между
@@ -106,10 +106,15 @@ NIC расклад смещается: zero-copy kernel-path WireGuard'a сло�
 
 ## Архитектура
 
-Ядро — восемь подсистем одного уровня: connection registry,
-signal bus, plugin manager, service resolver, session registry
-(security state), send-queue manager, extension registry,
-metrics exporter. Ни одна не знает имени конкретного плагина.
+Ядро — набор реестров и шин одного уровня, каждый владеет
+`Kernel` напрямую (`core/kernel/kernel.hpp` — источник истины).
+Реестры: connection, link, handler, protocol-layer, security,
+session (security state), send-queue, extension, local-identity.
+Шины и диспетчеры: signal-канал событий соединений, signal-канал
+перезагрузки конфига, attestation dispatcher, capability-blob bus.
+Плюс router, timer registry, metrics registry. Ни один не знает
+имени конкретного плагина; `PluginManager` (в `core/plugin/`)
+грузит shared objects через C ABI, не называя плагинов.
 Единственные точки входа — контракты в [`docs/contracts/`](docs/contracts/),
 которые дерево считает авторитетными: контракт меняется
 первым, код подтягивается.
@@ -119,7 +124,8 @@ Layout:
 ```
 core/        ядро и примитивы
 sdk/         публичный C ABI (host_api, link, security, protocol, handler, ...)
-plugins/     bundled link / security / protocol / handler плагины
+plugins/     in-tree шимы плагинов + тестовые заглушки (реальные транспорты,
+             security и handlers — в отдельных org-репо, см. таблицу репо ниже)
 examples/    bench harness, two-node демо
 docs/        contracts (авторитет), architecture (narrative), operator
 tests/       unit, integration, property, conformance
