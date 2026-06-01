@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/test_bench_helper.hpp
-/// @brief  Bench-only kernel/plugin boot helper (A.2 follow-up).
+/// @brief  Bench-only kernel/plugin boot helper.
 ///
 /// Spins up a real `gn::core::Kernel` with the gnet protocol layer,
 /// the noise security provider (dlopen'd from

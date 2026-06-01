@@ -90,9 +90,8 @@ gn_conn_id_t find_one_transport(::gn::core::Kernel& k) {
     return GN_INVALID_ID;
 }
 
-/// Busy-wait helper for the showcase loops. Shares the 100µs grain
-/// the A.2 bench uses; bounded so a stuck conn surfaces as skip not
-/// hang.
+/// Busy-wait helper for the showcase loops. 100µs grain; bounded so
+/// a stuck conn surfaces as skip not hang.
 template <class Pred>
 bool wait_for_busy(Pred pred,
                    std::chrono::milliseconds timeout = 2s) {

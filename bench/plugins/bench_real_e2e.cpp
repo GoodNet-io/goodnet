@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/plugins/bench_real_e2e.cpp
-/// @brief  Production-shape bench (A.2 from the master plan).
+/// @brief  Production-shape end-to-end bench.
 ///
 /// Every other bench under `bench/plugins/*` wires a link plugin to
 /// the `LinkStub` test fixture — no security provider, no protocol

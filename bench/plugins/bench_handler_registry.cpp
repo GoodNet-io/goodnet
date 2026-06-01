@@ -196,7 +196,7 @@ struct HandlerRegistryFixture : public ::benchmark::Fixture {
     bool                            ready    = false;
 };
 
-// ── 9-A HandlerChainDepth ─────────────────────────────────────────────────────
+// ── HandlerChainDepth ────────────────────────────────────────────────────────
 //
 // N handlers registered under the same (protocol_id, msg_id) with
 // descending priorities. The first N-1 return CONTINUE; the last
@@ -265,7 +265,7 @@ BENCHMARK_REGISTER_F(HandlerRegistryFixture, HandlerChainDepth)
     ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
 
-// ── 9-B HandlerNamespaceFanout ────────────────────────────────────────────────
+// ── HandlerNamespaceFanout ───────────────────────────────────────────────────
 //
 // M namespaces × K handlers each — all M×K handlers fire on every message
 // (the registry merges cross-namespace chains). Compares dispatch cost
@@ -357,7 +357,7 @@ BENCHMARK_REGISTER_F(HandlerRegistryFixture, HandlerNamespaceFanout)
     ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
 
-// ── 9-C HandlerPriorityOrder ──────────────────────────────────────────────────
+// ── HandlerPriorityOrder ─────────────────────────────────────────────────────
 //
 // N handlers with explicitly assigned priorities in descending order
 // (index 0 = highest priority, fires first). Each handler records its
@@ -435,7 +435,7 @@ BENCHMARK_REGISTER_F(HandlerRegistryFixture, HandlerPriorityOrder)
     ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
 
-// ── 9-D RegistryConcurrentModify ─────────────────────────────────────────────
+// ── RegistryConcurrentModify ─────────────────────────────────────────────────
 //
 // N writer threads concurrently register and unregister a volatile handler
 // while the bench loop dispatches messages. A stable handler (always
