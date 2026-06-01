@@ -57,6 +57,9 @@ if(NOT TARGET goodnet_security_noise
     return()
 endif()
 
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(ZSTD QUIET libzstd)
+
 add_executable(bench_showcase bench_showcase.cpp)
 target_link_libraries(bench_showcase PRIVATE
     goodnet_bench_harness
@@ -70,6 +73,12 @@ target_link_libraries(bench_showcase PRIVATE
     benchmark::benchmark
     ${CMAKE_DL_LIBS}
 )
+if(TARGET goodnet_zstd_decompress_objects AND ZSTD_FOUND)
+    target_link_libraries(bench_showcase PRIVATE
+        goodnet_zstd_decompress_objects ${ZSTD_LIBRARIES})
+    target_compile_definitions(bench_showcase PRIVATE GOODNET_BENCH_ZSTD=1)
+    target_include_directories(bench_showcase PRIVATE ${ZSTD_INCLUDE_DIRS})
+endif()
 if(TARGET GoodNet::protocol_gnet)
     target_link_libraries(bench_showcase PRIVATE GoodNet::protocol_gnet)
 endif()

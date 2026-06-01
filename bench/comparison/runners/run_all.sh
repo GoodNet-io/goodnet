@@ -76,8 +76,10 @@ for b in "${default_set[@]}"; do
         /usr/bin/env -i HOME="$HOME" PATH="/run/current-system/sw/bin:/usr/bin" \
             "$binary" \
             --benchmark_min_time=0.3s \
-            --benchmark_format=json 2>/dev/null \
-            > "$tmp/$b.json" || echo "  $b failed (continuing)"
+            --benchmark_out="$tmp/$b.json" \
+            --benchmark_out_format=json \
+            >/dev/null 2>/dev/null \
+            || echo "  $b failed (continuing)"
         drain_time_wait
     fi
 done
@@ -120,8 +122,10 @@ if [[ "${GOODNET_BENCH_SHOWCASE:-0}" == "1" ]]; then
         /usr/bin/env -i HOME="$HOME" PATH="/run/current-system/sw/bin:/usr/bin" \
             "$showcase_bin" \
             --benchmark_min_time=0.3s \
-            --benchmark_format=json 2>/dev/null \
-            > "$tmp/bench_showcase.json" || echo "  bench_showcase failed (continuing)"
+            --benchmark_out="$tmp/bench_showcase.json" \
+            --benchmark_out_format=json \
+            >/dev/null 2>/dev/null \
+            || echo "  bench_showcase failed (continuing)"
         python3 bench/comparison/reports/showcase_aggregate.py \
             "$sha" "bench/reports/${sha}-showcase.md" \
             "$tmp/bench_showcase.json" \

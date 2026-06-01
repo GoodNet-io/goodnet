@@ -47,6 +47,10 @@
 #include <bench/test_bench_helper.hpp>
 #include <core/security/session.hpp>
 
+#ifdef GOODNET_BENCH_ZSTD
+#include <plugins/handlers/zstd_decompress/zstd_decompress.hpp>
+#endif
+
 #include <plugins/links/ipc/ipc.hpp>
 #include <plugins/links/tcp/tcp.hpp>
 #include <plugins/links/udp/udp.hpp>
@@ -308,6 +312,37 @@ inline gn_result_t downgrade_pair(
         return rc;
     return GN_OK;
 }
+
+#ifdef GOODNET_BENCH_ZSTD
+/// Register a `ZstdDecompressHandler` on @p k as a handler for
+/// `kDefaultCompressedMsgId` (0x0701) at priority 255. The handler
+/// decompresses inbound frames and re-injects them under 0x0700 via
+/// `api->inject`. The vtable's `handle_message` thunk is stored in
+/// static storage so the pointer remains valid for the kernel's lifetime.
+inline gn_handler_id_t register_zstd_decompress(
+    Kernel& k,
+    gn::handler::zstd_decompress::ZstdDecompressHandler& h) {
+    static const gn_handler_vtable_t kVtable = [] {
+        gn_handler_vtable_t v{};
+        v.api_size = sizeof(v);
+        v.handle_message = [](void* self,
+                               const gn_message_t* env) -> gn_propagation_t {
+            if (!self || !env) return GN_PROPAGATION_CONTINUE;
+            return static_cast<
+                gn::handler::zstd_decompress::ZstdDecompressHandler*>(self)
+                ->handle_message(*env);
+        };
+        return v;
+    }();
+    gn_handler_id_t hid = GN_INVALID_ID;
+    (void)k.handlers().register_handler(
+        "gnet-v1",
+        gn::handler::zstd_decompress::kDefaultCompressedMsgId,
+        /*priority*/255,
+        &kVtable, &h, &hid);
+    return hid;
+}
+#endif  // GOODNET_BENCH_ZSTD
 
 /// ── CSV side-channel for time-series benches (§B.3, §B.5, §B.6) ──
 ///

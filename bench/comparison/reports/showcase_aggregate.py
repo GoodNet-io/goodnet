@@ -447,6 +447,71 @@ def emit_b6(out, cases, csv_data):
     out.append("")
 
 
+def emit_b7(out, cases):
+    section_header(out, "B.7", "Transparent in-chain zstd decompression",
+        "Bob сжимает payload ZSTD и отправляет как msg_id=0x0701. "
+        "У alice зарегистрирован ZstdDecompressHandler (priority=255) "
+        "на 0x0701; он распаковывает фрейм и re-inject'ит под 0x0700. "
+        "RxCounter на 0x0700 срабатывает для обоих сценариев — "
+        "application handler не меняется. Compression = handler-chain "
+        "middleware, вставляется без изменения send/receive сторон.",
+        "В libp2p нет per-message-type handler chain; компрессия "
+        "там на уровне транспорта (DEFLATE в YAMux), безусловная для "
+        "всего потока. В gRPC компрессия per-RPC-call, не per-msg_id. "
+        "GoodNet позволяет вставить произвольный middleware handler "
+        "на конкретный msg_id без изменения остального кода.")
+    rows = []
+    for case_label, is_compressed in (("Baseline", False),
+                                       ("ZstdTransparent", True)):
+        for sz in (256, 1024, 8192):
+            name = f"CompressionFixture/{case_label}/{sz}"
+            rec  = cases.get(name, {})
+            if not rec:
+                continue
+            rows.append({
+                "label":      case_label,
+                "sz":         sz,
+                "time":       rec.get("real_time"),
+                "throughput": rec.get("throughput"),
+                "payload":    rec.get("payload_bytes"),
+                "compressed": rec.get("compressed_bytes"),
+                "ratio":      rec.get("ratio"),
+                "frames_ok":  rec.get("frames_ok"),
+                "frames_err": rec.get("frames_err"),
+                "is_compressed": is_compressed,
+            })
+    if not rows:
+        out.append("_no `CompressionFixture/*` data in input — skip_")
+        out.append("_(requires `-DGOODNET_BENCH_ZSTD=1`, i.e. "
+                   "`goodnet_zstd_decompress_objects` + `libzstd` present)_")
+        out.append("")
+        return
+    out.append("**Bench.**")
+    out.append("")
+    out.append("| Case | Payload | Time | Throughput | "
+               "Compressed bytes | Ratio | frames_ok | frames_err |")
+    out.append("|---|---|---|---|---|---|---|---|")
+    for r in rows:
+        ratio_str = f"{r['ratio']:.1f}×" if r["ratio"] else "—"
+        frames_ok  = int(r["frames_ok"]  or 0) if r["is_compressed"] else "—"
+        frames_err = int(r["frames_err"] or 0) if r["is_compressed"] else "—"
+        out.append(
+            f"| {r['label']} | {int(r['sz'])} B | {fmt_ns(r['time'])} | "
+            f"{fmt_bytes_per_sec(r['throughput'])} | "
+            f"{int(r['compressed'] or r['sz'])} B | "
+            f"{ratio_str} | {frames_ok} | {frames_err} |")
+    out.append("")
+    compressed_rows = [r for r in rows if r["is_compressed"]]
+    errors = sum(int(r["frames_err"] or 0) for r in compressed_rows)
+    ratios_ok = all((r["ratio"] or 0) > 1.0 for r in compressed_rows)
+    ok = errors == 0 and ratios_ok
+    out.append(f"**Acceptance.** `frames_err == 0` and `ratio > 1` "
+               f"for ZstdTransparent rows: "
+               f"**{'PASS' if ok else 'FAIL'}** "
+               f"(total_errors={errors}, ratios_ok={ratios_ok}).")
+    out.append("")
+
+
 # ── main ───────────────────────────────────────────────────────────
 
 def main(argv):
@@ -494,6 +559,7 @@ def main(argv):
     emit_b4(out, cases)
     emit_b5(out, cases, csv_data)
     emit_b6(out, cases, csv_data)
+    emit_b7(out, cases)
 
     with open(args.output_md, "w") as f:
         f.write("\n".join(out))

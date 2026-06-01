@@ -44,6 +44,10 @@
 #error "GOODNET_NOISE_PLUGIN_PATH must be defined by the bench CMakeLists"
 #endif
 
+#ifdef GOODNET_BENCH_ZSTD
+#include <zstd.h>
+#endif
+
 namespace {
 
 using namespace gn::bench;
@@ -60,6 +64,9 @@ using gn::core::test::inject_conn_up;
 using gn::core::test::inject_rtt;
 using gn::core::test::register_rx;
 using gn::core::test::register_strategy;
+#ifdef GOODNET_BENCH_ZSTD
+using gn::core::test::register_zstd_decompress;
+#endif
 
 constexpr std::uint32_t kPingMsgId = 0x5C0A1E00u;
 
@@ -706,6 +713,146 @@ BENCHMARK_REGISTER_F(MobilityFixture, LanShortcut)
     ->Arg(300)
     ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
+
+#ifdef GOODNET_BENCH_ZSTD
+
+// ════════════════════════════════════════════════════════════════════
+// §B.7 — Transparent in-chain zstd decompression
+// ════════════════════════════════════════════════════════════════════
+//
+// Bob compresses a payload with ZSTD and sends it as msg_id=0x0701.
+// Alice has a ZstdDecompressHandler at priority 255 on 0x0701; it
+// decompresses and re-injects as msg_id=0x0700. The RxCounter on
+// 0x0700 fires for both cases — the application handler is unchanged.
+//
+// Two sub-cases:
+//   Baseline:        bob → 0x0700 (uncompressed) → rx counter.
+//   ZstdTransparent: bob → 0x0701 (compressed) → decompress → 0x0700 → rx.
+//
+// `ratio` = payload_bytes / compressed_bytes. The repeating-pattern
+// payload make_payload() generates compresses ~10× at 1 KiB and
+// ~40× at 8 KiB (ZSTD level 3).
+
+struct CompressionFixture : public ::benchmark::Fixture {
+    static constexpr std::uint32_t kPlainMsgId = 0x0700u;
+    static constexpr std::uint32_t kCompMsgId  = 0x0701u;
+
+    void SetUp(::benchmark::State&) override {
+        if (ready) return;
+        NoisePlugin& noise = process_noise();
+        if (!noise.ok()) return;
+        alice = std::make_unique<BenchNode<gn::link::ipc::IpcLink>>(
+            noise, "alice-cmp", "ipc");
+        bob   = std::make_unique<BenchNode<gn::link::ipc::IpcLink>>(
+            noise, "bob-cmp",   "ipc");
+
+        rx_hid = register_rx(*alice->kernel, kPlainMsgId, rx);
+
+        zstd_handler = std::make_unique<
+            gn::handler::zstd_decompress::ZstdDecompressHandler>(&alice->api);
+        zstd_hid = register_zstd_decompress(*alice->kernel, *zstd_handler);
+
+        char tmpl[] = "/tmp/gnshow-cmp-XXXXXX";
+        const int fd = ::mkstemp(tmpl);
+        if (fd >= 0) { ::close(fd); ::unlink(tmpl); }
+        sock_path = std::string(tmpl) + ".sock";
+        if (alice->link->listen("ipc://" + sock_path) != GN_OK) return;
+        if (bob->link->connect("ipc://" + sock_path) != GN_OK) return;
+        if (!BenchNode<gn::link::ipc::IpcLink>::wait_both_transport(
+                *alice, *bob, 5s)) return;
+
+        alice_conn = find_one_transport(*alice->kernel);
+        bob_conn   = bob->transport_conn();
+        ready = (alice_conn != GN_INVALID_ID && bob_conn != GN_INVALID_ID);
+    }
+
+    void TearDown(::benchmark::State&) override {}
+
+    RxCounter   rx;
+    std::unique_ptr<BenchNode<gn::link::ipc::IpcLink>>              alice;
+    std::unique_ptr<BenchNode<gn::link::ipc::IpcLink>>              bob;
+    std::unique_ptr<
+        gn::handler::zstd_decompress::ZstdDecompressHandler>       zstd_handler;
+    std::string                                                      sock_path;
+    gn_handler_id_t rx_hid    = GN_INVALID_ID;
+    gn_handler_id_t zstd_hid  = GN_INVALID_ID;
+    gn_conn_id_t    alice_conn = GN_INVALID_ID;
+    gn_conn_id_t    bob_conn   = GN_INVALID_ID;
+    bool            ready      = false;
+};
+
+BENCHMARK_DEFINE_F(CompressionFixture, Baseline)(::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("compression fixture bring-up failed"); return; }
+    const std::size_t sz = static_cast<std::size_t>(state.range(0));
+    const auto payload = make_payload(sz);
+    std::uint64_t prev = rx.rx_count.load(std::memory_order_acquire);
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT
+        if (bob->api.send(bob->api.host_ctx, bob_conn, kPlainMsgId,
+                          payload.data(), payload.size()) != GN_OK) {
+            std::this_thread::sleep_for(50us);
+            continue;
+        }
+        if (!wait_for_busy([&] { return rx.rx_count.load() > prev; })) {
+            state.SkipWithError("rx timeout"); break;
+        }
+        prev = rx.rx_count.load(std::memory_order_acquire);
+    }
+    state.SetBytesProcessed(
+        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(sz));
+    state.counters["payload_bytes"]    = static_cast<double>(sz);
+    state.counters["compressed_bytes"] = static_cast<double>(sz);
+    state.counters["ratio"]            = 1.0;
+}
+BENCHMARK_REGISTER_F(CompressionFixture, Baseline)
+    ->Arg(256)->Arg(1024)->Arg(8192)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+BENCHMARK_DEFINE_F(CompressionFixture, ZstdTransparent)(::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("compression fixture bring-up failed"); return; }
+    const std::size_t sz = static_cast<std::size_t>(state.range(0));
+    const auto payload = make_payload(sz);
+
+    const std::size_t bound = ZSTD_compressBound(sz);
+    std::vector<std::uint8_t> compressed(bound);
+    const std::size_t csz = ZSTD_compress(
+        compressed.data(), bound, payload.data(), sz, /*level*/3);
+    if (ZSTD_isError(csz)) {
+        state.SkipWithError("ZSTD_compress failed"); return;
+    }
+    compressed.resize(csz);
+
+    std::uint64_t prev = rx.rx_count.load(std::memory_order_acquire);
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT
+        if (bob->api.send(bob->api.host_ctx, bob_conn, kCompMsgId,
+                          compressed.data(), compressed.size()) != GN_OK) {
+            std::this_thread::sleep_for(50us);
+            continue;
+        }
+        if (!wait_for_busy([&] { return rx.rx_count.load() > prev; })) {
+            state.SkipWithError("rx timeout"); break;
+        }
+        prev = rx.rx_count.load(std::memory_order_acquire);
+    }
+    state.SetBytesProcessed(
+        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(sz));
+    state.counters["payload_bytes"]    = static_cast<double>(sz);
+    state.counters["compressed_bytes"] = static_cast<double>(csz);
+    state.counters["ratio"] =
+        static_cast<double>(sz) / static_cast<double>(csz);
+    state.counters["frames_ok"]  =
+        static_cast<double>(zstd_handler->frames_decompressed());
+    state.counters["frames_err"] =
+        static_cast<double>(zstd_handler->frames_error());
+}
+BENCHMARK_REGISTER_F(CompressionFixture, ZstdTransparent)
+    ->Arg(256)->Arg(1024)->Arg(8192)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+#endif  // GOODNET_BENCH_ZSTD
 
 }  // namespace
 
