@@ -289,8 +289,10 @@ _Static_assert(offsetof(gn_limits_t, max_subscriptions) == 92,
                "gn_limits_t::max_subscriptions offset pinned at 92");
 _Static_assert(offsetof(gn_limits_t, max_capability_blob_bytes) == 96,
                "gn_limits_t::max_capability_blob_bytes offset pinned at 96");
-_Static_assert(offsetof(gn_limits_t, _reserved) == 100,
-               "gn_limits_t::_reserved offset pinned at 100");
+_Static_assert(offsetof(gn_limits_t, max_inject_depth) == 100,
+               "gn_limits_t::max_inject_depth offset pinned at 100");
+_Static_assert(offsetof(gn_limits_t, _reserved) == 104,
+               "gn_limits_t::_reserved offset pinned at 104");
 
 /* ── sdk/log.h ─────────────────────────────────────────────────────────────── */
 
@@ -307,8 +309,8 @@ _Static_assert(offsetof(gn_log_api_t, _reserved) == 24,
 
 /* ── sdk/plugin.h ──────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_plugin_descriptor_t) == 80,
-               "gn_plugin_descriptor_t size pinned at 80");
+_Static_assert(sizeof(gn_plugin_descriptor_t) == 88,
+               "gn_plugin_descriptor_t size pinned at 88");
 _Static_assert(offsetof(gn_plugin_descriptor_t, name) == 0,
                "gn_plugin_descriptor_t::name offset pinned at 0");
 _Static_assert(offsetof(gn_plugin_descriptor_t, version) == 8,

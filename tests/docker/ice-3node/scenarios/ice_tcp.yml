@@ -1,0 +1,25 @@
+# Scenario: both peers behind full-cone NAT; TURN allocation uses TCP
+# transport (RFC 6062) so TCP candidates are gathered and the nominated
+# path is relay/relay over TCP.  Tests that `turn_tcp: true` +
+# `turn_requested_transport: tcp` actually surface TCP relay candidates
+# when `carrier_tcp=1` is reported by the link-ice plugin.
+services:
+  nat_a:
+    environment:
+      NAT_MODE: full_cone
+  nat_b:
+    environment:
+      NAT_MODE: full_cone
+
+  peer_a:
+    environment:
+      ICE_TURN_TCP: "true"
+      ICE_TURN_REQUESTED_TRANSPORT: tcp
+      ICE_MAX_CHECK_RETRIES: "5"
+      HARNESS_TIMEOUT_S: "25"
+  peer_b:
+    environment:
+      ICE_TURN_TCP: "true"
+      ICE_TURN_REQUESTED_TRANSPORT: tcp
+      ICE_MAX_CHECK_RETRIES: "5"
+      HARNESS_TIMEOUT_S: "25"

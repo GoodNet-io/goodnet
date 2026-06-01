@@ -249,6 +249,11 @@ if(GOODNET_BUILD_TESTS)
     find_package(rapidcheck REQUIRED)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake")
     goodnet_patch_rapidcheck_targets()
+    # Defer test-binary execution from build time to ctest run time so the
+    # build succeeds on hosts where the GCC 16 runtime is not on LD_LIBRARY_PATH
+    # (gtest_discover_tests default mode runs the binary during `ninja` to
+    # enumerate test cases, which fails with GLIBCXX_3.4.35 not found).
+    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
 endif()
 
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────

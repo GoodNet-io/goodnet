@@ -41,7 +41,26 @@ set -uo pipefail
 
 cd "$(dirname "$0")"
 
-TIMEOUT_S="${ICE3_TIMEOUT_S:-60}"
+# Preflight: verify the host can forward inter-bridge UDP.
+# Advisory only — TURN-relayed scenarios survive even without the fix.
+if [ "${SKIP_FIREWALL_CHECK:-0}" != "1" ]; then
+    fwd=$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)
+    if [ "${fwd}" != "1" ]; then
+        echo "WARN: net.ipv4.ip_forward is 0 — inter-container UDP will fail"
+        echo "      Fix: sudo sysctl -w net.ipv4.ip_forward=1"
+    fi
+    br_nf=$(cat /proc/sys/net/bridge/bridge-nf-call-iptables 2>/dev/null || echo 0)
+    if [ "${br_nf}" = "1" ] && command -v nft >/dev/null 2>&1; then
+        if ! nft list ruleset 2>/dev/null | grep -q "10.20.0.0/24"; then
+            echo "WARN: bridge-nf-call-iptables=1 and no nftables accept rules"
+            echo "      found for 10.20.0.0/24. Inter-bridge UDP may be dropped."
+            echo "      On NixOS: import tests/docker/ice-3node/nixos-firewall.nix"
+            echo "      Set SKIP_FIREWALL_CHECK=1 to suppress."
+        fi
+    fi
+fi
+
+TIMEOUT_S="${ICE3_TIMEOUT_S:-30}"
 SCENARIOS_DIR="scenarios"
 SIGNAL_VOL="ice3node_signal"
 PASS=0
@@ -96,7 +115,26 @@ if [ "${SKIP_HARNESS_BUILD:-0}" != "1" ]; then
         chmod +x peer/busybox-static
     fi
 
-    echo "=== staged $(ls peer/plugins | wc -l) plugin(s) + harness + busybox ==="
+    # Stage the runtime .so closure that the base image (built from
+    # rc3) lacks. Run ldd with LD_LIBRARY_PATH cleared so the dynamic
+    # linker follows each binary's RUNPATH — not any gcc-15 lib that
+    # nix buildInputs inject into the caller's environment — and
+    # therefore resolves to the same gcc-16 libstdc++ the harness was
+    # compiled against (GLIBCXX_3.4.35).
+    mkdir -p peer/libs
+    rm -f peer/libs/*.so*
+    {
+        env -i PATH="${PATH}" LD_LIBRARY_PATH="" ldd peer/harness 2>/dev/null
+        for so in peer/plugins/*.so; do
+            env -i PATH="${PATH}" LD_LIBRARY_PATH="" ldd "$so" 2>/dev/null
+        done
+    } | awk '$3 ~ /^\/nix\// { print $3 }' \
+      | sort -u \
+      | while IFS= read -r lib; do
+            cp -L "$lib" "peer/libs/$(basename "$lib")" 2>/dev/null || true
+        done
+
+    echo "=== staged $(ls peer/plugins | wc -l) plugin(s) + $(ls peer/libs | wc -l) lib(s) + harness + busybox ==="
 fi
 
 # Discover every override; alphabetical so the order is stable.
@@ -110,6 +148,10 @@ teardown() {
 for override in "${SCENARIOS[@]}"; do
     name="$(basename "${override}" .yml)"
     echo "── scenario: ${name} ─────────────────────────────────────────"
+    if [ "${name}" = "quic_over_ice" ] && [ "${QUIC_ENABLED:-0}" != "1" ]; then
+        echo "  ${name}: SKIP (QUIC_ENABLED not set; set QUIC_ENABLED=1 to run)"
+        continue
+    fi
     teardown
     if ! docker compose -f docker-compose.yml -f "${override}" \
             up -d --build 2>&1 | sed 's/^/  /'; then

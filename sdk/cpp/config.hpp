@@ -97,7 +97,6 @@ config_get(const host_api_t* api, std::string_view key) noexcept;
 template <>
 [[nodiscard]] inline std::optional<std::int64_t>
 config_get<std::int64_t>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty()) return std::nullopt;
     const auto z = detail::to_cstr(key);
@@ -112,7 +111,6 @@ config_get<std::int64_t>(const host_api_t* api, std::string_view key) noexcept
 template <>
 [[nodiscard]] inline std::optional<bool>
 config_get<bool>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty()) return std::nullopt;
     const auto z = detail::to_cstr(key);
@@ -127,7 +125,6 @@ config_get<bool>(const host_api_t* api, std::string_view key) noexcept
 template <>
 [[nodiscard]] inline std::optional<double>
 config_get<double>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty()) return std::nullopt;
     const auto z = detail::to_cstr(key);
@@ -142,7 +139,6 @@ config_get<double>(const host_api_t* api, std::string_view key) noexcept
 template <>
 [[nodiscard]] inline std::optional<std::string>
 config_get<std::string>(const host_api_t* api, std::string_view key)
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty()) return std::nullopt;
     const auto z = detail::to_cstr(key);
@@ -167,7 +163,6 @@ config_get<std::string>(const host_api_t* api, std::string_view key)
 /// destruction of the returned object.
 [[nodiscard]] inline std::optional<ConfigString>
 config_string_raw(const host_api_t* api, std::string_view key)
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty()) return std::nullopt;
     const auto z = detail::to_cstr(key);
@@ -195,7 +190,6 @@ config_get_or_err(const host_api_t* api, std::string_view key) noexcept;
 template <>
 [[nodiscard]] inline std::expected<std::int64_t, gn_result_t>
 config_get_or_err<std::int64_t>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty())
         return std::unexpected(GN_ERR_NULL_ARG);
@@ -211,7 +205,6 @@ config_get_or_err<std::int64_t>(const host_api_t* api, std::string_view key) noe
 template <>
 [[nodiscard]] inline std::expected<bool, gn_result_t>
 config_get_or_err<bool>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty())
         return std::unexpected(GN_ERR_NULL_ARG);
@@ -227,7 +220,6 @@ config_get_or_err<bool>(const host_api_t* api, std::string_view key) noexcept
 template <>
 [[nodiscard]] inline std::expected<double, gn_result_t>
 config_get_or_err<double>(const host_api_t* api, std::string_view key) noexcept
-    GN_EXPECTS(api != nullptr)
 {
     if (!api || !api->config_get || key.empty())
         return std::unexpected(GN_ERR_NULL_ARG);

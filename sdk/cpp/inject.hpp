@@ -64,8 +64,6 @@ namespace gn::sdk {
     std::string_view target_ns,
     std::uint32_t msg_id,
     std::span<const std::uint8_t> payload) noexcept
-    GN_EXPECTS(api != nullptr && api->inject != nullptr)
-    GN_EXPECTS(!target_ns.empty())
 {
     if (!api || !api->inject) return GN_ERR_NOT_IMPLEMENTED;
     if (target_ns.empty()) return GN_ERR_INVALID_ENVELOPE;
@@ -96,9 +94,6 @@ namespace gn::sdk {
     gn_conn_id_t source,
     std::string_view target_ns,
     std::span<const std::uint8_t> frame) noexcept
-    GN_EXPECTS(api != nullptr && api->inject != nullptr)
-    GN_EXPECTS(!target_ns.empty())
-    GN_EXPECTS(!frame.empty())
 {
     if (!api || !api->inject) return GN_ERR_NOT_IMPLEMENTED;
     if (target_ns.empty()) return GN_ERR_INVALID_ENVELOPE;

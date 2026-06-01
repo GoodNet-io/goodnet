@@ -9,3 +9,11 @@ services:
   nat_b:
     environment:
       NAT_MODE: full_cone
+  peer_a:
+    environment:
+      ICE_MAX_CHECK_RETRIES: "5"
+      HARNESS_TIMEOUT_S: "25"
+  peer_b:
+    environment:
+      ICE_MAX_CHECK_RETRIES: "5"
+      HARNESS_TIMEOUT_S: "25"

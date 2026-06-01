@@ -881,6 +881,9 @@
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
               export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+              # gcc16 lib must precede any gcc15 lib injected by buildInputs
+              # so RUNPATH-linked test binaries find the right libstdc++.so.6
+              export LD_LIBRARY_PATH="${stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
               _gn_plugin_slots="\
                 plugins/handlers/heartbeat \

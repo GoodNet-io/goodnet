@@ -39,7 +39,7 @@ public:
     /// @p rate tokens per second, and treats @p start as the most
     /// recent refill timestamp.
     TokenBucket(double rate, double burst, time_point start) noexcept
-        GN_EXPECTS(rate > 0.0 && burst > 0.0)
+        GN_EXPECTS(rate >= 0.0 && burst > 0.0)
         : rate_(rate), burst_(burst), tokens_(burst), last_(start) {}
 
     /// Try to consume one token at @p now. Refills the bucket from

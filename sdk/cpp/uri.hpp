@@ -122,7 +122,6 @@ struct UriParts {
 /// partial result.
 [[nodiscard]] inline std::optional<UriParts>
 parse_uri(std::string_view uri)
-    GN_EXPECTS(!uri.empty())
 {
     UriParts out;
 
@@ -220,7 +219,6 @@ parse_uri(std::string_view uri)
 [[nodiscard]] inline std::optional<UriParts>
 parse_uri_strict(std::string_view uri,
                   std::string_view expected_scheme) noexcept
-    GN_EXPECTS(!uri.empty() && !expected_scheme.empty())
 {
     auto parts = parse_uri(uri);
     if (!parts) return std::nullopt;

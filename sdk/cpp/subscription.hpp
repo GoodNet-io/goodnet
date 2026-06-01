@@ -78,7 +78,6 @@ public:
     /// unset, or the kernel rejected the registration.
     [[nodiscard]] static Subscription
     on_conn_state(const host_api_t* api, ConnStateFn fn)
-        GN_EXPECTS(api != nullptr)
     {
         if (!api) return {};
         return subscribe_impl<ConnStateFn>(api, std::move(fn),
@@ -90,7 +89,6 @@ public:
     /// semantics as `on_conn_state`.
     [[nodiscard]] static Subscription
     on_config_reload(const host_api_t* api, ConfigReloadFn fn)
-        GN_EXPECTS(api != nullptr)
     {
         if (!api) return {};
         return subscribe_impl<ConfigReloadFn>(api, std::move(fn),
@@ -167,7 +165,6 @@ public:
     /// blob bus) or the kernel rejected the registration.
     [[nodiscard]] static Subscription
     on_capability_blob(const host_api_t* api, CapabilityBlobFn fn)
-        GN_EXPECTS(api != nullptr)
     {
         if (!api) return {};
         return subscribe_impl<CapabilityBlobFn>(api, std::move(fn),

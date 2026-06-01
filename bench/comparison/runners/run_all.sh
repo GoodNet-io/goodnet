@@ -36,7 +36,9 @@ echo "=== GoodNet plugin matrix ==="
 # when explicitly requested).
 default_set=(bench_tcp bench_tcp_scale bench_ipc bench_ws bench_tls
              bench_ice bench_subprocess bench_failover
-             bench_udp bench_dtls bench_quic)
+             bench_udp bench_dtls bench_quic
+             bench_real_e2e bench_wss_over_tls bench_noise
+             bench_handler_registry)
 if [[ "${GOODNET_BENCH_SUSTAINED:-0}" == "1" ]]; then
     default_set+=(bench_sustained)
 fi
@@ -102,10 +104,42 @@ if command -v openssl >/dev/null 2>&1; then
     fi
 fi
 
+# Showcase benches (opt-in) — architectural capability demos with their
+# own CSV side-channels and a separate showcase_aggregate.py report.
+# Enable with GOODNET_BENCH_SHOWCASE=1.
+if [[ "${GOODNET_BENCH_SHOWCASE:-0}" == "1" ]]; then
+    echo "=== Showcase benches ==="
+    showcase_bin=""
+    if [[ -x "build-release/bench/bench_showcase" ]]; then
+        showcase_bin="build-release/bench/bench_showcase"
+    elif [[ -x "build/bench/bench_showcase" ]]; then
+        showcase_bin="build/bench/bench_showcase"
+    fi
+    if [[ -n "$showcase_bin" ]]; then
+        echo "  running $showcase_bin..."
+        /usr/bin/env -i HOME="$HOME" PATH="/run/current-system/sw/bin:/usr/bin" \
+            "$showcase_bin" \
+            --benchmark_min_time=0.3s \
+            --benchmark_format=json 2>/dev/null \
+            > "$tmp/bench_showcase.json" || echo "  bench_showcase failed (continuing)"
+        python3 bench/comparison/reports/showcase_aggregate.py \
+            "$sha" "bench/reports/${sha}-showcase.md" \
+            "$tmp/bench_showcase.json" \
+            "$tmp"/showcase-b*.csv 2>/dev/null || true
+        echo "  showcase report: bench/reports/${sha}-showcase.md"
+        drain_time_wait
+    else
+        echo "  bench_showcase binary not found (skipping)"
+    fi
+fi
+
 # Rust P2P stacks (libp2p, iroh) — fair-compare echo round-trip
 # baselines for the EchoRoundtrip fixtures in bench_udp / bench_ws.
-# Setup scripts build the binaries into $GN_BENCH_P2P_DIR; the
-# runners no-op gracefully if the bins are absent.
+# Build the Rust binaries once with:
+#   cd bench/comparison/baselines/libp2p && cargo build --release
+#   cd bench/comparison/baselines/iroh   && cargo build --release
+# or set GN_BENCH_P2P_DIR to your pre-built target directory.
+# Runners no-op gracefully when binaries are absent.
 p2p_root="${GN_BENCH_P2P_DIR:-$(pwd)/build-release/p2p-bench}/target/release"
 if [[ -x "$p2p_root/libp2p-echo" ]]; then
     echo "  libp2p (rust) echo..."

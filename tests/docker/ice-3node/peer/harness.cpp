@@ -395,6 +395,8 @@ int main() {
                                   (peer_name + ".report.json");
     const fs::path peer_report  = fs::path(signal_dir) /
                                   (wait_peer + ".report.json");
+    const fs::path done_path    = fs::path(signal_dir) / (peer_name + ".done");
+    const fs::path fail_path    = fs::path(signal_dir) / (peer_name + ".fail");
 
     /// Metrics-extension client. Bound lazily once the kernel reaches
     /// `Ready`; until then any call must be skipped. The harness writes
@@ -467,6 +469,7 @@ int main() {
 
     auto write_fail = [&](std::string_view reason) {
         write_report(false, reason);
+        write_file_atomic(fail_path, "fail");
     };
 
     timed_log("start");
@@ -906,6 +909,7 @@ int main() {
             std::error_code ec;
             if (!fs::exists(report_path, ec)) {
                 write_report(true, {});
+                write_file_atomic(done_path, "done");
                 timed_log("report.json written (success)");
             }
             if (fs::exists(peer_report, ec)) {

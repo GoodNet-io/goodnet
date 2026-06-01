@@ -16,6 +16,8 @@
 #    * wait for the peer's pubkey
 #    * trigger an ICE connect to it
 #    * on first inbound byte, write `${SIGNAL_DIR}/${PEER_NAME}.done`
+#      and `${PEER_NAME}.report.json` (structured nomination details)
+#    * on any failure, write `${PEER_NAME}.fail` before exiting non-zero
 #
 # Exits 0 on success, non-zero on timeout / hard failure. The
 # scenario test scripts in `run_all.sh` assert on the `.done` /
@@ -81,11 +83,19 @@ fi
 # treats missing keys as defaults too, but emitting them with
 # explicit values keeps the rendered config diffable.
 : "${TURN_BACKUP_INTERVAL_S:=5}"
+: "${ICE_MAX_CHECK_RETRIES:=4}"
 : "${ICE_LITE_MODE:=false}"
 : "${ICE_MDNS_OBFUSCATE:=false}"
 : "${ICE_ENABLE_IPV6:=false}"
 : "${ICE_PMTU_ACTIVE_PROBING:=false}"
 : "${ICE_PORT_PREDICTION_STRIDE_MAX:=0}"
+# Derive the boolean enable flag from the stride-max knob so
+# scenario files only need to set ICE_PORT_PREDICTION_STRIDE_MAX.
+if [ "${ICE_PORT_PREDICTION_STRIDE_MAX}" -gt 0 ] 2>/dev/null; then
+    ICE_SYMMETRIC_PRED_ENABLED=true
+else
+    ICE_SYMMETRIC_PRED_ENABLED=false
+fi
 : "${ICE_TCP_TLS_ONLY:=false}"
 : "${ICE_SESSION_TIMEOUT_S:=10}"
 : "${TURN_USER:=goodnet}"
@@ -196,11 +206,13 @@ cat > /etc/goodnet/peer.json <<EOF
     "consent_max_failures": 3,
     "consent_max_recovery": 3,
     "turn_backup_interval_s": ${TURN_BACKUP_INTERVAL_S},
+    "max_check_retries": ${ICE_MAX_CHECK_RETRIES},
     "lite_mode": ${ICE_LITE_MODE},
     "mdns_obfuscate_host_candidates": ${ICE_MDNS_OBFUSCATE},
     "enable_ipv6": ${ICE_ENABLE_IPV6},
-    "pmtud_active_probing": ${ICE_PMTU_ACTIVE_PROBING},
-    "port_prediction_stride_max": ${ICE_PORT_PREDICTION_STRIDE_MAX},
+    "pmtu_active_probing": ${ICE_PMTU_ACTIVE_PROBING},
+    "symmetric_port_prediction_enabled": ${ICE_SYMMETRIC_PRED_ENABLED},
+    "symmetric_port_prediction_attempts": ${ICE_PORT_PREDICTION_STRIDE_MAX},
     "tcp_tls_only": ${ICE_TCP_TLS_ONLY},
     "turn_tcp": ${ICE_TURN_TCP},
     "turn_requested_transport": "${ICE_TURN_REQUESTED_TRANSPORT}"
@@ -233,8 +245,12 @@ export SIGNAL_DIR
 export CONFIG=/etc/goodnet/peer.json
 export PLUGINS_DIR=/plugins
 export QUIC_OVER_ICE
-: "${HARNESS_TIMEOUT_S:=30}"
+: "${HARNESS_TIMEOUT_S:=18}"
 export HARNESS_TIMEOUT_S
+
+# Runtime libs staged by run_all.sh live here; base image may lack
+# matching nix store paths (built from rc3, current harness uses newer).
+export LD_LIBRARY_PATH=/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 echo "[peer-${PEER_NAME}] starting peer-harness"
 exec /usr/local/bin/peer-harness

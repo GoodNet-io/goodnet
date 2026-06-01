@@ -296,6 +296,25 @@ if(NOT GOODNET_STATIC_PLUGINS
     # (everything is linked into the kernel binary instead). Skip the
     # bench entirely in static builds; the static plugin layout is
     # exercised by the regular kernel binary via `goodnet run`.
+    add_executable(bench_handler_registry
+        plugins/bench_handler_registry.cpp)
+    target_link_libraries(bench_handler_registry PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        goodnet_tcp_objects
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+        ${CMAKE_DL_LIBS}
+    )
+    add_dependencies(bench_handler_registry goodnet_security_noise)
+    target_compile_definitions(bench_handler_registry PRIVATE
+        "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    )
+    set_target_properties(bench_handler_registry PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+
     add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
     target_link_libraries(bench_real_e2e PRIVATE
         goodnet_bench_harness
