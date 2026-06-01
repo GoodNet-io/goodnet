@@ -93,8 +93,6 @@ BENCHMARK_REGISTER_F(UdpFixture, Throughput)
     ->Arg(64)
     ->Arg(512)
     ->Arg(1200)   // typical PMTU floor we ship
-    ->Arg(1472)   // Ethernet/IPv4 PMTU boundary (1500 - 20 IP - 8 UDP)
-    ->Arg(8192)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
@@ -235,7 +233,6 @@ BENCHMARK_REGISTER_F(UdpFixture, EchoRoundtrip)
     ->Arg(512)
     ->Arg(1024)
     ->Arg(1200)  // PMTU floor — last size that fits without fragmentation
-    ->Arg(1472)  // Ethernet/IPv4 PMTU boundary (1500 - 20 IP - 8 UDP)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 

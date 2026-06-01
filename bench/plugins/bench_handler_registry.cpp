@@ -212,6 +212,12 @@ BENCHMARK_DEFINE_F(HandlerRegistryFixture, HandlerChainDepth)
     std::vector<gn_handler_id_t> hids(n, GN_INVALID_ID);
     chain_done.store(0, std::memory_order_relaxed);
 
+    const std::size_t cap = alice->kernel->handlers().max_chain_length();
+    if (cap != 0 && n > cap) {
+        state.SkipWithError(("chain depth exceeds max_chain_length="
+            + std::to_string(cap)).c_str());
+        return;
+    }
     for (std::size_t i = 0; i < n; ++i) {
         ctxs[i].is_terminal = (i == n - 1);
         ctxs[i].chain_done  = &chain_done;
@@ -277,6 +283,16 @@ BENCHMARK_DEFINE_F(HandlerRegistryFixture, HandlerNamespaceFanout)
     const std::size_t k     = static_cast<std::size_t>(state.range(1));
     const std::size_t total = m * k;
     if (total == 0) { state.SkipWithError("m*k == 0"); return; }
+    /// Each namespace contributes k handlers to the merged chain.
+    /// Check against max_chain_length (0 = unlimited).
+    {
+        const std::size_t cap = alice->kernel->handlers().max_chain_length();
+        if (cap != 0 && k > cap) {
+            state.SkipWithError(("handlers_per_ns exceeds max_chain_length="
+                + std::to_string(cap)).c_str());
+            return;
+        }
+    }
 
     std::vector<ChainCtx>        ctxs(total);
     std::vector<gn_handler_id_t> hids(total, GN_INVALID_ID);
@@ -355,6 +371,14 @@ BENCHMARK_DEFINE_F(HandlerRegistryFixture, HandlerPriorityOrder)
     (::benchmark::State& state) {
     if (!ready) { state.SkipWithError("kernel bring-up failed"); return; }
     const std::size_t n = static_cast<std::size_t>(state.range(0));
+    {
+        const std::size_t cap = alice->kernel->handlers().max_chain_length();
+        if (cap != 0 && n > cap) {
+            state.SkipWithError(("chain depth exceeds max_chain_length="
+                + std::to_string(cap)).c_str());
+            return;
+        }
+    }
 
     std::atomic<std::size_t>     seq{0};
     std::vector<std::size_t>     fire_log(n, 0);

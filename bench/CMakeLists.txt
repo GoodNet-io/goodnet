@@ -307,6 +307,9 @@ if(NOT GOODNET_STATIC_PLUGINS
         benchmark::benchmark_main
         ${CMAKE_DL_LIBS}
     )
+    if(TARGET GoodNet::protocol_gnet)
+        target_link_libraries(bench_handler_registry PRIVATE GoodNet::protocol_gnet)
+    endif()
     add_dependencies(bench_handler_registry goodnet_security_noise)
     target_compile_definitions(bench_handler_registry PRIVATE
         "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""

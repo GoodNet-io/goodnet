@@ -75,6 +75,14 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
         return;
     }
 
+    /// Snapshot stub state before connecting so delta-based checks
+    /// work correctly when google-benchmark re-enters SetUp across
+    /// multiple warmup passes (the stub accumulates across calls).
+    const int connects_before = client_kernel.stub.connects.load();
+    const std::size_t conns_before = [&] {
+        std::lock_guard lk(client_kernel.stub.mu);
+        return client_kernel.stub.conns.size();
+    }();
     /// Open N parallel connections. Each connect adds one entry to
     /// the client_kernel.stub.conns set; wait for all of them
     /// before driving the loop so the bench measures steady-state
@@ -84,7 +92,7 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
     }
     if (!::gn::sdk::test::wait_for(
             [&] {
-                return client_kernel.stub.connects.load()
+                return client_kernel.stub.connects.load() - connects_before
                        >= static_cast<int>(conn_count);
             }, 10s)) {
         state.SkipWithError("not all connects completed");
@@ -93,7 +101,9 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
     std::vector<gn_conn_id_t> conns;
     {
         std::lock_guard lk(client_kernel.stub.mu);
-        conns = client_kernel.stub.conns;
+        const auto& all = client_kernel.stub.conns;
+        conns.assign(all.begin() + static_cast<std::ptrdiff_t>(conns_before),
+                     all.end());
     }
 
     ResourceCounters res;
@@ -165,6 +175,11 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
         state.SkipWithError("listen failed");
         return;
     }
+    const int csat_connects_before = client_kernel.stub.connects.load();
+    const std::size_t csat_conns_before = [&] {
+        std::lock_guard lk(client_kernel.stub.mu);
+        return client_kernel.stub.conns.size();
+    }();
     /// One conn per worker thread so concurrent send() calls don't
     /// race the same per-conn write strand.
     for (std::size_t i = 0; i < worker_count; ++i) {
@@ -172,7 +187,7 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
     }
     if (!::gn::sdk::test::wait_for(
             [&] {
-                return client_kernel.stub.connects.load()
+                return client_kernel.stub.connects.load() - csat_connects_before
                        >= static_cast<int>(worker_count);
             }, 10s)) {
         state.SkipWithError("not all connects completed");
@@ -181,7 +196,9 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
     std::vector<gn_conn_id_t> conns;
     {
         std::lock_guard lk(client_kernel.stub.mu);
-        conns = client_kernel.stub.conns;
+        const auto& all = client_kernel.stub.conns;
+        conns.assign(all.begin() + static_cast<std::ptrdiff_t>(csat_conns_before),
+                     all.end());
     }
 
     std::atomic<bool>        stop{false};
