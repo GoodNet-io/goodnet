@@ -394,8 +394,8 @@ _Static_assert(offsetof(gn_secure_buffer_t, free_user_data) == 16,
 _Static_assert(offsetof(gn_secure_buffer_t, free_fn) == 24,
                "gn_secure_buffer_t::free_fn offset pinned at 24");
 
-_Static_assert(sizeof(gn_security_provider_vtable_t) == 128,
-               "gn_security_provider_vtable_t size pinned at 128");
+_Static_assert(sizeof(gn_security_provider_vtable_t) == 136,
+               "gn_security_provider_vtable_t size pinned at 136");
 _Static_assert(offsetof(gn_security_provider_vtable_t, api_size) == 0,
                "gn_security_provider_vtable_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_security_provider_vtable_t, provider_id) == 8,
@@ -420,8 +420,10 @@ _Static_assert(offsetof(gn_security_provider_vtable_t, destroy) == 80,
                "gn_security_provider_vtable_t::destroy offset pinned at 80");
 _Static_assert(offsetof(gn_security_provider_vtable_t, allowed_trust_mask) == 88,
                "gn_security_provider_vtable_t::allowed_trust_mask offset pinned at 88");
-_Static_assert(offsetof(gn_security_provider_vtable_t, _reserved) == 96,
-               "gn_security_provider_vtable_t::_reserved offset pinned at 96");
+_Static_assert(offsetof(gn_security_provider_vtable_t, provides_flags) == 96,
+               "gn_security_provider_vtable_t::provides_flags offset pinned at 96");
+_Static_assert(offsetof(gn_security_provider_vtable_t, _reserved) == 104,
+               "gn_security_provider_vtable_t::_reserved offset pinned at 104");
 
 /* ── sdk/link.h ───────────────────────────────────────────────────────── */
 
@@ -432,8 +434,8 @@ _Static_assert(offsetof(gn_byte_span_t, bytes) == 0,
 _Static_assert(offsetof(gn_byte_span_t, size) == 8,
                "gn_byte_span_t::size offset pinned at 8");
 
-_Static_assert(sizeof(gn_link_vtable_t) == 112,
-               "gn_link_vtable_t size pinned at 112");
+_Static_assert(sizeof(gn_link_vtable_t) == 120,
+               "gn_link_vtable_t size pinned at 120");
 _Static_assert(offsetof(gn_link_vtable_t, api_size) == 0,
                "gn_link_vtable_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_link_vtable_t, scheme) == 8,
@@ -454,8 +456,10 @@ _Static_assert(offsetof(gn_link_vtable_t, extension_vtable) == 64,
                "gn_link_vtable_t::extension_vtable offset pinned at 64");
 _Static_assert(offsetof(gn_link_vtable_t, destroy) == 72,
                "gn_link_vtable_t::destroy offset pinned at 72");
-_Static_assert(offsetof(gn_link_vtable_t, _reserved) == 80,
-               "gn_link_vtable_t::_reserved offset pinned at 80");
+_Static_assert(offsetof(gn_link_vtable_t, on_topology_sealed) == 80,
+               "gn_link_vtable_t::on_topology_sealed offset pinned at 80");
+_Static_assert(offsetof(gn_link_vtable_t, _reserved) == 88,
+               "gn_link_vtable_t::_reserved offset pinned at 88");
 
 /* ── sdk/extensions/heartbeat.h ────────────────────────────────────────────── */
 

@@ -22,6 +22,7 @@
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/extensions/link.h>
 #include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
@@ -132,6 +133,19 @@ gn_result_t notify_connect(void* host_ctx,
             gn_path_sample_t sample{};
             sample.conn   = new_id;
             sample.rtt_us = 0;   // no probe landed yet — unknown
+            // Populate caps from the link extension so strategies can make
+            // capability-aware routing decisions (e.g. prefer ENCRYPTED_PATH).
+            if (auto link_entry = pc->kernel->links().find_by_scheme(scheme)) {
+                const auto* lapi = static_cast<const gn_link_api_t*>(
+                    link_entry->vtable->extension_vtable
+                        ? link_entry->vtable->extension_vtable(link_entry->self)
+                        : nullptr);
+                if (lapi && GN_API_HAS(gn_link_api_t, lapi, get_capabilities)) {
+                    gn_link_caps_t caps{};
+                    if (lapi->get_capabilities(lapi->ctx, &caps) == GN_OK)
+                        sample.caps = caps.flags;
+                }
+            }
             (void)sapi->on_path_event(
                 sapi->ctx, remote_pk,
                 GN_PATH_EVENT_CONN_UP, &sample);
@@ -293,6 +307,20 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             if (plaintexts.empty()) return GN_OK;
         }
     } else {
+        // No security session. If security is active (a provider is registered
+        // and an identity exists), an external connection without a session is
+        // a gap in the security contour — reject it.
+        // If security is not configured (test scaffolding, embedded host without
+        // identity), fall through to plaintext as before.
+        const bool security_active =
+            pc->kernel->security().is_active() &&
+            pc->kernel->node_identity() != nullptr;
+        const bool is_local = (rec->trust == GN_TRUST_LOOPBACK ||
+                               rec->trust == GN_TRUST_INTRA_NODE);
+        if (security_active && !is_local) {
+            pc->kernel->metrics().increment("drop.no_session_external");
+            return GN_ERR_INVALID_ENVELOPE;
+        }
         plaintexts.emplace_back(wire_bytes.begin(), wire_bytes.end());
     }
 
