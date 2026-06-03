@@ -65,6 +65,7 @@
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
 #include <sdk/link.h>
+#include <sdk/topology.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
 
@@ -404,6 +405,16 @@ template <class T>
         v.extension_name   = &_gn_link_ext_name;                                 \
         v.extension_vtable = &_gn_link_ext_vtable;                               \
         v.destroy          = &_gn_link_destroy;                                  \
+        if constexpr (requires {                                               \
+            std::declval<Class>().on_topology_sealed(                         \
+                static_cast<const struct gn_topology_s*>(nullptr));           \
+        }) {                                                                   \
+            v.on_topology_sealed = [](void* self,                             \
+                                       const struct gn_topology_s* topo)      \
+                                       noexcept {                              \
+                _gn_link_of(self).on_topology_sealed(topo);                   \
+            };                                                                 \
+        }                                                                      \
         return v;                                                              \
     }                                                                          \
                                                                                \

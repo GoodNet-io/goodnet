@@ -187,6 +187,12 @@ endif()
 # build survives an unexpected toolchain.
 if(GOODNET_USE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)
+    # Propagate explicit compiler to the try_compile sub-project so
+    # check_ipo_supported uses the same toolchain as the parent build,
+    # not whatever g++ is first on PATH (can differ on Nix multi-GCC setups).
+    list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+        CMAKE_CXX_COMPILER CMAKE_C_COMPILER
+        CMAKE_CXX_COMPILER_LAUNCHER CMAKE_C_COMPILER_LAUNCHER)
     check_ipo_supported(RESULT _goodnet_ipo_ok OUTPUT _goodnet_ipo_msg)
     if(_goodnet_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
