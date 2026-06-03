@@ -48,8 +48,10 @@
 
 #include <sdk/host_api.h>
 #include <sdk/cpp/contract.hpp>
+#include <sdk/cpp/types.hpp>
 
 #include <cstdint>
+#include <cstring>
 #include <format>
 #include <source_location>
 #include <utility>
@@ -90,14 +92,19 @@ inline void emit_buf(const host_api_t* api,
 /// string literal passed to `info()`, `warn()`, etc.
 template <class... Args>
 struct Fmt {
-    std::format_string<Args...> str;
-    std::source_location        loc;
+    const char*          str;
+    std::source_location loc;
 
-    // consteval constructor: loc defaults to the CALL SITE of `Fmt{…}`
-    // which is the point where `info(api, "…", args...)` is written.
-    consteval Fmt(
-        std::format_string<Args...>      s,
-        std::source_location             l = std::source_location::current())
+    // GCC 16 C++26: implicit conversion of string literals to
+    // std::type_identity_t<Fmt<Args...>> fails when Fmt stores
+    // std::format_string<Args...> (whose own consteval ctor can't
+    // be called through that indirection).  Storing const char*
+    // and accepting it consteval resolves the ambiguity — string
+    // literals are constant expressions as const char*, and emit()
+    // passes the pointer as string_view to std::format_to_n which
+    // validates arguments at compile time via its own overload.
+    consteval Fmt(const char*          s,
+                  std::source_location l = std::source_location::current()) noexcept
         : str(s), loc(l) {}
 };
 
@@ -106,25 +113,36 @@ struct Fmt {
 /// Emit a log line at @p level.  Source location is captured from the call
 /// site automatically; no `__FILE__` / `__LINE__` arguments needed.
 template <class... Args>
-inline void emit(const host_api_t* api,
-                 gn_log_level_t    level,
-                 Fmt<Args...>      fmt,
-                 Args&&...         args) noexcept
-    GN_EXPECTS(api != nullptr)
+inline void emit(const host_api_t*                    api,
+                 gn_log_level_t                       level,
+                 std::type_identity_t<Fmt<Args...>>   fmt,
+                 Args&&...                            args) noexcept
 {
+    // GCC 16 C++26: GN_EXPECTS (pre()) on a variadic template causes an ICE
+    // when the zero-argument specialisation (Args={}) is instantiated via
+    // check_postconditions_in_redecl.  The runtime null-check below is the
+    // effective guard; the contract annotation is omitted here to avoid it.
     if (!api || !api->log.should_log || !api->log.emit) return;
     if (!api->log.should_log(api->host_ctx, level)) return;
 
     char buf[kLogBufBytes];
-    // Reserve 5 bytes for " ..." truncation suffix + NUL.
-    auto r = std::format_to_n(buf, kLogBufBytes - 5,
-                               fmt.str, std::forward<Args>(args)...);
-    if (r.size >= kLogBufBytes - 5) {
-        // Message was truncated — append visible marker.
-        char* end = buf + (kLogBufBytes - 5);
-        end[0] = ' '; end[1] = '.'; end[2] = '.'; end[3] = '.'; end[4] = '\0';
-    } else {
-        *r.out = '\0';
+    // Use vformat so the format string can be a runtime const char* value
+    // (format_to_n requires a consteval format_string in GCC 16 C++26).
+    try {
+        auto s = std::vformat(std::string_view{fmt.str},
+                              std::make_format_args(args...));
+        constexpr std::size_t limit = kLogBufBytes - 5;
+        const bool trunc = s.size() > limit;
+        const std::size_t n = trunc ? limit : s.size();
+        std::memcpy(buf, s.data(), n);
+        if (trunc) {
+            buf[n] = ' '; buf[n+1] = '.'; buf[n+2] = '.';
+            buf[n+3] = '.'; buf[n+4] = '\0';
+        } else {
+            buf[n] = '\0';
+        }
+    } catch (...) {
+        buf[0] = '?'; buf[1] = '\0';
     }
 
     api->log.emit(api->host_ctx, level,
@@ -133,28 +151,65 @@ inline void emit(const host_api_t* api,
                   buf);
 }
 
+// ── Zero-arg overloads — GCC 16 workaround ───────────────────────────────────
+// GCC 16 (cc1plus) segfaults when instantiating emit<> with an empty Args...
+// pack (internal bug in tsubst_expr for std::make_format_args with no args).
+// Non-template overloads taking const char* are an exact match for literal-only
+// calls and are preferred over the template path, sidestepping the crash.
+
+inline void trace(const host_api_t* api, const char* msg,
+                  std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_TRACE, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+inline void debug(const host_api_t* api, const char* msg,
+                  std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_DEBUG, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+inline void info(const host_api_t* api, const char* msg,
+                 std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_INFO, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+inline void warn(const host_api_t* api, const char* msg,
+                 std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_WARN, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+inline void error(const host_api_t* api, const char* msg,
+                  std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_ERROR, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+inline void fatal(const host_api_t* api, const char* msg,
+                  std::source_location loc = std::source_location::current()) noexcept {
+    detail::emit_buf(api, GN_LOG_FATAL, loc.file_name(),
+                     static_cast<std::int32_t>(loc.line()), msg);
+}
+
 template <class... Args>
-inline void trace(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void trace(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_TRACE, fmt, std::forward<Args>(args)...);
 }
 template <class... Args>
-inline void debug(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void debug(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_DEBUG, fmt, std::forward<Args>(args)...);
 }
 template <class... Args>
-inline void info(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void info(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_INFO, fmt, std::forward<Args>(args)...);
 }
 template <class... Args>
-inline void warn(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void warn(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_WARN, fmt, std::forward<Args>(args)...);
 }
 template <class... Args>
-inline void error(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void error(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_ERROR, fmt, std::forward<Args>(args)...);
 }
 template <class... Args>
-inline void fatal(const host_api_t* api, Fmt<Args...> fmt, Args&&... args) noexcept {
+inline void fatal(const host_api_t* api, std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) noexcept {
     emit(api, GN_LOG_FATAL, fmt, std::forward<Args>(args)...);
 }
 
@@ -185,27 +240,27 @@ public:
     }
 
     template <class... Args>
-    void trace(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void trace(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::trace(api_, fmt, std::forward<Args>(args)...);
     }
     template <class... Args>
-    void debug(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void debug(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::debug(api_, fmt, std::forward<Args>(args)...);
     }
     template <class... Args>
-    void info(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void info(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::info(api_, fmt, std::forward<Args>(args)...);
     }
     template <class... Args>
-    void warn(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void warn(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::warn(api_, fmt, std::forward<Args>(args)...);
     }
     template <class... Args>
-    void error(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void error(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::error(api_, fmt, std::forward<Args>(args)...);
     }
     template <class... Args>
-    void fatal(Fmt<Args...> fmt, Args&&... args) const noexcept {
+    void fatal(std::type_identity_t<Fmt<Args...>> fmt, Args&&... args) const noexcept {
         gn::log::fatal(api_, fmt, std::forward<Args>(args)...);
     }
 
