@@ -6,51 +6,27 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Known implementation mistake — link-ice two-level conn_id layering
+### Known implementation mistake — link-ice multi-connect signal routing
 
-The kernel model: `ConnectionRegistry` holds N `conn_id` entries per
-`peer_pk`; which `conn_id` to use for a given send is the strategy
-plugin's responsibility (`gn.float-send.*` family, e.g.
-`gn.float-send.multipath-bond`).  A link plugin creates exactly one
-`conn_id` per `connect()` call.
+The kernel's `ConnectionRegistry` holds N `conn_id` entries per
+`peer_pk`; multi-path routing is the strategy plugin's job
+(`gn.float-send.*`).  `IceLink` correctly follows this model —
+`sessions_` maps `conn_id → PeerEntry`, `peer_to_ids_` maps
+`peer_pk → [conn_id, ...]`, and each `IceSession` uses composer-mode
+carrier handles (bypassing `notify_connect`) for its internal
+candidate-probe transport.  The two-handle-space model is correct by
+design.
 
-`link-ice` violates this boundary in two related ways:
-
-**First**: `IceSession` internally calls `carrier_->connect()` (into
-`link-udp` / `link-tcp`) for each candidate endpoint it probes during
-the ICE check ladder.  Each such call produces a real kernel `conn_id`
-that appears in `ConnectionRegistry` as a live UDP or TCP connection.
-These carrier `conn_id` values are invisible to the application but
-fully visible to the kernel, creating a secondary `conn_id` namespace
-that exists solely to serve ICE's internal transport.  The session
-stores the currently-nominated carrier `conn_id` in `nominated_cid_`
-and routes application data through it.  The ICE-level `conn_id`
-(created by `IceLink` via `notify_connect` at session allocation) and
-the carrier-level `conn_id` (owned by `IceSession`) are two
-independent layers, both living in the kernel registry simultaneously.
-
-**Second**: OFFER/ANSWER signals arrive indexed by `peer_pk` (via the
-`gn.link.ice.signal` extension), not by `conn_id`.  With multiple ICE
-sessions to the same peer (`peer_to_ids_[peer_pk].size() > 1`) there
-is no session-specific token in the signal envelope to distinguish
-which session an incoming OFFER belongs to.  The plugin works around
-this with a `size() == 1` trickle-fold guard: candidates are merged
-into an existing session only when exactly one session for that peer
-exists; otherwise a third session is created.  Multi-connect to the
-same peer via ICE is therefore broken: each new OFFER spawns a new
-`IceSession` and each session runs an independent, mutually-unaware
-check ladder.
-
-The correct architecture — already in place for the kernel and the new
-`gn.float-send.multipath-bond` strategy plugin — is for the link
-plugin to be agnostic to how many connections exist to a given peer.
-Each `connect("ice://peer_pk")` produces one `conn_id`; multi-path
-routing across those `conn_id`s is the strategy layer's job.  The fix
-scope for `link-ice` is: add a session-token to the signal envelope so
-incoming signals can be routed to the correct session, and stop
-creating carrier connections visible to the kernel (carrier transport
-should be opaque to the registry).  Full detail in the `link-ice`
-plugin CHANGELOG.
+What is broken: OFFER/ANSWER signals arrive at `IceLink` keyed by
+`peer_pk` (via `gn.link.ice.signal`), not by `conn_id`.  The signal
+envelope carries no session-specific token.  When
+`peer_to_ids_[peer_pk].size() > 1` (multiple concurrent ICE sessions
+to the same peer), the plugin cannot route the OFFER to the correct
+session and falls through to allocating a new `IceSession` via
+`notify_connect`.  Each new session runs an independent check ladder;
+incoming signals for the originals are lost and those ladders time out.
+Multi-connect to the same peer via ICE is broken beyond the first
+session.  Full detail and fix scope in the `link-ice` plugin CHANGELOG.
 
 ### rc6 cycle — comprehensive pre-release gauntlet snapshot
 
