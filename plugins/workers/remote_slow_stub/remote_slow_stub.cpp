@@ -74,6 +74,7 @@ constexpr gn_link_vtable_t kSlowVtable{
     .extension_name    = nullptr,
     .extension_vtable  = nullptr,
     .destroy           = &slow_destroy,
+    .on_topology_sealed = nullptr,
     ._reserved         = {nullptr, nullptr, nullptr, nullptr},
 };
 

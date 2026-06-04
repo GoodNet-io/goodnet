@@ -80,6 +80,18 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/web_api_proxy/CMakeLists.txt")
     add_subdirectory(handlers/web_api_proxy)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/zstd_decompress/CMakeLists.txt")
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_ZSTD QUIET libzstd)
+    endif()
+    if(_GOODNET_HAVE_ZSTD_FOUND)
+        add_subdirectory(handlers/zstd_decompress)
+    else()
+        message(STATUS "Skipping plugins/handlers/zstd_decompress: libzstd not found")
+    endif()
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()
@@ -156,6 +168,11 @@ endif()
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/float_send_rtt/CMakeLists.txt")
     add_subdirectory(strategies/float_send_rtt)
+endif()
+
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/multipath_bond/CMakeLists.txt")
+    add_subdirectory(strategies/multipath_bond)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protocols/gnet/CMakeLists.txt")
