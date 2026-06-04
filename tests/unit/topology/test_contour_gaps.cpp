@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdint>
+#include <memory>
 
 #include <core/kernel/kernel.hpp>
 #include <core/topology/topology_builder.hpp>
@@ -18,92 +19,76 @@ namespace {
 
 // ── vtable helpers ──────────────────────────────────────────────────────────
 
-const gn_security_provider_vtable_t* make_sec_vtable(
-        std::uint32_t trust_mask,
-        std::uint32_t provides) {
-    struct V {
-        gn_security_provider_vtable_t v;
-        std::uint32_t mask;
-        std::uint32_t flags;
-    };
-    // Leak is intentional for test lifetime — tests are short-lived.
-    auto* s = new V{};
-    s->v.api_size = sizeof(gn_security_provider_vtable_t);
-    s->mask  = trust_mask;
-    s->flags = provides;
-    s->v.allowed_trust_mask = [](void* self) -> std::uint32_t {
-        return static_cast<V*>(self)->mask;
-    };
-    s->v.provides_flags = [](void* self) -> std::uint32_t {
-        return static_cast<V*>(self)->flags;
-    };
-    return &s->v;
-}
+/// Heap-allocated security provider stub. Returns the stored mask/flags
+/// via the vtable's `self` pointer (which IS the struct itself).
+struct MockSecProvider {
+    gn_security_provider_vtable_t vtable{};
+    std::uint32_t mask  = 0;
+    std::uint32_t flags = 0;
 
-// Link vtable with ENCRYPTED_PATH caps.
-const gn_link_vtable_t* make_link_vtable_encrypted() {
-    struct V {
-        gn_link_vtable_t v;
-        gn_link_api_t    lapi;
-    };
-    auto* s = new V{};
-    s->v.api_size = sizeof(gn_link_vtable_t);
-    s->lapi.api_size = sizeof(gn_link_api_t);
-    s->lapi.ctx = s;
-    s->lapi.get_capabilities = [](void* /*ctx*/,
-                                   gn_link_caps_t* out) -> gn_result_t {
-        out->flags = GN_LINK_CAP_ENCRYPTED_PATH;
-        return GN_OK;
-    };
-    s->v.extension_vtable = [](void* self) -> const void* {
-        return &static_cast<V*>(self)->lapi;
-    };
-    s->v.ctx = s;
-    return &s->v;
-}
+    MockSecProvider(std::uint32_t m, std::uint32_t f) : mask(m), flags(f) {
+        vtable.api_size = sizeof(gn_security_provider_vtable_t);
+        vtable.allowed_trust_mask = [](void* self) -> std::uint32_t {
+            return static_cast<MockSecProvider*>(self)->mask;
+        };
+        vtable.provides_flags = [](void* self) -> std::uint32_t {
+            return static_cast<MockSecProvider*>(self)->flags;
+        };
+    }
+};
 
-const gn_link_vtable_t* make_link_vtable_plain() {
-    static const gn_link_vtable_t v = []() {
-        gn_link_vtable_t x{};
-        x.api_size = sizeof(gn_link_vtable_t);
-        return x;
-    }();
-    return &v;
-}
+/// Link vtable + extension state for an encrypted-path link.
+struct MockEncLink {
+    gn_link_vtable_t v{};
+    gn_link_api_t    lapi{};
+
+    MockEncLink() {
+        v.api_size = sizeof(gn_link_vtable_t);
+        lapi.api_size = sizeof(gn_link_api_t);
+        lapi.ctx = this;
+        lapi.get_capabilities = [](void* /*ctx*/,
+                                    gn_link_caps_t* out) -> gn_result_t {
+            out->flags = GN_LINK_CAP_ENCRYPTED_PATH;
+            return GN_OK;
+        };
+        v.extension_vtable = [](void* self) -> const void* {
+            return &static_cast<MockEncLink*>(self)->lapi;
+        };
+    }
+};
 
 // ── tests ───────────────────────────────────────────────────────────────────
 
-/// A Noise-only stack (UNTRUSTED + PEER with E2E) + null (LOOPBACK +
-/// INTRA_NODE, no E2E). Expected: bits 0,1 = 0; bits 2,3,4 = set; bit 5 = set.
+/// Noise covers only external classes (UNTRUSTED, PEER) with E2E.
+/// Null covers local classes (LOOPBACK, INTRA_NODE) without E2E.
+/// Expected: bits 0,1 = 0 (Noise has E2E); bits 2,3 = set (null, no E2E);
+/// bit 4 (ANONYMOUS_LOOPBACK) = set (no provider); bit 5 (LINK_ENCRYPTED) = set.
 TEST(ContourGaps, NoiseAndNull) {
     gn::core::Kernel k;
 
-    const std::uint32_t noise_mask =
-        (1u << GN_TRUST_UNTRUSTED) | (1u << GN_TRUST_PEER) |
-        (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
-    const std::uint32_t noise_provides =
-        GN_SEC_PROVIDES_E2E_ENCRYPTION |
-        GN_SEC_PROVIDES_AUTHENTICATION |
-        GN_SEC_PROVIDES_FORWARD_SECRECY;
+    auto noise = std::make_unique<MockSecProvider>(
+        (1u << GN_TRUST_UNTRUSTED) | (1u << GN_TRUST_PEER),
+        GN_SEC_PROVIDES_E2E_ENCRYPTION | GN_SEC_PROVIDES_AUTHENTICATION |
+        GN_SEC_PROVIDES_FORWARD_SECRECY);
+
+    auto null_p = std::make_unique<MockSecProvider>(
+        (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE), 0);
 
     ASSERT_EQ(k.security().register_provider(
-        "noise", make_sec_vtable(noise_mask, noise_provides), nullptr), GN_OK);
-
-    const std::uint32_t null_mask =
-        (1u << GN_TRUST_LOOPBACK) | (1u << GN_TRUST_INTRA_NODE);
+        "noise", &noise->vtable, noise.get()), GN_OK);
     ASSERT_EQ(k.security().register_provider(
-        "null", make_sec_vtable(null_mask, 0), nullptr), GN_OK);
+        "null", &null_p->vtable, null_p.get()), GN_OK);
 
     auto snap = build_topology(k);
     ASSERT_NE(snap, nullptr);
 
-    // Noise covers UNTRUSTED and PEER with E2E — no gap.
+    // Noise covers external classes with E2E — no gap.
     EXPECT_EQ(snap->topo.contour_gaps & (1u << GN_TRUST_UNTRUSTED), 0u);
     EXPECT_EQ(snap->topo.contour_gaps & (1u << GN_TRUST_PEER),      0u);
-    // Null covers LOOPBACK and INTRA_NODE but without E2E — gap is expected.
+    // Null covers local classes without E2E — gap expected.
     EXPECT_NE(snap->topo.contour_gaps & (1u << GN_TRUST_LOOPBACK),    0u);
     EXPECT_NE(snap->topo.contour_gaps & (1u << GN_TRUST_INTRA_NODE),  0u);
-    // LINK_ENCRYPTED: no encrypted link + no link-only provider → gap.
+    // No provider for LINK_ENCRYPTED → gap.
     EXPECT_NE(snap->topo.contour_gaps & (1u << GN_TRUST_LINK_ENCRYPTED), 0u);
 }
 
@@ -112,48 +97,47 @@ TEST(ContourGaps, NoiseAndNull) {
 TEST(ContourGaps, LinkEncryptedCovered) {
     gn::core::Kernel k;
 
-    // Noise covers external classes.
-    const std::uint32_t noise_mask =
-        (1u << GN_TRUST_UNTRUSTED) | (1u << GN_TRUST_PEER);
-    ASSERT_EQ(k.security().register_provider(
-        "noise",
-        make_sec_vtable(noise_mask,
-                        GN_SEC_PROVIDES_E2E_ENCRYPTION |
-                        GN_SEC_PROVIDES_AUTHENTICATION),
-        nullptr), GN_OK);
+    auto noise = std::make_unique<MockSecProvider>(
+        (1u << GN_TRUST_UNTRUSTED) | (1u << GN_TRUST_PEER),
+        GN_SEC_PROVIDES_E2E_ENCRYPTION | GN_SEC_PROVIDES_AUTHENTICATION);
 
-    // link-only provider covers LINK_ENCRYPTED with provides_flags=0.
-    ASSERT_EQ(k.security().register_provider(
-        "link-only",
-        make_sec_vtable(1u << GN_TRUST_LINK_ENCRYPTED, 0),
-        nullptr), GN_OK);
+    auto link_only = std::make_unique<MockSecProvider>(
+        1u << GN_TRUST_LINK_ENCRYPTED, 0);
 
-    // Register an encrypted-path link.
+    ASSERT_EQ(k.security().register_provider(
+        "noise", &noise->vtable, noise.get()), GN_OK);
+    ASSERT_EQ(k.security().register_provider(
+        "link-only", &link_only->vtable, link_only.get()), GN_OK);
+
+    auto enc_link = std::make_unique<MockEncLink>();
     gn_link_id_t lid{};
     ASSERT_EQ(k.links().register_link(
-        "tls", "gnet-v1", make_link_vtable_encrypted(), nullptr, &lid), GN_OK);
+        "tls", "gnet-v1", &enc_link->v, enc_link.get(), &lid), GN_OK);
 
     auto snap = build_topology(k);
     ASSERT_NE(snap, nullptr);
 
-    // LINK_ENCRYPTED should now be covered (link has ENCRYPTED_PATH + provider).
     EXPECT_EQ(snap->topo.contour_gaps & (1u << GN_TRUST_LINK_ENCRYPTED), 0u);
 }
 
-/// Without an encrypted link, the LINK_ENCRYPTED class is still a gap
-/// even if the link-only provider is registered.
+/// Without an encrypted link, LINK_ENCRYPTED stays a gap even with the provider.
 TEST(ContourGaps, LinkEncryptedOpenWithoutEncryptedLink) {
     gn::core::Kernel k;
 
-    ASSERT_EQ(k.security().register_provider(
-        "link-only",
-        make_sec_vtable(1u << GN_TRUST_LINK_ENCRYPTED, 0),
-        nullptr), GN_OK);
+    auto link_only = std::make_unique<MockSecProvider>(
+        1u << GN_TRUST_LINK_ENCRYPTED, 0);
 
-    // Plain (non-encrypted) link.
+    ASSERT_EQ(k.security().register_provider(
+        "link-only", &link_only->vtable, link_only.get()), GN_OK);
+
+    static const gn_link_vtable_t plain_v = []() {
+        gn_link_vtable_t x{};
+        x.api_size = sizeof(gn_link_vtable_t);
+        return x;
+    }();
     gn_link_id_t lid{};
     ASSERT_EQ(k.links().register_link(
-        "tcp", "gnet-v1", make_link_vtable_plain(), nullptr, &lid), GN_OK);
+        "tcp", "gnet-v1", &plain_v, nullptr, &lid), GN_OK);
 
     auto snap = build_topology(k);
     ASSERT_NE(snap, nullptr);

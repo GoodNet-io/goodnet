@@ -15,11 +15,11 @@ services:
     environment:
       ICE_TURN_TCP: "true"
       ICE_TURN_REQUESTED_TRANSPORT: tcp
-      ICE_MAX_CHECK_RETRIES: "5"
-      HARNESS_TIMEOUT_S: "25"
+      ICE_CHECK_INTERVAL_MS: "20"
+      ICE_AGGRESSIVE_NOMINATION: "true"
   peer_b:
     environment:
       ICE_TURN_TCP: "true"
       ICE_TURN_REQUESTED_TRANSPORT: tcp
-      ICE_MAX_CHECK_RETRIES: "5"
-      HARNESS_TIMEOUT_S: "25"
+      ICE_CHECK_INTERVAL_MS: "20"
+      ICE_AGGRESSIVE_NOMINATION: "true"

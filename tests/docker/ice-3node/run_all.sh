@@ -62,7 +62,7 @@ fi
 
 TIMEOUT_S="${ICE3_TIMEOUT_S:-30}"
 SCENARIOS_DIR="scenarios"
-SIGNAL_VOL="ice3node_signal"
+SIGNAL_VOL="ice-3node_signal"
 PASS=0
 FAIL=0
 

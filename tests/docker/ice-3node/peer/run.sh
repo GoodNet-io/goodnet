@@ -84,6 +84,8 @@ fi
 # explicit values keeps the rendered config diffable.
 : "${TURN_BACKUP_INTERVAL_S:=5}"
 : "${ICE_MAX_CHECK_RETRIES:=4}"
+: "${ICE_CHECK_INTERVAL_MS:=50}"
+: "${ICE_AGGRESSIVE_NOMINATION:=false}"
 : "${ICE_LITE_MODE:=false}"
 : "${ICE_MDNS_OBFUSCATE:=false}"
 : "${ICE_ENABLE_IPV6:=false}"
@@ -207,6 +209,8 @@ cat > /etc/goodnet/peer.json <<EOF
     "consent_max_recovery": 3,
     "turn_backup_interval_s": ${TURN_BACKUP_INTERVAL_S},
     "max_check_retries": ${ICE_MAX_CHECK_RETRIES},
+    "check_interval_ms": ${ICE_CHECK_INTERVAL_MS},
+    "aggressive_nomination": ${ICE_AGGRESSIVE_NOMINATION},
     "lite_mode": ${ICE_LITE_MODE},
     "mdns_obfuscate_host_candidates": ${ICE_MDNS_OBFUSCATE},
     "enable_ipv6": ${ICE_ENABLE_IPV6},

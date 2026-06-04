@@ -16,3 +16,4 @@ services:
       lan_b: !reset {}
     environment:
       WAIT_FOR_PEER: A
+      NAT_GATEWAY: "10.20.0.1"

@@ -56,6 +56,7 @@
 #include <sdk/core.h>
 #include <sdk/gnet.h>
 #include <sdk/host_api.h>
+#include <sdk/topology.h>
 #include <sdk/types.h>
 
 namespace fs = std::filesystem;
@@ -619,6 +620,20 @@ int main() {
         return 1;
     }
     timed_log("kernel running");
+
+    if (const void* tv = gn_core_query_extension_checked(
+            core, GN_EXT_TOPOLOGY, GN_EXT_TOPOLOGY_VERSION);
+        tv != nullptr) {
+        const auto* t = static_cast<const gn_topology_t*>(tv);
+        char fp[65] = {};
+        for (int i = 0; i < 32; ++i)
+            std::snprintf(fp + i * 2, 3, "%02x",
+                          static_cast<unsigned>(t->fingerprint[i]));
+        timed_log(std::string("topology fp=") + fp
+                  + " contour_gaps=" + std::to_string(t->contour_gaps)
+                  + " links=" + std::to_string(t->link_count)
+                  + " security=" + std::to_string(t->security_count));
+    }
 
     // Subscribe for inbound traffic + connection events. The harness
     // listens on msg_id=1 (the link-ice convention) for the

@@ -1,0 +1,15 @@
+# Scenario: both peers behind full-cone NAT, host-only candidates.
+# Peer B receives a binding request from A's NAT-mapped address it has
+# never seen — the ICE FSM adds it as a peer-reflexive candidate and
+# the nominated pair should carry remote_type=prflx.
+# Verifies the prflx candidate gathering / nomination path (RFC 8445 §7.3.1.3).
+services:
+  peer_a:
+    environment:
+      ICE_HOST_ONLY: "true"
+      ICE_AGGRESSIVE_NOMINATION: "true"
+  peer_b:
+    environment:
+      ICE_HOST_ONLY: "true"
+      ICE_AGGRESSIVE_NOMINATION: "true"
+      WAIT_FOR_PEER: A

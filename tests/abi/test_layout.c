@@ -43,6 +43,7 @@
 
 #include <sdk/extensions/heartbeat.h>
 #include <sdk/extensions/link.h>
+#include <sdk/topology.h>
 
 /* ── sdk/types.h ───────────────────────────────────────────────────────────── */
 
@@ -547,3 +548,62 @@ _Static_assert(offsetof(gn_link_api_t, ctx) == 104,
                "gn_link_api_t::ctx offset pinned at 104");
 _Static_assert(offsetof(gn_link_api_t, _reserved) == 112,
                "gn_link_api_t::_reserved offset pinned at 112");
+
+/* ── sdk/topology.h ────────────────────────────────────────────────────────── */
+
+_Static_assert(sizeof(gn_topo_link_entry_t) == 16,
+               "gn_topo_link_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_link_entry_t, scheme) == 0,
+               "gn_topo_link_entry_t::scheme offset pinned at 0");
+_Static_assert(offsetof(gn_topo_link_entry_t, caps_flags) == 8,
+               "gn_topo_link_entry_t::caps_flags offset pinned at 8");
+_Static_assert(offsetof(gn_topo_link_entry_t, max_payload) == 12,
+               "gn_topo_link_entry_t::max_payload offset pinned at 12");
+
+_Static_assert(sizeof(gn_topo_security_entry_t) == 16,
+               "gn_topo_security_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_security_entry_t, provider_id) == 0,
+               "gn_topo_security_entry_t::provider_id offset pinned at 0");
+_Static_assert(offsetof(gn_topo_security_entry_t, allowed_trust_mask) == 8,
+               "gn_topo_security_entry_t::allowed_trust_mask offset pinned at 8");
+_Static_assert(offsetof(gn_topo_security_entry_t, provides_flags) == 12,
+               "gn_topo_security_entry_t::provides_flags offset pinned at 12");
+
+_Static_assert(sizeof(gn_topo_protocol_entry_t) == 8,
+               "gn_topo_protocol_entry_t size pinned at 8");
+_Static_assert(offsetof(gn_topo_protocol_entry_t, protocol_id) == 0,
+               "gn_topo_protocol_entry_t::protocol_id offset pinned at 0");
+
+_Static_assert(sizeof(gn_topo_handler_entry_t) == 16,
+               "gn_topo_handler_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_handler_entry_t, protocol_id) == 0,
+               "gn_topo_handler_entry_t::protocol_id offset pinned at 0");
+_Static_assert(offsetof(gn_topo_handler_entry_t, msg_id) == 8,
+               "gn_topo_handler_entry_t::msg_id offset pinned at 8");
+_Static_assert(offsetof(gn_topo_handler_entry_t, chain_length) == 12,
+               "gn_topo_handler_entry_t::chain_length offset pinned at 12");
+
+_Static_assert(sizeof(gn_topology_t) == 120,
+               "gn_topology_t size pinned at 120");
+_Static_assert(offsetof(gn_topology_t, fingerprint) == 0,
+               "gn_topology_t::fingerprint offset pinned at 0");
+_Static_assert(offsetof(gn_topology_t, link_count) == 32,
+               "gn_topology_t::link_count offset pinned at 32");
+_Static_assert(offsetof(gn_topology_t, security_count) == 36,
+               "gn_topology_t::security_count offset pinned at 36");
+_Static_assert(offsetof(gn_topology_t, protocol_count) == 40,
+               "gn_topology_t::protocol_count offset pinned at 40");
+_Static_assert(offsetof(gn_topology_t, handler_count) == 44,
+               "gn_topology_t::handler_count offset pinned at 44");
+_Static_assert(offsetof(gn_topology_t, links) == 48,
+               "gn_topology_t::links offset pinned at 48");
+_Static_assert(offsetof(gn_topology_t, security) == 56,
+               "gn_topology_t::security offset pinned at 56");
+_Static_assert(offsetof(gn_topology_t, protocols) == 64,
+               "gn_topology_t::protocols offset pinned at 64");
+_Static_assert(offsetof(gn_topology_t, handlers) == 72,
+               "gn_topology_t::handlers offset pinned at 72");
+_Static_assert(offsetof(gn_topology_t, contour_gaps) == 80,
+               "gn_topology_t::contour_gaps offset pinned at 80");
+_Static_assert(offsetof(gn_topology_t, _reserved) == 88,
+               "gn_topology_t::_reserved offset pinned at 88");
