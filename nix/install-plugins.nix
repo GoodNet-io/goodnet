@@ -113,6 +113,14 @@ pkgs.writeShellApplication {
         continue
       fi
 
+      # Slot dir exists but has no .git — stub from a stale kernel
+      # commit (e.g. ws_inject files force-added to the monorepo).
+      # Remove it so git clone can proceed cleanly.
+      if [ -d "$slot" ]; then
+        echo "install-plugins: removing stale stub at $slot"
+        rm -rf "$slot"
+      fi
+
       mkdir -p "$(dirname "$slot")"
 
       mirror="$mirror_dir/$repo.git"
