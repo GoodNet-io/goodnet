@@ -200,161 +200,7 @@ the kernel does in exchange.
 
 ### vs WireGuard
 
-Same machine, same kernel, same ChaCha20-Poly1305 primitive.
-WireGuard is a kernel module: zero-copy data plane, single
-peer = single IP tunnel, encryption pinned to one softirq CPU
-per peer, no application-layer framing or routing. GoodNet is
-userspace: peer identities are public keys, every send carries
-a typed message envelope through a plugin pipeline. The two
-pay for different things.
-
-| Surface | Throughput | Parallelism | What it carries |
-|---|---|---|---|
-| `veth` loopback baseline (no crypto, `iperf3 -P 8`)              | **~80 Gb/s**  | 8 streams, kernel splice + `MSG_ZEROCOPY` | raw IP frames |
-| **GoodNet UDP parody, static + LTO, 8 parallel procs, no crypto** | **~60 Gb/s** | 8 procs × 1 strand each, plugin calls inlined; CPU `performance` governor | raw datagrams through link plugin |
-| **GoodNet UDP parody, dynamic, 8 parallel procs, no crypto**     | **~28 Gb/s**  | 8 procs × 1 strand each | raw datagrams through link plugin |
-| **GoodNet UDP parody single conn, static + LTO, no crypto**      | **~13.5 Gb/s** | single strand on isolated core (`isolcpus`); ~8.7 Gb/s shared scheduler | raw datagrams through link plugin |
-| **GoodNet UDP parody single conn, dynamic, no crypto**           | **~8.7 Gb/s** | one asio strand | raw datagrams through link plugin |
-| **WireGuard single tunnel, kernel, with crypto**                 | **~4.9 Gb/s** | one softirq CPU pinned | IP tunnel, ChaCha20-Poly1305 per packet |
-| GoodNet Noise transport (encrypt+decrypt round, single-thread)   | ~1.7 Gb/s     | one thread, libsodium ChaCha20-Poly1305 | seal + open in a tight loop, no I/O |
-| **GoodNet IPC real @ 32 KiB, dynamic, with crypto**              | **~3.0 Gb/s** | one strand, single conn; CPU `performance` governor | typed `gn_message_t` envelopes, Noise XX + gnet framing |
-| **GoodNet TCP real @ 32 KiB, dynamic, with crypto**              | **~2.9 Gb/s** | one strand, single conn; CPU `performance` governor | same, over TCP loopback |
-| **GoodNet TCP real @ 32 KiB, static+LTO, with crypto**           | **~4.9 Gb/s** | static kernel + LTO, single conn; `goodnet-bench` | same; plugin-boundary dispatch inlined by LTO |
-| **GoodNet TCP real @ 64 KiB, static+LTO, with crypto**           | **~5.1 Gb/s** | static kernel + LTO, single conn; `goodnet-bench` | same, larger payload amortises framing overhead |
-| **GoodNet TCP real @ 64 KiB, static+LTO, 4 conn, with crypto**   | **~10 Gb/s**  | static kernel + LTO, 4 parallel conns; `goodnet-bench` | 2× WireGuard single-tunnel ceiling on the same hardware |
-
-**Two reads of the table.**
-
-*Per-connection.* WireGuard's single-tunnel ceiling (~4.9 Gb/s)
-is also single-CPU: the softirq context that runs the tunnel
-pins one core, encryption serialises on it. GoodNet's
-single-connection-with-crypto sits at ~2.9 Gb/s (dynamic build)
-or **~5 Gb/s (static+LTO)** through the production stack — the
-dynamic build pays a vtable dispatch at every plugin boundary;
-static+LTO eliminates those calls at link time. With 4 parallel
-connections static+LTO already **exceeds WireGuard's per-peer
-ceiling** at ~10 Gb/s on the same hardware.
-
-*Aggregate.* WireGuard's single tunnel cannot saturate more
-than one CPU regardless of how many cores you give it. GoodNet's
-`CryptoWorkerPool` distributes AEAD jobs across worker threads,
-so multi-conn aggregate scales near-linearly. 8 parallel
-no-crypto UDP processes hit **~28 Gb/s** on this 12-thread
-laptop with the dynamic-plugin build (`.so` dispatched through
-the `gn_link_vtable_t`); the same configuration under
-`-DGOODNET_STATIC_PLUGINS=ON -DGOODNET_USE_LTO=ON` (static-linked
-plugins with cross-TU LTO inlining the vtable calls into the
-hot path) reaches **~34 Gb/s** — about 20 % better aggregate.
-Per the legacy 4-connection inline-crypto bench in
-[`docs/perf/analysis.en.md`](docs/perf/analysis.en.md), the
-encrypted multi-conn path reached **19.84 Gb/s** — already 4×
-the WireGuard single-tunnel ceiling, on the same machine, with
-crypto.
-
-*Crypto floor.* Pure libsodium ChaCha20-Poly1305 in a tight
-loop, single-thread, encrypt+decrypt round at 64 KiB measures
-~1.7 Gb/s per worker thread. The `CryptoWorkerPool` runs by
-default at `hardware_concurrency()/2` workers, so the
-**theoretical** pure-crypto pool ceiling on this 12-thread
-laptop is ~10 Gb/s before any I/O. Add `CryptoWorkerPool::run_batch`
-on a batched send pipeline and the real per-conn number sits
-between the single-thread floor and that pool ceiling depending
-on how many in-flight frames the conn has to amortise the strand
-dispatch over.
-
-**Why 80 Gb/s is the kernel-only ceiling.** The veth baseline
-comes from `iperf3 -P 8` doing `splice()` and `MSG_ZEROCOPY` —
-the kernel hands packets between network namespaces without
-ever materialising a user-space buffer. Any userspace plugin
-pattern pays a syscall + memcpy per `write()`. The roof for
-userspace without zero-copy on this hardware is the ~34 Gb/s
-the static+LTO multi-conn parody bench above already shows;
-beyond that needs `io_uring` + `MSG_ZEROCOPY` on the same
-pipeline (deferred work). The single-conn numbers do not benefit
-from LTO because the bottleneck is the per-`send()` syscall +
-asio strand hop, not plugin-boundary dispatch — those have
-fixed kernel cost. LTO + static linkage pay off where the
-plugin-boundary calls repeat at scale: cross-conn in the
-aggregate row.
-
-**What WireGuard does not do, at all.** It delivers raw IP
-packets between two endpoints. It does not address peers by
-public key in the application layer, does not route by message
-id, does not let one peer have three concurrent transports
-under one identity, does not migrate carriers when a mobile
-device shifts networks, does not give a strategy plugin the
-slot to pick a path per send. Those moves are what the
-[`bench_showcase`](bench/showcase/README.md) binary
-demonstrates in six sections — capabilities the kernel pays the
-throughput tax above to provide. WireGuard's architecture has
-no slot for any of them; libp2p / WebRTC / gRPC each only
-partially overlap.
-
-Reproduce:
-
-```sh
-# Pin CPU governor to performance for reproducible parody numbers
-# (scaling governor adds ~40% variance on i5-1235U pstate)
-echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
-
-# Dynamic-plugin release build (default; the noise plugin's .so
-# is dlopen'd by bench_real_e2e + bench_showcase)
-nix run .#build -- release
-
-# Real-mode echo, with crypto, single conn
-./build-release/bench/bench_real_e2e \
-    --benchmark_filter='RealFixture' \
-    --benchmark_min_time=1s --benchmark_repetitions=3
-
-# Parody throughput, no crypto, single conn
-./build-release/bench/bench_udp \
-    --benchmark_filter='Throughput' \
-    --benchmark_min_time=1s --benchmark_repetitions=3
-
-# Multi-process aggregate (no-crypto upper bound, dynamic)
-for i in $(seq 1 8); do
-    ./build-release/bench/bench_udp \
-        --benchmark_filter='Throughput/1200' \
-        --benchmark_min_time=2s &
-done
-wait
-
-# Static + LTO build (plugins linked into the kernel, cross-TU
-# inlining of every plugin-boundary call). Tests + dlopen-based
-# benches are off because the noise plugin no longer produces an
-# .so. Run the same parody multi-process aggregate to read the
-# LTO advantage.
-cmake -B build-static-lto -DCMAKE_BUILD_TYPE=Release \
-    -DGOODNET_BUILD_BENCH=ON -DGOODNET_BUILD_TESTS=OFF \
-    -DGOODNET_STATIC_PLUGINS=ON -DGOODNET_USE_LTO=ON
-nix develop --command cmake --build build-static-lto \
-    --target bench_udp -j8
-
-for i in $(seq 1 8); do
-    ./build-static-lto/bench/bench_udp \
-        --benchmark_filter='Throughput/1200' \
-        --benchmark_min_time=2s &
-done
-wait
-
-# goodnet-bench — end-to-end crypto throughput (Noise XX + gnet + TCP),
-# static kernel + LTO. Noise .so is still dlopen'd at runtime so the
-# bench measures real production latency through the full plugin stack.
-# The kernel and TCP are statically linked with LTO (all plugin-boundary
-# calls inlined).
-nix develop --command cmake --build build-release \
-    --target goodnet_bench -j$(nproc)
-
-# Single-conn peak (64 KiB, ~5.1 Gb/s on i5-1235U)
-./build-release/bin/goodnet-bench 200000 64 1
-
-# 4-conn aggregate (~10 Gb/s — exceeds WireGuard single-tunnel ceiling)
-./build-release/bin/goodnet-bench 200000 64 4
-```
-
-Full per-bench numbers in [`bench/reports/<sha>.md` § "А.
-Comparable echo round-trip"](bench/reports/) and the
-showcase methodology at [`bench/showcase/README.md`](bench/showcase/README.md).
+Full comparison table and reproduce commands: [`docs/perf/analysis.en.md`](docs/perf/analysis.en.md).
 
 ## Architecture
 
@@ -427,63 +273,9 @@ integration findings. The reshape window in
 for development, `main` for releases (between tags `main` is
 quiet).
 
-### Cycle rc6 landed
+### Current release
 
-- **Identity 5-phase HSM refactor — all phases.** Phase 1
-  introduced the `IdentitySigner` abstraction
-  ([`a7013095`](https://github.com/GoodNet-io/goodnet/commit/a7013095)).
-  Phase 2 published the C ABI
-  ([`72e2185`](https://github.com/GoodNet-io/goodnet/commit/72e2185))
-  for plugin-provided signers via
-  `gn_core_install_identity_from_provider`. Phase 3 lit the dual-expose
-  in `security-pkcs11` — same `.so` registers `gn.identity.pkcs11` and
-  `gn.security.pkcs11`. Phase 4 surfaced operator UX in `goodnetd`
-  (`identity import-hsm` + `doctor` + `quickstart`). Phase 5 closed
-  the loop with `gn::sdk::Core::Identity::from_hsm()`
-  ([`1876654`](https://github.com/GoodNet-io/goodnet/commit/1876654)).
-- **`gssh` v0.2.0 — real SSH-2.0.** Dropped the openssh / ProxyCommand
-  tunnel from v0.1. `gssh --listen` is now a native SSH-2.0 server on
-  libssh; the host key IS the GoodNet device pubkey. Vanilla openssh
-  clients connect; two `gssh` peers also negotiate the custom
-  `gn.handler-ext@goodnet.io` subsystem channel for file transfer +
-  port forwarding.
-- **Bridges split into sub-repos.**
-  `bridges/{cpp,python,rust,js}` — each has its own git, its own
-  release cadence, all consume the kernel through `sdk/core.h`. The
-  Rust bridge gained the `WireSchema` trait mirroring the C++ side.
-  The JS bridge talks to `handler-web-api-proxy` over WS.
-- **`handler-web-api-proxy` (new).** Browser-as-thin-client gateway:
-  goodnetd loads it alongside `gn.link.ws`, the operator listens on
-  `ws://0.0.0.0:9100`, and browser tabs talk JSON-RPC into the kernel
-  through gnet envelopes. v0.1 ships the wire envelope; v0.2 fills the
-  dispatch.
-- **Forgejo CI is sole.** GitHub Actions has no role beyond `gh
-  release create` on tag push. The Forgejo runner runs `flake-check`
-  / `livedoc-check` / `build-and-test` / `plugin-verify` /
-  `windows-cross-build` on every PR, plus `bench-smoke` / `ice-3node`
-  / `fuzz-smoke` / `asan-smoke` / `tsan-smoke` on push-to-main or PR
-  label.
-- **SDK DX restoration.** `sdk/cpp/Core` RAII layer + `host_api_default`
-  + `Error` lifted operator-side ergonomics back to where the C ABI
-  rewrite had dropped them
-  ([`9ebaa4d`](https://github.com/GoodNet-io/goodnet/commit/9ebaa4d)).
-- **Plugin lifecycle contract.** `docs/contracts/lifecycle.en.md`
-  documents the canonical plugin shutdown ordering — kernel stops
-  accepting connects, drains in-flight envelopes, calls plugin
-  `gn_plugin_shutdown` thunks in reverse-registration order, then
-  unloads `.so`s.
-- **Full WASM kernel.** `nix build .#goodnet-wasm-emscripten` produces
-  a kernel image that runs inside a browser via Emscripten — same C ABI
-  surface, no native dependencies on the wire side.
-- **C ABI for external plugin runtimes.** `sdk/plugin_runtime.h`
-  publishes the `IPluginRuntime` contract so host programs that bundle
-  a custom runtime (WASM host, FFI-over-IPC bridge, per-process sandbox)
-  register it through `PluginManager::register_runtime` and the kernel
-  dispatches manifest entries through it without touching
-  `PluginManager` itself.
-- **`link-portmap`.** Explicit NAT port-mapping plugin — NAT-PMP
-  (RFC 6886) + PCP MAP (RFC 6887) + UPnP IGD (SSDP + SOAP). Used by
-  ICE before host-candidate gathering when STUN cannot punch.
+See [`CHANGELOG.md`](CHANGELOG.md) for the full release history.
 
 ## Ecosystem repos
 
@@ -556,31 +348,8 @@ AF_UNIX echo, openssl s_server TLS handshake) through the same
 payload matrix and surfaces UX/DX gaps via a hello-world LOC
 count.
 
-```bash
-# Build the suite (opt-in)
-nix develop --command cmake -B build -DGOODNET_BUILD_BENCH=ON
-nix develop --command cmake --build build --target bench_tcp bench_udp \
-    bench_ipc bench_tls bench_ws bench_ice bench_tcp_scale
-
-# Stage external baselines (one-shot)
-./bench/comparison/setup/01_openssl.sh
-./bench/comparison/setup/02_iperf3.sh
-./bench/comparison/setup/03_libuv.sh
-./bench/comparison/setup/04_libssh.sh
-./bench/comparison/setup/05_openssl_demos.sh
-
-# Run everything + generate report
-./bench/comparison/runners/run_all.sh
-ls bench/reports/
-```
-
-Frozen reference numbers live under [`bench/reports/`](bench/reports/);
-methodology + the six measurement axes are documented in
-[`bench/README.md`](bench/README.md).
+Build targets, baseline scripts, frozen reference numbers, and methodology: [`bench/README.md`](bench/README.md). Numbers live under [`bench/reports/`](bench/reports/).
 
 ## Not on this tree yet
 
-- Pre-built release binaries. Build from source through Nix or
-  the standard CMake path above.
-- A registered domain. Documentation references the GitHub
-  organisation directly.
+See [`docs/ROADMAP.en.md`](docs/ROADMAP.en.md).

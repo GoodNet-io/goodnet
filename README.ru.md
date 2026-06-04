@@ -31,7 +31,7 @@ nix run .#run -- demo          # два узла, Noise-over-TCP, одно со�
 ```
 
 Без Nix: gcc 16 (x86_64-linux) / gcc 15 (прочие платформы),
-libsodium, OpenSSL, asio, spdlog, gtest, rapidcheck, CMake 3.25 —
+libsodium, OpenSSL, asio, spdlog, gtest, rapidcheck, CMake 3.22 —
 поставить через свой пакетник, потом
 `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
@@ -203,26 +203,9 @@ Reshape window в [`docs/contracts/abi-evolution.en.md`](docs/contracts/abi-evol
 `v1.0.0` без `-rcN` суффикса. Ветки: `dev` для разработки,
 `main` для релизов (между тегами `main` стоит).
 
-### rc6
+### Текущий релиз
 
-- **Identity 5-phase HSM refactor.** Phase 1 — абстракция `IdentitySigner`.
-  Phase 2 — C ABI для plugin-provided signers через `gn_core_install_identity_from_provider`.
-  Phase 3 — `security-pkcs11` двойной expose (`gn.identity.pkcs11` + `gn.security.pkcs11`).
-  Phase 4 — UX в `goodnetd` (`identity import-hsm`, `doctor`, `quickstart`).
-  Phase 5 — `gn::sdk::Core::Identity::from_hsm()`.
-- **`gssh` v0.2.0 — реальный SSH-2.0.** `gssh --listen` теперь нативный
-  SSH-2.0 сервер на libssh; host key IS the GoodNet device pubkey.
-  Vanilla openssh-клиенты подключаются.
-- **Bridges в sub-репо.** `bridges/{cpp,python,rust,js}` — у каждого свой
-  git и релизный темп. Rust bridge получил trait `WireSchema`. JS bridge
-  говорит с `handler-web-api-proxy` через WS.
-- **`handler-web-api-proxy`.** Browser-as-thin-client gateway: JSON-RPC
-  через gnet-конверты в WS-endpoint.
-- **Forgejo CI — единственный.** GitHub Actions не используется в CI.
-- **Полный WASM-kernel.** `nix build .#goodnet-wasm-emscripten` — kernel
-  в браузере через Emscripten, тот же C ABI.
-- **C ABI для внешних plugin-runtime-ов.** `sdk/plugin_runtime.h` публикует
-  контракт `IPluginRuntime`.
+История изменений: [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Экосистема
 
