@@ -1,7 +1,5 @@
 # GoodNet
 
-[![CI (Forgejo)](http://localhost:3000/goodnet-io/goodnet/badges/workflows/ci.yml/badge.svg?branch=main)](http://localhost:3000/goodnet-io/goodnet/actions)
-
 A networking integrator kernel with pluggable transports, security
 providers, protocol layers, and handlers. Applications embed it
 as a library or run the standalone daemon. The C ABI between
