@@ -32,8 +32,8 @@ nix run .#build -- release     # release build with LTO → build-release/
 nix run .#run -- demo          # two-node Noise-over-TCP, one message
 ```
 
-Without Nix: gcc 15, libsodium, OpenSSL, asio, spdlog,
-gtest, rapidcheck, CMake 3.25 — install via your package manager,
+Without Nix: gcc 16 (x86_64-linux) / gcc 15 (other platforms), libsodium,
+OpenSSL, asio, spdlog, gtest, rapidcheck, CMake 3.25 — install via your package manager,
 then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
 LibFuzzer-driven parser harness (clang only, opt-in): see
@@ -501,7 +501,7 @@ manifest links them together.
 | **[gssh](https://github.com/GoodNet-io/gssh)** | Native SSH-2.0 server + client with peer-pubkey identity. |
 | [link-tcp](https://github.com/GoodNet-io/link-tcp) · [link-udp](https://github.com/GoodNet-io/link-udp) · [link-ws](https://github.com/GoodNet-io/link-ws) · [link-tls](https://github.com/GoodNet-io/link-tls) · [link-ipc](https://github.com/GoodNet-io/link-ipc) | Single-protocol transport plugins. |
 | **[link-ice](https://github.com/GoodNet-io/link-ice)** | NAT-traversal — RFC 8445 + STUN + TURN + Trickle ICE + mDNS + auto-restart. |
-| **[link-quic](https://github.com/GoodNet-io/link-quic)** | QUIC over UDP / ICE — OpenSSL 3.6 native QUIC, composer pattern. |
+| [link-quic](https://github.com/GoodNet-io/link-quic) | QUIC over UDP / ICE — OpenSSL 3.6 native QUIC, composer pattern. (in progress) |
 | **[security-noise](https://github.com/GoodNet-io/security-noise)** | Noise XX security provider (libsodium). |
 | **[security-null](https://github.com/GoodNet-io/security-null)** | Loopback / IntraNode pass-through provider. |
 | **[security-pkcs11](https://github.com/GoodNet-io/security-pkcs11)** | Hardware key store — PKCS#11 (`gn.identity.pkcs11` + `gn.security.pkcs11` dual-expose). |
@@ -562,8 +562,7 @@ count.
 # Build the suite (opt-in)
 nix develop --command cmake -B build -DGOODNET_BUILD_BENCH=ON
 nix develop --command cmake --build build --target bench_tcp bench_udp \
-    bench_ipc bench_tls bench_ws bench_quic bench_dtls bench_ice \
-    bench_wss_over_tls bench_tcp_scale
+    bench_ipc bench_tls bench_ws bench_ice bench_tcp_scale
 
 # Stage external baselines (one-shot)
 ./bench/comparison/setup/01_openssl.sh

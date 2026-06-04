@@ -817,7 +817,15 @@
             import ./nix/install-plugins.nix { inherit pkgs; };
           gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
             set -euo pipefail
+            if ! git rev-parse --git-dir >/dev/null 2>&1; then
+              echo "install-hooks: not a git repository — skipping" >&2
+              exit 0
+            fi
             git config core.hooksPath .githooks
+            echo ">>> hooks installed: .githooks/"
+            echo "    pre-commit  : clang-tidy on staged C++"
+            echo "    pre-push    : test gate on push to main"
+            echo "    bypass once : git commit/push --no-verify"
           '';
           gn-setup = import ./nix/setup.nix {
             inherit pkgs;
@@ -894,17 +902,22 @@
                 plugins/handlers/heartbeat \
                 plugins/handlers/store \
                 plugins/handlers/dns \
+                plugins/handlers/web_api_proxy \
                 plugins/links/tcp \
                 plugins/links/udp \
                 plugins/links/ws \
+                plugins/links/ws_inject \
                 plugins/links/ipc \
                 plugins/links/tls \
                 plugins/links/ice \
                 plugins/security/noise \
                 plugins/security/null \
+                plugins/security/pkcs11 \
                 bridges/cpp \
                 bridges/python \
-                bridges/rust"
+                bridges/rust \
+                bridges/js \
+                tests/integration"
               _gn_missing=0
               for _gn_slot in $_gn_plugin_slots; do
                 if [ ! -d "$_gn_slot/.git" ]; then

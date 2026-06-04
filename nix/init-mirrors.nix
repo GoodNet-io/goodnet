@@ -53,6 +53,7 @@ pkgs.writeShellApplication {
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
+      [plugins/links/ws_inject]=link-ws-inject
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
       [plugins/links/ice]=link-ice
