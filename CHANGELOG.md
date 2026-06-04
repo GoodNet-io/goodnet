@@ -6,36 +6,51 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Known implementation mistake — link-ice conn_id / peer-PK conflation
+### Known implementation mistake — link-ice two-level conn_id layering
 
-The `link-ice` plugin accumulated a second layer of connection-identity
-bookkeeping inside the plugin process, treating each `conn_id` assigned
-by `ConnectionRegistry` as a proxy for the remote peer's public key.
-The correct model is one `IceSession` per remote peer PK, with one or
-more `conn_id` values per session (one per nominated candidate pair);
-the plugin instead keyed sessions by `conn_id`, which collapsed
-`conn_id == peer identity` in any multi-path or multi-connect scenario.
+The kernel model: `ConnectionRegistry` holds N `conn_id` entries per
+`peer_pk`; which `conn_id` to use for a given send is the strategy
+plugin's responsibility (`gn.float-send.*` family, e.g.
+`gn.float-send.multipath-bond`).  A link plugin creates exactly one
+`conn_id` per `connect()` call.
 
-The conflation is not visible when a single peer opens exactly one
-connection: `conn_id` and session happen to be 1:1.  It becomes
-observable when the same remote opens a second connection (e.g.,
-failover, path migration, the Docker ICE-3node coordinator scenario)
-— the plugin's internal map sees a new `conn_id` and spins up a
-redundant `IceSession`, while the kernel's registry already has an
-authoritative session handle for that PK.  The duplicate session drives
-the ICE check ladder in isolation, never shares candidates with the
-primary, and eventually times out; under TSan the concurrent map writes
-trigger reported data races.
+`link-ice` violates this boundary in two related ways:
 
-Root cause: the initial implementation predated the kernel's
-`ConnectionRegistry` multi-conn primitives.  When multi-connect support
-landed in the kernel the plugin was not updated — it kept its own
-`conn_id → session` indirection unchanged.
+**First**: `IceSession` internally calls `carrier_->connect()` (into
+`link-udp` / `link-tcp`) for each candidate endpoint it probes during
+the ICE check ladder.  Each such call produces a real kernel `conn_id`
+that appears in `ConnectionRegistry` as a live UDP or TCP connection.
+These carrier `conn_id` values are invisible to the application but
+fully visible to the kernel, creating a secondary `conn_id` namespace
+that exists solely to serve ICE's internal transport.  The session
+stores the currently-nominated carrier `conn_id` in `nominated_cid_`
+and routes application data through it.  The ICE-level `conn_id`
+(created by `IceLink` via `notify_connect` at session allocation) and
+the carrier-level `conn_id` (owned by `IceSession`) are two
+independent layers, both living in the kernel registry simultaneously.
 
-Fix scope: `IceSession::notify_connect` / `handle_new_conn` must be
-rewritten to key sessions by remote PK, drive multi-conn through
-`ConnectionRegistry` directly, and drop the internal `conn_id` map.
-Full detail in the `link-ice` plugin CHANGELOG.
+**Second**: OFFER/ANSWER signals arrive indexed by `peer_pk` (via the
+`gn.link.ice.signal` extension), not by `conn_id`.  With multiple ICE
+sessions to the same peer (`peer_to_ids_[peer_pk].size() > 1`) there
+is no session-specific token in the signal envelope to distinguish
+which session an incoming OFFER belongs to.  The plugin works around
+this with a `size() == 1` trickle-fold guard: candidates are merged
+into an existing session only when exactly one session for that peer
+exists; otherwise a third session is created.  Multi-connect to the
+same peer via ICE is therefore broken: each new OFFER spawns a new
+`IceSession` and each session runs an independent, mutually-unaware
+check ladder.
+
+The correct architecture — already in place for the kernel and the new
+`gn.float-send.multipath-bond` strategy plugin — is for the link
+plugin to be agnostic to how many connections exist to a given peer.
+Each `connect("ice://peer_pk")` produces one `conn_id`; multi-path
+routing across those `conn_id`s is the strategy layer's job.  The fix
+scope for `link-ice` is: add a session-token to the signal envelope so
+incoming signals can be routed to the correct session, and stop
+creating carrier connections visible to the kernel (carrier transport
+should be opaque to the registry).  Full detail in the `link-ice`
+plugin CHANGELOG.
 
 ### rc6 cycle — comprehensive pre-release gauntlet snapshot
 
