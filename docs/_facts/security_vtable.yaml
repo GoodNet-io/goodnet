@@ -1,6 +1,6 @@
 struct: gn_security_provider_vtable_s
 header: sdk/security.h
-named_slots: 11
+named_slots: 12
 reserved_slots: 4
 families:
   misc:
@@ -15,74 +15,81 @@ families:
   - handshake_close
   - destroy
   - allowed_trust_mask
+  - provides_flags
 slots:
 - name: provider_id
   signature: const char * (*)(void *)
   file: sdk/security.h
-  line: 113
+  line: 122
   family: misc
   doc: identifier.
 - name: handshake_open
   signature: gn_result_t (*)(void *, gn_conn_id_t, gn_trust_class_t, gn_handshake_role_t,
     const uint8_t[64], const uint8_t[32], const uint8_t *, void **)
   file: sdk/security.h
-  line: 133
+  line: 142
   family: misc
   doc: a new handshake state for a connection.
 - name: handshake_step
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 154
+  line: 163
   family: misc
   doc: one step of the handshake.
 - name: handshake_complete
   signature: int (*)(void *, void *)
   file: sdk/security.h
-  line: 162
+  line: 171
   family: misc
   doc: whether the handshake has reached the transport phase.
 - name: export_transport_keys
   signature: gn_result_t (*)(void *, void *, gn_handshake_keys_t *)
   file: sdk/security.h
-  line: 176
+  line: 185
   family: misc
   doc: transport keys after `handshake_complete` returns true.
 - name: encrypt
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 188
+  line: 197
   family: misc
   doc: a plaintext payload.
 - name: decrypt
   signature: gn_result_t (*)(void *, void *, const uint8_t *, size_t, gn_secure_buffer_t
     *)
   file: sdk/security.h
-  line: 201
+  line: 210
   family: misc
   doc: a ciphertext payload.
 - name: rekey
   signature: gn_result_t (*)(void *, void *)
   file: sdk/security.h
-  line: 211
+  line: 220
   family: misc
   doc: both ciphers atomically.
 - name: handshake_close
   signature: void (*)(void *, void *)
   file: sdk/security.h
-  line: 216
+  line: 225
   family: misc
   doc: down a handshake state.
 - name: destroy
   signature: void (*)(void *)
   file: sdk/security.h
-  line: 219
+  line: 228
   family: misc
   doc: Plugin destruction.
 - name: allowed_trust_mask
   signature: uint32_t (*)(void *)
   file: sdk/security.h
-  line: 235
+  line: 244
   family: misc
   doc: of `gn_trust_class_t` values this provider may serve.
+- name: provides_flags
+  signature: uint32_t (*)(void *)
+  file: sdk/security.h
+  line: 257
+  family: misc
+  doc: of security guarantees this provider delivers to layers above.

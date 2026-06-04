@@ -183,6 +183,8 @@ without `git log`-archaeology.
 | 2026-05-12 | `gn_link_api_t` | inline reshape: two new slots `subscribe_accept` / `unsubscribe_accept` inserted before `ctx` (composer accept-bus); `_reserved[4]` tail unchanged; sizeof grows 120 → 136 bytes — covered by api_size versioning | `feat/link-bus-and-dsl-core` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: new `composer_listen_port` slot inserted before `ctx` so a composer (WS / WSS / ICE) can read back the ephemeral L1 port after `tcp://host:0`-style listen; sizeof grows 136 → 144 bytes — covered by api_size versioning | `feat/ws-on-carrier` |
 | 2026-05-15 | `host_api_t` | additive: new `notify_rtt_sample` slot appended before `_reserved`; LINK / HANDLER / UNKNOWN kinds publish observed RTT samples, kernel folds into per-conn EWMA(α = 1/8) and republishes the smoothed value to every `gn.strategy.*` extension via `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`; sizeof grows 488 → 496 bytes — covered by api_size versioning; `_reserved[8]` tail unchanged | `dev` |
+| 2026-06-02 | `gn_security_provider_vtable_t` | additive: new `uint32_t (*provides_flags)(void*)` slot appended before existing `_reserved[4]`; returns `GN_SEC_PROVIDES_*` bitmask read once by the kernel at topology-build time (`build_topology`); NULL-safe via `GN_API_HAS` — old plugins that omit it return 0 | `feat/layer-capability` |
+| 2026-06-02 | `gn_link_vtable_t` | additive: new `void (*on_topology_sealed)(void*, const struct gn_topology_s*)` slot appended before existing `_reserved[4]`; called once synchronously inside `build_topology` when the kernel transitions to `Phase::Running`; NULL-safe via `GN_API_HAS` — plugins that omit it receive no callback | `feat/layer-capability` |
 
 ---
 
