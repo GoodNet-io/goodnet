@@ -6,6 +6,37 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Known implementation mistake — link-ice conn_id / peer-PK conflation
+
+The `link-ice` plugin accumulated a second layer of connection-identity
+bookkeeping inside the plugin process, treating each `conn_id` assigned
+by `ConnectionRegistry` as a proxy for the remote peer's public key.
+The correct model is one `IceSession` per remote peer PK, with one or
+more `conn_id` values per session (one per nominated candidate pair);
+the plugin instead keyed sessions by `conn_id`, which collapsed
+`conn_id == peer identity` in any multi-path or multi-connect scenario.
+
+The conflation is not visible when a single peer opens exactly one
+connection: `conn_id` and session happen to be 1:1.  It becomes
+observable when the same remote opens a second connection (e.g.,
+failover, path migration, the Docker ICE-3node coordinator scenario)
+— the plugin's internal map sees a new `conn_id` and spins up a
+redundant `IceSession`, while the kernel's registry already has an
+authoritative session handle for that PK.  The duplicate session drives
+the ICE check ladder in isolation, never shares candidates with the
+primary, and eventually times out; under TSan the concurrent map writes
+trigger reported data races.
+
+Root cause: the initial implementation predated the kernel's
+`ConnectionRegistry` multi-conn primitives.  When multi-connect support
+landed in the kernel the plugin was not updated — it kept its own
+`conn_id → session` indirection unchanged.
+
+Fix scope: `IceSession::notify_connect` / `handle_new_conn` must be
+rewritten to key sessions by remote PK, drive multi-conn through
+`ConnectionRegistry` directly, and drop the internal `conn_id` map.
+Full detail in the `link-ice` plugin CHANGELOG.
+
 ### rc6 cycle — comprehensive pre-release gauntlet snapshot
 
 Full clang-driven sweep across every test + sanitizer + bench + ICE
