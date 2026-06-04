@@ -10,7 +10,7 @@ nix run .#setup             # one-time bootstrap: mirrors + plugins + hooks
 nix run .#build             # debug build in build/
 nix run .#build -- release  # release build in build-release/
 nix run .#build -- static   # single-binary static ELF in build-static/
-nix run .#test              # 1478 unit + integration tests
+nix run .#test              # 1510 unit + integration tests
 nix run .#test -- asan      # AddressSanitizer run
 nix run .#test -- tsan      # ThreadSanitizer run
 nix run .#test -- all       # vanilla + asan + tsan in sequence
@@ -296,6 +296,16 @@ $out/etc/goodnet/identity.bin  ← only if provided
 Full shell: ccache, clang-tools, gdb, graphviz, python3 (with
 pyyaml + libclang for livedoc).
 
+Toolchain: **gcc 16** on `x86_64-linux` (via the
+`sempiternal-aurora/nixpkgs` flake input); **gcc 15** on all other
+platforms.  The shell exports `GOODNET_CXX_LIB_DIR` (pointing to the
+active `libstdc++` directory) so `CMAKE_BUILD_RPATH` bakes the correct
+`libstdc++.so.6` path into every test binary — `ctest` works outside
+`nix develop` without a `LD_LIBRARY_PATH` wrapper.
+
+Build inputs include: libsodium, spdlog, fmt, nlohmann-json,
+**stdexec** (P2300 / `GN_CXX26_EXEC=1`), gtest, Boost.Asio.
+
 **Auto-pull on entry**: on first `nix develop` after a fresh clone,
 the shell checks every plugin slot. Missing slots trigger
 `nix run .#setup` automatically — one clone + one develop is all
@@ -350,7 +360,7 @@ Bypass: `git push --no-verify`
 
 | Command | Instrumentation | Build dir | Notes |
 |---------|----------------|-----------|-------|
-| `nix run .#test` | none | `build/` | 1478/1478, 28 s |
+| `nix run .#test` | none | `build/` | 1510/1510 |
 | `nix run .#test -- asan` | ASan + UBSan | `build-asan/` | known lambda leak in TurnTcpAlloc |
 | `nix run .#test -- tsan` | TSan | `build-tsan/` | 0 races as of rc6 |
 | `nix run .#test -- coverage` | lcov | `build-coverage/` | ≥74 % line |

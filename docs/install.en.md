@@ -45,9 +45,12 @@ sudo install -m 0644 build-release/plugins/lib*.so /usr/lib/goodnet/
 ```
 
 The `nix develop` shell supplies every transitive build dep
-(gcc 15, cmake, ninja, libsodium, asio, spdlog, fmt, nlohmann-json,
-gtest) — host package versions do not matter as long as the dev
-shell is on the build path.
+(gcc 16 on x86_64-linux / gcc 15 on all other platforms, cmake,
+ninja, libsodium, spdlog, fmt, nlohmann-json, stdexec, gtest)
+— host package versions do not matter as long as the dev shell is
+on the build path.  The gcc 16 input is pinned via the
+`sempiternal-aurora/nixpkgs` flake input carrying the GCC 16 PR;
+other platforms continue to use the nixpkgs stable gcc 15.
 
 A non-Nix host can use the system toolchain directly; the only
 hard requirement is C++23 and libsodium 1.0.18+. CMake configure
