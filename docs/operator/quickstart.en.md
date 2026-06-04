@@ -45,16 +45,21 @@ For development (faster, debug symbols):
 nix run .#build              # debug build → build/
 ```
 
-Static single-binary (no dynamic deps):
+Static archive + worker binaries (no dynamic deps):
 ```sh
-nix run .#build -- static    # → build-static/bin/goodnetd
+nix run .#build -- static    # → build-static/lib/libgoodnet_kernel.a + bin/remote_echo
 ```
+
+`goodnetd` daemon ships from a separate repo (`github.com/GoodNet-io/goodnetd`) and is not part of this build.
 
 ---
 
 ## 3. Run the demo
 
-The kernel repo includes a two-node Noise-over-TCP smoke demo:
+The kernel repo includes a two-node Noise-over-TCP smoke demo.
+Requires step 1 (`nix run .#setup`) to have completed so that
+`security-noise` and `link-tcp` are present in the build tree.
+
 ```sh
 nix run .#run -- demo
 ```
@@ -102,7 +107,7 @@ Reference config and manifest: `dist/example/node.json`,
 
 | Symptom | Fix |
 |---|---|
-| `setup` fails: `destination path 'plugins/links/ws_inject' already exists` | `rm -rf plugins/links/ws_inject && nix run .#setup` |
+| `nix run .#run -- demo` fails with missing CMake target | Run `nix run .#setup` first — demo requires `security-noise` and `link-tcp` in the build tree |
 | `ctest` fails outside `nix develop` with `GLIBCXX_3.4.35 not found` | Run `ctest` inside `nix develop` or set `LD_LIBRARY_PATH` to gcc 16 libs |
 | `nix build` fails on aarch64-darwin | Darwin support is intentionally broken; see `--system x86_64-darwin` warning |
 

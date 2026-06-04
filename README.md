@@ -31,7 +31,7 @@ nix run .#run -- demo          # two-node Noise-over-TCP, one message
 ```
 
 Without Nix: gcc 16 (x86_64-linux) / gcc 15 (other platforms), libsodium,
-OpenSSL, asio, spdlog, gtest, rapidcheck, CMake 3.25 — install via your package manager,
+OpenSSL, asio, spdlog, gtest, rapidcheck, CMake 3.22 — install via your package manager,
 then `cmake -B build -G Ninja && cmake --build build && ctest --test-dir build`.
 
 LibFuzzer-driven parser harness (clang only, opt-in): see
