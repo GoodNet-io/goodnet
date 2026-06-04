@@ -183,6 +183,10 @@ struct BenchNode {
         }
 
         api = build_host_api(ctx);
+        api.limits = +[](void*) noexcept -> const gn_limits_t* {
+            static const gn_limits_t kBench{};
+            return &kBench;
+        };
 
         /// Noise: one self per node — its handshake state machine
         /// caches the kernel's NodeIdentity at register time.

@@ -268,23 +268,27 @@ def emit_b2(out, cases, csv_data):
 
 
 def emit_b3(out, cases, csv_data):
-    section_header(out, "B.3", "Provider handoff Noise→Null после "
-                              "handshake (PoC)",
-        "После Noise XX handshake (peer authenticated, identity "
-        "bound), kernel runtime'но обнуляет inline AEAD state на "
-        "established session. Per-frame seal/open отваливается; "
-        "identity-binding (handshake hash) сохраняется. Бенч "
-        "пишет latency time-series через handoff trigger.",
-        "TLS / Noise сессии в любом другом стеке — это monolith: "
-        "либо on (full AEAD per-frame), либо off (handshake "
-        "skipped). Runtime provider migration после handshake'а "
-        "— green-field. PoC реализован через env-gated "
-        "`SecuritySession::_test_clear_inline_crypto`; v1.x "
-        "exposes kernel-driven API.")
+    section_header(out, "B.3", "Topology seal — статическое доказательство "
+                              "безопасности до первого фрейма",
+        "При старте kernel вызывает `build_topology()`: обходит все "
+        "зарегистрированные security-провайдеры и link-плагины, "
+        "собирает SHA-256 fingerprint (детерминированный, независимо "
+        "от порядка регистрации) и вычисляет `contour_gaps` — bitmask "
+        "trust-классов без E2E-провайдера. Если `contour_gaps == 0` — "
+        "контур закрыт до первого send. Fingerprint меняется при "
+        "изменении стека → peer exchange сразу видит несовместимость.",
+        "libp2p/WebRTC/gRPC не имеют понятия topology seal: "
+        "несовместимость security-стека обнаруживается только при "
+        "первом handshake. У GoodNet `contour_gaps == 0` — это "
+        "compile-time/startup invariant, не runtime-проверка. "
+        "Fingerprint = криптографический идентификатор стека, "
+        "обмениваемый после Noise XX без перенастройки протокола.")
     noise64 = cases.get("HandoffFixture/NoiseSteady/64", {})
     noise1k = cases.get("HandoffFixture/NoiseSteady/1024", {})
-    trigger = cases.get("HandoffFixture/TriggerStep/1024", {})
-    out.append("**Bench: Noise steady baseline.**")
+    seal    = cases.get("TopologySealFixture/SealCostNs", {})
+    fp_det  = cases.get("TopologySealFixture/FingerprintDeterminism", {})
+
+    out.append("**Bench: Noise+IPC steady-state (baseline).**")
     out.append("")
     out.append("| Payload | p50 | p95 | p99 |")
     out.append("|---|---|---|---|")
@@ -296,29 +300,47 @@ def emit_b3(out, cases, csv_data):
             f"{fmt_ns(rec.get('lat_p95_ns'))} | "
             f"{fmt_ns(rec.get('lat_p99_ns'))} |")
     out.append("")
-    if trigger:
-        out.append("**Bench: handoff trigger step.**")
+
+    if seal:
+        out.append("**Bench: `build_topology()` seal cost.**")
         out.append("")
-        out.append("| Pre-trigger p50 | Post-trigger p50 | Pre count | Post count |")
-        out.append("|---|---|---|---|")
+        out.append("| Seal cost (p50) | contour_gaps | fp_prefix_u32 |")
+        out.append("|---|---|---|")
+        gaps = int(seal.get("contour_gaps") or -1)
+        fp4  = int(seal.get("fp_prefix_u32") or 0)
         out.append(
-            f"| {fmt_ns(trigger.get('pre_p50_ns'))} | "
-            f"{fmt_ns(trigger.get('post_p50_ns'))} | "
-            f"{int(trigger.get('pre_count') or 0)} | "
-            f"{int(trigger.get('post_count') or 0)} |")
+            f"| {fmt_ns(seal.get('real_time'))} | "
+            f"`{gaps:#010x}` | `{fp4:#010x}` |")
         out.append("")
-    series = csv_data.get("b3-handoff", {}).get("lat_ns", [])
+
+    if fp_det:
+        mismatches = int(fp_det.get("fp_mismatches") or 0)
+        out.append("**Bench: fingerprint determinism.**")
+        out.append("")
+        out.append("| fp_mismatches | (must be 0) |")
+        out.append("|---|---|")
+        out.append(f"| {mismatches} | {'✓' if mismatches == 0 else '✗'} |")
+        out.append("")
+
+    series = csv_data.get("b3c-topology", {}).get("fp_prefix", [])
     if series:
         spark = ascii_spark([v for _, v in series])
-        out.append(f"**Latency time-series.** `{spark}` "
-                   "(per-iter; step-down at handoff trigger)")
+        out.append(f"**Fingerprint time-series.** `{spark}` "
+                   "(flat line = deterministic across all iterations)")
         out.append("")
-    pre = trigger.get("pre_p50_ns") or 0
-    post = trigger.get("post_p50_ns") or 0
-    ok = pre > 0 and post > 0 and post < pre
-    out.append(f"**Acceptance.** post-handoff p50 < pre-handoff "
-               f"p50: **{'PASS' if ok else 'INCOMPLETE'}** (pre={pre}, "
-               f"post={post}).")
+
+    gaps_val = int(seal.get("contour_gaps", -1)) if seal else -1
+    fp_miss  = int(fp_det.get("fp_mismatches", -1)) if fp_det else -1
+    # External classes: UNTRUSTED=bit0, PEER=bit1.
+    # ANONYMOUS_LOOPBACK and LINK_ENCRYPTED gaps are operator-opt-in;
+    # the showcase only asserts that the internet-facing contour is closed.
+    external_gap_mask = (1 << 0) | (1 << 1)
+    external_closed   = (gaps_val & external_gap_mask) == 0 if gaps_val >= 0 else False
+    ok = external_closed and fp_miss == 0
+    out.append(f"**Acceptance.** `contour_gaps & 0x3 == 0` (UNTRUSTED + PEER covered) "
+               f"and `fp_mismatches == 0`: "
+               f"**{'PASS' if ok else 'INCOMPLETE'}** "
+               f"(gaps={gaps_val:#x}, mismatches={fp_miss}).")
     out.append("")
 
 

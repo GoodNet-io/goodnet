@@ -325,7 +325,9 @@ if(NOT GOODNET_STATIC_PLUGINS
         goodnet_tcp_objects
         goodnet_udp_objects
         goodnet_ipc_objects
+        goodnet_quic_objects
         OpenSSL::Crypto
+        OpenSSL::SSL
         PkgConfig::SODIUM
         benchmark::benchmark_main
         ${CMAKE_DL_LIBS}
