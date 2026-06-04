@@ -148,6 +148,7 @@
           stdenv = mkStdenv system pkgs;
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            (import ./nix/stdexec.nix { inherit pkgs; })
             # External bench baselines — iperf3 for raw TCP/UDP
             # throughput, socat for AF_UNIX echo. Both stage cleanly
             # in the dev shell so bench/comparison/runners/run_all.sh
@@ -781,6 +782,7 @@
           # `nix develop` shell.
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            (import ./nix/stdexec.nix { inherit pkgs; })
             # External bench baselines — iperf3 for raw TCP/UDP
             # throughput, socat for AF_UNIX echo. Both stage cleanly
             # in the dev shell so bench/comparison/runners/run_all.sh
@@ -881,8 +883,11 @@
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
               export CMAKE_CXX_COMPILER_LAUNCHER=ccache
-              # gcc16 lib must precede any gcc15 lib injected by buildInputs
-              # so RUNPATH-linked test binaries find the right libstdc++.so.6
+              # Bake the gcc16 lib dir into CMake BUILD_RPATH so test
+              # binaries run outside nix develop (bare ctest, Forgejo runner).
+              export GOODNET_CXX_LIB_DIR="${stdenv.cc.cc.lib}/lib"
+              # LD_LIBRARY_PATH covers any remaining dynamic dep that
+              # didn't get the RPATH baked at configure time.
               export LD_LIBRARY_PATH="${stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
               _gn_plugin_slots="\

@@ -25,6 +25,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
 # trip clang-tidy when it parses `compile_commands.json`.
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
+# Bake the C++ runtime lib dir into build-tree RPATHs so test binaries
+# run correctly outside nix develop (e.g. bare ctest, Forgejo runner).
+# GOODNET_CXX_LIB_DIR is exported by the devShell shellHook to the
+# gcc16 (or gcc15) lib directory; binaries built with that compiler
+# embed the matching libstdc++.so path and never pick up a mismatched
+# system version.
+if(DEFINED ENV{GOODNET_CXX_LIB_DIR} AND NOT "$ENV{GOODNET_CXX_LIB_DIR}" STREQUAL "")
+    list(APPEND CMAKE_BUILD_RPATH "$ENV{GOODNET_CXX_LIB_DIR}")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
 endif()
@@ -243,6 +253,9 @@ pkg_check_modules(ASIO REQUIRED IMPORTED_TARGET asio)
 add_library(asio::asio INTERFACE IMPORTED)
 target_link_libraries(asio::asio INTERFACE PkgConfig::ASIO)
 target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
+
+find_package(stdexec REQUIRED)
+add_compile_definitions(GN_CXX26_EXEC=1)
 
 # ── Test framework discovery ─────────────────────────────────────────────────
 # Hoisted before plugin/test subdirectories so per-plugin

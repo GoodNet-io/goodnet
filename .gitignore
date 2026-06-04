@@ -4,6 +4,7 @@
 !*/
 
 # Top-level project files
+!.gitmodules
 !.gitignore
 !.envrc
 !.clang-tidy

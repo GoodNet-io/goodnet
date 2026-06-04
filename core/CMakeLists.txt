@@ -41,6 +41,7 @@ set(_goodnet_kernel_sources
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
     kernel/metrics_registry.cpp
+    topology/topology_builder.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
     plugin/wire_codec.cpp
