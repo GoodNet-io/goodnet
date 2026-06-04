@@ -910,6 +910,9 @@
                 plugins/links/ipc \
                 plugins/links/tls \
                 plugins/links/ice \
+                plugins/links/quic \
+                plugins/links/raw_inject \
+                plugins/links/portmap \
                 plugins/security/noise \
                 plugins/security/null \
                 plugins/security/pkcs11 \

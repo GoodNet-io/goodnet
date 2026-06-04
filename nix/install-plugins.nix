@@ -13,9 +13,9 @@
 # link-{tcp, udp, ws, ipc, tls, ice}, security-{noise, null};
 # plus the operator-side bridges-cpp slot at `bridges/cpp/`.
 # Statically-linked plugins under `plugins/protocols/` are part
-# of the kernel build and do not need pulling. The link-quic and
-# strategy-float_send_rtt plugins exist in-tree but have no
-# external mirror yet, so they are not part of the install set.
+# of the kernel build and do not need pulling. The
+# strategy-float_send_rtt plugin exists in-tree but has no
+# external mirror yet, so it is not part of the install set.
 #
 # Source lookup (first hit wins):
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo>.git`  (env override)
@@ -78,6 +78,9 @@ pkgs.writeShellApplication {
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
       [plugins/links/ice]=link-ice
+      [plugins/links/quic]=link-quic
+      [plugins/links/raw_inject]=link-raw-inject
+      [plugins/links/portmap]=link-portmap
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
       [plugins/security/pkcs11]=security-pkcs11

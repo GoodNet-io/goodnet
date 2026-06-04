@@ -62,6 +62,8 @@ standalone flake, build with `nix develop`, run its own test suite.
 | link-ice | ⚠️ broken | Multi-connect signal routing (#18) — see below |
 | link-quic | 🚧 in progress | ICE carrier topology propagation |
 | link-ws-inject | ✅ stable | ws_inject smoke test after derived-pk refactor (#5) |
+| link-raw-inject | ✅ stable | — |
+| link-portmap | ✅ stable | — |
 
 ### Security plugins
 

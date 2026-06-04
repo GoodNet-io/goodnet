@@ -57,6 +57,9 @@ pkgs.writeShellApplication {
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
       [plugins/links/ice]=link-ice
+      [plugins/links/quic]=link-quic
+      [plugins/links/raw_inject]=link-raw-inject
+      [plugins/links/portmap]=link-portmap
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
       [plugins/security/pkcs11]=security-pkcs11
