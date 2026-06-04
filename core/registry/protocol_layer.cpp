@@ -79,4 +79,14 @@ std::size_t ProtocolLayerRegistry::size() const noexcept {
     return by_id_.size();
 }
 
+std::vector<ProtocolLayerEntry> ProtocolLayerRegistry::snapshot() const {
+    std::shared_lock lock(mu_);
+    std::vector<ProtocolLayerEntry> result;
+    result.reserve(by_protocol_id_.size());
+    for (const auto& [id, entry] : by_protocol_id_) {
+        result.push_back(entry);
+    }
+    return result;
+}
+
 } // namespace gn::core

@@ -19,6 +19,11 @@
 extern "C" {
 #endif
 
+/* Forward declaration. Full definition is in sdk/topology.h, which is
+ * included after sdk/link.h in sdk/core.h. Plugin headers that only
+ * pass the pointer through do not need the full definition. */
+struct gn_topology_s;
+
 /**
  * @brief Scatter-gather descriptor for batched send.
  *

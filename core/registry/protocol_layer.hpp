@@ -89,6 +89,10 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept;
 
+    /// Snapshot of all registered protocol layer entries in protocol_id order.
+    /// Used by the topology builder.
+    [[nodiscard]] std::vector<ProtocolLayerEntry> snapshot() const;
+
 private:
     mutable std::shared_mutex                                            mu_;
     std::flat_map<std::string, ProtocolLayerEntry, std::less<>>          by_protocol_id_;

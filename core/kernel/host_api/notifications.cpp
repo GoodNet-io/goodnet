@@ -15,6 +15,7 @@
 #include <vector>
 
 #include <sdk/limits.h>
+#include <sdk/trust.h>
 
 #include <core/identity/node_identity.hpp>
 #include <core/identity/rotation.hpp>
@@ -23,12 +24,15 @@
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
 #include <sdk/extensions/link.h>
+#include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
 #include "../connection_context.hpp"
 #include "../safe_invoke.hpp"
 #include "../system_handler_ids.hpp"
+
+#include <sdk/cpp/capability_tlv.hpp>
 
 namespace gn::core::host_api_thunks {
 
@@ -85,6 +89,31 @@ gn_result_t notify_connect(void* host_ctx,
         if ((mask & bit) == 0u) {
             pc->kernel->metrics().increment("drop.trust_class_mismatch");
             return GN_ERR_INVALID_ENVELOPE;
+        }
+    }
+
+    // Auto-upgrade UNTRUSTED → LINK_ENCRYPTED when the link reports an
+    // encrypted-path capability AND the operator has opted in via
+    // `security.allow_link_only: true`.  This enables TLS-at-link-layer
+    // deployments to skip session-layer crypto without requiring the link
+    // plugin to know about trust classes.
+    if (trust == GN_TRUST_UNTRUSTED) {
+        bool allow_link_only = false;
+        (void)pc->kernel->config().get_bool("security.allow_link_only", allow_link_only);
+        if (allow_link_only) {
+            if (auto le = pc->kernel->links().find_by_scheme(scheme)) {
+                const auto* lapi = le->vtable && le->vtable->extension_vtable
+                    ? static_cast<const gn_link_api_t*>(
+                          le->vtable->extension_vtable(le->self))
+                    : nullptr;
+                if (lapi && GN_API_HAS(gn_link_api_t, lapi, get_capabilities)) {
+                    gn_link_caps_t caps{};
+                    if (lapi->get_capabilities(lapi->ctx, &caps) == GN_OK &&
+                        (caps.flags & GN_LINK_CAP_ENCRYPTED_PATH)) {
+                        trust = GN_TRUST_LINK_ENCRYPTED;
+                    }
+                }
+            }
         }
     }
 
@@ -148,6 +177,26 @@ gn_result_t notify_connect(void* host_ctx,
             }
             (void)sapi->on_path_event(
                 sapi->ctx, remote_pk,
+                GN_PATH_EVENT_CONN_UP, &sample);
+        }
+    }
+
+    /// Same CONN_UP delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        for (const auto& entry : float_sends) {
+            const auto* fapi =
+                static_cast<const gn_float_send_api_t*>(entry.vtable);
+            if (!fapi || !fapi->on_path_event ||
+                fapi->api_size < sizeof(gn_float_send_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn   = new_id;
+            sample.rtt_us = 0;
+            (void)fapi->on_path_event(
+                fapi->ctx, remote_pk,
                 GN_PATH_EVENT_CONN_UP, &sample);
         }
     }
@@ -246,6 +295,44 @@ gn_result_t kick_handshake(void* host_ctx, gn_conn_id_t conn) {
     return GN_OK;
 }
 
+/// Send the pre-built topology capability blob after Transport phase.
+/// Follows the same frame + encrypt + send path as AttestationDispatcher.
+static void send_topology_caps_blob(PluginContext* pc,
+                                     gn_conn_id_t conn,
+                                     SecuritySession& session,
+                                     const ConnectionRecord& rec) noexcept {
+    const auto& blob = pc->kernel->topology_wire_blob();
+    if (blob.empty()) return;
+
+    auto layer = pc->kernel->protocol_layers().find_by_protocol_id(rec.protocol_id);
+    if (!layer) return;
+
+    gn_message_t env{};
+    env.msg_id       = kCapabilityBlobMsgId;
+    env.payload      = blob.data();
+    env.payload_size = blob.size();
+
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = conn;
+    ctx.trust     = rec.trust;
+    ctx.remote_pk = rec.remote_pk;
+
+    auto framed = layer->frame(ctx, env);
+    if (!framed.has_value()) return;
+
+    std::vector<std::uint8_t> cipher;
+    if (session.encrypt_transport(*framed, cipher) != GN_OK) return;
+
+    auto trans = pc->kernel->links().find_by_scheme(rec.scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) return;
+
+    const gn_result_t rc = safe_call_result("link.send",
+        trans->vtable->send, trans->self, conn,
+        cipher.data(), cipher.size());
+    if (rc == GN_OK)
+        pc->kernel->connections().add_outbound(conn, cipher.size(), 1);
+}
+
 gn_result_t notify_inbound_bytes(void* host_ctx,
                                   gn_conn_id_t conn,
                                   const uint8_t* bytes,
@@ -295,6 +382,7 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                 }
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
+                send_topology_caps_blob(pc, conn, *session, *rec);
                 drain_handshake_pending(pc, conn, *session,
                                          rec->scheme);
             }
@@ -319,7 +407,7 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                                rec->trust == GN_TRUST_INTRA_NODE);
         if (security_active && !is_local) {
             pc->kernel->metrics().increment("drop.no_session_external");
-            return GN_ERR_INVALID_ENVELOPE;
+            return GN_OK;
         }
         plaintexts.emplace_back(wire_bytes.begin(), wire_bytes.end());
     }
@@ -606,6 +694,25 @@ gn_result_t notify_disconnect(void* host_ctx,
             sample.conn = conn;
             (void)sapi->on_path_event(
                 sapi->ctx, snapshot->remote_pk.data(),
+                GN_PATH_EVENT_CONN_DOWN, &sample);
+        }
+    }
+
+    /// Same CONN_DOWN delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        for (const auto& entry : float_sends) {
+            const auto* fapi =
+                static_cast<const gn_float_send_api_t*>(entry.vtable);
+            if (!fapi || !fapi->on_path_event ||
+                fapi->api_size < sizeof(gn_float_send_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn = conn;
+            (void)fapi->on_path_event(
+                fapi->ctx, snapshot->remote_pk.data(),
                 GN_PATH_EVENT_CONN_DOWN, &sample);
         }
     }

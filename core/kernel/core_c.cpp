@@ -30,6 +30,7 @@
 #include <core/util/log.hpp>
 
 #include <core/identity/identity_plugin_signer.hpp>
+#include <sdk/cpp/capability_tlv.hpp>
 
 #include <sdk/extensions/identity.h>
 #include <sdk/extensions/link.h>
@@ -103,6 +104,11 @@ void gn_core_destroy(gn_core_t* core) {
     /// channels they live on. `unregister_handler` and channel
     /// `unsubscribe` are idempotent — the post-stop walk just clears
     /// the std::vector slots.
+    if (core->topology_caps_sub_ != 0) {
+        core->kernel.capability_blob_bus().unsubscribe(core->topology_caps_sub_);
+        core->topology_caps_sub_ = 0;
+    }
+
     {
         std::lock_guard lk(core->subs_mu);
         for (auto& sub : core->message_subs) {
@@ -310,10 +316,54 @@ gn_result_t gn_core_init(gn_core_t* core) {
     return GN_OK;
 }
 
+/// Kernel-internal capability blob subscriber: checks incoming blobs
+/// for TLV type 0x0004 (topology fingerprint) and marks the connection.
+static void topology_caps_cb(void* user_data,
+                              gn_conn_id_t from_conn,
+                              const std::uint8_t* blob,
+                              std::size_t size,
+                              int64_t /*expires*/) noexcept {
+    auto* core = static_cast<gn_core_t*>(user_data);
+    if (!core || !core->topology_) return;
+
+    auto records = gn::sdk::parse_tlv(std::span<const std::uint8_t>{blob, size});
+    if (!records.has_value()) return;
+
+    for (const auto& rec : *records) {
+        if (rec.type != gn::sdk::kTlvTypeTopologyFingerprint) continue;
+        if (rec.value.size() != 32) {
+            ::gn::log::warn("topology_caps: malformed fingerprint record "
+                            "from conn={} size={}",
+                            static_cast<std::uint64_t>(from_conn),
+                            rec.value.size());
+            return;
+        }
+        const bool match = std::memcmp(
+            rec.value.data(),
+            core->topology_->topo.fingerprint,
+            32) == 0;
+
+        core->kernel.connections().set_peer_caps_verified(from_conn, match);
+
+        if (!match) {
+            ::gn::log::warn("topology_caps: fingerprint mismatch from "
+                            "conn={} — peer stack differs",
+                            static_cast<std::uint64_t>(from_conn));
+        }
+        return;
+    }
+}
+
 gn_result_t gn_core_start(gn_core_t* core) {
     if (core == nullptr) return GN_ERR_NULL_ARG;
     walk_to_ready(core->kernel);
     (void)core->kernel.advance_to(gn::core::Phase::Running);
+    core->topology_           = gn::core::topology::build_topology(core->kernel);
+    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
+                                    core->topology_->topo);
+    core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
+    core->topology_caps_sub_ = core->kernel.capability_blob_bus().subscribe(
+        &topology_caps_cb, core, nullptr);
     return GN_OK;
 }
 
@@ -1225,6 +1275,22 @@ gn_result_t gn_core_unregister_extension(gn_core_t* core, const char* name) {
 const host_api_t* gn_core_host_api(gn_core_t* core) {
     if (core == nullptr) return nullptr;
     return &core->api;
+}
+
+/* ── Topology ────────────────────────────────────────────────────────────── */
+
+const gn_topology_t* gn_core_get_topology(gn_core_t* core) {
+    if (core == nullptr || !core->topology_) return nullptr;
+    return &core->topology_->topo;
+}
+
+gn_result_t gn_core_reload_topology(gn_core_t* core) {
+    if (core == nullptr) return GN_ERR_NULL_ARG;
+    core->topology_           = gn::core::topology::build_topology(core->kernel);
+    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
+                                    core->topology_->topo);
+    core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
+    return GN_OK;
 }
 
 /* ── Version ─────────────────────────────────────────────────────────────── */

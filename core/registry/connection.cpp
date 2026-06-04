@@ -349,6 +349,18 @@ void ConnectionRegistry::add_outbound(gn_conn_id_t id, std::uint64_t bytes,
     it->second->frames_out.fetch_add(frames, std::memory_order_relaxed);
 }
 
+void ConnectionRegistry::set_peer_caps_verified(gn_conn_id_t id,
+                                                bool verified) noexcept {
+    if (id == GN_INVALID_ID) return;
+    Shard& s = shard_for(id);
+    std::unique_lock lock(s.mu);
+    auto it = s.records.find(id);
+    if (it == s.records.end()) return;
+    auto next = std::make_shared<ConnectionRecord>(*it->second);
+    next->peer_caps_verified = verified;
+    it->second = std::move(next);
+}
+
 void ConnectionRegistry::set_pending_bytes(gn_conn_id_t id,
                                             std::uint64_t bytes) noexcept {
     if (id == GN_INVALID_ID) return;

@@ -113,4 +113,10 @@ inline constexpr std::uint16_t kTlvTypeCompressionSet = 0x0003u;
 /// Bit 0 of compression-set value: ZSTD algorithm supported.
 inline constexpr std::uint8_t  kCompressionSetZstd    = 0x01u;
 
+/// TLV type for topology fingerprint exchange (layer-capability.en.md §6).
+/// Value: exactly 32 bytes — SHA-256 over sorted structural layers.
+/// Sent automatically after Noise XX reaches Transport phase.
+/// Peer fingerprint mismatch logs the diff and sets peer_caps_verified=false.
+inline constexpr std::uint16_t kTlvTypeTopologyFingerprint = 0x0004u;
+
 }  // namespace gn::sdk

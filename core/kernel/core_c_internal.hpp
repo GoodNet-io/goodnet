@@ -13,8 +13,12 @@
 #include <condition_variable>
 #include <cstdint>
 #include <memory>
+
+#include <sdk/conn_events.h>
 #include <mutex>
 #include <vector>
+
+#include <core/topology/topology_builder.hpp>
 
 #include <sdk/core.h>
 
@@ -74,6 +78,20 @@ struct gn_core_s {
     std::vector<std::unique_ptr<MessageSub>>                           message_subs;
     std::vector<ConnEventSub>                                          conn_subs;
     std::atomic<std::uint64_t>                                         next_token{1};
+
+    /// Topology snapshot built at `gn_core_start` and replaced by
+    /// `gn_core_reload_topology`. Null until `gn_core_start` is called.
+    std::unique_ptr<gn::core::topology::TopologySnapshot>              topology_;
+
+    /// Pre-encoded capability wire blob for peer topology exchange.
+    /// Format: [8-byte BE expiry] [TLV 0x0004: fingerprint[32]].
+    /// Sent automatically after Noise XX reaches Transport phase.
+    std::vector<std::uint8_t>                                          topology_wire_blob_;
+
+    /// Subscription token for the kernel-internal capability-blob
+    /// subscriber that matches incoming fingerprints against the local
+    /// topology. Unsubscribed on destroy.
+    gn_subscription_id_t                                               topology_caps_sub_{0};
 
     gn_core_s() : plugins(kernel) {
         host_ctx.plugin_name = "host-embedding";

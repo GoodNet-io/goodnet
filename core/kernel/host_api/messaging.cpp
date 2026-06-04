@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include <core/registry/protocol_layer.hpp>
+#include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 
 #include "../connection_context.hpp"
@@ -148,6 +149,28 @@ gn_result_t send_to(void* host_ctx,
         });
 
     if (candidates.empty()) return GN_ERR_NOT_FOUND;
+
+    /// Float-send chain: plugins that intercept with full payload access
+    /// (e.g. multipath fan-out). Walks before the strategy chain; first
+    /// GN_OK return owns the send and short-circuits both chains.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        for (const auto& entry : float_sends) {
+            const auto* fapi =
+                static_cast<const gn_float_send_api_t*>(entry.vtable);
+            if (!fapi || !fapi->float_send ||
+                fapi->api_size < sizeof(gn_float_send_api_t)) {
+                continue;
+            }
+            const gn_result_t rc = fapi->float_send(
+                fapi->ctx, peer_pk,
+                msg_id, payload, payload_size,
+                candidates.data(), candidates.size());
+            if (rc == GN_ERR_NOT_FOUND) continue;
+            return rc;
+        }
+    }
 
     if (candidates.size() == 1) {
         return send(host_ctx, candidates[0].conn,

@@ -66,6 +66,7 @@
 #include <sdk/plugin_runtime.h>
 #include <sdk/protocol.h>
 #include <sdk/security.h>
+#include <sdk/topology.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -756,6 +757,37 @@ GN_EXPORT gn_result_t gn_core_register_extension(
 /** Cancel an extension registration by name. */
 GN_EXPORT gn_result_t gn_core_unregister_extension(gn_core_t* core,
                                                     const char* name);
+
+/* ── Topology ────────────────────────────────────────────────────────────── */
+
+/**
+ * @brief Return a borrowed pointer to the current topology snapshot.
+ *
+ * Built once by `gn_core_start()` when the kernel enters Phase::Running.
+ * Returns NULL before `gn_core_start()` is called. The pointer is valid
+ * until `gn_core_destroy()` or `gn_core_reload_topology()`.
+ *
+ * All fields in the returned struct (strings, entry arrays) are @borrowed
+ * from kernel-owned storage. The caller must not free them.
+ *
+ * @return @borrowed pointer; lifetime tied to @p core (or until reload).
+ */
+GN_EXPORT const gn_topology_t* gn_core_get_topology(gn_core_t* core);
+
+/**
+ * @brief Rebuild the topology snapshot from current registry state.
+ *
+ * Re-snapshots all registries, recomputes the fingerprint and contour_gaps,
+ * and calls `on_topology_sealed` on every registered link plugin again.
+ * Replaces the snapshot returned by `gn_core_get_topology`.
+ *
+ * Use when plugins have been registered or unregistered after
+ * `gn_core_start()`. In normal operation the topology is sealed once
+ * at startup and this call is not needed.
+ *
+ * @return `GN_OK` on success; `GN_ERR_NULL_ARG` when @p core is NULL.
+ */
+GN_EXPORT gn_result_t gn_core_reload_topology(gn_core_t* core);
 
 /* ── host_api accessor ───────────────────────────────────────────────────── */
 

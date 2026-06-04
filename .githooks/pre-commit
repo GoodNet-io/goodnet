@@ -146,11 +146,34 @@ if [ -z "${_GN_PRECOMMIT_INSIDE:-}" ]; then
     exec nix develop "${FLAKE_DIR:-.}" --command bash -- "$0" "$@"
 fi
 
+# Strip GCC-specific flags that clang-tidy's clang frontend rejects.
+# -fcontracts is a GCC 16 Contracts TS flag; -Wodr / -Wlto-type-mismatch
+# are GCC LTO diagnostics; -Wno-free-nonheap-object is a GCC-only
+# suppression. Using a filtered copy avoids version-sensitive .clang-tidy
+# CompileFlags.Remove semantics.
+_ccdb_orig=build/compile_commands.json
+_ccdb_tidy=$(mktemp /tmp/goodnet-ccdb-XXXXXX.json)
+sed \
+    's/ -fcontracts//g;
+     s/ -Wodr//g;
+     s/ -Wlto-type-mismatch//g;
+     s/ -Wno-free-nonheap-object//g;
+     s| -fmacro-prefix-map=[^ "]*||g' \
+    "$_ccdb_orig" > "$_ccdb_tidy"
+trap 'rm -f "$_ccdb_tidy"' EXIT
+
 failed=0
 while IFS= read -r f; do
     [ -f "$f" ] || continue
+    # Skip headers that have no entry in compile_commands.json — clang-tidy
+    # can't determine the right include paths for them standalone, and they
+    # are checked transitively through their including .cpp files.
+    abs_f="$(pwd)/$f"
+    if ! grep -qF "\"$abs_f\"" "$_ccdb_tidy" 2>/dev/null; then
+        continue
+    fi
     output=$(clang-tidy --quiet --warnings-as-errors='*' \
-                -p build "$f" 2>&1 || true)
+                -p "$_ccdb_tidy" "$f" 2>&1 || true)
     if printf '%s\n' "$output" | grep -qE "error:|treated as errors"; then
         printf '%s\n' "$output" >&2
         echo "pre-commit: clang-tidy failed on $f" >&2

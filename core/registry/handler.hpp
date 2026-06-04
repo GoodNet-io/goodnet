@@ -190,6 +190,19 @@ public:
     /// Total registered handler count.
     [[nodiscard]] std::size_t size() const noexcept;
 
+    /// One (protocol_id, msg_id) pair with aggregated chain length across
+    /// all namespaces. Used by the topology builder.
+    struct HandlerPairInfo {
+        std::string   protocol_id;
+        std::uint32_t msg_id        = 0;
+        std::size_t   chain_length  = 0;
+    };
+
+    /// Enumerate all unique (protocol_id, msg_id) pairs registered across
+    /// every namespace, with total chain length. Results are sorted by
+    /// (protocol_id, msg_id). Used by the topology builder.
+    [[nodiscard]] std::vector<HandlerPairInfo> enumerate_pairs() const;
+
 private:
     /// Triple key: (namespace_id, protocol_id, msg_id). Namespace as
     /// the leading dimension keeps `drain_by_namespace` cheap (one

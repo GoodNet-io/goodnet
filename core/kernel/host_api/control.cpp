@@ -19,6 +19,7 @@
 
 #include <core/util/log.hpp>
 
+#include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 
 #include "../connection_context.hpp"
@@ -464,6 +465,28 @@ gn_result_t notify_rtt_sample(void* host_ctx,
             (void)sapi->on_path_event(
                 sapi->ctx, rec->remote_pk.data(),
                 GN_PATH_EVENT_RTT_UPDATE, &sample);
+        }
+    }
+
+    /// Same RTT_UPDATE delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        if (!float_sends.empty()) {
+            gn_path_sample_t sample{};
+            sample.conn   = conn;
+            sample.rtt_us = *smoothed;
+            for (const auto& entry : float_sends) {
+                const auto* fapi =
+                    static_cast<const gn_float_send_api_t*>(entry.vtable);
+                if (!fapi || !fapi->on_path_event ||
+                    fapi->api_size < sizeof(gn_float_send_api_t)) {
+                    continue;
+                }
+                (void)fapi->on_path_event(
+                    fapi->ctx, rec->remote_pk.data(),
+                    GN_PATH_EVENT_RTT_UPDATE, &sample);
+            }
         }
     }
     return GN_OK;

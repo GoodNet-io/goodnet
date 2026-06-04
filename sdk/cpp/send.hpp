@@ -56,11 +56,12 @@ namespace detail {
 /// (pre-`gn_core_start`) or when the extension is not registered.
 [[nodiscard]] inline const gn_topology_t*
 get_local_topology(const host_api_t* api) noexcept {
-    if (!api || !api->get_extension) return nullptr;
-    const void* ext = api->get_extension(api->host_ctx, GN_EXT_TOPOLOGY);
-    if (!ext) return nullptr;
-    // The extension vtable's first slot is the topology pointer accessor;
-    // for gn.topology the extension IS the topology pointer itself.
+    if (!api || !api->query_extension_checked) return nullptr;
+    const void* ext = nullptr;
+    if (api->query_extension_checked(api->host_ctx, GN_EXT_TOPOLOGY,
+                                      GN_EXT_TOPOLOGY_VERSION, &ext) != GN_OK) {
+        return nullptr;
+    }
     return static_cast<const gn_topology_t*>(ext);
 }
 

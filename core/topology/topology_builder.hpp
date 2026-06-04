@@ -53,4 +53,13 @@ struct TopologySnapshot {
 /// `gn_core_reload_topology`.
 [[nodiscard]] std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel);
 
+/// Encode the topology fingerprint as a capability wire blob:
+///   [8-byte BE expiry = INT64_MAX] [TLV 0x0004: fingerprint[32]]
+///
+/// The result is ready to pass to the send path (frame + encrypt + send)
+/// with msg_id = kCapabilityBlobMsgId (0x13). expiry = INT64_MAX signals
+/// that the fingerprint is valid for the kernel's lifetime.
+[[nodiscard]] std::vector<std::uint8_t>
+encode_topology_wire_blob(const gn_topology_t& topo);
+
 } // namespace gn::core::topology

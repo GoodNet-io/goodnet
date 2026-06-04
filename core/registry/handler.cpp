@@ -4,6 +4,7 @@
 #include "handler.hpp"
 
 #include <algorithm>
+#include <map>
 #include <mutex>
 #include <vector>
 
@@ -221,6 +222,21 @@ std::uint64_t HandlerRegistry::generation() const noexcept {
 
 std::size_t HandlerRegistry::size() const noexcept {
     return by_id_.size();
+}
+
+std::vector<HandlerRegistry::HandlerPairInfo> HandlerRegistry::enumerate_pairs() const {
+    std::shared_lock lk{mu_};
+    // Aggregate chain lengths across namespaces for each (protocol_id, msg_id).
+    std::map<std::pair<std::string, std::uint32_t>, std::size_t> agg;
+    for (const auto& [key, chain] : chains_) {
+        agg[{key.protocol_id, key.msg_id}] += chain.size();
+    }
+    std::vector<HandlerPairInfo> result;
+    result.reserve(agg.size());
+    for (const auto& [k, len] : agg) {
+        result.push_back(HandlerPairInfo{k.first, k.second, len});
+    }
+    return result;
 }
 
 } // namespace gn::core

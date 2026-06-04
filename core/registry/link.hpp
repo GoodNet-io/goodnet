@@ -78,6 +78,10 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept;
 
+    /// Snapshot of all registered link entries in scheme order.
+    /// Used by the topology builder and `on_topology_sealed` dispatch.
+    [[nodiscard]] std::vector<LinkEntry> snapshot() const;
+
 private:
     mutable std::shared_mutex                                  mu_;
     std::flat_map<std::string, LinkEntry, std::less<>>         by_scheme_;

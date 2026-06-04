@@ -4,7 +4,7 @@
 ///         `docs/contracts/timer.en.md`. Fire-and-forget work uses
 ///         `set_timer(delay_ms = 0, …, out_id = NULL)`.
 ///
-/// The registry owns one `asio::io_context` and the worker thread
+/// The registry owns one `exec::timed_thread_context` and the worker thread
 /// that drives it. The thread serialises every task and timer
 /// callback so plugins observe the single-thread guarantee from
 /// `timer.en.md` §3 without depending on any transport's executor.
@@ -30,9 +30,7 @@
 #include <thread>
 #include <unordered_map>
 
-#include <asio/executor_work_guard.hpp>
-#include <asio/io_context.hpp>
-#include <asio/steady_timer.hpp>
+#include <exec/timed_thread_scheduler.hpp>
 
 #include <sdk/types.h>
 
@@ -110,15 +108,12 @@ public:
 
 private:
     struct TimerEntry {
-        std::shared_ptr<asio::steady_timer> timer;
         std::weak_ptr<PluginAnchor>         anchor;
         gn_task_fn_t                        fn          = nullptr;
         void*                               user_data   = nullptr;
     };
 
-    asio::io_context                                          ioc_;
-    asio::executor_work_guard<asio::io_context::executor_type> work_;
-    std::thread                                               worker_;
+    exec::timed_thread_context                                ctx_;
     std::atomic<bool>                                         shutdown_{false};
 
     mutable std::mutex                                  mu_;

@@ -209,15 +209,38 @@ std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel) {
     topo.handlers       = snap->handler_entries.empty() ? nullptr : snap->handler_entries.data();
 
     // ── 6. Contour gaps ────────────────────────────────────────────────
+    // LINK_ENCRYPTED trust class is covered when any link advertises
+    // ENCRYPTED_PATH AND a security provider allows that trust class
+    // (the link-only provider, provides_flags=0 but link layer has crypto).
+    const bool any_encrypted_link = [&]() {
+        for (const auto& le : snap->link_entries) {
+            if (le.caps_flags & GN_LINK_CAP_ENCRYPTED_PATH) return true;
+        }
+        return false;
+    }();
+
     std::uint32_t gaps = 0;
-    for (unsigned t = 0; t <= static_cast<unsigned>(GN_TRUST_ANONYMOUS_LOOPBACK); ++t) {
+    for (unsigned t = 0; t <= static_cast<unsigned>(GN_TRUST_LINK_ENCRYPTED); ++t) {
         const std::uint32_t class_bit = 1u << t;
         bool covered = false;
-        for (const auto& se : snap->sec_entries) {
-            if ((se.provides_flags & GN_SEC_PROVIDES_E2E_ENCRYPTION) &&
-                (se.allowed_trust_mask & class_bit)) {
-                covered = true;
-                break;
+        if (t == static_cast<unsigned>(GN_TRUST_LINK_ENCRYPTED)) {
+            // Covered when link layer provides encryption and a provider
+            // (link-only) is registered for this trust class.
+            if (any_encrypted_link) {
+                for (const auto& se : snap->sec_entries) {
+                    if (se.allowed_trust_mask & class_bit) {
+                        covered = true;
+                        break;
+                    }
+                }
+            }
+        } else {
+            for (const auto& se : snap->sec_entries) {
+                if ((se.provides_flags & GN_SEC_PROVIDES_E2E_ENCRYPTION) &&
+                    (se.allowed_trust_mask & class_bit)) {
+                    covered = true;
+                    break;
+                }
             }
         }
         if (!covered) gaps |= class_bit;
@@ -237,6 +260,26 @@ std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel) {
     }
 
     return snap;
+}
+
+std::vector<std::uint8_t> encode_topology_wire_blob(const gn_topology_t& topo) {
+    // [8-byte BE expiry = INT64_MAX] [TLV: type=0x0004 len=32 value=fingerprint]
+    constexpr std::size_t kFpLen = 32;
+    std::vector<std::uint8_t> out;
+    out.reserve(8 + 4 + kFpLen);
+
+    // expiry = INT64_MAX (valid for kernel lifetime)
+    constexpr std::uint64_t kExpiry = static_cast<std::uint64_t>(INT64_MAX);
+    for (int i = 7; i >= 0; --i)
+        out.push_back(static_cast<std::uint8_t>((kExpiry >> (i * 8)) & 0xFFu));
+
+    // TLV header: type=0x0004, length=32
+    out.push_back(0x00); out.push_back(0x04); // type BE
+    out.push_back(0x00); out.push_back(0x20); // length = 32 BE
+
+    // fingerprint value
+    out.insert(out.end(), topo.fingerprint, topo.fingerprint + kFpLen);
+    return out;
 }
 
 } // namespace gn::core::topology

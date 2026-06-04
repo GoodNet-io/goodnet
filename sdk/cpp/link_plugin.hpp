@@ -122,6 +122,23 @@ template <class T>
     }
 }
 
+/// Wires `on_topology_sealed` into the vtable when the link class defines
+/// it — must be a template so `if constexpr` truly discards the body for
+/// classes that don't, per the non-template `if constexpr` caveat in
+/// handler_plugin.hpp §122-129.
+template <class T>
+inline void link_maybe_wire_topology_sealed(gn_link_vtable_t& v) noexcept {
+    if constexpr (requires {
+        std::declval<T>().on_topology_sealed(
+            static_cast<const struct gn_topology_s*>(nullptr));
+    }) {
+        v.on_topology_sealed = [](void* self,
+                                   const struct gn_topology_s* topo) noexcept {
+            static_cast<LinkPluginInstance<T>*>(self)->link->on_topology_sealed(topo);
+        };
+    }
+}
+
 /// Optional composer (L2) method dispatchers. Each returns
 /// GN_ERR_NOT_IMPLEMENTED when the link class doesn't define the method.
 template <class T>
@@ -403,18 +420,9 @@ template <class T>
         v.send_batch       = &_gn_link_send_batch;                               \
         v.disconnect       = &_gn_link_disconnect;                               \
         v.extension_name   = &_gn_link_ext_name;                                 \
-        v.extension_vtable = &_gn_link_ext_vtable;                               \
-        v.destroy          = &_gn_link_destroy;                                  \
-        if constexpr (requires {                                               \
-            std::declval<Class>().on_topology_sealed(                         \
-                static_cast<const struct gn_topology_s*>(nullptr));           \
-        }) {                                                                   \
-            v.on_topology_sealed = [](void* self,                             \
-                                       const struct gn_topology_s* topo)      \
-                                       noexcept {                              \
-                _gn_link_of(self).on_topology_sealed(topo);                   \
-            };                                                                 \
-        }                                                                      \
+        v.extension_vtable = &_gn_link_ext_vtable;                             \
+        v.destroy          = &_gn_link_destroy;                                \
+        ::gn::sdk::detail::link_maybe_wire_topology_sealed<Class>(v);         \
         return v;                                                              \
     }                                                                          \
                                                                                \
