@@ -93,6 +93,7 @@ constexpr gn_limits_t embedded_profile() noexcept {
     L.inject_rate_per_source      = 10;
     L.inject_rate_burst           = 8;
     L.inject_rate_lru_cap         = 64;
+    L.max_capability_blob_bytes   = L.max_payload_bytes;
     return L;
 }
 
