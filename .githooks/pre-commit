@@ -152,15 +152,15 @@ fi
 # suppression. Using a filtered copy avoids version-sensitive .clang-tidy
 # CompileFlags.Remove semantics.
 _ccdb_orig=build/compile_commands.json
-_ccdb_tidy=$(mktemp /tmp/goodnet-ccdb-XXXXXX.json)
+_ccdb_tidy=$(mktemp -d /tmp/goodnet-ccdb-XXXXXX)
 sed \
     's/ -fcontracts//g;
      s/ -Wodr//g;
      s/ -Wlto-type-mismatch//g;
      s/ -Wno-free-nonheap-object//g;
      s| -fmacro-prefix-map=[^ "]*||g' \
-    "$_ccdb_orig" > "$_ccdb_tidy"
-trap 'rm -f "$_ccdb_tidy"' EXIT
+    "$_ccdb_orig" > "$_ccdb_tidy/compile_commands.json"
+trap 'rm -rf "$_ccdb_tidy"' EXIT
 
 failed=0
 while IFS= read -r f; do

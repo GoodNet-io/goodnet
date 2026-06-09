@@ -360,3 +360,21 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     EXPECT_EQ(cap.last_sender,   peer_pk);
     EXPECT_EQ(cap.last_receiver, local_pk);
 }
+
+// ── void-namespace isolation ─────────────────────────────────────────────
+
+TEST(InjectExternal, VoidNamespaceDroppedCleanly) {
+    /// Inject a message whose msg_id has no registered handler.
+    /// The kernel must accept the call (GN_OK), silently drop the
+    /// envelope, and increment `route.outcome.dropped_no_handler`.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0x77);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    const std::uint8_t payload[] = {0xAB};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x42,
+                            payload, sizeof(payload)),
+              GN_OK);
+    EXPECT_EQ(h.kernel->metrics().value("route.outcome.dropped_no_handler"), 1u);
+}

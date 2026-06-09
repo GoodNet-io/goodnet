@@ -350,6 +350,23 @@ endif()
 # layout that drives both GoodNet and reference stacks through the
 # same payload matrix.
 
+# inject_message throughput — kernel hot-path routing with no link
+# plugin or security provider; links only goodnet_kernel + gnet.
+if(TARGET goodnet_kernel AND TARGET GoodNet::protocol_gnet)
+    add_executable(bench_inject plugins/bench_inject.cpp)
+    target_link_libraries(bench_inject PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        GoodNet::protocol_gnet
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_inject PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
+
 # ── Free-kernel showcase bench ────────────────────────────────────────
 #
 # Demonstrates GoodNet-distinctive moves no other stack can reproduce:
