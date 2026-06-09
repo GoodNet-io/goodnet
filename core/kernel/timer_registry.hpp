@@ -23,14 +23,19 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
+#ifndef __EMSCRIPTEN__
 #include <exec/timed_thread_scheduler.hpp>
+#endif
 
 #include <sdk/types.h>
 
@@ -111,9 +116,29 @@ private:
         std::weak_ptr<PluginAnchor>         anchor;
         gn_task_fn_t                        fn          = nullptr;
         void*                               user_data   = nullptr;
+#ifdef __EMSCRIPTEN__
+        bool                                is_post     = false;
+#endif
     };
 
+#ifndef __EMSCRIPTEN__
     exec::timed_thread_context                                ctx_;
+#else
+    // Emscripten: background-thread scheduler replacing stdexec.
+    struct WasmEntry {
+        std::chrono::steady_clock::time_point fire_at;
+        gn_timer_id_t                         id;
+        bool operator>(const WasmEntry& o) const noexcept { return fire_at > o.fire_at; }
+    };
+    std::mutex                                               wasm_mu_;
+    std::condition_variable                                  wasm_cv_;
+    std::priority_queue<WasmEntry,
+                        std::vector<WasmEntry>,
+                        std::greater<WasmEntry>>             wasm_queue_;
+    bool                                                     wasm_stop_{false};
+    std::thread                                              wasm_worker_;
+    void wasm_run() noexcept;
+#endif
     std::atomic<bool>                                         shutdown_{false};
 
     mutable std::mutex                                  mu_;

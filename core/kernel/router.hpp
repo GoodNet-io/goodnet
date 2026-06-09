@@ -73,8 +73,11 @@ public:
         gn_trust_class_t trust          = GN_TRUST_UNTRUSTED;
         bool             is_loopback    = false;
     };
-    using ConnLookup =
-        std::move_only_function<bool(gn_conn_id_t, ConnInfo&)>;
+#ifdef __cpp_lib_move_only_function
+    using ConnLookup = std::move_only_function<bool(gn_conn_id_t, ConnInfo&)>;
+#else
+    using ConnLookup = std::function<bool(gn_conn_id_t, ConnInfo&)>;
+#endif
 
     Router(LocalIdentityRegistry& identities,
            HandlerRegistry&  handlers) noexcept;

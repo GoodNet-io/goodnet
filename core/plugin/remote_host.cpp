@@ -195,7 +195,7 @@ gn_result_t RemoteHost::spawn(const std::string& worker_path,
         if (::setrlimit(RLIMIT_CORE, &zero_core) != 0) {
             _exit(127);
         }
-#  if defined(__GLIBC_PREREQ) && __GLIBC_PREREQ(2, 34)
+#  if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
         ::closefrom(kWorkerSocketFd + 1);
 #  else
         {

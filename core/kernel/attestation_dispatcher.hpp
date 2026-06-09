@@ -63,7 +63,11 @@ public:
     /// Clock source returning seconds since Unix epoch. Default
     /// reads `std::time(nullptr)`. Tests inject a deterministic
     /// source per `clock.en.md` §2.
+#ifdef __cpp_lib_move_only_function
     using NowSec = std::move_only_function<std::int64_t()>;
+#else
+    using NowSec = std::function<std::int64_t()>;
+#endif
 
     AttestationDispatcher();
 

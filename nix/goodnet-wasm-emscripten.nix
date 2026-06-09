@@ -254,6 +254,7 @@ pkgs.stdenv.mkDerivation {
       core/kernel/host_api/notifications.cpp
       core/kernel/service_resolver.cpp
       core/kernel/timer_registry.cpp
+      core/topology/topology_builder.cpp
       core/kernel/attestation_dispatcher.cpp
       core/kernel/metrics_registry.cpp
       core/plugin/plugin_manager.cpp
@@ -389,6 +390,7 @@ pkgs.stdenv.mkDerivation {
     "core/kernel/host_api/notifications.cpp"
     "core/kernel/service_resolver.cpp"
     "core/kernel/timer_registry.cpp"
+    "core/topology/topology_builder.cpp"
     "core/kernel/attestation_dispatcher.cpp"
     "core/kernel/metrics_registry.cpp"
     "core/plugin/plugin_manager.cpp"

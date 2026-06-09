@@ -8,7 +8,25 @@
 
 #include <cstdint>
 #include <cstring>
-#include <experimental/scope>
+#ifdef __has_include
+#  if __has_include(<experimental/scope>)
+#    include <experimental/scope>
+#  else
+// Emscripten / libc++ stub — <experimental/scope> not shipped.
+namespace std::experimental {
+template<typename F>
+struct scope_exit {
+    explicit scope_exit(F f) : fn_(std::move(f)) {}
+    ~scope_exit() noexcept { fn_(); }
+    scope_exit(const scope_exit&) = delete;
+private:
+    F fn_;
+};
+} // namespace std::experimental
+#  endif
+#else
+#  include <experimental/scope>
+#endif
 #include <span>
 #include <string>
 #include <string_view>
