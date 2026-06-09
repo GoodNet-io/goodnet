@@ -6,27 +6,66 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-### Known implementation mistake — link-ice multi-connect signal routing
+### fix: ICE multi-connect signal routing (#18)
 
-The kernel's `ConnectionRegistry` holds N `conn_id` entries per
-`peer_pk`; multi-path routing is the strategy plugin's job
-(`gn.float-send.*`).  `IceLink` correctly follows this model —
-`sessions_` maps `conn_id → PeerEntry`, `peer_to_ids_` maps
-`peer_pk → [conn_id, ...]`, and each `IceSession` uses composer-mode
-carrier handles (bypassing `notify_connect`) for its internal
-candidate-probe transport.  The two-handle-space model is correct by
-design.
+OFFER/ANSWER signals now route by ufrag rather than `peer_pk` alone.
+`IceLink` maintains an `inbound_ufrag_to_conn_id_` map
+(`peer_hex + "/" + ufrag → conn_id`); `deliver_signal` looks up the
+correct session before falling through to `notify_connect`.  Two
+simultaneous ICE sessions to the same peer are now correctly
+demultiplexed.  Two unit tests added:
+`IceSignalRouting.TwoOffersDifferentUfragCreateTwoSessions` and
+`TwoOffersSameUfragFoldIntoOneSession`.
 
-What is broken: OFFER/ANSWER signals arrive at `IceLink` keyed by
-`peer_pk` (via `gn.link.ice.signal`), not by `conn_id`.  The signal
-envelope carries no session-specific token.  When
-`peer_to_ids_[peer_pk].size() > 1` (multiple concurrent ICE sessions
-to the same peer), the plugin cannot route the OFFER to the correct
-session and falls through to allocating a new `IceSession` via
-`notify_connect`.  Each new session runs an independent check ladder;
-incoming signals for the originals are lost and those ladders time out.
-Multi-connect to the same peer via ICE is broken beyond the first
-session.  Full detail and fix scope in the `link-ice` plugin CHANGELOG.
+### feat: portmap extension merged into ICE plugin (#23)
+
+`GN_EXT_PORTMAP` (NAT-PMP / PCP / UPnP IGD) is now registered inside
+`goodnet_link_ice.so`.  The standalone `goodnet_link_portmap.so` is
+kept with `EXCLUDE_FROM_ALL` for explicit opt-in builds only; production
+deployments no longer need a separate portmap plugin load.
+
+### feat: `max_capability_blob_bytes` config gate
+
+`gn_limits_t.max_capability_blob_bytes` is now parsed from the JSON
+config and validated: when non-zero the field must not exceed
+`max_payload_bytes` (a blob that cannot fit in a single message is
+rejected at load time).  Documented in `docs/contracts/limits.en.md`.
+
+### feat: inject void-namespace drop + `bench_inject` throughput target
+
+`inject()` with no registered handler for a `msg_id` increments
+`dropped_no_handler` and returns `GN_OK` — the call site is never
+an error.  Test: `InjectExternal.VoidNamespaceDroppedCleanly`.
+`bench_inject` measures the kernel hot-path (router → handler) at
+~1 M envelopes/s baseline; `BM_InjectMessageNoHandler` captures the
+no-handler drop cost.
+
+### feat: `GN_SECURITY_PLUGIN_MULTI` macro (#21)
+
+`sdk/cpp/security_plugin.hpp` gains `GN_SECURITY_PLUGIN_MULTI` — a
+multi-slot variant that supports more than one concurrent security
+session per provider instance.  `noise` and `null` plugins migrated.
+
+### fix: clang-tidy sweep
+
+- `candidate.hpp`: merged identical `Host`/`HostMdns` switch arms
+- `stub_host.hpp`, `link_teardown.hpp`: unused/value params fixed
+- `test_wire_codec_fuzz.cpp`: removed unused `wire` namespace alias
+- `gen_attestation.cpp`: cast `std::fprintf` returns to `(void)`
+- `.clang-tidy`: added `-bugprone-macro-parentheses` exclusion (type
+  parameters in macros cannot syntactically take parentheses)
+- Pre-commit hook fixed for clang-tidy 21: use temp directory for
+  filtered compile_commands instead of a bare `.json` file path
+
+### ci: WASM release assets (#29)
+
+`release.yml` now attaches `goodnet-*-wasm.zip` and
+`goodnet-*-wasm-emscripten.zip` to every tagged release.
+
+### chore: `gnVersion` single source of truth (#15)
+
+`flake.nix` now has one `gnVersion = "1.0.0-rc6"` let binding reused
+across all package outputs.
 
 ### rc6 cycle — comprehensive pre-release gauntlet snapshot
 
