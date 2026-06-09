@@ -56,11 +56,11 @@ void write_be64(std::uint8_t out[8], std::uint64_t v) {
 
 int main(int argc, char** argv) {
     if (sodium_init() < 0) {
-        std::fprintf(stderr, "sodium_init failed\n");
+        (void)std::fprintf(stderr, "sodium_init failed\n");
         return 1;
     }
     if (argc < 2) {
-        std::fprintf(stderr, "usage: %s <out.json>\n", argv[0]);
+        (void)std::fprintf(stderr, "usage: %s <out.json>\n", argv[0]);
         return 1;
     }
 
@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
 
     std::ofstream out(argv[1]);
     if (!out) {
-        std::fprintf(stderr, "cannot open %s\n", argv[1]);
+        (void)std::fprintf(stderr, "cannot open %s\n", argv[1]);
         return 1;
     }
     out << body;

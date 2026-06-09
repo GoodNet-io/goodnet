@@ -187,9 +187,9 @@ struct HandlerStub {
     /// Prime the peer registry. `marker` is `pk[0]`; tests build
     /// envelopes with that single byte as the public key.
     void add_peer(std::uint8_t marker, gn_conn_id_t conn,
-                   std::string uri) {
+                   const std::string& uri) {
         std::lock_guard lk(mu);
-        peer_map[marker] = {conn, std::move(uri)};
+        peer_map[marker] = {conn, uri};
     }
 
     static gn_result_t on_send(void* host_ctx, gn_conn_id_t conn,
