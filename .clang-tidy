@@ -9,6 +9,7 @@
 Checks: >
   bugprone-*,
   -bugprone-easily-swappable-parameters,
+  -bugprone-macro-parentheses,
   cert-*,
   -cert-dcl50-cpp,
   -cert-err58-cpp,
