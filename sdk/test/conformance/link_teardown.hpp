@@ -114,7 +114,7 @@ struct ConformanceHost {
     static gn_result_t s_kick(void*, gn_conn_id_t) { return GN_OK; }
 
     static gn_result_t s_query_extension(void* host_ctx,
-                                           const char* /*name*/,
+                                           const char* name,
                                            std::uint32_t version,
                                            const void** out) {
         if (!out) return GN_ERR_NULL_ARG;

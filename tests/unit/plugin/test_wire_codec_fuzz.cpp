@@ -27,6 +27,7 @@
 #include <core/plugin/wire_codec.hpp>
 
 using gn::core::wire::Reader;
+namespace wire = gn::core::wire;
 
 namespace {
 
