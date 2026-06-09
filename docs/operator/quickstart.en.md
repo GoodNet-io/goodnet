@@ -37,20 +37,16 @@ Expected output: all plugin slots cloned, hooks installed.
 ## 2. Build
 
 ```sh
-nix run .#build -- release   # release build → build-release/
-```
-
-For development (faster, debug symbols):
-```sh
 nix run .#build              # debug build → build/
+nix run .#build -- release   # release build → build-release/
+nix run .#build -- static    # static ELF (no dynamic deps) → build-static/
 ```
 
-Static archive + worker binaries (no dynamic deps):
-```sh
-nix run .#build -- static    # → build-static/lib/libgoodnet_kernel.a + bin/remote_echo
-```
+No `nix develop` required — Nix resolves the toolchain from the flake.
 
-`goodnetd` daemon ships from a separate repo (`github.com/GoodNet-io/goodnetd`) and is not part of this build.
+`goodnetd` and `gssh` are built as part of the monorepo (`apps/`).
+The tarball layout and all three build paths are covered in
+[`docs/operator/build.en.md`](build.en.md).
 
 ---
 
@@ -80,15 +76,12 @@ nix run .#test -- tsan       # ThreadSanitizer
 
 ---
 
-## 5. Operator node (requires goodnetd)
+## 5. Operator node
 
-`goodnetd` is a separate binary in
-[`github.com/GoodNet-io/goodnetd`](https://github.com/GoodNet-io/goodnetd).
-Pull it and follow its own quickstart; the kernel repo provides the
-library (`libgoodnet_kernel.so`) and SDK headers that `goodnetd` links
-against.
+`goodnetd` is built from `apps/goodnetd/` in this repository and is
+included in the debug/release builds above.
 
-Key `goodnetd` commands once installed:
+Key `goodnetd` commands:
 ```sh
 goodnetd identity gen --out identity.bin   # generate node identity
 goodnetd config validate node.json         # validate config file
@@ -115,7 +108,8 @@ Reference config and manifest: `dist/example/node.json`,
 
 ## Next steps
 
-- [`docs/operator/nix-build-system.en.md`](nix-build-system.en.md) — full build system map
+- [`docs/operator/build.en.md`](build.en.md) — three build paths, SDK layers, CMakePresets
+- [`docs/operator/nix-build-system.en.md`](nix-build-system.en.md) — full Nix build map
 - [`docs/operator/deployment.en.md`](deployment.en.md) — production systemd deployment
 - [`docs/architecture/overview.ru.md`](../architecture/overview.ru.md) — kernel architecture
 - [`CONTRIBUTING.md`](../../CONTRIBUTING.md) — contribution workflow

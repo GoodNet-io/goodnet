@@ -38,6 +38,27 @@ The SDK exposes a semantic version triple in `sdk/types.h`:
 | `MINOR` | New struct, new function pointer appended at the end of an existing vtable, new `_reserved` slot promoted | additive — old plugins keep working |
 | `PATCH` | Documentation, comments, non-binary fixes | none |
 
+### Shared library naming (SOVERSION)
+
+`libgoodnet_kernel.so` follows the ELF SONAME convention. The SOVERSION
+tracks `GN_SDK_VERSION_MAJOR`:
+
+```
+libgoodnet_kernel.so.1       ← SONAME embedded in the binary (runtime link name)
+libgoodnet_kernel.so.1.0.0   ← actual file (full VERSION string)
+libgoodnet_kernel.so         ← development symlink (NAMELINK, for -l flags)
+```
+
+The `install(TARGETS ... LIBRARY NAMELINK_SKIP)` rule in `core/CMakeLists.txt`
+installs only the versioned files (`*.so.1` and `*.so.1.0.0`) in the runtime
+package. A separate install with `NAMELINK_ONLY` is used for the dev-headers
+package. Downstream consumers that dlopen the kernel (Rust / Python / Go
+bindings, `gn::sdk::Core`) must request `libgoodnet_kernel.so.1` by SONAME,
+not the bare `.so` link.
+
+When `GN_SDK_VERSION_MAJOR` bumps: increment SOVERSION in
+`core/CMakeLists.txt` and update the layout table above before tagging.
+
 A plugin reports its build-time SDK version through:
 
 ```c

@@ -3,24 +3,9 @@
 Complete map of what lives in `nix/` and how the flake-based build
 system works — from a fresh clone to a running cross-platform binary.
 
-## Quick reference
-
-```sh
-nix run .#setup             # one-time bootstrap: mirrors + plugins + hooks
-nix run .#build             # debug build in build/
-nix run .#build -- release  # release build in build-release/
-nix run .#build -- static   # single-binary static ELF in build-static/
-nix run .#test              # 1510 unit + integration tests
-nix run .#test -- asan      # AddressSanitizer run
-nix run .#test -- tsan      # ThreadSanitizer run
-nix run .#test -- all       # vanilla + asan + tsan in sequence
-nix run .#plugin -- pull security-noise      # pull one plugin repo
-nix run .#plugin -- install                  # pull all canonical plugins
-nix run .#plugin -- update                   # git pull --ff-only every slot
-nix run .#plugin -- new link portmap         # scaffold a new plugin repo
-```
-
----
+For entry-level commands (`nix run .#setup/build/test`) see
+[`quickstart.en.md`](quickstart.en.md). For canonical build paths,
+CMakePresets, and SDK layers see [`build.en.md`](build.en.md).
 
 ## Architecture overview
 
@@ -65,7 +50,9 @@ nix build          # → ./result/ (symlink into /nix/store)
 ```
 
 Standard release build for x86_64-linux and aarch64-linux. Outputs:
-- `lib/libgoodnet_kernel.so` — runtime kernel
+- `lib/libgoodnet_kernel.so.1.0.0` — runtime kernel (SOVERSION 1)
+- `lib/libgoodnet_kernel.so.1` — SONAME symlink
+- `lib/libgoodnet_kernel.so` — dev NAMELINK
 - `lib/libgoodnet.a` — SDK static archive
 - `lib/cmake/GoodNet/` — CMake find-package files
 
@@ -134,10 +121,13 @@ repositories and are cloned on demand into `plugins/<kind>/<name>/`:
 
 ```
 plugins/
-  handlers/  heartbeat/  dns/  store/  web_api_proxy/  zstd_decompress/
-  links/     tcp/  udp/  ws/  ws_inject/  ipc/  tls/  ice/  quic/ …
-  security/  noise/  null/  pkcs11/
-  strategies/  float_send_rtt/
+  handlers/    heartbeat/  dns/  store/  web_api_proxy/  zstd_decompress/
+  links/       tcp/  udp/  ws/  ws_inject/  ipc/  tls/  ice/  quic/
+               portmap/  raw_inject/
+  security/    noise/  null/  pkcs11/
+  strategies/  float_send_rtt/  multipath_bond/
+  workers/     remote_echo/  remote_handler_stub/  remote_noise_stub/
+               remote_slow_stub/
   protocols/   gnet/  (tracked in monorepo — protocol layer)
 ```
 
@@ -285,6 +275,55 @@ $out/lib/goodnet/plugins/lib*.so
 $out/etc/goodnet/node.json
 $out/etc/goodnet/manifest.json
 $out/etc/goodnet/identity.bin  ← only if provided
+```
+
+---
+
+## Operator apps (`apps/`)
+
+`goodnetd` and `gssh` live in `apps/goodnetd/` and `apps/gssh/` inside
+the monorepo. They are built as part of the standard cmake build
+(`GOODNET_BUILD_APPS=ON`, enabled by `cmake --preset dev` and
+`nix run .#build`).
+
+To build the apps in isolation from the monorepo (e.g. in CI or for a
+standalone tarball), pass `--override-input` so their own flakes use
+the current tree:
+
+```sh
+nix build ./apps/goodnetd# \
+  --override-input goodnet path:. \
+  --override-input protocol-gnet path:./plugins/protocols/gnet \
+  -o result-goodnetd
+
+nix build ./apps/gssh# -o result-gssh
+```
+
+### `.goodnet/` source override
+
+Downstream app projects can point `cmake` at a local kernel build
+without installing it globally by creating a `.goodnet/` directory
+(gitignored):
+
+```sh
+mkdir -p .goodnet
+ln -s /path/to/goodnet/build/lib     .goodnet/lib
+ln -s /path/to/goodnet/build/plugins .goodnet/plugins
+cmake -B build -DGOODNET_LIB_DIR=$PWD/.goodnet/lib
+```
+
+The nix equivalent uses `--override-input goodnet path:/path/to/goodnet`
+inside a flake build to achieve the same result.
+
+### Plugin flake.lock maintenance
+
+Each standalone plugin flake pins the kernel via its own `flake.lock`.
+After a kernel bump:
+
+```sh
+nix run .#update-locks
+# iterates every plugins/*/*/flake.lock and calls:
+# nix flake update --flake <dir> --override-input goodnet path:.
 ```
 
 ---

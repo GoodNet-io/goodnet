@@ -223,14 +223,33 @@ The Phase 5 `gn::sdk::Core` ctor gains an `Identity::from_hsm()`
 factory; the file-backed path stays the default for projects that
 do not opt in.
 
+## SDK layers
+
+| Headers | CMake target | For whom |
+|---------|-------------|---------|
+| `sdk/core.h` | `GoodNet::sdk` | Everyone — C ABI to start the kernel |
+| `sdk/host_api.h` | `GoodNet::sdk` | Plugins — receive this struct from the kernel |
+| `sdk/cpp/*.hpp` | `GoodNet::sdk_dx` | Plugins — C++ helpers wrapping the C ABI |
+| `bridges/cpp/*.hpp` | `GoodNet::cpp` | Apps — RAII wrappers over `core.h` for C++ consumers |
+| `core/*.hpp` | `GoodNet::kernel` | In-tree only — internal kernel headers, not for consumers |
+
+`gn::sdk::Core` (in `bridges/cpp/`) is the entry point the scaffolded
+`main.cpp` uses. It owns the kernel lifecycle that would otherwise live
+in `main.cpp`. `sdk/cpp/` helpers are for plugin authors, not app authors;
+the distinction is that plugins receive a `host_api` struct from the kernel,
+while apps start the kernel through `core.h` and hold it via `gn::sdk::Core`.
+
 ## See also
 
 * `nix/init-app.nix`, `nix/bootstrap-env.nix`, `nix/sample-peer.nix`
   — the hooks themselves.
 * `nix/dev-shell-app.nix` — the `app` devShell wrapper.
 * `cmake/goodnet_app.cmake` — the CMake helper macro.
-* `sdk/cpp/core.hpp` — `gn::sdk::Core` RAII wrapper that the
+* `bridges/cpp/core.hpp` — `gn::sdk::Core` RAII wrapper that the
   scaffolded `main.cpp` template opens against.
+* `sdk/cpp/` — C++ plugin helpers (not for app consumers).
+* `docs/operator/build.en.md` — full build reference including SDK
+  layer table and SOVERSION details.
 * `docs/contracts/plugin-manifest.en.md` — manifest format the
   bootstrap step generates.
 * `docs/contracts/identity.en.md` — canonical identity contract

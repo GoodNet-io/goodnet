@@ -36,8 +36,8 @@
 <title>link</title>
 <polygon fill="#45475a" stroke="#89b4fa" stroke-width="1.2" points="683.2,-214.14 456.85,-214.14 456.85,-164.38 683.2,-164.38 683.2,-214.14"/>
 <text text-anchor="middle" x="570.03" y="-199.83" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#89b4fa">Link vtable (gn_link_vtable_s)</text>
-<text text-anchor="middle" x="570.03" y="-187.08" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#89b4fa">9 slots + 4 reserved</text>
-<text text-anchor="middle" x="570.03" y="-174.33" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#89b4fa">scheme, listen, connect, send &#160;+ 5 more</text>
+<text text-anchor="middle" x="570.03" y="-187.08" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#89b4fa">10 slots + 4 reserved</text>
+<text text-anchor="middle" x="570.03" y="-174.33" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#89b4fa">scheme, listen, connect, send &#160;+ 6 more</text>
 </g>
 <!-- registry&#45;&gt;link -->
 <g id="edge2" class="edge">
@@ -50,8 +50,8 @@
 <title>security</title>
 <polygon fill="#45475a" stroke="#cba6f7" stroke-width="1.2" points="772.45,-135.14 367.6,-135.14 367.6,-85.38 772.45,-85.38 772.45,-135.14"/>
 <text text-anchor="middle" x="570.03" y="-120.83" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">Security vtable (gn_security_provider_vtable_s)</text>
-<text text-anchor="middle" x="570.03" y="-108.08" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">11 slots + 4 reserved</text>
-<text text-anchor="middle" x="570.03" y="-95.33" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">provider_id, handshake_open, handshake_step, handshake_complete &#160;+ 7 more</text>
+<text text-anchor="middle" x="570.03" y="-108.08" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">12 slots + 4 reserved</text>
+<text text-anchor="middle" x="570.03" y="-95.33" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#cba6f7">provider_id, handshake_open, handshake_step, handshake_complete &#160;+ 8 more</text>
 </g>
 <!-- registry&#45;&gt;security -->
 <g id="edge3" class="edge">

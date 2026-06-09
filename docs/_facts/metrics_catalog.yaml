@@ -16,19 +16,26 @@ counters:
     line: 868
   - file: plugins/links/tls/tls.cpp
     line: 906
+- name: gn.multipath-bond.degraded_peers
+  family: gn
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/strategies/multipath_bond/multipath_bond.cpp
+    line: 236
 - name: raw_inject.drop.zstd_error
   family: raw_inject
   kinds:
   - emit_counter
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 335
+    line: 336
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 344
+    line: 345
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 352
+    line: 353
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 372
+    line: 373
 - name: raw_inject.inject.error
   family: raw_inject
   kinds:
@@ -42,14 +49,14 @@ counters:
   - emit_counter
   sources:
   - file: plugins/links/ws_inject/ws_inject.cpp
-    line: 300
+    line: 301
 - name: ws_inject.drop.too_large
   family: ws_inject
   kinds:
   - emit_counter
   sources:
   - file: plugins/links/ws_inject/ws_inject.cpp
-    line: 289
+    line: 290
 - name: ws_inject.inject.error
   family: ws_inject
   kinds:

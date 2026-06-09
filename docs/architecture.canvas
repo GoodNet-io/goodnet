@@ -528,7 +528,7 @@
 		{
 			"id": "n_rm_multi_turn_fallback",
 			"type": "text",
-			"text": "# ✓ Multi-TURN fallback\n\nstatus: **done**\n\nevidence: token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ Multi-TURN fallback\n\nstatus: **done**\n\nevidence: token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:395:    cfg.turn_backup_inter...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 8907,
 			"y": -100,
 			"width": 540,
@@ -600,7 +600,7 @@
 		{
 			"id": "n_rm_subprocess_security_handler_worker_proxy",
 			"type": "text",
-			"text": "# ✓ Subprocess SECURITY/HANDLER worker proxy\n\nstatus: **done**\n\nevidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const gn_security_provider_vtable_t* RemoteHos...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ Subprocess SECURITY/HANDLER worker proxy\n\nstatus: **done**\n\nevidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.hpp:112:    [[nodiscard]] const gn_security_provider_...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 13227,
 			"y": -100,
 			"width": 540,
@@ -636,7 +636,7 @@
 		{
 			"id": "n_rm_required_plugin_manifest_pinning",
 			"type": "text",
-			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/plugin_manifest.cpp:195:    ManifestEntry me{};)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ Required-plugin manifest pinning\n\nstatus: **done**\n\nevidence: symbol 'ManifestEntry' present (core/plugin/plugin_manifest.hpp:75:struct ManifestEntry {)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 15563,
 			"y": -100,
 			"width": 540,
@@ -645,7 +645,7 @@
 		{
 			"id": "n_rm_gn_core_unload_plugin_hot_reload",
 			"type": "text",
-			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:739:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ gn_core_unload_plugin hot-reload\n\nstatus: **done**\n\nevidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:789:gn_result_t gn_core_unload_plugin(gn_core_t* core,...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 16180,
 			"y": -100,
 			"width": 540,
@@ -663,7 +663,7 @@
 		{
 			"id": "n_rm_per_slot_reply_timeout_override",
 			"type": "text",
-			"text": "# ✓ Per-slot reply-timeout override\n\nstatus: **done**\n\nevidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void RemoteHost::set_reply_timeout_for_slot(st...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ Per-slot reply-timeout override\n\nstatus: **done**\n\nevidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 17415,
 			"y": -100,
 			"width": 540,
@@ -690,7 +690,7 @@
 		{
 			"id": "n_rm_coverage_gating",
 			"type": "text",
-			"text": "# ✓ Coverage gating\n\nstatus: **done**\n\nevidence: token 'gcov' found (CMakeLists.txt:142:option(GOODNET_COVERAGE \"Build with gcov line+function cov...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
+			"text": "# ✓ Coverage gating\n\nstatus: **done**\n\nevidence: token 'gcov' found (CMakeLists.txt:152:option(GOODNET_COVERAGE \"Build with gcov line+function cov...)\n\n_Driven by `tools/livedoc/roadmap_map.yaml`._",
 			"x": 19104,
 			"y": -100,
 			"width": 540,

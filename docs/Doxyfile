@@ -4,7 +4,7 @@
 
 PROJECT_NAME           = "GoodNet"
 PROJECT_BRIEF          = "Networking platform: agnostic kernel + plugin SDK"
-PROJECT_NUMBER         = 1.0-rc1
+PROJECT_NUMBER         = 1.0.0-rc6
 OUTPUT_DIRECTORY       = build/doxygen
 OUTPUT_LANGUAGE        = English
 INPUT_ENCODING         = UTF-8
