@@ -213,6 +213,7 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     GN_PICK_U32(max_counter_names);
     GN_PICK_U32(max_subscriptions);
     GN_PICK_U32(max_inject_depth);
+    GN_PICK_U32(max_capability_blob_bytes);
 #undef GN_PICK_U32
 #undef GN_PICK_U64
     return L;
@@ -335,6 +336,12 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
     }
     if (L.inject_rate_per_source != 0 && L.inject_rate_burst == 0) {
         note("limits.inject_rate_burst must be > 0 when rate > 0");
+        return GN_ERR_LIMIT_REACHED;
+    }
+    if (L.max_capability_blob_bytes != 0 &&
+        L.max_payload_bytes  != 0 &&
+        L.max_capability_blob_bytes > L.max_payload_bytes) {
+        note("limits.max_capability_blob_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
     return GN_OK;
