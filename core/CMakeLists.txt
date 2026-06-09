@@ -158,6 +158,8 @@ if(NOT WIN32 AND NOT GOODNET_STATIC_PLUGINS)
     set_target_properties(goodnet_kernel_shared PROPERTIES
         EXPORT_NAME  kernel_shared
         OUTPUT_NAME  goodnet_kernel
+        SOVERSION    1
+        VERSION      "${PROJECT_VERSION}"
     )
     add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
 
@@ -165,7 +167,7 @@ if(NOT WIN32 AND NOT GOODNET_STATIC_PLUGINS)
                     goodnet_ctx_accessors
         EXPORT GoodNetTargets
         ARCHIVE
-        LIBRARY
+        LIBRARY NAMELINK_SKIP
     )
 else()
     install(TARGETS goodnet_kernel goodnet_kernel_objects

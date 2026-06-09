@@ -255,3 +255,102 @@ struct SecurityPluginInstance {
     }                                                                          \
                                                                                \
     } /* extern "C" */
+
+/// Multi-provider security plugin.
+///
+/// Like `GN_SECURITY_PLUGIN` but REGISTER/UNREGISTER delegate to static
+/// methods on @p Class, so the class can call `api->register_security`
+/// any number of times. No limit on provider count.
+///
+/// ## Required class interface
+///
+/// ```cpp
+/// struct MyPlugin {
+///     explicit MyPlugin(const host_api_t* api);
+///
+///     // Called before constructor. Return false → INIT returns error.
+///     // Use for one-time lib init (sodium_init, etc.). Optional.
+///     static bool pre_init(const host_api_t* api);
+///
+///     // Return null-terminated list of "gn.security.*" capability strings.
+///     static const char* const* security_ext_provides();
+///
+///     // Call api->register_security() as many times as needed.
+///     static gn_result_t register_providers(
+///         const host_api_t* api, void* host_ctx, void* self);
+///
+///     // Call api->unregister_security() for each registered provider.
+///     static void unregister_providers(
+///         const host_api_t* api, void* host_ctx);
+/// };
+/// ```
+#define GN_SECURITY_PLUGIN_MULTI(Class, NameStrLiteral, VerStrLiteral)        \
+    namespace {                                                                 \
+                                                                               \
+    using _gn_secm_inst_t = ::gn::sdk::detail::SecurityPluginInstance<Class>; \
+    static constexpr const char _gn_secm_plugin_name[] = NameStrLiteral;      \
+                                                                               \
+    } /* anonymous namespace */                                                \
+                                                                               \
+    extern "C" {                                                               \
+                                                                               \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SDK_VERSION_NAME(                         \
+            std::uint32_t* major,                                              \
+            std::uint32_t* minor,                                              \
+            std::uint32_t* patch) {                                            \
+        if (major) *major = GN_SDK_VERSION_MAJOR;                             \
+        if (minor) *minor = GN_SDK_VERSION_MINOR;                             \
+        if (patch) *patch = GN_SDK_VERSION_PATCH;                             \
+    }                                                                          \
+                                                                               \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_INIT_NAME(                        \
+            const host_api_t* api, void** out_self) {                         \
+        if (!api || !out_self) return GN_ERR_NULL_ARG;                        \
+        if constexpr (requires {                                               \
+            { Class::pre_init(api) } -> std::convertible_to<bool>;            \
+        }) {                                                                   \
+            if (!Class::pre_init(api)) return GN_ERR_NULL_ARG;               \
+        }                                                                      \
+        auto* inst = new (std::nothrow) _gn_secm_inst_t{};                    \
+        if (!inst) return GN_ERR_OUT_OF_MEMORY;                               \
+        inst->provider = std::make_unique<Class>(api);                        \
+        if (!inst->provider) { delete inst; return GN_ERR_OUT_OF_MEMORY; }   \
+        inst->api      = api;                                                  \
+        inst->host_ctx = api->host_ctx;                                        \
+        *out_self = inst;                                                      \
+        return GN_OK;                                                          \
+    }                                                                          \
+                                                                               \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_REGISTER_NAME(void* self) {       \
+        if (!self) return GN_ERR_NULL_ARG;                                    \
+        auto* inst = static_cast<_gn_secm_inst_t*>(self);                     \
+        if (!inst->api) return GN_ERR_NOT_IMPLEMENTED;                        \
+        return Class::register_providers(inst->api, inst->host_ctx, self);   \
+    }                                                                          \
+                                                                               \
+    GN_PLUGIN_EXPORT gn_result_t GN_PLUGIN_UNREGISTER_NAME(void* self) {     \
+        if (!self) return GN_ERR_NULL_ARG;                                    \
+        auto* inst = static_cast<_gn_secm_inst_t*>(self);                     \
+        if (!inst->api) return GN_OK;                                         \
+        Class::unregister_providers(inst->api, inst->host_ctx);               \
+        return GN_OK;                                                          \
+    }                                                                          \
+                                                                               \
+    GN_PLUGIN_EXPORT void GN_PLUGIN_SHUTDOWN_NAME(void* self) {              \
+        delete static_cast<_gn_secm_inst_t*>(self);                           \
+    }                                                                          \
+                                                                               \
+    GN_PLUGIN_EXPORT const gn_plugin_descriptor_t*                            \
+    GN_PLUGIN_DESCRIPTOR_NAME(void) {                                         \
+        static const gn_plugin_descriptor_t desc = {                          \
+            _gn_secm_plugin_name,                                             \
+            VerStrLiteral,                                                     \
+            0, nullptr,                                                        \
+            Class::security_ext_provides(),                                   \
+            GN_PLUGIN_KIND_SECURITY,                                          \
+            nullptr, {},                                                       \
+        };                                                                     \
+        return &desc;                                                          \
+    }                                                                          \
+                                                                               \
+    } /* extern "C" */
