@@ -25,7 +25,7 @@
 # `CMakeLists.txt`; building under pkgsStatic activates those gates
 # so a missing static sqlite / c-ares does not block the build.
 
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   static = pkgs.pkgsStatic;
@@ -68,7 +68,7 @@ let
 in
 static.gcc15Stdenv.mkDerivation {
   pname   = "goodnet-core-static";
-  version = "1.0.0-rc6";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

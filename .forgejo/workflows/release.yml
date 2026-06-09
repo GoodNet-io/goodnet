@@ -31,8 +31,21 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build with Nix
+      - name: Build kernel with Nix
         run: nix build --print-build-logs
+
+      - name: Build goodnetd from monorepo
+        # Override inputs so the daemon uses the kernel and gnet protocol
+        # at the current checkout, not the upstream flake inputs.
+        run: |
+          nix build ./apps/goodnetd# \
+            --override-input goodnet path:. \
+            --override-input protocol-gnet path:./plugins/protocols/gnet \
+            --print-build-logs \
+            -o result-goodnetd
+
+      - name: Build gssh
+        run: nix build ./apps/gssh# --print-build-logs -o result-gssh
 
       - name: Bundle portable release
         run: |
@@ -42,12 +55,22 @@ jobs:
 
           mkdir -p release/bin release/lib release/plugins
 
-          if [ -d result/bin ]; then
-            cp -r result/bin/* release/bin/ 2>/dev/null || true
+          # Kernel shared library + any other binaries from the core build
+          if [ -d result/lib ]; then
+            cp -rL result/lib/*.so* release/lib/ 2>/dev/null || true
           fi
 
           if [ -d result/plugins ]; then
             cp -r result/plugins/* release/plugins/ 2>/dev/null || true
+          fi
+
+          # Operator binaries from dedicated builds
+          if [ -f result-goodnetd/bin/goodnetd ]; then
+            cp result-goodnetd/bin/goodnetd release/bin/
+          fi
+
+          if [ -f result-gssh/bin/gssh ]; then
+            cp result-gssh/bin/gssh release/bin/
           fi
 
           # Carry the shared libraries the binary and plugins resolve
@@ -137,12 +160,50 @@ jobs:
             goodnet-*-windows-x86_64.zip
             goodnet-*-windows-x86_64.zip.sha256
 
-  # The kernel is a library + plugin .so set + headers; it does
-  # not ship a docker image of its own. The daemon binary
-  # `goodnetd` (the only entrypoint a container has reason to
-  # ship) lives at github.com/GoodNet-io/goodnetd and carries
-  # its own release.yml with the docker push step. Operators
-  # who want a runnable container pull that repo.
+  build-wasm:
+    # WASM / WASI wire-codec and Emscripten browser kernel.
+    # Both targets compile cleanly — gnet wire.cpp is commented out
+    # pending protocol-gnet extraction, but the kernel core is complete.
+    # continue-on-error keeps the release flowing if the volatile
+    # emscripten pin breaks; the WASI build is the harder gate.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build WASM/WASI target
+        run: nix build .#goodnet-wasm --print-build-logs -o result-wasm
+      - name: Build Emscripten browser target
+        run: nix build .#goodnet-wasm-emscripten --print-build-logs -o result-wasm-emscripten
+      - name: Bundle WASM artifacts
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          mkdir -p release-wasm
+          cp -L result-wasm/lib/goodnet.wasm release-wasm/ 2>/dev/null || true
+          nix shell nixpkgs#zip --command \
+            zip -r "goodnet-${TAG}-wasm.zip" release-wasm/
+          sha256sum "goodnet-${TAG}-wasm.zip" \
+            > "goodnet-${TAG}-wasm.zip.sha256"
+
+          mkdir -p release-wasm-em
+          cp -L result-wasm-emscripten/lib/goodnet.js       release-wasm-em/ 2>/dev/null || true
+          cp -L result-wasm-emscripten/lib/goodnet.wasm     release-wasm-em/ 2>/dev/null || true
+          cp -L result-wasm-emscripten/lib/goodnet.worker.js release-wasm-em/ 2>/dev/null || true
+          nix shell nixpkgs#zip --command \
+            zip -r "goodnet-${TAG}-wasm-emscripten.zip" release-wasm-em/
+          sha256sum "goodnet-${TAG}-wasm-emscripten.zip" \
+            > "goodnet-${TAG}-wasm-emscripten.zip.sha256"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wasm-release
+          path: |
+            goodnet-*-wasm.zip
+            goodnet-*-wasm.zip.sha256
+            goodnet-*-wasm-emscripten.zip
+            goodnet-*-wasm-emscripten.zip.sha256
 
   changelog:
     runs-on: nixos
@@ -171,7 +232,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
   release:
-    needs: [build-linux, build-windows, changelog]
+    needs: [build-linux, build-windows, build-wasm, changelog]
     runs-on: nixos
     env:
       # `GH_TOKEN` is the per-repo Forgejo secret carrying a GitHub
@@ -188,6 +249,10 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           pattern: windows-release-*
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: wasm-release
           merge-multiple: true
 
       - name: Write changelog notes to file
@@ -213,6 +278,17 @@ jobs:
               "goodnet-${TAG}-windows-x86_64.zip"
               "goodnet-${TAG}-windows-x86_64.zip.sha256"
             )
+            for f in \
+              "goodnet-${TAG}-wasm.zip" \
+              "goodnet-${TAG}-wasm.zip.sha256" \
+              "goodnet-${TAG}-wasm-emscripten.zip" \
+              "goodnet-${TAG}-wasm-emscripten.zip.sha256"; do
+              [ -f "$f" ] && assets+=("$f") || true
+            done
+            # Include standalone binaries if present (extracted from tarballs)
+            for f in "goodnetd-${TAG}-linux-x86_64" "gssh-${TAG}-linux-x86_64"; do
+              [ -f "$f" ] && assets+=("$f")
+            done
             if gh release view "${TAG}" >/dev/null 2>&1; then
               gh release upload "${TAG}" "${assets[@]}" --clobber
             else

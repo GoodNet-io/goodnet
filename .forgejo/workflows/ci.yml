@@ -50,6 +50,21 @@ jobs:
       - name: Run python tests
         run: nix develop --command pytest
 
+  docs-build:
+    runs-on: nixos
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Doxygen reference + livedoc diagrams
+        run: nix run .#docs
+      - name: Upload Doxygen HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-html-${{ github.sha }}
+          path: build/doxygen/html/
+          retention-days: 7
+
   build-and-test:
     runs-on: nixos
     timeout-minutes: 20
@@ -90,6 +105,40 @@ jobs:
       - name: Build plugin standalone
         working-directory: ${{ matrix.plugin.path }}
         run: nix build .#default --print-build-logs
+
+  apps-build:
+    # Verifies that goodnetd and gssh build from the monorepo via the
+    # `.goodnet/` override mechanism. This catches regressions in the
+    # gnet dependency path (apps/goodnetd requires GoodNet::protocol_gnet)
+    # and in the gssh optional-SDK detection logic. Runs on every push
+    # so the in-tree app build is part of the regular CI gate.
+    runs-on: nixos
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build goodnetd (monorepo, override kernel + protocol-gnet)
+        run: |
+          nix build ./apps/goodnetd# \
+            --override-input goodnet path:. \
+            --override-input protocol-gnet path:./plugins/protocols/gnet \
+            --print-build-logs
+      - name: Build gssh (standalone, no kernel dep)
+        run: nix build ./apps/gssh# --print-build-logs
+
+  android-cross-build:
+    # Kernel-only smoke gate for Android aarch64 via NDK r28 cross-stdenv.
+    # Derivation lives at nix/goodnet-android.nix; GOODNET_BUILD_BUNDLED_PLUGINS
+    # is OFF and NDK enforces C++23 (not C++26 — NDK libc++ lags).
+    # continue-on-error keeps main green while NDK toolchain evolves.
+    # Gated by the `cross-build` label OR push to main.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cross-build Android aarch64 (kernel-only)
+        run: nix build .#goodnet-android-aarch64 --print-build-logs --keep-going
 
   windows-cross-build:
     # Smoke test for the mingw cross-build path so a regression

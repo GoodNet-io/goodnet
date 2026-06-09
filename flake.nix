@@ -31,6 +31,8 @@
       # * **Windows** — wire/build groundwork landed under
       #   `_WIN32` guards; the named-pipe runtime stays its own
       #   plan.
+      gnVersion = "1.0.0-rc6";
+
       forAllSystems = f:
         nixpkgs.lib.genAttrs
           [ "x86_64-linux" "aarch64-linux"
@@ -81,7 +83,7 @@
         , config ? null
         , identity ? null
         , pname ? "goodnet-node"
-        , version ? "1.0.0-rc6"
+        , version ? gnVersion
         }:
         pkgs.stdenv.mkDerivation {
           inherit pname version;
@@ -181,7 +183,7 @@
           # plugin source being present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
-            version = "1.0.0-rc6";
+            version = gnVersion;
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -225,7 +227,7 @@
           # in-tree build consumes.
           sdk-headers = pkgs.stdenvNoCC.mkDerivation {
             pname   = "goodnet-sdk-headers";
-            version = "1.0.0-rc6";
+            version = gnVersion;
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -279,6 +281,7 @@
           # cross; Darwin static builds use a different toolchain.
           goodnet-core-static = import ./nix/goodnet-static.nix {
             inherit pkgs;
+            version = gnVersion;
           };
 
           # Reproducible Docker image around the static kernel.
@@ -296,6 +299,7 @@
           # is wired yet.
           goodnet-windows = import ./nix/goodnet-windows.nix {
             inherit pkgs;
+            version = gnVersion;
           };
 
           # Darwin cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-
@@ -323,10 +327,12 @@
           goodnet-darwin-x86_64 = import ./nix/goodnet-darwin.nix {
             inherit pkgs;
             arch = "x86_64";
+            version = gnVersion;
           };
           goodnet-darwin-aarch64 = import ./nix/goodnet-darwin.nix {
             inherit pkgs;
             arch = "aarch64";
+            version = gnVersion;
           };
         } // {
 
@@ -350,6 +356,7 @@
           # every llvm bump).
           goodnet-wasm = import ./nix/goodnet-wasm.nix {
             inherit pkgs;
+            version = gnVersion;
           };
 
           # WASM / Emscripten cross-build — second of three WASM
@@ -365,6 +372,21 @@
           # under `continue-on-error: true` (volatile emscripten pin).
           goodnet-wasm-emscripten = import ./nix/goodnet-wasm-emscripten.nix {
             inherit pkgs;
+            version = gnVersion;
+          };
+
+          # Android aarch64 kernel-only cross-build via NDK r28.
+          # Derivation lives at nix/goodnet-android.nix; it compiles the
+          # kernel against bionic + NDK libc++ as a smoke gate for the
+          # Android target matrix. Plugins each carry their own Android
+          # derivation story once the composed-node spec for Android lands.
+          # CI gates under `continue-on-error: true`; the `allowUnfree`
+          # requirement for the NDK means nix flake check will skip it on
+          # standard evaluators without `nixpkgs.config.allowUnfree = true`.
+          goodnet-android-aarch64 = import ./nix/goodnet-android.nix {
+            inherit pkgs;
+            arch = "aarch64";
+            version = gnVersion;
           };
         });
 
@@ -380,10 +402,9 @@
           # build app with subarg-driven variant select. Default
           # debug.
           #
-          # `debug` and `release` re-enter the dev shell and run a
-          # plain CMake build under the dynamic gcc15 toolchain;
-          # each variant lives in its own `build-<variant>/` so the
-          # two coexist without pin-ponging the cache.
+          # `debug` and `release` re-enter the dev shell and configure
+          # via `cmake --preset dev|release` (gcc16 on x86_64-linux,
+          # gcc15 elsewhere). debug → build/, release → build-release/.
           #
           # `static` is the truly-static cut: rather than running a
           # second CMake under the dev shell (which would inherit
@@ -431,18 +452,15 @@
                 echo "  $flake_dir/build-static/lib/  (.a archives)"
                 exit 0
               fi
-              tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
-                debug)   build_type=Debug   ; build_dir=build         ;;
-                release) build_type=Release ; build_dir=build-release ;;
+                debug)   preset=dev     ; build_dir=build         ;;
+                release) preset=release ; build_dir=build-release ;;
                 *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
               if [ ! -f "$build_dir/CMakeCache.txt" ]; then
-                echo ">>> Configuring $build_type build in $build_dir..."
-                cmake -B "$build_dir" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=$build_type \
-                  $tests_flag
+                echo ">>> Configuring $variant build (preset $preset)..."
+                cmake --preset "$preset"
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"
@@ -712,6 +730,33 @@
             '';
           };
 
+          # `nix run .#update-locks` — re-pins every in-tree plugin's
+          # flake.lock to the current kernel HEAD and current nixpkgs.
+          # Run this after tagging a kernel release so plugin standalone
+          # builds pick up the new SDK without manual per-plugin `nix
+          # flake update`. Idempotent: already-current locks are no-ops.
+          # Closes issue #15.
+          gn-update-locks = pkgs.writeShellApplication {
+            name = "gn-update-locks";
+            runtimeInputs = [ pkgs.nix ];
+            text = ''
+              set -euo pipefail
+              if [ ! -f flake.nix ]; then
+                echo "update-locks: run from the kernel monorepo root" >&2
+                exit 1
+              fi
+              root="$(pwd)"
+              for lock in plugins/*/*/flake.lock; do
+                dir="$(dirname "$lock")"
+                echo ">>> update-locks: $dir"
+                nix flake update --flake "$dir" \
+                  --override-input goodnet "path:$root"
+              done
+              echo ""
+              echo "update-locks: all plugin locks updated."
+            '';
+          };
+
           # Mirror builder (invoked from `gn-setup`) — bare-clone each
           # plugin's nested working git into `${MIRROR_DIR}/<repo>.git`
           # and wire `origin` in the working clone so subsequent
@@ -760,6 +805,7 @@
           default       = { type = "app"; program = "${gn-build}/bin/gn-build"; };
           setup         = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
           update        = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
+          update-locks  = { type = "app"; program = "${gn-update-locks}/bin/gn-update-locks"; };
           build         = { type = "app"; program = "${gn-build}/bin/gn-build"; };
           test          = { type = "app"; program = "${gn-test}/bin/gn-test"; };
           run           = { type = "app"; program = "${gn-run}/bin/gn-run"; };
@@ -803,6 +849,11 @@
             # without a second devShell, standalone plugin builds
             # inherit it through propagatedBuildInputs.
             c-ares
+            # libssh for apps/gssh. cmake --preset dev configures gssh
+            # when apps/gssh/ is checked out; without libssh the
+            # pkg_check_modules(LIBSSH REQUIRED) in gssh/CMakeLists.txt
+            # aborts the configure step.
+            libssh
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];

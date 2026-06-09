@@ -33,7 +33,7 @@
 #
 # Linux-host-only: `pkgs.emscripten` runs on Linux; the flake gates
 # this output under `isLinux`.
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   emscripten = pkgs.emscripten;
@@ -125,7 +125,7 @@ let
 in
 pkgs.stdenv.mkDerivation {
   pname   = "goodnet-wasm-emscripten";
-  version = "1.0.0-rc6";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

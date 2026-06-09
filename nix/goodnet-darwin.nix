@@ -22,7 +22,7 @@
 ## Linux-host-only: cross-from-Linux runs on Linux and emits Mach-O.
 ## Native Darwin operators just use `nix build .#packages.aarch64-
 ## darwin.goodnet-core` against the regular non-cross attr set.
-{ pkgs, arch ? "x86_64", ... }:
+{ pkgs, arch ? "x86_64", version ? "dev", ... }:
 
 let
   cross =
@@ -39,7 +39,7 @@ let
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-darwin-${arch}";
-  version = "1.0.0-rc6";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

@@ -21,7 +21,7 @@ let
 in
 cross.gcc15Stdenv.mkDerivation {
   pname   = "goodnet-aarch64-linux";
-  version = "1.0.0-rc3";
+  version = "1.0.0-rc6";
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

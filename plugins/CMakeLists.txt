@@ -133,6 +133,14 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/ws_inject)
 endif()
 
+# PortMap sources are now bundled inside the ICE plugin. The object
+# library is added first so goodnet_portmap_objects is available when
+# links/ice processes its CMakeLists.txt.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
+    add_subdirectory(links/portmap)
+endif()
+
 # ICE before QUIC so that QUIC's `test_quic` fixture (which now
 # integrates an `IceCarrierBridge` for the `quic://<peer-pk-hex>`
 # route per Q.1) sees `goodnet_ice_objects` at conditional time.
@@ -149,16 +157,6 @@ endif()
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/quic/CMakeLists.txt")
     add_subdirectory(links/quic)
-endif()
-
-# PortMap surfaces the `gn.link.portmap` extension (NAT-PMP / PCP /
-# UPnP IGD) consumed by ICE before host-candidate gathering. Added
-# before strategies so the in-tree ICE composer fixture can resolve
-# the extension at conditional time when the integration tests link
-# it.
-if(NOT _GOODNET_WINDOWS_SKIP
-   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
-    add_subdirectory(links/portmap)
 endif()
 
 # Strategy plugins consume `sdk/extensions/strategy.h`.

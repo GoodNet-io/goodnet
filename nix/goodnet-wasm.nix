@@ -67,7 +67,7 @@
 #
 # Linux-host-only: pkgsCross runs on Linux and emits a WebAssembly
 # module; the parent flake gates this attribute under `isLinux`.
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   wasi = pkgs.pkgsCross.wasi32;
@@ -85,7 +85,7 @@ in
 # which goes through `cross.stdenv.mkDerivation`.
 wasi.stdenv.mkDerivation {
   pname   = "goodnet-wasm";
-  version = "1.0.0-rc6";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;
@@ -107,7 +107,8 @@ wasi.stdenv.mkDerivation {
   # stdenv (`wasi.stdenv.mkDerivation` injects it as `$CXX`); no
   # explicit `nativeBuildInputs` entry is needed for the compiler.
   # The empty list satisfies stdenv's expectation without dragging
-  # the native gcc15 toolchain into the build closure.
+  # the native toolchain (gcc16 on x86_64-linux, gcc15 elsewhere)
+  # into the build closure.
   nativeBuildInputs = [ ];
 
   dontConfigure = true;

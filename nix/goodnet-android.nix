@@ -43,7 +43,7 @@
 # bionic — the gate falls through to the `O_NOFOLLOW` open path
 # automatically. No source-level Android ifdefs needed for this
 # cut; the existing `__linux__` envelope is correct.
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   # The Android NDK is published under Google's terms — nixpkgs marks
@@ -94,7 +94,7 @@ let
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-android-aarch64";
-  version = "1.0.0-rc6";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;

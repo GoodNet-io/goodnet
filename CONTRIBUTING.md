@@ -26,15 +26,19 @@ and may move to per-plugin repositories once the surface stabilises.
 ## Setup
 
 ```bash
-nix develop      # toolchain pinned through flake.nix
-cmake -B build -G Ninja
-cmake --build build
-ctest --test-dir build
+nix run .#setup           # one-time: clone plugins, install hooks
+nix run .#build           # debug build → build/  (no nix develop needed)
+nix run .#test            # full test suite
 ```
 
-The `nix develop` shell carries gcc 15, libsodium, OpenSSL, asio,
-spdlog, nlohmann_json, gtest, rapidcheck, clang-tidy 21. Direnv
-lifts the shell automatically when the operator opts in.
+For IDE integration, `cmake --preset dev` inside `nix develop` is
+available. The `nix develop` shell carries gcc 16 (x86_64-linux) /
+gcc 15 (other platforms), libsodium, OpenSSL, asio, spdlog,
+nlohmann_json, gtest, rapidcheck, clang-tidy 21. Direnv lifts the
+shell automatically when the operator opts in.
+
+See [`docs/operator/build.en.md`](docs/operator/build.en.md) for the
+full build reference including CMakePresets and cross-platform matrix.
 
 ## Branch model
 
