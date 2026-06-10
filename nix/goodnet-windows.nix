@@ -119,6 +119,7 @@ cross.stdenv.mkDerivation {
       fmt-static
       spdlog-static
       sodium-static
+      (import ./stdexec.nix { pkgs = cross; })
     ] ++ (with cross; [
       nlohmann_json
       # `windows.pthreads` provides libwinpthread; mingw's gcc

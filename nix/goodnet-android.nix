@@ -120,6 +120,7 @@ cross.stdenv.mkDerivation {
   # requirement when that plugin lifts into the android bundle.
   buildInputs = [
     asio-android
+    (import ./stdexec.nix { pkgs = cross; })
   ] ++ (with cross; [
     spdlog
     fmt

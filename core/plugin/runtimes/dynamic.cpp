@@ -342,10 +342,12 @@ void DynamicRuntime::close(PluginInstance& inst, bool drained) {
     /// dlopen call. Closing it now reclaims the fd number for
     /// future plugin loads — the kernel's TOCTOU guarantee was the
     /// dlopen point, not the fd's continued life.
+#ifdef __linux__
     if (inst.integrity_fd >= 0) {
         ::close(inst.integrity_fd);
         inst.integrity_fd = -1;
     }
+#endif
 }
 
 }  // namespace gn::core
