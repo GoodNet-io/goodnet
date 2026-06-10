@@ -306,6 +306,21 @@ gn_result_t kick_handshake(void* host_ctx, gn_conn_id_t conn) {
             kernel_initiated_disconnect(pc, conn);
             return prc;
         }
+        // Loopback/IntraNode connections skip attestation so
+        // TRUST_UPGRADED never fires from the attestation path.
+        // Fire it here once remote_pk is resolved so applications
+        // can send with the correct receiver pk.
+        if (rec->trust != GN_TRUST_UNTRUSTED &&
+            rec->trust != GN_TRUST_PEER) {
+            if (auto updated = pc->kernel->connections().find_by_id(conn)) {
+                ConnEvent upgrade_ev{};
+                upgrade_ev.kind      = GN_CONN_EVENT_TRUST_UPGRADED;
+                upgrade_ev.conn      = conn;
+                upgrade_ev.trust     = updated->trust;
+                upgrade_ev.remote_pk = updated->remote_pk;
+                pc->kernel->on_conn_event().fire(upgrade_ev);
+            }
+        }
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
         drain_handshake_pending(pc, conn, *session, rec->scheme);
@@ -397,6 +412,21 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                     prc != GN_OK) {
                     kernel_initiated_disconnect(pc, conn);
                     return prc;
+                }
+                // Loopback/IntraNode connections skip attestation so
+                // TRUST_UPGRADED never fires from the attestation path.
+                // Fire it here once remote_pk is resolved.
+                if (rec->trust != GN_TRUST_UNTRUSTED &&
+                    rec->trust != GN_TRUST_PEER) {
+                    if (auto updated =
+                            pc->kernel->connections().find_by_id(conn)) {
+                        ConnEvent upgrade_ev{};
+                        upgrade_ev.kind      = GN_CONN_EVENT_TRUST_UPGRADED;
+                        upgrade_ev.conn      = conn;
+                        upgrade_ev.trust     = updated->trust;
+                        upgrade_ev.remote_pk = updated->remote_pk;
+                        pc->kernel->on_conn_event().fire(upgrade_ev);
+                    }
                 }
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);

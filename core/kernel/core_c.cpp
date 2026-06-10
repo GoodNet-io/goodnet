@@ -616,10 +616,7 @@ namespace {
 gn_propagation_t message_sub_handle(void* self, const gn_message_t* env) {
     auto* sub = static_cast<gn_core_s::MessageSub*>(self);
     if (sub != nullptr && sub->cb != nullptr && env != nullptr) {
-        /// Connection id is not on the envelope; we do not surface it
-        /// to the C callback today. A future minor adds an envelope
-        /// `_reserved` slot for it (host-api.en.md §11 evolution path).
-        sub->cb(sub->user, /*conn=*/GN_INVALID_ID, env->msg_id,
+        sub->cb(sub->user, env->conn_id, env->msg_id,
                 env->payload, env->payload_size);
     }
     return GN_PROPAGATION_CONTINUE;
