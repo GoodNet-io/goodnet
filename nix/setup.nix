@@ -15,7 +15,7 @@
 
 pkgs.writeShellApplication {
   name = "goodnet-setup";
-  runtimeInputs = [ ];
+  runtimeInputs = [ pkgs.git ];
   text = ''
     set -euo pipefail
 
@@ -24,6 +24,10 @@ pkgs.writeShellApplication {
       exit 1
     fi
 
+    echo ">>> setup: init submodules"
+    git submodule update --init --recursive
+
+    echo ""
     echo ">>> setup: init-mirrors"
     ${init-mirrors}/bin/goodnet-init-mirrors
 

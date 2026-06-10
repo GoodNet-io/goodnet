@@ -12,8 +12,9 @@
 # `dlopen`s at runtime: handler-{heartbeat, store, dns},
 # link-{tcp, udp, ws, ipc, tls, ice}, security-{noise, null};
 # plus the operator-side bridges-cpp slot at `bridges/cpp/`.
-# Statically-linked plugins under `plugins/protocols/` are part
-# of the kernel build and do not need pulling. The
+# plugins/protocols/gnet is a git submodule (GoodNet-io/protocol-gnet)
+# and is initialised by `nix run .#setup` via `git submodule update
+# --init --recursive`; it does not go through this script. The
 # strategy-float_send_rtt plugin exists in-tree but has no
 # external mirror yet, so it is not part of the install set.
 #
