@@ -12,7 +12,7 @@
 ///   alice.subscribe(...);  bob.on_conn_state(...) via host_api().
 ///   gn_core_listen(alice.raw(), "tcp://...:0");      // kernel-path listen
 ///   gn_core_dial(bob.raw(), "tcp://...:<port>");     // kernel-path connect
-///   bob_conn arrives via GN_CONN_EVENT_CONNECTED, bob_trusted via trust event
+///   bob_conn arrives via GN_CONN_EVENT_CONNECTED, bob_trusted via TRUST_UPGRADED
 ///   bob.send_to(bob_conn, msg, "hello");
 ///   ... wait for alice's inbox flag ...
 
