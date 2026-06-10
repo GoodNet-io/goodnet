@@ -83,7 +83,8 @@ endif()
 # goodnet_app(TARGET_NAME source1 [source2 ...])
 #
 # Wires an executable target to:
-#   * `GoodNet::sdk`           — header-only SDK include surface
+#   * `GoodNet::sdk`           — header-only C ABI include surface
+#   * `GoodNet::sdk_dx`        — `gn::sdk::Core` + C++ lifecycle helpers
 #   * `GoodNet::kernel_shared` — `libgoodnet_kernel.so` C ABI
 #   * `PkgConfig::SODIUM`      — plugin manifest digest computation
 #   * `cxx_std_23`             — the kernel ABI compiles under C++23
@@ -96,6 +97,7 @@ function(goodnet_app TARGET_NAME)
 
     target_link_libraries(${TARGET_NAME} PRIVATE
         GoodNet::sdk
+        GoodNet::sdk_dx
         GoodNet::kernel_shared
         PkgConfig::SODIUM)
 

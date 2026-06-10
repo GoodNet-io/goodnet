@@ -227,17 +227,30 @@ do not opt in.
 
 | Headers | CMake target | For whom |
 |---------|-------------|---------|
-| `sdk/core.h` | `GoodNet::sdk` | Everyone — C ABI to start the kernel |
-| `sdk/host_api.h` | `GoodNet::sdk` | Plugins — receive this struct from the kernel |
-| `sdk/cpp/*.hpp` | `GoodNet::sdk_dx` | Plugins — C++ helpers wrapping the C ABI |
-| `bridges/cpp/*.hpp` | `GoodNet::cpp` | Apps — RAII wrappers over `core.h` for C++ consumers |
+| `sdk/core.h` | `GoodNet::sdk` | Everyone — C ABI entry point |
+| `sdk/host_api.h` | `GoodNet::sdk` | Plugins — host API vtable received from the kernel |
+| `sdk/cpp/core.hpp` | `GoodNet::sdk_dx` | **Apps** — `gn::sdk::Core` RAII lifecycle wrapper |
+| `sdk/cpp/handler.hpp`, `link.hpp`, … | `GoodNet::sdk_dx` | Plugins — C++ base classes for plugin authors |
+| `bridges/cpp/*.hpp` | `GoodNet::cpp` | Apps — alternative wrapper `gn::cpp::Core` (separate repo) |
 | `core/*.hpp` | `GoodNet::kernel` | In-tree only — internal kernel headers, not for consumers |
 
-`gn::sdk::Core` (in `bridges/cpp/`) is the entry point the scaffolded
-`main.cpp` uses. It owns the kernel lifecycle that would otherwise live
-in `main.cpp`. `sdk/cpp/` helpers are for plugin authors, not app authors;
-the distinction is that plugins receive a `host_api` struct from the kernel,
-while apps start the kernel through `core.h` and hold it via `gn::sdk::Core`.
+`gn::sdk::Core` (in `sdk/cpp/core.hpp`, compiled into `GoodNet::sdk_dx`) is the
+entry point the scaffolded `main.cpp` uses. `goodnet_app()` links `sdk_dx`
+automatically. The constructor accepts an `Options` struct that wires plugin
+paths, identity source, and a `pre_start_fn` hook for protocol registration
+(e.g. `gn_gnet_register_protocol`) that must run between init and start.
+
+`bridges/cpp/core.hpp` (`gn::cpp::Core`, target `GoodNet::cpp`) is an
+alternative RAII wrapper published at `github:GoodNet-io/bridges-cpp`. It
+exposes the same kernel through a manual load/init/start sequence; prefer
+`gn::sdk::Core` for new projects.
+
+The distinction between app and plugin consumers: plugins receive a
+`host_api_t*` vtable from the kernel and return propagation values from
+handlers. Apps construct `gn::sdk::Core`, subscribe to events via
+`Subscription::on_conn_state`, and kick connections via `gn_core_disconnect`.
+`GN_PROPAGATION_REJECT` and handler return values are plugin-only concepts
+not available in app-level subscription callbacks.
 
 ## See also
 
@@ -245,9 +258,9 @@ while apps start the kernel through `core.h` and hold it via `gn::sdk::Core`.
   — the hooks themselves.
 * `nix/dev-shell-app.nix` — the `app` devShell wrapper.
 * `cmake/goodnet_app.cmake` — the CMake helper macro.
-* `bridges/cpp/core.hpp` — `gn::sdk::Core` RAII wrapper that the
-  scaffolded `main.cpp` template opens against.
-* `sdk/cpp/` — C++ plugin helpers (not for app consumers).
+* `sdk/cpp/core.hpp` — `gn::sdk::Core` RAII wrapper and `Core::Options`.
+* `sdk/cpp/subscription.hpp` — `Subscription::on_conn_state` and friends.
+* `bridges/cpp/` — alternative wrapper (`gn::cpp::Core`), published separately.
 * `docs/operator/build.en.md` — full build reference including SDK
   layer table and SOVERSION details.
 * `docs/contracts/plugin-manifest.en.md` — manifest format the
