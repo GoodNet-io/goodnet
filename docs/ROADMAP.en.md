@@ -84,6 +84,42 @@ to refresh the table.
 
 ---
 
+## RTOS optimization
+
+The architectural target is a user-space RTOS: the network is the
+system bus, every node is addressed strictly by its Ed25519 public
+key, and the kernel enforces hard latency bounds. This section tracks
+the remaining work toward that invariant.
+
+- **Zero-alloc packet pipeline** — inbound path from the security
+  boundary to synchronous handler dispatch operates entirely on
+  borrowed `gn_message_t` pointers; kernel allocates zero heap on the
+  envelope propagation path. The invariant is documented in
+  `docs/architecture/`; no plugin can violate it from outside the ABI.
+  Landing: enforce with a custom allocator shim in the hot path and
+  add an allocator-interpose test that fails if any heap call fires
+  during dispatch.
+- **P2300 structured sender chains** — replace `asio::post` on plugin
+  I/O paths with P2300 sender chains for structured backpressure and
+  deterministic work-queue depth. Plugin I/O callbacks become
+  cancellable senders; the executor is replaceable without touching
+  kernel code. Tracked in issue
+  [#20](https://github.com/GoodNet-io/goodnet/issues/20).
+- **io_uring link backend** — `link-udp` zero-copy send/recv via
+  io_uring eliminates the asio epoll overhead on Linux ≥5.11. Tracked
+  in issue [#19](https://github.com/GoodNet-io/goodnet/issues/19).
+- **Bounded handler chain depth** — the RCU handler dispatch already
+  hard-caps chain depth. Combined with the zero-alloc path, worst-case
+  dispatch latency becomes a function of chain length, not heap
+  pressure. Document as a formal contract guarantee once the allocator
+  shim lands.
+- **MCU port** — see Cross-platform below. The same bounded-latency
+  architecture targets ESP32 / RP2040 with heavy SDK trim and
+  mbedTLS-crypto substitution; no `std::vector` on hot paths, 4 MB
+  flash budget.
+
+---
+
 ## Reachability
 
 A pair of nodes finds each other and sustains a path even when neither
@@ -409,6 +445,22 @@ different sandboxing and performance trade-offs.
 - **C99 SDK subset** — for toolchains where C++17 is unavailable.
   Mirrors `sdk/*.h` shape; plugin authors get the C-ABI surface
   without the C++ convenience headers.
+- **aarch64 native test runner** — the cross-build compiles and
+  links on x86_64; a native aarch64 Forgejo runner is needed for
+  the full test matrix (unit + integration + sanitiser + fuzz)
+  to run on-target. Also unlocks an `aarch64-abi-pin` CI step that
+  verifies `tests/abi/test_layout.c` sizes/offsets match the
+  x86_64 pin — important because `uint32_t` alignment rules
+  are the same but any future pointer-width field would diverge.
+- **Android native test runner** — the Android NDK cross-build
+  gate exists; running the test suite on an Android emulator or
+  device via `adb` closes the loop. JNI embedding smoke test
+  (`java.lang.System.loadLibrary` → `gn_core_init` → lifecycle)
+  is the minimal bar.
+- **Windows native build** — currently only `windows-cross-build`
+  (MinGW cross from Linux). A native MSVC or clang-cl build on a
+  Windows runner removes the MinGW ABI gap and lets Windows-native
+  plugin authors link without a compatibility shim.
 
 ---
 
@@ -564,6 +616,27 @@ existing kernel surface.
 - **TCP-TURN (RFC 6062)** — TURN relay over TCP transport
   (currently UDP-only in `plugins/links/ice`). Required for
   TCP-only network environments that block UDP TURN traffic.
+
+---
+
+## Community
+
+### Mad Scientist Link Provider contest
+
+The kernel is fully agnostic to how a link plugin moves bytes — it
+only cares that the `gn_link_api_t` vtable is satisfied and
+`notify_inbound_bytes` is eventually called with valid data. The
+contest tests that claim by absurdity: structurally compliant
+implementations that are completely unhinged.
+
+Founding proposals (each requiring zero kernel changes):
+`link-astronomy-orion` (Betelgeuse magnitude variations, ~1 bit/century),
+`link-powerline` (HomePlug AV2 over 230V wiring, your neighbour is the MITM),
+`link-thermal-printer` (QR codes at 15 KB/s, paper jams are packet loss),
+`link-git-commit` (GitHub commit messages, Microsoft as unknowing relay).
+
+See [issue #42](https://github.com/GoodNet-io/goodnet/issues/42) for
+submission rules and reference implementations.
 
 ---
 

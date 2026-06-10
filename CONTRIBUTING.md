@@ -189,3 +189,21 @@ smallest reproduction the reporter can build.
 ## Code of conduct
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Community submissions
+
+The kernel does not care what moves bytes between two peers — only
+that `gn_link_api_t` is satisfied and `notify_inbound_bytes` is
+eventually called. The **Mad Scientist Link Provider contest**
+(see [issue #42](https://github.com/GoodNet-io/goodnet/issues/42))
+invites structurally compliant link plugins built on unhinged media:
+stellar photometry, HomePlug over mains wiring, thermal receipt
+printers, git commits. The same rules apply as for any plugin:
+
+- New repo `goodnet-io/link-<your-medium>`
+- Full `gn_link_api_t` vtable implemented
+- Compiles on current `dev` branch
+- `notify_inbound_bytes` called with valid data — "eventually" is
+  not time-bounded; paper jams, courier latency, and 1280-year RTTs
+  are all correct behaviour per the link contract
+- CI is not required to pass within any reasonable human timeframe
