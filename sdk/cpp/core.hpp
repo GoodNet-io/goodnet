@@ -249,6 +249,26 @@ public:
             throw Error(rc, "gn_core_dial");
     }
 
+    /// Walk every live connection under a per-shard read lock. @p fn
+    /// receives `(conn_id, trust, remote_pk_span, uri)` and returns
+    /// `true` to continue, `false` to stop early.
+    template <typename Fn>
+    void for_each_connection(Fn&& fn) {
+        if (!api_ || !api_->for_each_connection) return;
+        using Holder = std::decay_t<Fn>;
+        auto* h = &fn;
+        api_->for_each_connection(api_->host_ctx,
+            [](void* ud, gn_conn_id_t conn, gn_trust_class_t trust,
+               const uint8_t pk[GN_PUBLIC_KEY_BYTES],
+               const char* uri) -> int {
+                return (*static_cast<Holder*>(ud))(
+                    conn, trust,
+                    std::span<const std::uint8_t>{pk, GN_PUBLIC_KEY_BYTES},
+                    std::string_view{uri ? uri : ""}) ? 0 : 1;
+            },
+            h);
+    }
+
     /// Broadcast an identity-bearing capability blob to @p conn. The
     /// kernel reserves msg_id 0x13 for the transport; receivers get
     /// the blob via `Subscription::on_capability_blob`. @p expires is
