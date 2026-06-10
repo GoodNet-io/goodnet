@@ -464,6 +464,25 @@ gn_result_t gn_core_connect(gn_core_t* core,
     return ext->connect(ext->ctx, uri, out_conn);
 }
 
+gn_result_t gn_core_dial(gn_core_t* core, const char* uri) {
+    if (core == nullptr || uri == nullptr) return GN_ERR_NULL_ARG;
+    /// Kernel-path outbound connect that mirrors `gn_core_listen`: resolves
+    /// through the kernel link registry (not the `gn.link.<scheme>`
+    /// extension's compositor slot), so the link plugin calls
+    /// `notify_connect` → `kick_handshake` and the resulting connection
+    /// surfaces via `GN_CONN_EVENT_CONNECTED` / `GN_CONN_EVENT_TRUST_UPGRADED`
+    /// exactly like an inbound connection from `gn_core_listen` does.
+    const std::string_view scheme_sv = derive_scheme(std::string_view{uri});
+    if (scheme_sv.empty()) return GN_ERR_NOT_FOUND;
+    auto entry = core->kernel.links().find_by_scheme(scheme_sv);
+    if (!entry.has_value() ||
+        entry->vtable == nullptr ||
+        entry->vtable->connect == nullptr) {
+        return GN_ERR_NOT_FOUND;
+    }
+    return entry->vtable->connect(entry->self, uri);
+}
+
 gn_result_t gn_core_listen(gn_core_t* core, const char* uri) {
     if (core == nullptr || uri == nullptr) {
         return GN_ERR_NULL_ARG;

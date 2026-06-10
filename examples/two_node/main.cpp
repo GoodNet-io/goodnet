@@ -10,14 +10,17 @@
 ///   gn::sdk::Core alice(opts);
 ///   gn::sdk::Core bob  (opts);
 ///   alice.subscribe(...);  bob.on_conn_state(...) via host_api().
-///   listener = alice.listen_to("tcp://...:0");
-///   session  = bob.connect_to("tcp://...:<port>");
-///   bob.send_to(session.id(), msg, "hello");
+///   gn_core_listen(alice.raw(), "tcp://...:0");      // kernel-path listen
+///   gn_core_dial(bob.raw(), "tcp://...:<port>");     // kernel-path connect
+///   bob_conn arrives via GN_CONN_EVENT_CONNECTED, bob_trusted via trust event
+///   bob.send_to(bob_conn, msg, "hello");
 ///   ... wait for alice's inbox flag ...
 
 #include <sdk/conn_events.h>
+#include <sdk/core.h>
 #include <sdk/cpp/core.hpp>
 #include <sdk/cpp/errors.hpp>
+#include <sdk/cpp/link_carrier.hpp>
 #include <sdk/cpp/subscription.hpp>
 #include <sdk/gnet.h>
 
@@ -111,8 +114,18 @@ int main() {
                 }
             });
 
-        auto alice_listener = alice.listen_to("tcp://127.0.0.1:0");
-        const auto port = alice_listener.listen_port();
+        // Use the kernel-path listen (gn_core_listen) so the TCP accept
+        // loop calls notify_connect → kick_handshake and the Noise XX
+        // handshake runs. Core::listen_to goes through the compositor
+        // extension API which bypasses notify_connect.
+        if (const auto rc = gn_core_listen(alice.raw(), "tcp://127.0.0.1:0");
+                rc != GN_OK) {
+            throw gn::sdk::Error(rc, "alice: gn_core_listen");
+        }
+        // Port is stored in TcpLink::listen_port_ by both kernel and
+        // compositor listen paths; composer_listen_port falls back to it.
+        auto alice_carrier = gn::sdk::LinkCarrier::query(alice.host_api(), "tcp");
+        const auto port = alice_carrier ? alice_carrier->listen_port() : std::uint16_t{0};
         if (port == 0) {
             std::cerr << "[alice] listen_port returned 0\n";
             return 1;
@@ -120,8 +133,12 @@ int main() {
         const std::string uri = "tcp://127.0.0.1:" + std::to_string(port);
         std::cout << "[alice] listening on " << uri << "\n";
 
+        // Use gn_core_dial (kernel-path connect) so Bob's TCP connect
+        // callback also calls notify_connect → kick_handshake. The conn id
+        // arrives asynchronously via GN_CONN_EVENT_CONNECTED (bob_conn below).
         std::cout << "[bob]   dialling   " << uri << "\n";
-        auto bob_session = bob.connect_to(uri);
+        if (const auto rc = gn_core_dial(bob.raw(), uri.c_str()); rc != GN_OK)
+            throw gn::sdk::Error(rc, "bob: gn_core_dial");
 
         const auto deadline = std::chrono::steady_clock::now() + 5s;
         while (!bob_trusted.load(std::memory_order_acquire) &&
@@ -139,10 +156,8 @@ int main() {
         }
         std::cout << "[demo] noise XX complete; transport phase active\n";
 
-        gn_conn_id_t cid = bob_session.id();
-        if (cid == GN_INVALID_ID) {
-            cid = bob_conn.load(std::memory_order_acquire);
-        }
+        // bob_conn is set by the GN_CONN_EVENT_CONNECTED callback above.
+        gn_conn_id_t cid = bob_conn.load(std::memory_order_acquire);
         if (cid == GN_INVALID_ID) {
             std::cerr << "[bob] no connection id observed\n";
             return 1;

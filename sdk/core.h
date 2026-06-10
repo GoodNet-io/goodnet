@@ -382,6 +382,29 @@ GN_EXPORT gn_result_t gn_core_connect(gn_core_t* core,
 GN_EXPORT gn_result_t gn_core_listen(gn_core_t* core, const char* uri);
 
 /**
+ * @brief Kernel-path outbound connect — the counterpart to gn_core_listen.
+ *
+ * Routes through the kernel link registry (not the `gn.link.<scheme>`
+ * compositor extension), so the link plugin calls `notify_connect` /
+ * `kick_handshake` on successful TCP connect and the resulting connection
+ * surfaces via `GN_CONN_EVENT_CONNECTED` / `GN_CONN_EVENT_TRUST_UPGRADED`
+ * exactly like an inbound connection accepted by `gn_core_listen`.
+ *
+ * The connection id is delivered asynchronously through the
+ * `gn_core_on_conn_state` callback (`ev.conn` in the
+ * `GN_CONN_EVENT_CONNECTED` event). No synchronous id is returned here.
+ *
+ * Use `gn_core_connect` instead when a synchronous compositor-level
+ * handle is required (WS/TLS/ICE L2 pipelines).
+ *
+ * @param core  Kernel handle returned by gn_core_create().
+ * @param uri   @borrowed; `<scheme>://<host>:<port>` peer address.
+ * @return `GN_OK` if the async connect was started; `GN_ERR_NOT_FOUND`
+ *         when no link is registered for the scheme.
+ */
+GN_EXPORT gn_result_t gn_core_dial(gn_core_t* core, const char* uri);
+
+/**
  * @brief Send a single application message on @p conn.
  *
  * Frames @p payload through the active protocol layer, encrypts
