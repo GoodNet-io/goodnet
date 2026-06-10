@@ -44,6 +44,7 @@
 
 #include <sdk/core.h>
 #include <sdk/cpp/connect.hpp>
+#include <sdk/cpp/errors.hpp>
 #include <sdk/cpp/identity.hpp>
 #include <sdk/cpp/subscription.hpp>
 #include <sdk/host_api.h>
@@ -220,6 +221,26 @@ public:
     /// `on_accept` to react to inbound connections. Throws on
     /// failure.
     [[nodiscard]] LinkCarrier listen_to(std::string_view uri);
+
+    /// Kernel-path passive listener. Accepted connections surface via
+    /// `Subscription::on_conn_state` (GN_CONN_EVENT_CONNECTED, then
+    /// GN_CONN_EVENT_TRUST_UPGRADED once the security handshake
+    /// completes). Throws `Error` on failure.
+    void listen(std::string_view uri) {
+        const std::string u{uri};
+        if (const auto rc = gn_core_listen(core_, u.c_str()); rc != GN_OK)
+            throw Error(rc, "gn_core_listen");
+    }
+
+    /// Kernel-path outbound connect — async counterpart to `listen()`.
+    /// Routes through the link registry (not the compositor extension).
+    /// Connection id delivered via GN_CONN_EVENT_CONNECTED. Throws
+    /// `Error` on failure.
+    void dial(std::string_view uri) {
+        const std::string u{uri};
+        if (const auto rc = gn_core_dial(core_, u.c_str()); rc != GN_OK)
+            throw Error(rc, "gn_core_dial");
+    }
 
     /// Subscribe to inbound messages on @p msg for connection @p conn.
     /// Returns a `MessageSubscription` whose dtor cancels the
