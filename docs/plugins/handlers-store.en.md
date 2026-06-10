@@ -8,7 +8,7 @@
 **Kind:** handlers
 **Source tree:** [`plugins/handlers/store`](../../plugins/handlers/store)
 **Slot:** `store`
-**Tests:** 48 cases in [`plugins/handlers/store/tests`](../../plugins/handlers/store/tests)
+**Tests:** 51 cases in [`plugins/handlers/store/tests`](../../plugins/handlers/store/tests)
 
 _Distributed key-value store handler — brings the legacy_
 

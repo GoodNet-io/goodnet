@@ -73,6 +73,7 @@ static.gcc15Stdenv.mkDerivation {
     fmt-static
     spdlog-static
     sodium-static
+    (import ./stdexec.nix { pkgs = static; })
   ] ++ (with static; [
     asio
     nlohmann_json

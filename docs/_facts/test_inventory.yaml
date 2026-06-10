@@ -1,7 +1,7 @@
-total: 1555
+total: 1563
 groups:
 - tree: kernel
-  count: 957
+  count: 960
   files: 89
 - tree: plugins/handlers/dns
   count: 73
@@ -10,14 +10,14 @@ groups:
   count: 11
   files: 1
 - tree: plugins/handlers/store
-  count: 48
+  count: 51
   files: 2
 - tree: plugins/handlers/web_api_proxy
   count: 7
   files: 1
 - tree: plugins/links/ice
-  count: 165
-  files: 14
+  count: 167
+  files: 15
 - tree: plugins/links/ipc
   count: 8
   files: 2
@@ -66,9 +66,9 @@ groups:
 by_plugin:
   handlers/dns: 73
   handlers/heartbeat: 11
-  handlers/store: 48
+  handlers/store: 51
   handlers/web_api_proxy: 7
-  links/ice: 165
+  links/ice: 167
   links/ipc: 8
   links/portmap: 26
   links/quic: 11

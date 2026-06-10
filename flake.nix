@@ -302,6 +302,23 @@
             version = gnVersion;
           };
 
+          # aarch64 Linux cross-build via `pkgsCross.aarch64-multiplatform`.
+          # Kernel + full plugin set (TLS/WS/QUIC/ICE/store/dns/strategies)
+          # compiled against glibc aarch64. Linux-host-only.
+          goodnet-aarch64-linux = import ./nix/goodnet-aarch64-linux.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
+          # aarch64 Linux truly-static build via
+          # `pkgsCross.aarch64-multiplatform.pkgsStatic` (musl + static
+          # archives). Ships kernel .a + bundled-plugin .a + worker ELFs.
+          # Linux-host-only.
+          goodnet-aarch64-linux-static = import ./nix/goodnet-aarch64-linux-static.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
           # Darwin cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-
           # darwin`. Kernel-only first cut (plugins each own their
           # own darwin port story per `docs/architecture/cross-
@@ -617,16 +634,15 @@
             echo "    bypass once : git commit/push --no-verify"
           '';
 
-          # `nix run .#run -- <demo|node|goodnetd> [args]` — single
-          # umbrella. \`demo\` builds + runs the self-contained
-          # two-node quickstart from `examples/two_node/`; \`node\`
-          # and \`goodnetd\` redirect the operator to the standalone
-          # `GoodNet-io/goodnetd` repo since the daemon binary no
-          # longer ships from this monorepo.
+          # `nix run .#run -- demo [args]` — runs the self-contained
+          # two-node quickstart from `examples/two_node/`. The operator
+          # daemon (`goodnetd`) now ships from the standalone repo
+          # `github.com/GoodNet-io/goodnetd`; `node` and `goodnetd`
+          # sub-commands print a redirect and exit 1.
           gn-run = pkgs.writeShellScriptBin "gn-run" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               if [ $# -lt 1 ]; then
-                echo "run: usage: nix run .#run -- <demo|node|goodnetd> [args]" >&2
+                echo "run: usage: nix run .#run -- demo [args]" >&2
                 exit 1
               fi
               kind="$1"; shift
@@ -652,7 +668,7 @@
                   exit 1
                   ;;
                 *)
-                  echo "run: unknown kind $kind (demo|node|goodnetd)" >&2
+                  echo "run: unknown kind $kind (demo)" >&2
                   exit 1
                   ;;
               esac
@@ -1000,7 +1016,8 @@ GoodNet devShell  (gcc16, C++26)
     nix run .#test  [-- asan|tsan|coverage|all]   default vanilla
 
   Run artefacts:
-    nix run .#run -- <demo|node|goodnet> [args]
+    nix run .#run -- demo [args]
+    nix build github:GoodNet-io/goodnetd  # operator daemon
 
   Plugin lifecycle:
     nix run .#plugin -- <new|pull|install|update> [args]

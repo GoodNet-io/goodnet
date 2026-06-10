@@ -52,7 +52,7 @@ to refresh the table.
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
 | io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
-| aarch64 Linux | ✓ done | nix/goodnet-aarch64-linux.nix present |
+| aarch64 Linux | ✓ done | packages.x86_64-linux.goodnet-aarch64-linux + goodnet-aarch64-linux-static exposed in flake |
 | macOS x86_64 / aarch64 (cross from Linux) | ✓ done | nix/goodnet-darwin.nix present |
 | Android build | ✓ done | nix/goodnet-android.nix present |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |

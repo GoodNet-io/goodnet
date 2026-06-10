@@ -45,7 +45,9 @@ cross.gcc15Stdenv.mkDerivation {
   # sqlite / c-ares are the same set the x86_64 kernel + bundled
   # plugins consume — TLS / WS / QUIC / ICE link OpenSSL, handler-
   # store links sqlite, handler-dns links c-ares.
-  buildInputs = with cross; [
+  buildInputs = [
+    (import ./stdexec.nix { pkgs = cross; })
+  ] ++ (with cross; [
     asio
     spdlog
     fmt
@@ -54,7 +56,7 @@ cross.gcc15Stdenv.mkDerivation {
     openssl
     sqlite
     c-ares
-  ];
+  ]);
 
   cmakeFlags = [
     "-DCMAKE_BUILD_TYPE=Release"
