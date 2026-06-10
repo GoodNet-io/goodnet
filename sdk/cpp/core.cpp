@@ -395,6 +395,9 @@ Core::Core(Options opts) {
             }
         }
 
+        if (opts.pre_start_fn)
+            opts.pre_start_fn(core_);
+
         if (const auto rc = gn_core_start(core_); rc != GN_OK) {
             throw Error(rc, "Core: gn_core_start");
         }

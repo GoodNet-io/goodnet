@@ -157,6 +157,13 @@ public:
         /// JSON config text handed to `gn_core_reload_config_json`
         /// before `gn_core_init`. Defaults to `"{}"`.
         std::string config_json{"{}"};
+
+        /// Hook invoked after `gn_core_init` and plugin loading,
+        /// immediately before `gn_core_start`. Use to register
+        /// protocols that must be installed before the first
+        /// `notify_connect` — e.g. `gn_gnet_register_protocol`.
+        /// May throw; the exception propagates out of the Core ctor.
+        std::function<void(gn_core_t*)> pre_start_fn;
     };
 
     /// XDG-default ctor:
@@ -240,6 +247,22 @@ public:
         const std::string u{uri};
         if (const auto rc = gn_core_dial(core_, u.c_str()); rc != GN_OK)
             throw Error(rc, "gn_core_dial");
+    }
+
+    /// Broadcast an identity-bearing capability blob to @p conn. The
+    /// kernel reserves msg_id 0x13 for the transport; receivers get
+    /// the blob via `Subscription::on_capability_blob`. @p expires is
+    /// a Unix timestamp; pass 0 for "no expiry". Throws `Error` on
+    /// failure.
+    void present_capability_blob(gn_conn_id_t conn,
+                                  std::span<const std::uint8_t> blob,
+                                  std::int64_t expires = 0) {
+        if (!api_ || !api_->present_capability_blob)
+            throw Error(GN_ERR_NOT_IMPLEMENTED, "present_capability_blob");
+        if (const auto rc = api_->present_capability_blob(
+                api_->host_ctx, conn, blob.data(), blob.size(), expires);
+            rc != GN_OK)
+            throw Error(rc, "present_capability_blob");
     }
 
     /// Subscribe to inbound messages on @p msg for connection @p conn.
