@@ -11,6 +11,7 @@
 !flake.nix
 !flake.lock
 !CMakeLists.txt
+!CMakePresets.json
 !Makefile
 !LICENSE
 !README.md
