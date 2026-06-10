@@ -487,12 +487,28 @@ def main(argv):
         out.append(f"| RAM | {env.get('ram', '?')} |")
         out.append(f"| Kernel | {env.get('kernel', '?')} |")
         gov = env.get('governor', '?')
-        gov_str = (f"`{gov}` (run `cpupower frequency-set -g performance` "
-                   f"for production-grade numbers — see "
-                   f"`docs/perf/methodology.en.md` §Environmental controls)"
-                   if gov not in ("performance", "?")
-                   else f"`{gov}`")
-        out.append(f"| CPU governor | {gov_str} |")
+        gov_note = env.get('governor_note', '')
+        scaling_driver = env.get('scaling_driver', '')
+        if gov_note == 'intel_pstate_at_max':
+            # intel_pstate "powersave" + scaling_max == cpuinfo_max: HWP
+            # boosts to max under load. Bench is not throttled; no action
+            # needed. Note the parse caveat so the reader understands why
+            # governor reads "powersave" while all recorded frequencies
+            # were at the CPU's rated maximum.
+            gov_str = (f"`{gov}` (intel_pstate — HWP at max freq; "
+                       f"governor label is misleading, CPU ran at rated max "
+                       f"throughout the bench run)")
+        elif gov_note == 'intel_pstate_limited':
+            gov_str = (f"`{gov}` (intel_pstate — scaling_max_freq < "
+                       f"cpuinfo_max_freq; turbo may be capped by policy)")
+        elif gov not in ("performance", "?"):
+            gov_str = (f"`{gov}` (run `cpupower frequency-set -g performance` "
+                       f"for production-grade numbers — see "
+                       f"`docs/perf/methodology.en.md` §Environmental controls)")
+        else:
+            gov_str = f"`{gov}`"
+        driver_suffix = f" / driver: `{scaling_driver}`" if scaling_driver not in ('', 'unknown') else ''
+        out.append(f"| CPU governor | {gov_str}{driver_suffix} |")
         out.append(f"| Turbo | {env.get('turbo', '?')} |")
         out.append(f"| SMT | {env.get('smt', '?')} |")
         out.append(f"| ASLR | {env.get('aslr', '?')} (0=off, 1=stack, 2=full) |")
