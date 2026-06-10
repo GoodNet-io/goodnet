@@ -1,12 +1,14 @@
 # GoodNet
 
+**Linux for networks.**
+
 A networking integrator kernel with pluggable transports, security
 providers, protocol layers, and handlers. Applications embed it
 as a library or run the standalone daemon. The C ABI between
 kernel and plugins is the only stable boundary; everything else
 is composition.
 
-The framing is Linux. The kernel does not know what TCP is, what
+The framing is Linux: the kernel does not know what TCP is, what
 Noise is, what an application is. It tracks logical connections,
 typed messages, public-key addresses, and registered handlers.
 Every transport, every cipher, every wire format lives in a
