@@ -621,22 +621,23 @@ existing kernel surface.
 
 ## Community
 
-### Mad Scientist Link Provider contest
+### Plugin Challenge
 
-The kernel is fully agnostic to how a link plugin moves bytes — it
-only cares that the `gn_link_api_t` vtable is satisfied and
-`notify_inbound_bytes` is eventually called with valid data. The
-contest tests that claim by absurdity: structurally compliant
-implementations that are completely unhinged.
+Two tracks. Full rules in [`CONTEST.md`](../CONTEST.md).
 
-Founding proposals (each requiring zero kernel changes):
-`link-astronomy-orion` (Betelgeuse magnitude variations, ~1 bit/century),
-`link-powerline` (HomePlug AV2 over 230V wiring, your neighbour is the MITM),
-`link-thermal-printer` (QR codes at 15 KB/s, paper jams are packet loss),
-`link-git-commit` (GitHub commit messages, Microsoft as unknowing relay).
+**Track A — Write what the protocol should have been.** Pick a problem
+that ICE, VPN, file sync, peer discovery, or routing already solves —
+and write it freed from IP-era constraints. The result must work over
+any GoodNet link, not just IP-based ones.
 
-See [issue #42](https://github.com/GoodNet-io/goodnet/issues/42) for
-submission rules and reference implementations.
+**Track B — Most unhinged carrier.** The kernel does not care what moves
+bytes as long as `gn_link_api_t` is satisfied and `notify_inbound_bytes`
+is eventually called. Founding entries in
+[issue #42](https://github.com/GoodNet-io/goodnet/issues/42):
+stellar photometry (~1 bit/century), HomePlug AV2 over 230V wiring,
+thermal receipt printers, git commit messages with Microsoft as relay.
+
+The ideal submission wins both tracks.
 
 ---
 

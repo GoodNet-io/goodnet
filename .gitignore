@@ -21,6 +21,7 @@
 !CONTRIBUTING.md
 !CODE_OF_CONDUCT.md
 !GOVERNANCE.md
+!CONTEST.md
 
 # Git hooks (opt-in via `nix run .#install-hooks`)
 !.githooks/*

@@ -192,18 +192,17 @@ By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Community submissions
 
-The kernel does not care what moves bytes between two peers — only
-that `gn_link_api_t` is satisfied and `notify_inbound_bytes` is
-eventually called. The **Mad Scientist Link Provider contest**
-(see [issue #42](https://github.com/GoodNet-io/goodnet/issues/42))
-invites structurally compliant link plugins built on unhinged media:
-stellar photometry, HomePlug over mains wiring, thermal receipt
-printers, git commits. The same rules apply as for any plugin:
+The **GoodNet Plugin Challenge** has two tracks. Full rules in
+[`CONTEST.md`](CONTEST.md).
 
-- New repo `goodnet-io/link-<your-medium>`
-- Full `gn_link_api_t` vtable implemented
-- Compiles on current `dev` branch
-- `notify_inbound_bytes` called with valid data — "eventually" is
-  not time-bounded; paper jams, courier latency, and 1280-year RTTs
-  are all correct behaviour per the link contract
-- CI is not required to pass within any reasonable human timeframe
+**Track A** — take a problem ICE, VPN, file sync, or routing already
+solves, and write it freed from IP-era constraints. Identity is a
+public key, not an IP address; the carrier is any link; the session
+is `peer_pk`, not a socket. The result must work over at least two
+structurally different link plugins.
+
+**Track B** — most structurally compliant, physically absurd link
+plugin. `notify_inbound_bytes` called with valid data — eventually.
+Paper jams, courier latency, and 1,280-year RTTs are correct behaviour
+per the link contract. Founding entries and rules in
+[issue #42](https://github.com/GoodNet-io/goodnet/issues/42).
