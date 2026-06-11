@@ -4,6 +4,157 @@ All notable changes to this project. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 uses [Semantic Versioning](https://semver.org/).
 
+## [1.0.0-rc7] — 2026-06-11
+
+### fix: TRUST_UPGRADED fires for loopback and intra-node connections
+
+Loopback and intra-node connections skip the attestation path, so
+`GN_CONN_EVENT_TRUST_UPGRADED` was silently never emitted for them after
+Noise XX completed.  `notifications.cpp` now fires the event from both
+`kick_handshake` and `notify_inbound_bytes` once `remote_pk` is resolved
+and trust is above `GN_TRUST_PEER`.  Applications that wait for
+`TRUST_UPGRADED` before sending to loopback peers now behave correctly.
+
+### fix: `gn_message_t.conn_id` surfaced to C callbacks
+
+`gn_core_s::MessageSub` previously passed `GN_INVALID_ID` as the
+`conn` argument to the registered C callback, with a comment deferring
+the fix to a future minor.  The envelope's `conn_id` is now forwarded
+directly so callers can correlate received messages with the originating
+connection without a separate lookup.
+
+### fix: TCP `composer_listen_port` falls back to kernel-path listen port
+
+`TcpLink::composer_listen_port` returned `GN_ERR_INVALID_STATE` when the
+kernel used `TcpLink::listen` rather than the composer listen path,
+because it only inspected `composer_acceptor_`.  The method now falls back
+to `listen_port_` (populated by both paths) so ICE-TCP and other callers
+that query the port after a kernel-path listen get the correct value.
+
+### fix: ICE `inject_targets` missing from positional descriptor init
+
+`gn_plugin_descriptor_t` gained an `inject_targets` field between `kind`
+and `_reserved`.  The ICE plugin's positional aggregate initializer passed
+its brace-list to the wrong slot, causing a compile error.  The field is
+now explicitly set to `nullptr`; designated initializers will be adopted in
+a follow-up C++26 sweep.
+
+### fix: ICE TURN — bool config keys and TLS URI scheme
+
+`gn_config_get_int64` silently no-ops on JSON boolean literals; TURN knobs
+(`turn_tcp`, etc.) now use `gn_config_get_bool`.  TLS TURN endpoints
+previously constructed a `tcp://` URI, which the TLS carrier parser
+rejected; the correct `tls://` scheme is now used.  ICE_DBG traces added
+on the TURN build / attempt / connect and allocate paths to aid diagnosis.
+
+### fix: TLS `listen` error code on missing credentials
+
+`TlsLink::listen` returned `GN_ERR_LIMIT_REACHED` when called without TLS
+credentials configured.  The honest code is `GN_ERR_INVALID_STATE` (the
+link is not yet configured to accept connections); test updated to assert
+the corrected return value.
+
+### feat: `provides_flags` vtable slot in security plugins
+
+`security-noise` and `security-null` now implement the `provides_flags`
+vtable slot.  `noise` advertises `GN_SEC_FLAG_E2E_ENCRYPTED |
+GN_SEC_FLAG_AUTHENTICATED | GN_SEC_FLAG_FORWARD_SECRECY`.  `null` adds a
+link-only provider mode that returns `GN_TRUST_LINK_ENCRYPTED` without
+full mutual authentication, enabling plaintext-transport deployments that
+still signal transport-layer encryption to the kernel.
+
+### feat: ICE P2300 timer migration, nomination logic, topology-aware config
+
+The ICE session's retransmission and nomination timers migrated from raw
+`asio::steady_timer` to the P2300 sender/scheduler model, removing the last
+direct Asio timer usage from `session.cpp`.  New config knobs
+`ice.max_check_retries` (1–16) and `ice.nomination_wait_ms` (0–10 000 ms)
+are parsed from JSON; `set_prefer_turn_tcp` and `set_security_overhead`
+topology-aware setters added.  Tag-filtered debug output via
+`ICE_DEBUG_TAGS` env var.  New test suite
+`tests/test_ice_nomination.cpp` (464 lines) covering aggressive and regular
+nomination, peer-reflexive handling, and wait-timeout paths.
+
+### feat: TCP static archive target
+
+`goodnet_link_tcp_static` — a CMake `STATIC` library target — is now built
+and installed alongside the shared plugin.  Consumers that link `TcpLink`
+directly (examples, bench, integration fixtures) can use
+`GoodNet::link_tcp_static` via `find_package(GoodNetLinkTcp)` instead of
+depending on `dlopen`.  `tcp.hpp` is installed with the target.
+
+### feat: UDP GCC 16 / C++26 ring-slot send path
+
+The UDP send path now pre-allocates a fixed ring of reusable buffer slots
+instead of calling `make_shared` per frame.  Eliminates per-frame heap
+allocation on the hot path under GCC 16 / C++26 where the old approach
+triggered an ODR diagnostic.  `ICE_DEBUG=1` recv/dispatch tracing added
+(zero overhead when the env var is unset).
+
+### feat: heartbeat publishes RTT samples to kernel
+
+After matching a PONG to its PING, the heartbeat handler now calls
+`host_api->notify_rtt_sample(conn, rtt)`.  The kernel folds each
+observation into its per-connection EWMA and republishes via
+`on_path_event(RTT_UPDATE)` so strategy plugins rank connections by
+latency without maintaining their own probes.  The raw instantaneous
+sample is still available through the `gn.heartbeat` extension's
+`get_rtt` slot.
+
+### feat: store handler subscription cleanup on detach / destroy
+
+`StoreHandler` now exposes `detach_conn(conn)` to prune wire-side
+subscriptions when a peer disconnects, and `~StoreHandler` clears
+`subs_` and `owners_` under the mutex after unsubscribing from the kernel
+channel.  Previously stale rows accumulated until process exit.  New test
+asserts subscription count reaches zero after destroy.
+
+### feat: sqlite store — correct error mapping and prefix UB fix
+
+`SqliteStore` ctor now maps DB-open / migration / IO failures to their
+correct `sdk/types.h` codes (was always `GN_ERR_OUT_OF_MEMORY`).
+Prefix-scan upper-bound correctly handles keys ending in `0xFF`; previously
+a prefix scan over such a range returned no records.
+
+### build: `CMakePresets.json` tracked in git; release preset includes bench
+
+`CMakePresets.json` is now committed to the repository.  The `release`
+preset sets `GOODNET_BUILD_BENCH=ON` so the bench suite is always built
+alongside production artifacts in CI and local release builds.  The
+`.gitignore` whitelist was updated to allow the file.
+
+### build: `protocol-gnet` CMake `ARCHIVE DESTINATION` fix
+
+The static archive for `protocol-gnet` was installed to the default
+(wrong) location.  `ARCHIVE DESTINATION` is now explicitly set to
+`${CMAKE_INSTALL_LIBDIR}` in `CMakeLists.txt`.
+
+### build: security plugins adopt C++26 designated initializers
+
+`security-noise` and `security-null` switch their `gn_plugin_descriptor_t`
+definitions from positional to designated initializers, keeping future
+vtable slots zero-initialised by default and avoiding the class of bug
+fixed in ICE above.
+
+### build: all plugin flakes point to `github:GoodNet-io/goodnet/dev`
+
+Every plugin's `flake.nix` changed the `goodnet` input from
+`git+file:../../..` (developer-local path) to
+`github:GoodNet-io/goodnet/dev`.  External consumers building a plugin in
+isolation now resolve the kernel from the public registry rather than
+requiring a local checkout.  Affected: tcp, udp, ws, ice, tls, ipc,
+security/noise, security/null, handlers/store, handlers/heartbeat.
+
+### bench: intel\_pstate HWP governor detection
+
+`env_facts.sh` now reads `scaling_driver` and compares `scaling_max_freq`
+against `cpuinfo_max_freq`.  When the driver is `intel_pstate` and
+`powersave` governor is in use but `scaling_max_freq == cpuinfo_max_freq`,
+the environment is tagged `intel_pstate_at_max` and the report renders a
+clarifying note ("HWP at max freq; governor label is misleading") instead
+of the false throttling warning that was previously emitted.  A new bench
+snapshot `bench/reports/852c20a.md` is included.
+
 ## [1.0.0-rc6] — 2026-06-09
 
 ### fix: ICE multi-connect signal routing (#18)
