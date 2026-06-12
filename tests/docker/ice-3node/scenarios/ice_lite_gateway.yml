@@ -14,6 +14,11 @@ services:
     environment:
       NAT_MODE: full_cone
 
+  peer_a:
+    environment:
+      FORCE_INITIATOR: "true"
+
   peer_b:
     environment:
       ICE_LITE_MODE: "true"
+      FORCE_RESPONDER: "true"

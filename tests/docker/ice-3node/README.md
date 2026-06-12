@@ -153,12 +153,21 @@ for debugging.
 
 ## Status
 
-**This is a scaffold** — `peer/run.sh` is a placeholder entrypoint
-(boots `goodnetd` + does an env-substitution pass on the config),
-and the NAT-emulation networking under `nat-a/` / `nat-b/` is
-stubbed. The directory + compose stack + scenario overrides
-establish the contract for CI integration while the C++ harness
-binary that drives the actual connect-and-write-done dance lands
-iteratively. Running `run_all.sh` today brings up the topology
-cleanly and reports timeout for every scenario — useful for
-shape-checking the compose wiring.
+13/14 scenarios pass. `quic_over_ice` requires `QUIC_ENABLED=1`.
+
+| Scenario | Status | Notes |
+|---|---|---|
+| `all_relay` | PASS | |
+| `full_cone` | PASS | |
+| `hairpin` | PASS | |
+| `ice_lite_gateway` | PASS | |
+| `ice_restart` | PASS | |
+| `ice_tcp` | PASS | TCP TURN CID-collision fix |
+| `ipv6_mdns` | PASS | |
+| `multi_turn_failover` | PASS | |
+| `no_udp_fallback` | PASS | coturn TLS on 5349/tcp; UDP blocked end-to-end |
+| `port_prediction` | PASS | stride detection + STUN/TURN CID routing fix |
+| `prflx` | PASS | |
+| `quic_over_ice` | SKIP | set `QUIC_ENABLED=1` to run |
+| `restricted_mtu` | PASS | |
+| `symmetric_relay` | PASS | |

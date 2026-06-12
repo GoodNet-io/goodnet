@@ -26,9 +26,9 @@ services:
       TURN_PASS:   bench-only-credentials
       TURN_REALM:  ice3.local
     healthcheck:
-      test: ["CMD", "sh", "-c", "nc -z 127.0.0.1 5349"]
+      test: ["CMD-SHELL", "openssl s_client -connect 127.0.0.1:5349 < /dev/null 2>&1 | grep -q CONNECTED"]
       interval: 2s
-      retries: 10
+      retries: 15
 
   nat_a:
     environment:

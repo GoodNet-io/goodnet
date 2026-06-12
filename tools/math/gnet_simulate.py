@@ -245,7 +245,6 @@ def simulate_ice_upgrade(G: Graph, ice_cfg: IceUpgradeConfig,
     edges = list(G.edges())
     n_edges = len(edges)
 
-    # Track edge states
     is_direct = {(min(u,v), max(u,v)): False for u, v in edges}
 
     results = []
@@ -261,13 +260,11 @@ def simulate_ice_upgrade(G: Graph, ice_cfg: IceUpgradeConfig,
             "frac_direct": frac_direct,
         })
 
-        # Attempt upgrade for each relay edge
         for u, v in edges:
             key = (min(u,v), max(u,v))
             if is_direct[key]:
                 continue
-            # ICE upgrade attempt with probability based on NAT mix
-            if random.random() < ice_cfg.avg_ice_success_rate:
+            if random.random() < ice_cfg.effective_success_rate:
                 is_direct[key] = True
                 G.set_edge(u, v, edge_type="direct")
 
@@ -339,9 +336,11 @@ def analyze_upgrade_dynamics():
     print("  ICE Upgrade Dynamics (relay→direct self-optimization)")
     print("=" * 70)
 
-    print(f"\n  ICE success rate: {ice.avg_ice_success_rate:.1%}")
-    print(f"  Upgrade time:     {ice.upgrade_time_s:.1f}s")
-    print(f"  Lambda:           {ice.upgrade_rate:.3f}/s")
+    print(f"\n  State:            ok")
+    print(f"  check_interval:   {ice.check_interval_ms:.0f} ms × {ice.n_candidate_pairs} pairs = {ice.ice_check_ms/1000:.0f}s check phase")
+    print(f"  Theoretical time: {ice.upgrade_time_s:.1f}s → capped at session_timeout={ice.session_timeout_s}s")
+    print(f"  ICE success (th): {ice.avg_ice_success_rate:.1%}  effective: {ice.effective_success_rate:.1%}")
+    print(f"  Lambda:           {ice.upgrade_rate:.4f}/s")
 
     # Theoretical decay
     print("\n  Theoretical relay fraction R(t) = e^(-λt):")

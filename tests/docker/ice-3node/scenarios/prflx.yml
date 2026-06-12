@@ -4,12 +4,18 @@
 # the nominated pair should carry remote_type=prflx.
 # Verifies the prflx candidate gathering / nomination path (RFC 8445 §7.3.1.3).
 services:
+  nat_a:
+    environment:
+      PEER_LAN_SUBNET: "10.30.0.0/24"
+      PEER_LAN_GW: "10.10.0.30"
+  nat_b:
+    environment:
+      PEER_LAN_SUBNET: "10.20.0.0/24"
+      PEER_LAN_GW: "10.10.0.20"
   peer_a:
     environment:
-      ICE_HOST_ONLY: "true"
       ICE_AGGRESSIVE_NOMINATION: "true"
   peer_b:
     environment:
-      ICE_HOST_ONLY: "true"
       ICE_AGGRESSIVE_NOMINATION: "true"
       WAIT_FOR_PEER: A

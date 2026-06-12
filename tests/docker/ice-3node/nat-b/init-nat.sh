@@ -67,6 +67,12 @@ UPNP_EXT_IP="$(ip -o -4 addr show dev "${WAN_IFACE}" 2>/dev/null \
 echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 echo 1 > /proc/sys/net/ipv4/conf/all/forwarding 2>/dev/null || true
 
+if [ -n "${PEER_LAN_SUBNET:-}" ] && [ -n "${PEER_LAN_GW:-}" ]; then
+    ip route replace "${PEER_LAN_SUBNET}" via "${PEER_LAN_GW}" 2>/dev/null \
+        || true
+    echo "[init-nat] added cross-LAN route ${PEER_LAN_SUBNET} via ${PEER_LAN_GW}"
+fi
+
 # Wipe any rules from a previous run.
 iptables -t nat -F
 iptables -t filter -F

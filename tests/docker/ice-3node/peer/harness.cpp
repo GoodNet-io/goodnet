@@ -355,6 +355,10 @@ void on_conn_state(void* /*user_data*/, const gn_conn_event_t* ev) {
         g_conn_ready.store(true);
         timed_log("conn CONNECTED");
     } else if (ev->kind == GN_CONN_EVENT_DISCONNECTED) {
+        if (g_active_conn.load() == ev->conn) {
+            g_active_conn.store(GN_INVALID_ID);
+            g_conn_ready.store(false);
+        }
         timed_log("conn DISCONNECTED");
     } else if (ev->kind == GN_CONN_EVENT_TRUST_UPGRADED) {
         timed_log("conn TRUST_UPGRADED");
@@ -383,6 +387,10 @@ int main() {
                                                    "/plugins");
     const bool quic_over_ice =
         getenv_default("QUIC_OVER_ICE", "false") == "true";
+    const bool force_initiator =
+        getenv_default("FORCE_INITIATOR", "false") == "true";
+    const bool force_responder =
+        getenv_default("FORCE_RESPONDER", "false") == "true";
     const double timeout_s = std::stod(
         getenv_default("HARNESS_TIMEOUT_S", "30"));
 
@@ -775,7 +783,7 @@ int main() {
     // The non-initiating side stays in the signal pump loop and lets
     // ICE allocate a responder-role session through the inbound
     // `offer_eoc` slot once the peer's local candidates arrive.
-    const bool is_initiator = (pk_hex < peer_pk_hex);
+    const bool is_initiator = force_initiator || (!force_responder && (pk_hex < peer_pk_hex));
     gn_conn_id_t conn = GN_INVALID_ID;
     if (is_initiator) {
         if (gn_result_t rc = gn_core_connect(core, uri.c_str(),

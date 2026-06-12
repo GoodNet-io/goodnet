@@ -10,17 +10,22 @@ DETERMINISTICALLY and sequentially across destinations so the
 peer-side port-prediction salvo at `srflx_port + 1, + 2, …`
 hits a working pair.
 
-Implementation: a userland UDP forwarder bound on the WAN-side
-interface that LAN traffic gets redirected into via
-`iptables -t nat -A PREROUTING -i $LAN_IFACE -p udp -j REDIRECT
---to-ports $REDIRECT_PORT`. For each incoming (lan_addr,
+Implementation: a userland UDP forwarder that LAN traffic is
+intercepted into via `iptables -t mangle -A PREROUTING -i
+$LAN_IFACE -p udp -j TPROXY --on-port $REDIRECT_PORT`. TPROXY
+(not REDIRECT) preserves the original destination address so
+`IP_RECVORIGDSTADDR` returns the TRUE upstream server address
+— REDIRECT rewrites it to the local listener before delivery,
+making recovery impossible. For each incoming (lan_addr,
 dst_addr) flow, the daemon picks the next sequential WAN port
 (starting at STRIDE_BASE, step 1) and binds an upstream socket
 to it. Each new destination from the same LAN source gets the
 NEXT port — so peer A's first egress lands on port N, the
 second on N+1, etc. Peers learn N from STUN against the
 coordinator, and the port-prediction code tries N+k against
-peer B's destination.
+peer B's destination. Upstream responses are forwarded through
+a per-server IP_TRANSPARENT socket so the source address seen
+by the LAN peer is the real STUN server, not the forwarder.
 
 This is a synthetic fixture — production NATs do whatever Linux
 conntrack chooses. The point is to exercise the prediction
@@ -31,6 +36,7 @@ on.
 import os
 import select
 import socket
+import struct
 import sys
 import threading
 
@@ -40,11 +46,14 @@ REDIRECT_PORT = int(os.environ.get("REDIRECT_PORT", "9999"))
 STRIDE_BASE = int(os.environ.get("STRIDE_BASE", "40000"))
 STRIDE_STEP = int(os.environ.get("STRIDE_STEP", "1"))
 
+SOL_IP = 0
+IP_RECVORIGDSTADDR = 20
+IP_TRANSPARENT = 19
+
 
 def get_wan_ip(iface: str) -> str:
     """Read the first IPv4 address bound to `iface`."""
     import fcntl
-    import struct
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         # SIOCGIFADDR
@@ -63,10 +72,8 @@ def main() -> int:
 
     listener = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    # IP_TRANSPARENT-like behaviour isn't available without
-    # CAP_NET_ADMIN + the TPROXY target; for the harness we
-    # accept REDIRECT semantics where the original dst is read
-    # via SO_ORIGINAL_DST.
+    listener.setsockopt(SOL_IP, IP_RECVORIGDSTADDR, 1)
+    listener.setsockopt(SOL_IP, IP_TRANSPARENT, 1)  # required for TPROXY delivery
     listener.bind(("0.0.0.0", REDIRECT_PORT))
 
     # Per (lan_endpoint, dst_endpoint) → bound WAN socket.
@@ -74,7 +81,28 @@ def main() -> int:
     next_port = STRIDE_BASE
     lock = threading.Lock()
 
-    SO_ORIGINAL_DST = 80  # netfilter; same value for udp via getsockopt
+    # Per upstream_addr → transparent reply socket that spoofs
+    # the source address of STUN responses back to LAN hosts.
+    # Requires CAP_NET_ADMIN (present in nat containers).
+    reply_socks: dict = {}
+    reply_lock = threading.Lock()
+
+    def get_reply_sock(upstream_addr):
+        with reply_lock:
+            if upstream_addr not in reply_socks:
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.setsockopt(SOL_IP, IP_TRANSPARENT, 1)
+                    s.bind(upstream_addr)
+                    reply_socks[upstream_addr] = s
+                    print(f"[stride-nat] transparent reply socket "
+                          f"for {upstream_addr}", flush=True)
+                except OSError as exc:
+                    print(f"[stride-nat] WARN: transparent bind "
+                          f"{upstream_addr}: {exc}", flush=True)
+                    reply_socks[upstream_addr] = None
+            return reply_socks[upstream_addr]
 
     def upstream_reader(up_sock: socket.socket,
                         lan_addr) -> None:
@@ -82,11 +110,20 @@ def main() -> int:
             up_sock.settimeout(30.0)
             while True:
                 try:
-                    data, _ = up_sock.recvfrom(65535)
+                    data, peer_addr = up_sock.recvfrom(65535)
                 except socket.timeout:
                     return
                 if not data:
                     return
+                # Forward response appearing to come from the original
+                # upstream server so the LAN peer's carrier matches it.
+                reply = get_reply_sock(peer_addr)
+                if reply is not None:
+                    try:
+                        reply.sendto(data, lan_addr)
+                        continue
+                    except OSError:
+                        pass
                 listener.sendto(data, lan_addr)
         except OSError:
             return
@@ -96,20 +133,30 @@ def main() -> int:
 
     while True:
         try:
-            data, lan_addr = listener.recvfrom(65535)
+            msg, ancdata, _flags, lan_addr = listener.recvmsg(
+                65535, socket.CMSG_SPACE(16))
         except OSError as exc:
             print(f"[stride-nat] recv error: {exc}",
                   file=sys.stderr, flush=True)
             return 1
 
-        # REDIRECT for UDP doesn't expose SO_ORIGINAL_DST on
-        # connectionless sockets in stock Linux; the harness
-        # uses an out-of-band signalling channel (the coordinator
-        # publishes the intended dst into the signal volume).
-        # For the scaffold path we accept that the destination
-        # lookup is left as a TODO and treat each new lan_addr
-        # as a fresh flow that needs a fresh WAN port.
-        key = lan_addr
+        # Recover original destination from IP_RECVORIGDSTADDR ancdata.
+        # struct sockaddr_in: sin_family(2H), sin_port(2H net), sin_addr(4s), pad(8x)
+        orig_dst = None
+        for cmsg_level, cmsg_type, cmsg_data in ancdata:
+            if cmsg_level == SOL_IP and cmsg_type == IP_RECVORIGDSTADDR:
+                orig_port = struct.unpack_from("!H", cmsg_data, 2)[0]
+                orig_ip = socket.inet_ntoa(cmsg_data[4:8])
+                orig_dst = (orig_ip, orig_port)
+                break
+
+        if orig_dst is None:
+            print("[stride-nat] WARN: no orig dst, dropping", flush=True)
+            continue
+
+        # Key on (src, dst) so each new destination from the same
+        # LAN source allocates a fresh sequential WAN port.
+        key = (lan_addr, orig_dst)
         with lock:
             entry = flows.get(key)
             if entry is None:
@@ -126,20 +173,12 @@ def main() -> int:
                     daemon=True,
                 )
                 t.start()
-                print(f"[stride-nat] flow {lan_addr} -> "
-                      f"WAN port {wan_port}",
+                print(f"[stride-nat] flow {lan_addr} -> {orig_dst} "
+                      f"via WAN port {wan_port}",
                       flush=True)
-            up, wan_port = entry
+            up, _wan_port = entry
 
-        # Without SO_ORIGINAL_DST resolution the upstream forward
-        # target is unknown; the harness signal-dir hop will
-        # carry the intended destination in a follow-up. For
-        # now the daemon stays receive-only on this path so the
-        # scenario's compose validation + iptables wiring can
-        # be verified without panicking. Production-shape
-        # implementation lands once the harness binary is in
-        # tree and can hand the daemon the connect target.
-        _ = data
+        up.sendto(msg, orig_dst)
 
 
 if __name__ == "__main__":

@@ -91,6 +91,14 @@ UPNP_EXT_IP="$(ip -o -4 addr show dev "${WAN_IFACE}" 2>/dev/null \
 echo 1 > /proc/sys/net/ipv4/ip_forward 2>/dev/null || true
 echo 1 > /proc/sys/net/ipv4/conf/all/forwarding 2>/dev/null || true
 
+# Optional cross-LAN static route — set by scenarios that need
+# inter-LAN reachability (e.g. prflx host-only candidate tests).
+if [ -n "${PEER_LAN_SUBNET:-}" ] && [ -n "${PEER_LAN_GW:-}" ]; then
+    ip route replace "${PEER_LAN_SUBNET}" via "${PEER_LAN_GW}" 2>/dev/null \
+        || true
+    echo "[init-nat] added cross-LAN route ${PEER_LAN_SUBNET} via ${PEER_LAN_GW}"
+fi
+
 # Wipe any rules from a previous run.
 iptables -t nat -F
 iptables -t filter -F
@@ -192,23 +200,31 @@ case "${NAT_MODE}" in
         ;;
     symmetric_stride)
         # Synthetic symmetric NAT with deterministic
-        # sequential-port allocation. Outbound UDP is redirected
-        # into a userland forwarder which binds upstream sockets
-        # on a strictly increasing WAN port (base + k*step).
-        # Used by the port-prediction scenario so the peer's
-        # +1/+2/+3 salvo lands on a learnable destination.
+        # sequential-port allocation. Outbound UDP is intercepted
+        # via iptables TPROXY (not REDIRECT) so that the userland
+        # forwarder sees the ORIGINAL destination address via
+        # IP_RECVORIGDSTADDR — REDIRECT rewrites the destination
+        # to a local IP before delivery, making it impossible to
+        # recover the real upstream server address.
         REDIRECT_PORT="${REDIRECT_PORT:-9999}"
         STRIDE_BASE="${STRIDE_BASE:-40000}"
         STRIDE_STEP="${STRIDE_STEP:-1}"
-        iptables -t nat -A PREROUTING -i "${LAN_IFACE}" \
-            -p udp -j REDIRECT --to-ports "${REDIRECT_PORT}"
+        # Policy routing: packets marked 0x1 are delivered locally
+        # regardless of destination IP (required for TPROXY).
+        ip rule add fwmark 0x1 lookup 100 2>/dev/null || true
+        ip route add local 0.0.0.0/0 dev lo table 100 2>/dev/null || true
+        # TPROXY: intercept all UDP from LAN (except the forwarder's
+        # own listen port to avoid loops) and hand to stride-nat.
+        iptables -t mangle -A PREROUTING -i "${LAN_IFACE}" \
+            -p udp ! --dport "${REDIRECT_PORT}" \
+            -j TPROXY --on-port "${REDIRECT_PORT}" --tproxy-mark 0x1/0x1
         # Also masquerade non-UDP traffic so STUN-over-TCP and
         # control plane traffic still reaches the Internet
         # subnet without being trapped by the forwarder.
         iptables -t nat -A POSTROUTING -s "${LAN_SUBNET}" \
             -o "${WAN_IFACE}" ! -p udp -j MASQUERADE
         export REDIRECT_PORT STRIDE_BASE STRIDE_STEP \
-               LAN_IFACE WAN_IFACE
+               LAN_IFACE WAN_IFACE LAN_SUBNET
         echo "[init-nat] launching stride-nat daemon" \
              "base=${STRIDE_BASE} step=${STRIDE_STEP}"
         python3 /usr/local/bin/stride-nat.py &

@@ -21,6 +21,10 @@ services:
   peer_a:
     environment:
       ICE_PORT_PREDICTION_STRIDE_MAX: "8"
+      # Second STUN endpoint (TURN server responds to Binding Requests)
+      # gives A two probes to two different WAN destinations so stride-nat
+      # allocates distinct external ports → symmetric-stride detected.
+      STUN_URI_EXTRA: "stun://10.10.0.11:3478"
   peer_b:
     environment:
       ICE_PORT_PREDICTION_STRIDE_MAX: "8"

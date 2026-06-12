@@ -4,6 +4,54 @@ All notable changes to this project. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the project
 uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### test: ice-3node harness — 12/14 scenarios pass
+
+Fixes bringing the `tests/docker/ice-3node` docker suite from 10/14 to
+≥12/14 PASS (ice_tcp known gap; quic_over_ice deferred):
+
+**`port_prediction`**: `init-nat.sh` `symmetric_stride` mode switched from
+`iptables REDIRECT` to TPROXY with policy routing (`fwmark 0x1 / table 100`).
+`REDIRECT` rewrites the destination before socket delivery so
+`IP_RECVORIGDSTADDR` returned the post-redirect local address; all packets
+shared a single flow key and the forwarder sent packets to itself.  TPROXY
+preserves the original destination — `IP_RECVORIGDSTADDR` now returns the real
+upstream STUN server address.  `stride-nat.py` listener socket gains
+`IP_TRANSPARENT` (required for TPROXY delivery); reply sockets already used it
+to spoof STUN server source addresses back to LAN peers.
+
+**`no_udp_fallback`**: `coturn/coturn:latest` ships on Alpine; the previous
+`nc -z` health check failed (no `nc` in image).  Changed to
+`openssl s_client -connect 127.0.0.1:5349 < /dev/null 2>&1 | grep -q CONNECTED`.
+
+**`prflx`**: Removed `ICE_HOST_ONLY: "true"` from both peers (the flag
+suppressed STUN gather so srflx candidates were never collected, making the
+check ladder see only host-to-host pairs across NAT — which fail).  Added
+`PEER_LAN_SUBNET` / `PEER_LAN_GW` static routes on both NAT containers so
+host-candidate direct paths exist for the prflx nomination.  `nat-b/init-nat.sh`
+gains the same cross-LAN route block already present in `nat-a`.
+
+**`ice_lite_gateway`**: Deterministic role assignment via `FORCE_INITIATOR` /
+`FORCE_RESPONDER` env vars in `peer/harness.cpp`.  An ice-lite peer always
+acts as controlled agent; without a forced split both peers could elect the
+same role and the session never progressed beyond the gathering phase.
+
+**`turn-tls/Dockerfile`**: Rebased onto `coturn/coturn:latest` to avoid
+`apt-get` network access at image-build time; `realm` Dockerfile arg now uses
+double-quotes so the variable is expanded.
+
+**`plugins/links/ice/session.cpp`**: `handle_gather_response` now arms a 200ms
+window before calling `on_gathering_complete()` when additional STUN probes are
+still pending.  Previously, the first response immediately cleared
+`pending_stun_probes_`, dropping the second probe's response and preventing
+symmetric-stride detection.  The `port_prediction` docker scenario now passes.
+
+**`tools/math/gnet_model.py`**: Added `QUIC` and `IPC` transport types;
+`TransportProps` gains `handshake_us` field populated from 852c20a bench data.
+`gnet_simulate.py`: exposes `ice_broken` state in the ICE upgrade model and
+updated diagnostics output.
+
 ## [1.0.0-rc7] — 2026-06-11
 
 ### fix: TRUST_UPGRADED fires for loopback and intra-node connections
