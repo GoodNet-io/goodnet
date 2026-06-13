@@ -130,6 +130,7 @@ if(TARGET goodnet_ice_objects AND TARGET goodnet_udp_objects)
     target_link_libraries(bench_ice PRIVATE
         goodnet_bench_harness
         goodnet_ice_objects
+        goodnet_turn_objects
         goodnet_udp_objects
         OpenSSL::Crypto
         PkgConfig::SODIUM
@@ -166,6 +167,7 @@ if(TARGET goodnet_ice_objects)
     target_link_libraries(bench_failover PRIVATE
         goodnet_bench_harness
         goodnet_ice_objects
+        goodnet_turn_objects
         OpenSSL::Crypto
         PkgConfig::SODIUM
         benchmark::benchmark_main
