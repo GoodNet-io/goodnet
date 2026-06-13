@@ -91,6 +91,6 @@ GN_VTABLE_API_SIZE_FIRST(gn_mdns_api_t);
 
 #ifdef __cplusplus
 } /* extern "C" */
-#endif
+#endif /* __cplusplus */
 
 #endif /* GOODNET_SDK_EXTENSIONS_MDNS_H */
