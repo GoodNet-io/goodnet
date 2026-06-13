@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/test/conformance/`
-**Last verified:** 2026-05-06
+**Last verified:** 2026-05-25
 **Stability:** v1.x; new typed-test contracts may be added without
               breaking existing instantiations.
 
@@ -19,10 +19,14 @@
 | [RFC 8445](https://datatracker.ietf.org/doc/html/rfc8445) | Interactive Connectivity Establishment (ICE) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 5389](https://datatracker.ietf.org/doc/html/rfc5389) | Session Traversal Utilities for NAT (STUN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) | Traversal Using Relays around NAT (TURN) | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
-| [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) | Trickle ICE for SDP | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 6062](https://datatracker.ietf.org/doc/html/rfc6062) | TURN Extensions for TCP Allocations | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 8838](https://datatracker.ietf.org/doc/html/rfc8838) | Trickle ICE for SDP | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8305](https://datatracker.ietf.org/doc/html/rfc8305) | Happy Eyeballs Version 2 | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8899](https://datatracker.ietf.org/doc/html/rfc8899) | Packetization Layer Path MTU Discovery for Datagram Transports | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
 | [RFC 8085](https://datatracker.ietf.org/doc/html/rfc8085) | UDP Usage Guidelines | ✓ full | [`plugins/links/ice`](../../plugins/links/ice) |
+| [RFC 6886](https://datatracker.ietf.org/doc/html/rfc6886) | NAT Port Mapping Protocol (NAT-PMP) | ✓ full | [`plugins/links/portmap`](../../plugins/links/portmap) |
+| [RFC 6887](https://datatracker.ietf.org/doc/html/rfc6887) | Port Control Protocol (PCP) | 🚧 partial | [`plugins/links/portmap`](../../plugins/links/portmap) |
+| [RFC 6970](https://datatracker.ietf.org/doc/html/rfc6970) | Universal Plug and Play (UPnP) Internet Gateway Device-Port Control Protocol Interworking Function (IGD-PCP IWF) | ✓ full | [`plugins/links/portmap`](../../plugins/links/portmap) |
 | [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) | Multicast DNS | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 | [draft-ietf-mmusic-mdns-ice-candidates](https://datatracker.ietf.org/doc/draft-ietf-mmusic-mdns-ice-candidates/) | Using Multicast DNS to Protect Privacy When Exposing ICE Candidates | 🚧 partial | [`plugins/links/ice`](../../plugins/links/ice) |
 

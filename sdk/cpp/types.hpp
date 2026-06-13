@@ -8,11 +8,20 @@
 #include <array>
 #include <cstdint>
 #include <expected>
+#include <format>
 #include <span>
 #include <string>
 #include <string_view>
 
 #include <sdk/types.h>
+
+template <>
+struct std::formatter<gn_result_e, char> {
+    constexpr auto parse(std::format_parse_context& ctx) { return ctx.begin(); }
+    auto format(gn_result_e v, std::format_context& ctx) const {
+        return std::format_to(ctx.out(), "{}", gn_strerror(v));
+    }
+};
 
 namespace gn {
 

@@ -94,4 +94,14 @@ std::size_t LinkRegistry::size() const noexcept {
     return by_id_.size();
 }
 
+std::vector<LinkEntry> LinkRegistry::snapshot() const {
+    std::shared_lock lock(mu_);
+    std::vector<LinkEntry> result;
+    result.reserve(by_scheme_.size());
+    for (const auto& [scheme, entry] : by_scheme_) {
+        result.push_back(entry);
+    }
+    return result;
+}
+
 } // namespace gn::core

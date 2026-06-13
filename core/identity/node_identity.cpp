@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
+#include <memory>
 #include <span>
 #include <string>
 #include <sys/stat.h>
@@ -31,6 +32,8 @@
 #include <vector>
 
 #include <core/util/log.hpp>
+
+#include "libsodium_signer.hpp"
 
 namespace gn::core::identity {
 
@@ -264,7 +267,65 @@ parse(std::span<const std::uint8_t> buf) {
     out.user_   = std::move(user);
     out.device_ = std::move(device);
 
-    auto att = Attestation::create(out.user_, out.device_.public_key(),
+    /// Build the IdentitySigner from the user keypair's libsodium
+    /// secret-key blob. Phase 1: in-process libsodium signer that
+    /// reproduces the previous `KeyPair::sign` path bit-for-bit.
+    /// Phase 2 swaps this for HSM-backed signers without touching
+    /// any call site that already migrated to `signer()->sign(...)`.
+    if (!out.user_.has_secret()) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_INVALID_STATE,
+            "NodeIdentity::compose: user keypair has no secret"});
+    }
+    out.signer_ = std::make_unique<LibsodiumSigner>(
+        out.user_.secret_key_view());
+
+    auto att = Attestation::create(*out.signer_,
+                                    out.user_.public_key(),
+                                    out.device_.public_key(),
+                                    expiry_unix_ts);
+    if (!att) return std::unexpected(att.error());
+    out.att_ = *att;
+
+    out.address_ = derive_address(out.device_.public_key());
+    return out;
+}
+
+::gn::Result<NodeIdentity>
+NodeIdentity::from_signer(std::unique_ptr<IdentitySigner> signer,
+                          std::int64_t                    expiry_unix_ts) {
+    if (signer == nullptr) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_NULL_ARG,
+            "NodeIdentity::from_signer: signer is null"});
+    }
+
+    /// Pull the user public key through the plugin signer — this is
+    /// the binding identifier the kernel embeds in the attestation
+    /// and exposes through `node_identity()->user().public_key()`.
+    ::gn::PublicKey user_pk{};
+    const auto rc = signer->pubkey(
+        std::span<std::uint8_t, 32>{user_pk});
+    if (rc != GN_OK) {
+        return std::unexpected(::gn::Error{
+            rc, "NodeIdentity::from_signer: signer pubkey query failed"});
+    }
+
+    auto device_kp = KeyPair::generate();
+    if (!device_kp) return std::unexpected(device_kp.error());
+
+    NodeIdentity out;
+    out.user_   = KeyPair::from_public_key(user_pk);
+    out.device_ = std::move(*device_kp);
+
+    /// Sign the attestation through the plugin signer. The Phase-1
+    /// `IdentitySigner` overload of `Attestation::create` takes
+    /// `user_pk` separately so it works without a populated user
+    /// `KeyPair::sign` path.
+    out.signer_ = std::move(signer);
+    auto att = Attestation::create(*out.signer_,
+                                    user_pk,
+                                    out.device_.public_key(),
                                     expiry_unix_ts);
     if (!att) return std::unexpected(att.error());
     out.att_ = *att;

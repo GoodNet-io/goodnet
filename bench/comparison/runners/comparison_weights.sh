@@ -40,6 +40,12 @@ fi
 if command -v openssl >/dev/null 2>&1; then
     stacks[openssl]="$(readlink -f "$(command -v openssl)")"
 fi
+# GoodNet static kernel — statically links every plugin; `libs_sum` is
+# just glibc + libstdc++ as with Rust binaries. Apples-to-apples with
+# the Rust single-binary stacks.
+if [[ -f build-static/bin/goodnetd ]]; then
+    stacks[goodnet_static]="build-static/bin/goodnetd"
+fi
 
 weigh_one() {
     local path="$1"
@@ -62,7 +68,7 @@ weigh_one() {
     echo '  "metric": "comparison_weights",'
     echo '  "stacks": {'
     first=1
-    for name in libp2p_rust iroh_rust iperf3 socat openssl; do
+    for name in goodnet_static libp2p_rust iroh_rust iperf3 socat openssl; do
         path="${stacks[$name]:-}"
         if [[ -z "$path" ]]; then continue; fi
         read -r b l < <(weigh_one "$path")

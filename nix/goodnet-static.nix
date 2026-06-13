@@ -1,19 +1,19 @@
-# Truly-static kernel build via `pkgsStatic`. Produces a
-# self-contained `goodnet` binary whose only run-time dependency is
-# the kernel's own `ld-linux-musl-*.so.1` interpreter — no shared
-# OpenSSL, libsodium, spdlog, fmt, libstdc++, libgcc_s, or libc on
-# the runtime side. The bundled plugin set (TCP, UDP, IPC, Noise,
-# Null, heartbeat, etc.) is linked into the kernel binary via
-# `-DGOODNET_STATIC_PLUGINS=ON`, so there are no neighbouring `.so`
-# plugin files either.
+# Truly-static kernel build via `pkgsStatic` (musl + statically-archived
+# dependencies). No shared OpenSSL, libsodium, spdlog, fmt, libstdc++,
+# libgcc_s, or libc on the runtime side. The bundled plugin set (TCP, UDP,
+# IPC, Noise, Null, heartbeat, etc.) is linked in via
+# `-DGOODNET_STATIC_PLUGINS=ON`.
+#
+# **Output:** `lib/libgoodnet_kernel.a` (static archive) + `lib/libgoodnet_
+# kernel_objects.a` + worker subprocess ELFs under `bin/` (remote_echo,
+# remote_noise_stub, remote_handler_stub, remote_slow_stub). The
+# operator-facing daemon (`goodnetd`) ships from `github.com/GoodNet-io/
+# goodnetd` and is NOT part of this derivation.
 #
 # This is the canonical artefact behind `nix run .#build -- static`:
-# the `gn-build` wrapper script routes that variant through
-# `nix build .#goodnet-core-static`, copies the binary to the
-# operator's `build-static/bin/` for parity with the other variants,
-# and the result is a single ELF that runs unchanged inside a
-# `scratch` or `distroless` container, in a chroot, or on a stripped
-# embedded rootfs.
+# the `gn-build` wrapper routes that variant through
+# `nix build .#goodnet-core-static` and mirrors the worker ELFs + .a
+# archives at `build-static/bin/` and `build-static/lib/`.
 #
 # Plugin slots that need POSIX-only or `dlopen`-leaning subsystems
 # (handler-store/sqlite, handler-dns/c-ares, ICE-with-libp2p tools,
@@ -25,7 +25,7 @@
 # `CMakeLists.txt`; building under pkgsStatic activates those gates
 # so a missing static sqlite / c-ares does not block the build.
 
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   static = pkgs.pkgsStatic;
@@ -68,7 +68,7 @@ let
 in
 static.gcc15Stdenv.mkDerivation {
   pname   = "goodnet-core-static";
-  version = "1.0.0-rc4";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;
@@ -87,6 +87,7 @@ static.gcc15Stdenv.mkDerivation {
     fmt-static
     spdlog-static
     sodium-static
+    (import ./stdexec.nix { inherit pkgs; })
   ] ++ (with static; [
     asio
     nlohmann_json
@@ -115,8 +116,8 @@ static.gcc15Stdenv.mkDerivation {
     "-DGOODNET_USE_PCH=OFF"
   ];
 
-  # Force `-static` end-to-end so the resulting `bin/goodnet` is a
-  # truly static ELF. pkgsStatic ships static-only archives for our
+  # Force `-static` end-to-end so the resulting worker ELFs under
+  # `bin/` are truly static (no dynamic linker entries). pkgsStatic ships static-only archives for our
   # `buildInputs`, but the executable's own link step still defaults
   # to dynamic when `-static` is absent from `LDFLAGS`. Adding the
   # flag here closes the gap; `-static-libgcc -static-libstdc++` are
@@ -163,7 +164,7 @@ static.gcc15Stdenv.mkDerivation {
   meta = {
     description =
       "GoodNet kernel + bundled plugins — truly static musl build.";
-    mainProgram  = "goodnet";
+    mainProgram  = "remote_echo";
     platforms    = pkgs.lib.platforms.linux;
     license      = pkgs.lib.licenses.mit;
   };

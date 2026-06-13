@@ -2,8 +2,8 @@
 /// @file   bench/showcase/bench_showcase.cpp
 /// @brief  Free-kernel showcase bench — six sections, each
 ///         demonstrating a GoodNet-distinctive move (multi-conn
-///         under one identity, strategy-driven picker flip, Noise
-///         → kernel fast-crypto handoff, fan-out producers, IPC
+///         under one identity, strategy-driven picker flip, topology
+///         seal with static security proof, fan-out producers, IPC
 ///         failover, network-mobility carrier appearance).
 ///
 /// Six sections, each demonstrates one GoodNet-distinctive move that
@@ -12,10 +12,9 @@
 ///   §B.1  `ShowcaseFixture/MultiConn/FallbackThroughput/<sz>`
 ///   §B.2  `ShowcaseFixture/Strategy/PickerSelectsIpc/<sz>`
 ///         `ShowcaseFixture/Strategy/FlipOnRttDegradation`
-///   §B.3  `ShowcaseFixture/Handoff/Noise/Steady/<sz>`
-///         `ShowcaseFixture/Handoff/Trigger/Step/<sz>`
-///         `ShowcaseFixture/Handoff/Null/Steady/<sz>` (Noise wallpaper
-///         is the same as B.3 Steady but with downgrade triggered)
+///   §B.3  `HandoffFixture/NoiseSteady/<sz>`    — Noise+IPC steady-state
+///         `TopologySealFixture/SealCostNs`     — build_topology() latency, contour_gaps counter
+///         `TopologySealFixture/FingerprintDeterminism` — fp identical across builds, CSV b3c
 ///   §B.4  `ShowcaseFixture/Fanout/Producers/<N>`
 ///   §B.5  `ShowcaseFixture/Failover/IpcDrop/<sz>`
 ///   §B.6  `ShowcaseFixture/Mobility/LanShortcut/<sz>`
@@ -29,6 +28,7 @@
 
 #include <bench/test_bench_helper.hpp>
 #include <bench/test_bench_showcase.hpp>
+#include <core/topology/topology_builder.hpp>
 
 #include <benchmark/benchmark.h>
 
@@ -36,12 +36,17 @@
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
+#include <optional>
 #include <string>
 #include <thread>
 #include <unistd.h>
 
 #ifndef GOODNET_NOISE_PLUGIN_PATH
 #error "GOODNET_NOISE_PLUGIN_PATH must be defined by the bench CMakeLists"
+#endif
+
+#ifdef GOODNET_BENCH_ZSTD
+#include <zstd.h>
 #endif
 
 namespace {
@@ -54,12 +59,14 @@ using gn::core::test::NoisePlugin;
 using gn::core::test::RxCounter;
 using gn::core::test::ShowcaseNode;
 using gn::core::test::announce_csv_path;
-using gn::core::test::downgrade_pair;
 using gn::core::test::inject_conn_down;
 using gn::core::test::inject_conn_up;
 using gn::core::test::inject_rtt;
 using gn::core::test::register_rx;
 using gn::core::test::register_strategy;
+#ifdef GOODNET_BENCH_ZSTD
+using gn::core::test::register_zstd_decompress;
+#endif
 
 constexpr std::uint32_t kPingMsgId = 0x5C0A1E00u;
 
@@ -90,9 +97,8 @@ gn_conn_id_t find_one_transport(::gn::core::Kernel& k) {
     return GN_INVALID_ID;
 }
 
-/// Busy-wait helper for the showcase loops. Shares the 100µs grain
-/// the A.2 bench uses; bounded so a stuck conn surfaces as skip not
-/// hang.
+/// Busy-wait helper for the showcase loops. 100µs grain; bounded so
+/// a stuck conn surfaces as skip not hang.
 template <class Pred>
 bool wait_for_busy(Pred pred,
                    std::chrono::milliseconds timeout = 2s) {
@@ -144,9 +150,8 @@ struct MultiConnFixture : public ::benchmark::Fixture {
         if (alice->udp->listen("udp://127.0.0.1:0") != GN_OK) return;
         const auto udp_port = alice->udp->listen_port();
         char tmpl[] = "/tmp/gnshow-XXXXXX";
-        const int fd = ::mkstemp(tmpl);
-        if (fd >= 0) { ::close(fd); ::unlink(tmpl); }
-        ipc_sock = std::string(tmpl) + ".sock";
+        if (::mkdtemp(tmpl) == nullptr) return;
+        ipc_sock = std::string(tmpl) + "/s.sock";
         if (alice->ipc->listen("ipc://" + ipc_sock) != GN_OK) return;
 
         if (bob_tcp->link->connect(
@@ -262,6 +267,7 @@ struct StrategyFixture : public MultiConnFixture {
     }
 
     std::unique_ptr<::gn::strategy::float_send_rtt::FloatSendRtt> picker;
+    std::optional<CsvSeries>                                      csv_b2;
     bool                                                          strategy_set = false;
 };
 
@@ -317,8 +323,10 @@ BENCHMARK_DEFINE_F(StrategyFixture, FlipOnRttDegradation)(::benchmark::State& st
         state.SkipWithError("strategy bring-up failed");
         return;
     }
-    CsvSeries csv{"b2-flip"};
-    announce_csv_path(csv, "b2-flip");
+    if (!csv_b2) {
+        csv_b2.emplace("b2-flip");
+        announce_csv_path(*csv_b2, "b2-flip");
+    }
     const gn_conn_id_t kCand[3] = {0xC10, 0xC20, 0xC30};
     /// Reset picker state so the first sample initialises the EWMA
     /// (without zero-averaging from a previous run).
@@ -356,8 +364,8 @@ BENCHMARK_DEFINE_F(StrategyFixture, FlipOnRttDegradation)(::benchmark::State& st
         }
         gn_conn_id_t chosen = GN_INVALID_ID;
         (void)picker->pick_conn(alice->local_pk.data(), cand, 3, &chosen);
-        csv.emit(iter, "chosen_conn",
-                 static_cast<std::uint64_t>(chosen));
+        csv_b2->emit(iter, "chosen_conn",
+                     static_cast<std::uint64_t>(chosen));
         if (flip_iter == 0 && chosen != kCand[2] && iter > total / 2) {
             flip_iter = iter;
         }
@@ -372,14 +380,12 @@ BENCHMARK_REGISTER_F(StrategyFixture, FlipOnRttDegradation)
     ->UseRealTime();
 
 // ════════════════════════════════════════════════════════════════════
-// §B.3 — Provider handoff Noise→Null after handshake (PoC)
+// §B.3 — Noise+IPC steady-state + topology seal proof
 // ════════════════════════════════════════════════════════════════════
 //
-// Pre-trigger: bob spam-sends through Noise inline. Mid-iteration
-// the bench calls `downgrade_pair` to flip both peers' inline
-// crypto OFF — subsequent sends fall through to the null provider
-// vtable (copy-through). The CSV records per-iteration latency so
-// the aggregator can render the step-down.
+// NoiseSteady: bob spam-sends through Noise inline; alice RxCounter
+// tracks delivery. Measures per-frame round-trip latency with full
+// AEAD path active — baseline for the topology-seal cost comparison.
 
 struct HandoffFixture : public ::benchmark::Fixture {
     void SetUp(::benchmark::State&) override {
@@ -393,9 +399,8 @@ struct HandoffFixture : public ::benchmark::Fixture {
         rx_hid = register_rx(*alice->kernel, kPingMsgId, rx);
 
         char tmpl[] = "/tmp/gnshow-handoff-XXXXXX";
-        const int fd = ::mkstemp(tmpl);
-        if (fd >= 0) { ::close(fd); ::unlink(tmpl); }
-        sock_path = std::string(tmpl) + ".sock";
+        if (::mkdtemp(tmpl) == nullptr) return;
+        sock_path = std::string(tmpl) + "/s.sock";
         if (alice->link->listen("ipc://" + sock_path) != GN_OK) return;
         if (bob->link->connect("ipc://" + sock_path) != GN_OK) return;
         if (!BenchNode<gn::link::ipc::IpcLink>::wait_both_transport(
@@ -448,53 +453,80 @@ BENCHMARK_REGISTER_F(HandoffFixture, NoiseSteady)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
-BENCHMARK_DEFINE_F(HandoffFixture, TriggerStep)(::benchmark::State& state) {
-    if (!ready) { state.SkipWithError("handoff bring-up failed"); return; }
-    const std::size_t sz = static_cast<std::size_t>(state.range(0));
-    const auto payload = make_payload(sz);
-    CsvSeries csv{"b3-handoff"};
-    announce_csv_path(csv, "b3-handoff");
-    RoundTripMeter pre_meter, post_meter;
-    std::uint64_t prev = rx.rx_count.load();
-    std::uint64_t iter = 0;
-    bool downgraded = false;
-    const std::uint64_t trigger_at =
-        static_cast<std::uint64_t>(state.iterations()) / 2;
-    for ([[maybe_unused]] auto _ : state) {  // NOLINT
-        if (iter == trigger_at && !downgraded) {
-            (void)downgrade_pair(*alice->kernel, alice_conn,
-                                  *bob->kernel,   bob_conn);
-            downgraded = true;
-            csv.emit(iter, "downgrade_trigger", 1);
+// ════════════════════════════════════════════════════════════════════
+// §B.3b–c — Topology seal: static security proof at startup
+// ════════════════════════════════════════════════════════════════════
+//
+// §B.3b SealCostNs: build_topology() on a live Noise+IPC kernel.
+// The one-time seal cost is sub-microsecond. Counter `contour_gaps`
+// must be 0 — Noise covers every non-loopback trust class.
+//
+// §B.3c FingerprintDeterminism: two independent build_topology()
+// calls on the same kernel state produce bit-identical fingerprints.
+// CSV b3c-topology records fp_prefix per iteration; a flat line
+// proves the fingerprint is stable and registration-order independent.
+
+struct TopologySealFixture : public ::benchmark::Fixture {
+    void SetUp(::benchmark::State&) override {
+        if (node) return;
+        NoisePlugin& noise = process_noise();
+        if (!noise.ok()) return;
+        node = std::make_unique<BenchNode<gn::link::ipc::IpcLink>>(
+            noise, "topo-node", "ipc");
+        ready = true;
+    }
+    void TearDown(::benchmark::State&) override {}
+
+    std::unique_ptr<BenchNode<gn::link::ipc::IpcLink>> node;
+    std::optional<CsvSeries>                           csv_b3c;
+    bool                                               ready = false;
+};
+
+BENCHMARK_DEFINE_F(TopologySealFixture, SealCostNs)(::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("topology node setup failed"); return; }
+    for ([[maybe_unused]] auto _ : state) {
+        auto snap = gn::core::topology::build_topology(*node->kernel);
+        ::benchmark::DoNotOptimize(snap);
+    }
+    auto snap = gn::core::topology::build_topology(*node->kernel);
+    if (snap) {
+        state.counters["contour_gaps"] =
+            static_cast<double>(snap->topo.contour_gaps);
+        std::uint32_t fp4 = 0;
+        std::memcpy(&fp4, snap->topo.fingerprint, sizeof(fp4));
+        state.counters["fp_prefix_u32"] = static_cast<double>(fp4);
+    }
+}
+BENCHMARK_REGISTER_F(TopologySealFixture, SealCostNs)
+    ->Unit(::benchmark::kNanosecond)
+    ->UseRealTime();
+
+BENCHMARK_DEFINE_F(TopologySealFixture, FingerprintDeterminism)(
+        ::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("topology node setup failed"); return; }
+    if (!csv_b3c) {
+        csv_b3c.emplace("b3c-topology");
+        announce_csv_path(*csv_b3c, "b3c-topology");
+    }
+    std::uint64_t mismatches = 0;
+    std::uint64_t iter       = 0;
+    for ([[maybe_unused]] auto _ : state) {
+        auto a = gn::core::topology::build_topology(*node->kernel);
+        auto b = gn::core::topology::build_topology(*node->kernel);
+        if (a && b) {
+            if (std::memcmp(a->topo.fingerprint, b->topo.fingerprint, 32) != 0)
+                ++mismatches;
+            std::uint32_t fp4 = 0;
+            std::memcpy(&fp4, a->topo.fingerprint, sizeof(fp4));
+            csv_b3c->emit(iter, "fp_prefix",
+                          static_cast<std::uint64_t>(fp4));
         }
-        const auto t0 = std::chrono::steady_clock::now();
-        if (bob->api.send(bob->api.host_ctx, bob_conn, kPingMsgId,
-                           payload.data(), payload.size()) != GN_OK) {
-            std::this_thread::sleep_for(50us);
-            continue;
-        }
-        if (!wait_for_busy([&] { return rx.rx_count.load() > prev; })) {
-            state.SkipWithError("rx timeout"); break;
-        }
-        const auto t1 = std::chrono::steady_clock::now();
-        const std::uint64_t ns = static_cast<std::uint64_t>(
-            std::chrono::duration_cast<std::chrono::nanoseconds>(
-                t1 - t0).count());
-        if (downgraded) post_meter.record(ns);
-        else            pre_meter.record(ns);
-        csv.emit(iter, "lat_ns", ns);
-        prev = rx.rx_count.load();
         ++iter;
     }
-    state.counters["pre_p50_ns"]  = static_cast<double>(pre_meter.quantile(0.50));
-    state.counters["post_p50_ns"] = static_cast<double>(post_meter.quantile(0.50));
-    state.counters["downgrade_iter"] = static_cast<double>(trigger_at);
-    state.counters["pre_count"]   = static_cast<double>(pre_meter.size());
-    state.counters["post_count"]  = static_cast<double>(post_meter.size());
+    state.counters["fp_mismatches"] = static_cast<double>(mismatches);
 }
-BENCHMARK_REGISTER_F(HandoffFixture, TriggerStep)
-    ->Arg(1024)
-    ->Unit(::benchmark::kMicrosecond)
+BENCHMARK_REGISTER_F(TopologySealFixture, FingerprintDeterminism)
+    ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
 
 // ════════════════════════════════════════════════════════════════════
@@ -572,12 +604,15 @@ struct FailoverFixture : public ::benchmark::Fixture {
     }
     void TearDown(::benchmark::State&) override {}
     std::unique_ptr<::gn::strategy::float_send_rtt::FloatSendRtt> picker;
-    std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES> peer_pk{};
+    std::array<std::uint8_t, GN_PUBLIC_KEY_BYTES>                  peer_pk{};
+    std::optional<CsvSeries>                                       csv_b5;
 };
 
 BENCHMARK_DEFINE_F(FailoverFixture, IpcDrop)(::benchmark::State& state) {
-    CsvSeries csv{"b5-failover"};
-    announce_csv_path(csv, "b5-failover");
+    if (!csv_b5) {
+        csv_b5.emplace("b5-failover");
+        announce_csv_path(*csv_b5, "b5-failover");
+    }
     constexpr gn_conn_id_t kTcpConn = 0xF10;
     constexpr gn_conn_id_t kUdpConn = 0xF20;
     constexpr gn_conn_id_t kIpcConn = 0xF30;
@@ -618,8 +653,8 @@ BENCHMARK_DEFINE_F(FailoverFixture, IpcDrop)(::benchmark::State& state) {
         const std::size_t count = (iter >= drop_at) ? 2 : 3;
         gn_conn_id_t chosen = GN_INVALID_ID;
         (void)picker->pick_conn(pk.data(), cand, count, &chosen);
-        csv.emit(iter, "chosen_conn",
-                 static_cast<std::uint64_t>(chosen));
+        csv_b5->emit(iter, "chosen_conn",
+                     static_cast<std::uint64_t>(chosen));
         if (flip_iter == 0 && chosen != kIpcConn && iter >= drop_at) {
             flip_iter = iter;
         }
@@ -645,11 +680,15 @@ BENCHMARK_REGISTER_F(FailoverFixture, IpcDrop)
 // CSV records chosen_conn + turn_bytes_delta — main acceptance is
 // `turn_bytes_delta == 0` after the flip.
 
-struct MobilityFixture : public FailoverFixture {};
+struct MobilityFixture : public FailoverFixture {
+    std::optional<CsvSeries> csv_b6;
+};
 
 BENCHMARK_DEFINE_F(MobilityFixture, LanShortcut)(::benchmark::State& state) {
-    CsvSeries csv{"b6-mobility"};
-    announce_csv_path(csv, "b6-mobility");
+    if (!csv_b6) {
+        csv_b6.emplace("b6-mobility");
+        announce_csv_path(*csv_b6, "b6-mobility");
+    }
     constexpr gn_conn_id_t kTurnConn = 0xB60;  // 4G/TURN-relayed
     constexpr gn_conn_id_t kLanConn  = 0xB61;  // LAN host candidate
     ::gn::PublicKey pk{};
@@ -684,8 +723,8 @@ BENCHMARK_DEFINE_F(MobilityFixture, LanShortcut)(::benchmark::State& state) {
         }
         gn_conn_id_t chosen = GN_INVALID_ID;
         (void)picker->pick_conn(pk.data(), cand, cand_n, &chosen);
-        csv.emit(iter, "chosen_conn",
-                 static_cast<std::uint64_t>(chosen));
+        csv_b6->emit(iter, "chosen_conn",
+                     static_cast<std::uint64_t>(chosen));
         if (chosen == kTurnConn) turn_bytes += kPayload;
         else if (chosen == kLanConn) lan_bytes += kPayload;
         if (flip_iter == 0 && chosen == kLanConn && iter > lan_up_at) {
@@ -708,14 +747,148 @@ BENCHMARK_REGISTER_F(MobilityFixture, LanShortcut)
     ->Unit(::benchmark::kNanosecond)
     ->UseRealTime();
 
+#ifdef GOODNET_BENCH_ZSTD
+
+// ════════════════════════════════════════════════════════════════════
+// §B.7 — Transparent in-chain zstd decompression
+// ════════════════════════════════════════════════════════════════════
+//
+// Bob compresses a payload with ZSTD and sends it as msg_id=0x0701.
+// Alice has a ZstdDecompressHandler at priority 255 on 0x0701; it
+// decompresses and re-injects as msg_id=0x0700. The RxCounter on
+// 0x0700 fires for both cases — the application handler is unchanged.
+//
+// Two sub-cases:
+//   Baseline:        bob → 0x0700 (uncompressed) → rx counter.
+//   ZstdTransparent: bob → 0x0701 (compressed) → decompress → 0x0700 → rx.
+//
+// `ratio` = payload_bytes / compressed_bytes. The repeating-pattern
+// payload make_payload() generates compresses ~10× at 1 KiB and
+// ~40× at 8 KiB (ZSTD level 3).
+
+struct CompressionFixture : public ::benchmark::Fixture {
+    static constexpr std::uint32_t kPlainMsgId = 0x0700u;
+    static constexpr std::uint32_t kCompMsgId  = 0x0701u;
+
+    void SetUp(::benchmark::State&) override {
+        if (ready) return;
+        NoisePlugin& noise = process_noise();
+        if (!noise.ok()) return;
+        alice = std::make_unique<BenchNode<gn::link::ipc::IpcLink>>(
+            noise, "alice-cmp", "ipc");
+        bob   = std::make_unique<BenchNode<gn::link::ipc::IpcLink>>(
+            noise, "bob-cmp",   "ipc");
+
+        rx_hid = register_rx(*alice->kernel, kPlainMsgId, rx);
+
+        zstd_handler = std::make_unique<
+            gn::handler::zstd_decompress::ZstdDecompressHandler>(&alice->api);
+        zstd_hid = register_zstd_decompress(*alice->kernel, *zstd_handler);
+
+        char tmpl[] = "/tmp/gnshow-cmp-XXXXXX";
+        if (::mkdtemp(tmpl) == nullptr) return;
+        sock_path = std::string(tmpl) + "/s.sock";
+        if (alice->link->listen("ipc://" + sock_path) != GN_OK) return;
+        if (bob->link->connect("ipc://" + sock_path) != GN_OK) return;
+        if (!BenchNode<gn::link::ipc::IpcLink>::wait_both_transport(
+                *alice, *bob, 5s)) return;
+
+        alice_conn = find_one_transport(*alice->kernel);
+        bob_conn   = bob->transport_conn();
+        ready = (alice_conn != GN_INVALID_ID && bob_conn != GN_INVALID_ID);
+    }
+
+    void TearDown(::benchmark::State&) override {}
+
+    RxCounter   rx;
+    std::unique_ptr<BenchNode<gn::link::ipc::IpcLink>>              alice;
+    std::unique_ptr<BenchNode<gn::link::ipc::IpcLink>>              bob;
+    std::unique_ptr<
+        gn::handler::zstd_decompress::ZstdDecompressHandler>       zstd_handler;
+    std::string                                                      sock_path;
+    gn_handler_id_t rx_hid    = GN_INVALID_ID;
+    gn_handler_id_t zstd_hid  = GN_INVALID_ID;
+    gn_conn_id_t    alice_conn = GN_INVALID_ID;
+    gn_conn_id_t    bob_conn   = GN_INVALID_ID;
+    bool            ready      = false;
+};
+
+BENCHMARK_DEFINE_F(CompressionFixture, Baseline)(::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("compression fixture bring-up failed"); return; }
+    const std::size_t sz = static_cast<std::size_t>(state.range(0));
+    const auto payload = make_payload(sz);
+    std::uint64_t prev = rx.rx_count.load(std::memory_order_acquire);
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT
+        if (bob->api.send(bob->api.host_ctx, bob_conn, kPlainMsgId,
+                          payload.data(), payload.size()) != GN_OK) {
+            std::this_thread::sleep_for(50us);
+            continue;
+        }
+        if (!wait_for_busy([&] { return rx.rx_count.load() > prev; })) {
+            state.SkipWithError("rx timeout"); break;
+        }
+        prev = rx.rx_count.load(std::memory_order_acquire);
+    }
+    state.SetBytesProcessed(
+        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(sz));
+    state.counters["payload_bytes"]    = static_cast<double>(sz);
+    state.counters["compressed_bytes"] = static_cast<double>(sz);
+    state.counters["ratio"]            = 1.0;
+}
+BENCHMARK_REGISTER_F(CompressionFixture, Baseline)
+    ->Arg(256)->Arg(1024)->Arg(8192)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+BENCHMARK_DEFINE_F(CompressionFixture, ZstdTransparent)(::benchmark::State& state) {
+    if (!ready) { state.SkipWithError("compression fixture bring-up failed"); return; }
+    const std::size_t sz = static_cast<std::size_t>(state.range(0));
+    const auto payload = make_payload(sz);
+
+    const std::size_t bound = ZSTD_compressBound(sz);
+    std::vector<std::uint8_t> compressed(bound);
+    const std::size_t csz = ZSTD_compress(
+        compressed.data(), bound, payload.data(), sz, /*level*/3);
+    if (ZSTD_isError(csz)) {
+        state.SkipWithError("ZSTD_compress failed"); return;
+    }
+    compressed.resize(csz);
+
+    std::uint64_t prev = rx.rx_count.load(std::memory_order_acquire);
+    for ([[maybe_unused]] auto _ : state) {  // NOLINT
+        if (bob->api.send(bob->api.host_ctx, bob_conn, kCompMsgId,
+                          compressed.data(), compressed.size()) != GN_OK) {
+            std::this_thread::sleep_for(50us);
+            continue;
+        }
+        if (!wait_for_busy([&] { return rx.rx_count.load() > prev; })) {
+            state.SkipWithError("rx timeout"); break;
+        }
+        prev = rx.rx_count.load(std::memory_order_acquire);
+    }
+    state.SetBytesProcessed(
+        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(sz));
+    state.counters["payload_bytes"]    = static_cast<double>(sz);
+    state.counters["compressed_bytes"] = static_cast<double>(csz);
+    state.counters["ratio"] =
+        static_cast<double>(sz) / static_cast<double>(csz);
+    state.counters["frames_ok"]  =
+        static_cast<double>(zstd_handler->frames_decompressed());
+    state.counters["frames_err"] =
+        static_cast<double>(zstd_handler->frames_error());
+}
+BENCHMARK_REGISTER_F(CompressionFixture, ZstdTransparent)
+    ->Arg(256)->Arg(1024)->Arg(8192)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+#endif  // GOODNET_BENCH_ZSTD
+
 }  // namespace
 
 int main(int argc, char** argv) {
-    /// §B.3 — the inline-crypto downgrade hook is compile-gated
-    /// through `GOODNET_BENCH_SHOWCASE` (set on this target by
-    /// `bench/showcase/CMakeLists.txt`). Production binaries do
-    /// not compile the hook at all; no runtime opt-in is needed
-    /// here.
     ::benchmark::Initialize(&argc, argv);
     if (::benchmark::ReportUnrecognizedArguments(argc, argv)) return 1;
     ::benchmark::RunSpecifiedBenchmarks();

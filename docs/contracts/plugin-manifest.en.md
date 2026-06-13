@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every operator
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the format is append-only.
 
 ---

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel/timer_registry`, every plugin that schedules
 async work
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-25
 **Stability:** v1.x; `set_timer` and `cancel_timer` are stable;
 periodic timer support ships as an opt-in extension once a
 producer needs it.

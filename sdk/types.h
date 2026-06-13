@@ -325,7 +325,7 @@ typedef enum gn_result_e {
                                        *   maps this code to the
                                        *   `drop.frame_too_large` counter
                                        *   per `metrics.en.md` §3. */
-    GN_ERR_WIRE_DECODE        = -17  /**< CBOR / wire-format decode
+    GN_ERR_WIRE_DECODE        = -17, /**< CBOR / wire-format decode
                                        *   failure: type tag mismatch,
                                        *   premature EOF, malformed
                                        *   initial byte, bad simple-value
@@ -340,6 +340,20 @@ typedef enum gn_result_e {
                                        *   out_diag` to the decoder also
                                        *   get a one-line description of
                                        *   the failure site. */
+    GN_ERR_OUTPUT_TOO_SMALL   = -18  /**< Caller's output buffer
+                                       *   (`out_cap`) is smaller than
+                                       *   the size required to hold the
+                                       *   result.  Caller may retry with
+                                       *   a larger buffer.  Semantically
+                                       *   distinct from
+                                       *   `GN_ERR_PAYLOAD_TOO_LARGE`,
+                                       *   which signals that an *input*
+                                       *   exceeded a configured limit and
+                                       *   retrying with the same input is
+                                       *   pointless.  Used by the
+                                       *   `gn.compress` extension vtable
+                                       *   and any API that writes into a
+                                       *   caller-allocated output region. */
 } gn_result_t;
 
 /**
@@ -375,6 +389,7 @@ static inline const char* gn_strerror(gn_result_t r) {
         case GN_ERR_OUT_OF_RANGE:          return "value outside the contract's permitted range";
         case GN_ERR_FRAME_TOO_LARGE:       return "wire frame exceeds kMaxFrameBytes ceiling";
         case GN_ERR_WIRE_DECODE:           return "wire-format decode failed (CBOR type mismatch, EOF, or bad tag)";
+        case GN_ERR_OUTPUT_TOO_SMALL:      return "output buffer too small to hold the result";
     }
     return "unknown gn_result_t";
 }

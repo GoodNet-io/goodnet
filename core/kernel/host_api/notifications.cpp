@@ -6,11 +6,34 @@
 
 #include "../host_api_internal.hpp"
 
+#include <cstdint>
 #include <cstring>
+#ifdef __has_include
+#  if __has_include(<experimental/scope>)
+#    include <experimental/scope>
+#  else
+// Emscripten / libc++ stub — <experimental/scope> not shipped.
+namespace std::experimental {
+template<typename F>
+struct scope_exit {
+    explicit scope_exit(F f) : fn_(std::move(f)) {}
+    ~scope_exit() noexcept { fn_(); }
+    scope_exit(const scope_exit&) = delete;
+private:
+    F fn_;
+};
+} // namespace std::experimental
+#  endif
+#else
+#  include <experimental/scope>
+#endif
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
+
+#include <sdk/limits.h>
+#include <sdk/trust.h>
 
 #include <core/identity/node_identity.hpp>
 #include <core/identity/rotation.hpp>
@@ -18,12 +41,16 @@
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
 #include <sdk/endpoint.h>
+#include <sdk/extensions/link.h>
+#include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 #include <sdk/identity.h>
 
 #include "../connection_context.hpp"
 #include "../safe_invoke.hpp"
 #include "../system_handler_ids.hpp"
+
+#include <sdk/cpp/capability_tlv.hpp>
 
 namespace gn::core::host_api_thunks {
 
@@ -83,6 +110,31 @@ gn_result_t notify_connect(void* host_ctx,
         }
     }
 
+    // Auto-upgrade UNTRUSTED → LINK_ENCRYPTED when the link reports an
+    // encrypted-path capability AND the operator has opted in via
+    // `security.allow_link_only: true`.  This enables TLS-at-link-layer
+    // deployments to skip session-layer crypto without requiring the link
+    // plugin to know about trust classes.
+    if (trust == GN_TRUST_UNTRUSTED) {
+        bool allow_link_only = false;
+        (void)pc->kernel->config().get_bool("security.allow_link_only", allow_link_only);
+        if (allow_link_only) {
+            if (auto le = pc->kernel->links().find_by_scheme(scheme)) {
+                const auto* lapi = le->vtable && le->vtable->extension_vtable
+                    ? static_cast<const gn_link_api_t*>(
+                          le->vtable->extension_vtable(le->self))
+                    : nullptr;
+                if (lapi && GN_API_HAS(gn_link_api_t, lapi, get_capabilities)) {
+                    gn_link_caps_t caps{};
+                    if (lapi->get_capabilities(lapi->ctx, &caps) == GN_OK &&
+                        (caps.flags & GN_LINK_CAP_ENCRYPTED_PATH)) {
+                        trust = GN_TRUST_LINK_ENCRYPTED;
+                    }
+                }
+            }
+        }
+    }
+
     ConnectionRecord rec;
     const gn_conn_id_t new_id = pc->kernel->connections().alloc_id();
     rec.id = new_id;
@@ -128,8 +180,41 @@ gn_result_t notify_connect(void* host_ctx,
             gn_path_sample_t sample{};
             sample.conn   = new_id;
             sample.rtt_us = 0;   // no probe landed yet — unknown
+            // Populate caps from the link extension so strategies can make
+            // capability-aware routing decisions (e.g. prefer ENCRYPTED_PATH).
+            if (auto link_entry = pc->kernel->links().find_by_scheme(scheme)) {
+                const auto* lapi = static_cast<const gn_link_api_t*>(
+                    link_entry->vtable->extension_vtable
+                        ? link_entry->vtable->extension_vtable(link_entry->self)
+                        : nullptr);
+                if (lapi && GN_API_HAS(gn_link_api_t, lapi, get_capabilities)) {
+                    gn_link_caps_t caps{};
+                    if (lapi->get_capabilities(lapi->ctx, &caps) == GN_OK)
+                        sample.caps = caps.flags;
+                }
+            }
             (void)sapi->on_path_event(
                 sapi->ctx, remote_pk,
+                GN_PATH_EVENT_CONN_UP, &sample);
+        }
+    }
+
+    /// Same CONN_UP delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        for (const auto& entry : float_sends) {
+            const auto* fapi =
+                static_cast<const gn_float_send_api_t*>(entry.vtable);
+            if (!fapi || !fapi->on_path_event ||
+                fapi->api_size < sizeof(gn_float_send_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn   = new_id;
+            sample.rtt_us = 0;
+            (void)fapi->on_path_event(
+                fapi->ctx, remote_pk,
                 GN_PATH_EVENT_CONN_UP, &sample);
         }
     }
@@ -221,11 +306,64 @@ gn_result_t kick_handshake(void* host_ctx, gn_conn_id_t conn) {
             kernel_initiated_disconnect(pc, conn);
             return prc;
         }
+        // Loopback/IntraNode connections skip attestation so
+        // TRUST_UPGRADED never fires from the attestation path.
+        // Fire it here once remote_pk is resolved so applications
+        // can send with the correct receiver pk.
+        if (rec->trust != GN_TRUST_UNTRUSTED &&
+            rec->trust != GN_TRUST_PEER) {
+            if (auto updated = pc->kernel->connections().find_by_id(conn)) {
+                ConnEvent upgrade_ev{};
+                upgrade_ev.kind      = GN_CONN_EVENT_TRUST_UPGRADED;
+                upgrade_ev.conn      = conn;
+                upgrade_ev.trust     = updated->trust;
+                upgrade_ev.remote_pk = updated->remote_pk;
+                pc->kernel->on_conn_event().fire(upgrade_ev);
+            }
+        }
         pc->kernel->attestation_dispatcher().send_self(*pc->kernel,
                                                         conn, *session);
         drain_handshake_pending(pc, conn, *session, rec->scheme);
     }
     return GN_OK;
+}
+
+/// Send the pre-built topology capability blob after Transport phase.
+/// Follows the same frame + encrypt + send path as AttestationDispatcher.
+static void send_topology_caps_blob(PluginContext* pc,
+                                     gn_conn_id_t conn,
+                                     SecuritySession& session,
+                                     const ConnectionRecord& rec) noexcept {
+    const auto& blob = pc->kernel->topology_wire_blob();
+    if (blob.empty()) return;
+
+    auto layer = pc->kernel->protocol_layers().find_by_protocol_id(rec.protocol_id);
+    if (!layer) return;
+
+    gn_message_t env{};
+    env.msg_id       = kCapabilityBlobMsgId;
+    env.payload      = blob.data();
+    env.payload_size = blob.size();
+
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = conn;
+    ctx.trust     = rec.trust;
+    ctx.remote_pk = rec.remote_pk;
+
+    auto framed = layer->frame(ctx, env);
+    if (!framed.has_value()) return;
+
+    std::vector<std::uint8_t> cipher;
+    if (session.encrypt_transport(*framed, cipher) != GN_OK) return;
+
+    auto trans = pc->kernel->links().find_by_scheme(rec.scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) return;
+
+    const gn_result_t rc = safe_call_result("link.send",
+        trans->vtable->send, trans->self, conn,
+        cipher.data(), cipher.size());
+    if (rc == GN_OK)
+        pc->kernel->connections().add_outbound(conn, cipher.size(), 1);
 }
 
 gn_result_t notify_inbound_bytes(void* host_ctx,
@@ -275,8 +413,24 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                     kernel_initiated_disconnect(pc, conn);
                     return prc;
                 }
+                // Loopback/IntraNode connections skip attestation so
+                // TRUST_UPGRADED never fires from the attestation path.
+                // Fire it here once remote_pk is resolved.
+                if (rec->trust != GN_TRUST_UNTRUSTED &&
+                    rec->trust != GN_TRUST_PEER) {
+                    if (auto updated =
+                            pc->kernel->connections().find_by_id(conn)) {
+                        ConnEvent upgrade_ev{};
+                        upgrade_ev.kind      = GN_CONN_EVENT_TRUST_UPGRADED;
+                        upgrade_ev.conn      = conn;
+                        upgrade_ev.trust     = updated->trust;
+                        upgrade_ev.remote_pk = updated->remote_pk;
+                        pc->kernel->on_conn_event().fire(upgrade_ev);
+                    }
+                }
                 pc->kernel->attestation_dispatcher().send_self(
                     *pc->kernel, conn, *session);
+                send_topology_caps_blob(pc, conn, *session, *rec);
                 drain_handshake_pending(pc, conn, *session,
                                          rec->scheme);
             }
@@ -289,6 +443,20 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             if (plaintexts.empty()) return GN_OK;
         }
     } else {
+        // No security session. If security is active (a provider is registered
+        // and an identity exists), an external connection without a session is
+        // a gap in the security contour — reject it.
+        // If security is not configured (test scaffolding, embedded host without
+        // identity), fall through to plaintext as before.
+        const bool security_active =
+            pc->kernel->security().is_active() &&
+            pc->kernel->node_identity() != nullptr;
+        const bool is_local = (rec->trust == GN_TRUST_LOOPBACK ||
+                               rec->trust == GN_TRUST_INTRA_NODE);
+        if (security_active && !is_local) {
+            pc->kernel->metrics().increment("drop.no_session_external");
+            return GN_OK;
+        }
         plaintexts.emplace_back(wire_bytes.begin(), wire_bytes.end());
     }
 
@@ -365,15 +533,9 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
                 ev.conn      = conn;
                 ev.trust     = rec->trust;
                 ev.remote_pk = rec->remote_pk;
-                ev._reserved[0] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->prev_user_pk.data()));
-                ev._reserved[1] =
-                    const_cast<void*>(static_cast<const void*>(
-                        verified->new_user_pk.data()));
-                ev._reserved[2] =
-                    const_cast<void*>(static_cast<const void*>(
-                        &verified->counter));
+                ev.user_pk_prev = verified->prev_user_pk.data();
+                ev.user_pk_next = verified->new_user_pk.data();
+                ev.rotation_seq = &verified->counter;
                 pc->kernel->on_conn_event().fire(ev);
                 continue;
             }
@@ -394,10 +556,16 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
 gn_result_t inject(void* host_ctx,
                     gn_inject_layer_t layer_kind,
                     gn_conn_id_t source,
+                    const char* target_ns,
                     std::uint32_t msg_id,
                     const std::uint8_t* bytes,
                     std::size_t size) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
+
+    // Limit synchronous inject-chain depth. Each inject fires a full
+    // handler-dispatch pass on the same thread; cost scales linearly.
+    // Configurable via limits.max_inject_depth (0 → GN_INJECT_MAX_DEPTH).
+    thread_local std::uint8_t inject_depth{0};
 
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
@@ -410,6 +578,19 @@ gn_result_t inject(void* host_ctx,
     if (layer == nullptr) return GN_ERR_NOT_IMPLEMENTED;
 
     const auto& limits = pc->kernel->limits();
+
+    {
+        const std::uint8_t max_depth = (limits.max_inject_depth != 0)
+            ? static_cast<std::uint8_t>(limits.max_inject_depth)
+            : static_cast<std::uint8_t>(GN_INJECT_MAX_DEPTH);
+        if (++inject_depth > max_depth) {
+            --inject_depth;
+            return GN_ERR_LIMIT_REACHED;
+        }
+    }
+    std::experimental::scope_exit _guard([&]() noexcept { --inject_depth; });
+
+    if (!target_ns || !*target_ns) return GN_ERR_INVALID_ENVELOPE;
 
     switch (layer_kind) {
     case GN_INJECT_LAYER_MESSAGE:
@@ -476,7 +657,7 @@ gn_result_t inject(void* host_ctx,
         env.api_size = sizeof(gn_message_t);
         env.conn_id  = source;
 
-        route_one_envelope(*pc->kernel, layer->protocol_id(), env);
+        route_one_envelope(*pc->kernel, target_ns, env);
         return GN_OK;
     }
 
@@ -504,7 +685,7 @@ gn_result_t inject(void* host_ctx,
         gn_message_t stamped  = env;
         stamped.api_size      = sizeof(gn_message_t);
         stamped.conn_id       = source;
-        route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
+        route_one_envelope(*pc->kernel, target_ns, stamped);
     }
     return GN_OK;
 }
@@ -561,6 +742,25 @@ gn_result_t notify_disconnect(void* host_ctx,
             sample.conn = conn;
             (void)sapi->on_path_event(
                 sapi->ctx, snapshot->remote_pk.data(),
+                GN_PATH_EVENT_CONN_DOWN, &sample);
+        }
+    }
+
+    /// Same CONN_DOWN delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        for (const auto& entry : float_sends) {
+            const auto* fapi =
+                static_cast<const gn_float_send_api_t*>(entry.vtable);
+            if (!fapi || !fapi->on_path_event ||
+                fapi->api_size < sizeof(gn_float_send_api_t)) {
+                continue;
+            }
+            gn_path_sample_t sample{};
+            sample.conn = conn;
+            (void)fapi->on_path_event(
+                fapi->ctx, snapshot->remote_pk.data(),
                 GN_PATH_EVENT_CONN_DOWN, &sample);
         }
     }

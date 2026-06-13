@@ -7,6 +7,11 @@
 # Subdirectories registered as suites land.
 add_subdirectory(abi)
 add_subdirectory(unit)
+# Cross-implementation test vectors — JSON fixtures + a consumer that
+# replays each input through the C++ reference and asserts byte
+# equality. Binding authors (Rust, Python, JS, Go) compare against
+# the committed JSON.
+add_subdirectory(vectors)
 # `integration/` is the slot for the goodnet-integration-tests
 # repo — pulled into place by `nix run .#plugin -- install`. When
 # pulled, its own `CMakeLists.txt` builds the cross-plugin suite;

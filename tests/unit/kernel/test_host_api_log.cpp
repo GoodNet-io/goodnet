@@ -7,11 +7,17 @@
 /// hand-off. Together they close the format-string class of attack
 /// against the kernel address space — no `vsnprintf` runs on
 /// plugin-supplied bytes inside the kernel.
+///
+/// The `CppFmt*` and `CppLogger*` tests cover `sdk/cpp/log.hpp` —
+/// specifically the GCC 16 C++26 `consteval Fmt` fix (stores `const char*`,
+/// uses `std::vformat`) that allows string literals and `std::string_view`
+/// arguments to compile through `std::type_identity_t<Fmt<Args...>>`.
 
 #include <gtest/gtest.h>
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <spdlog/sinks/base_sink.h>
@@ -25,6 +31,7 @@
 #include <sdk/host_api.h>
 #include <sdk/log.h>
 #include <sdk/types.h>
+#include <sdk/cpp/log.hpp>
 
 namespace {
 
@@ -223,4 +230,129 @@ TEST(HostApiLog, EmitDropsCallWhenContextCanaryPoisoned) {
     EXPECT_EQ(h.sink->snapshot().size(), 0u);
     /// Restore so the harness's destructor can run cleanly.
     h.ctx.magic = gn::core::PluginContext::kMagicLive;
+}
+
+// ── sdk/cpp/log.hpp — C++ wrapper (gn::log::*) ───────────────────────────────
+//
+// These tests exercise the GCC 16 C++26 `consteval Fmt` fix: the `Fmt<Args...>`
+// struct stores `const char*` (not `std::format_string`) so that implicit
+// conversion of string literals through `std::type_identity_t<Fmt<Args...>>`
+// compiles.  `emit()` uses `std::vformat` for the runtime format path.
+
+TEST(CppFmt, IntArgFormattedAndDelivered) {
+    // Compile-time check: `gn::log::debug(api, "literal {}", int)` must
+    // compile under GCC 16 C++26 — the implicit Fmt<int> construction was
+    // the failing case before the const-char* fix.
+    LogHarness h;
+    gn::log::debug(&h.api, "answer {}", 42);
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("answer 42"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppFmt, StringViewArgFormattedAndDelivered) {
+    // std::string_view was one of the types that triggered GCC 16 ambiguity
+    // through the old consteval Fmt(std::format_string<Args...>) path.
+    LogHarness h;
+    std::string_view sv{"hello-sv"};
+    gn::log::info(&h.api, "sv={}", sv);
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("sv=hello-sv"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppFmt, MultipleArgsFormatted) {
+    LogHarness h;
+    gn::log::warn(&h.api, "{} + {} = {}", 1, 2, 3);
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("1 + 2 = 3"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppFmt, SourceLocationCapturedAtCallSite) {
+    // The consteval Fmt constructor captures std::source_location::current()
+    // at the call site — not inside emit().  Verify the file name in the
+    // delivered buffer contains this test file's name.
+    LogHarness h{"%^%l%$ [%s:%#] %v"};
+    gn::log::info(&h.api, "loc-check {}", 0);  // <-- source_location captured here
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    // The emit path forwards fmt.loc.file_name() to the kernel sink.
+    EXPECT_NE(lines[0].find("test_host_api_log"), std::string::npos)
+        << "source_location file should contain this file's name; "
+        << "captured: " << lines[0];
+}
+
+TEST(CppFmt, ZeroArgNoFormatSpecifiers) {
+    // Calling gn::log::info(api, "plain message") with no extra args
+    // instantiates Fmt<> (empty pack).  This was crashing GCC 16 C++26 via
+    // an ICE in check_postconditions_in_redecl when GN_EXPECTS was present on
+    // the variadic template — fixed by removing the redundant contract.
+    LogHarness h;
+    gn::log::info(&h.api, "plain message");
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("plain message"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppFmt, LongMessageTruncatedWithEllipsis) {
+    // emit() truncates at kLogBufBytes-5 bytes and appends " ..." via the
+    // new std::vformat + memcpy path (replacing the old std::format_to_n).
+    LogHarness h;
+    // Build a message that exceeds kLogBufBytes-5 (2043 bytes).
+    std::string big(gn::log::kLogBufBytes, 'x');
+    gn::log::info(&h.api, "{}", std::string_view{big});
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find(" ..."), std::string::npos)
+        << "truncated message must end with \" ...\"; "
+        << "captured (first 80): " << lines[0].substr(0, 80);
+}
+
+TEST(CppFmt, NullApiIsNoop) {
+    // gn::log::emit() must not crash when api is nullptr — the null-check
+    // guard in detail::emit() is exercised on every level wrapper.
+    EXPECT_NO_FATAL_FAILURE(gn::log::debug(nullptr, "noop {}", 0));
+}
+
+TEST(CppFmt, LevelFilterRespected) {
+    // gn::log::trace() must be suppressed when the kernel level is warn.
+    LogHarness h;
+    ::gn::log::kernel()->set_level(spdlog::level::warn);
+    gn::log::trace(&h.api, "suppressed {}", 99);
+    gn::log::warn(&h.api,  "visible {}", 99);
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("visible 99"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppLogger, ClassMethodsDelegate) {
+    // gn::log::Logger wraps the api pointer; level methods must delegate
+    // through the same emit() path and deliver formatted output.
+    LogHarness h;
+    gn::log::Logger log{&h.api};
+    log.debug("Logger {} {}", std::string_view{"works"}, 7);
+    ::gn::log::kernel()->flush();
+    auto lines = h.sink->snapshot();
+    ASSERT_EQ(lines.size(), 1u);
+    EXPECT_NE(lines[0].find("Logger works 7"), std::string::npos)
+        << "captured: " << lines[0];
+}
+
+TEST(CppLogger, DefaultConstructedIsNoop) {
+    // A default-constructed Logger (api_==nullptr) must not crash.
+    gn::log::Logger log{};
+    EXPECT_NO_FATAL_FAILURE(log.info("noop {}", 0));
 }

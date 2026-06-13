@@ -2,8 +2,11 @@
   description = "GoodNet kernel + SDK with bundled baseline plugins.";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+  # gcc 16.1.0 (PR #515877) — not yet in nixpkgs-unstable main.
+  # Drop this input and switch to pkgs.gcc16Stdenv once it lands.
+  inputs.gcc16-nixpkgs.url = "github:sempiternal-aurora/nixpkgs/ebb08a80cf044c127bc6a85ce51e2abf1219febe";
 
-  outputs = { self, nixpkgs }:
+  outputs = { self, nixpkgs, gcc16-nixpkgs }:
     let
       # Cross-platform posture (honest):
       #
@@ -28,11 +31,21 @@
       # * **Windows** — wire/build groundwork landed under
       #   `_WIN32` guards; the named-pipe runtime stays its own
       #   plan.
+      gnVersion = "1.0.0-rc6";
+
       forAllSystems = f:
         nixpkgs.lib.genAttrs
           [ "x86_64-linux" "aarch64-linux"
             "x86_64-darwin" "aarch64-darwin" ]
           (system: f system (import nixpkgs { inherit system; }));
+
+      # Select gcc16Stdenv for x86_64-linux (the only system the PR
+      # packages today); fall back to gcc15Stdenv elsewhere until
+      # gcc16 lands in nixpkgs-unstable main.
+      mkStdenv = system: pkgs:
+        if system == "x86_64-linux"
+        then (import gcc16-nixpkgs { system = system; }).gcc16Stdenv
+        else pkgs.gcc15Stdenv;
 
       # `goodnet.lib.compose` — operator-facing constructor.
       # Bundles a daemon binary + a chosen plugin set + an optional
@@ -70,7 +83,7 @@
         , config ? null
         , identity ? null
         , pname ? "goodnet-node"
-        , version ? "1.0.0-rc3"
+        , version ? gnVersion
         }:
         pkgs.stdenv.mkDerivation {
           inherit pname version;
@@ -134,9 +147,10 @@
 
       packages = forAllSystems (system: pkgs:
         let
-          stdenv = pkgs.gcc15Stdenv;
+          stdenv = mkStdenv system pkgs;
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            (import ./nix/stdexec.nix { inherit pkgs; })
             # External bench baselines — iperf3 for raw TCP/UDP
             # throughput, socat for AF_UNIX echo. Both stage cleanly
             # in the dev shell so bench/comparison/runners/run_all.sh
@@ -161,14 +175,15 @@
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
           # Kernel-only build. Skips iterating `plugins/` so this
-          # derivation produces just `goodnet_kernel` + SDK + GNET
-          # (mandatory mesh framing) + `GoodNet::ctx_accessors` + the
-          # operator CLI. Loadable plugins live in their own flakes;
-          # this derivation does not depend on plugin source being
-          # present in the monorepo's git tree.
+          # derivation produces just `goodnet_kernel` + SDK +
+          # `GoodNet::ctx_accessors` + the operator CLI. The gnet
+          # mesh-framing protocol has been extracted to
+          # GoodNet-io/protocol-gnet. Loadable plugins live in
+          # their own flakes; this derivation does not depend on
+          # plugin source being present in the monorepo's git tree.
           goodnet-core = stdenv.mkDerivation {
             pname   = "goodnet-core";
-            version = "1.0.0-rc3";
+            version = gnVersion;
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -212,7 +227,7 @@
           # in-tree build consumes.
           sdk-headers = pkgs.stdenvNoCC.mkDerivation {
             pname   = "goodnet-sdk-headers";
-            version = "1.0.0-rc4";
+            version = gnVersion;
             src     = pkgs.lib.cleanSourceWith {
               src    = ./.;
               filter = path: type:
@@ -240,6 +255,21 @@
               license     = pkgs.lib.licenses.mit;
             };
           };
+
+          # Language bindings — Python (`bridges-python`) and Rust
+          # (`bridges-rust`) — used to ride here as in-tree
+          # `goodnet-python` / `goodnet-rust` derivations against
+          # `./bridges/{python,rust}`. Both split into standalone
+          # repos in May 2026 (commit splitting `bridges/{python,
+          # rust}` into separate gits, mirroring the bridges-cpp
+          # model). Consumers fetch them as flake inputs:
+          #
+          #     inputs.bridges-python.url = "github:GoodNet-io/bridges-python";
+          #     inputs.bridges-rust.url   = "github:GoodNet-io/bridges-rust";
+          #
+          # The per-binding flake threads `goodnet-core` (this
+          # repo's `packages.<system>.goodnet-core`) through its own
+          # build closure for the kernel header + library paths.
         } // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           # Truly-static kernel + bundled plugin set against musl +
           # `pkgsStatic` versions of openssl, libsodium, spdlog, fmt,
@@ -251,6 +281,7 @@
           # cross; Darwin static builds use a different toolchain.
           goodnet-core-static = import ./nix/goodnet-static.nix {
             inherit pkgs;
+            version = gnVersion;
           };
 
           # Reproducible Docker image around the static kernel.
@@ -268,6 +299,111 @@
           # is wired yet.
           goodnet-windows = import ./nix/goodnet-windows.nix {
             inherit pkgs;
+            version = gnVersion;
+          };
+
+          # aarch64 Linux cross-build via `pkgsCross.aarch64-multiplatform`.
+          # Kernel + full plugin set (TLS/WS/QUIC/ICE/store/dns/strategies)
+          # compiled against glibc aarch64. Linux-host-only.
+          goodnet-aarch64-linux = import ./nix/goodnet-aarch64-linux.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
+          # aarch64 Linux truly-static build via
+          # `pkgsCross.aarch64-multiplatform.pkgsStatic` (musl + static
+          # archives). Ships kernel .a + bundled-plugin .a + worker ELFs.
+          # Linux-host-only.
+          goodnet-aarch64-linux-static = import ./nix/goodnet-aarch64-linux-static.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
+          # Darwin cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-
+          # darwin`. Kernel-only first cut (plugins each own their
+          # own darwin port story per `docs/architecture/cross-
+          # platform.ru.md`). Linux-host-only — same shape as the
+          # mingw cross above; native Apple operators use
+          # `nix build .#packages.{x86_64,aarch64}-darwin.goodnet-
+          # core` from the non-cross attr set above. The
+          # `passthru.skip_reason` attribute lets the CI job short-
+          # circuit gracefully when the Apple SDK is absent in pure
+          # Nix cross (Xcode license — nixpkgs cannot redistribute);
+          # the `darwin-cross-build` workflow runs with
+          # `continue-on-error: true` so an SDK-gap regression does
+          # not break main.
+        } // pkgs.lib.optionalAttrs
+          # `pkgsCross.*-darwin.stdenv` requires an Apple SDK staged
+          # via requireFile (Xcode license — nixpkgs cannot redistribute).
+          # Without that staging the eval fails on cctools. Gate the
+          # darwin-cross outputs behind a successful tryEval of the
+          # cross stdenv so vanilla linux `nix flake check` stays
+          # clean; operators who have staged the SDK get the targets
+          # back automatically.
+          (builtins.tryEval pkgs.pkgsCross.x86_64-darwin.stdenv).success {
+          goodnet-darwin-x86_64 = import ./nix/goodnet-darwin.nix {
+            inherit pkgs;
+            arch = "x86_64";
+            version = gnVersion;
+          };
+          goodnet-darwin-aarch64 = import ./nix/goodnet-darwin.nix {
+            inherit pkgs;
+            arch = "aarch64";
+            version = gnVersion;
+          };
+        } // {
+
+          # WASM / WASI cross-build via `pkgs.pkgsCross.wasi32`.
+          # First of three WASM directions tracked in
+          # `docs/ROADMAP.en.md` §WASM-web — kernel-core wire codec
+          # compiles to wasm32-wasi. GNET framing extracted to
+          # GoodNet-io/protocol-gnet; wire separately. Sockets, dlopen,
+          # and fork-using runtimes are gated out at the source
+          # layer (`__wasi__` / `__EMSCRIPTEN__` guards in
+          # `core/plugin/dl_compat.hpp`, `runtimes/dynamic.cpp`,
+          # and `wire_codec.cpp`) and at the build-system layer
+          # (the nix derivation drives clang directly against the
+          # two TUs; the full kernel CMake tree is not invoked
+          # because `find_package(spdlog)` / `find_package(OpenSSL)`
+          # etc. do not resolve under the wasi32 cross stdenv).
+          # Linux-host-only — pkgsCross runs on Linux and emits a
+          # WebAssembly module. CI gate runs under
+          # `continue-on-error: true` because the wasi tooling pin
+          # is volatile (libcxx exceptions flip, sysroot rebuild on
+          # every llvm bump).
+          goodnet-wasm = import ./nix/goodnet-wasm.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
+          # WASM / Emscripten cross-build — second of three WASM
+          # directions in `docs/ROADMAP.en.md` §WASM-web. Targets
+          # `wasm32-emscripten` (browser host). Builds the full
+          # kernel C ABI (sdk/core.h): libsodium compiled from source
+          # via emconfigure/emmake inside the derivation; Asio headers
+          # compile under emcc; threading via -sUSE_PTHREADS=1 (Web
+          # Workers). Excluded: remote_host.cpp + runtimes/remote.cpp
+          # (fork/execve). Output: `goodnet.js` factory + `goodnet.wasm`
+          # + `goodnet.worker.js`. Hosting page requires COOP/COEP
+          # headers for SharedArrayBuffer. Linux-host-only. CI gates
+          # under `continue-on-error: true` (volatile emscripten pin).
+          goodnet-wasm-emscripten = import ./nix/goodnet-wasm-emscripten.nix {
+            inherit pkgs;
+            version = gnVersion;
+          };
+
+          # Android aarch64 kernel-only cross-build via NDK r28.
+          # Derivation lives at nix/goodnet-android.nix; it compiles the
+          # kernel against bionic + NDK libc++ as a smoke gate for the
+          # Android target matrix. Plugins each carry their own Android
+          # derivation story once the composed-node spec for Android lands.
+          # CI gates under `continue-on-error: true`; the `allowUnfree`
+          # requirement for the NDK means nix flake check will skip it on
+          # standard evaluators without `nixpkgs.config.allowUnfree = true`.
+          goodnet-android-aarch64 = import ./nix/goodnet-android.nix {
+            inherit pkgs;
+            arch = "aarch64";
+            version = gnVersion;
           };
         });
 
@@ -283,10 +419,9 @@
           # build app with subarg-driven variant select. Default
           # debug.
           #
-          # `debug` and `release` re-enter the dev shell and run a
-          # plain CMake build under the dynamic gcc15 toolchain;
-          # each variant lives in its own `build-<variant>/` so the
-          # two coexist without pin-ponging the cache.
+          # `debug` and `release` re-enter the dev shell and configure
+          # via `cmake --preset dev|release` (gcc16 on x86_64-linux,
+          # gcc15 elsewhere). debug → build/, release → build-release/.
           #
           # `static` is the truly-static cut: rather than running a
           # second CMake under the dev shell (which would inherit
@@ -334,31 +469,35 @@
                 echo "  $flake_dir/build-static/lib/  (.a archives)"
                 exit 0
               fi
-              tests_flag="-DGOODNET_BUILD_TESTS=ON"
               case "$variant" in
-                debug)   build_type=Debug   ; build_dir=build         ;;
-                release) build_type=Release ; build_dir=build-release ;;
+                debug)   preset=dev     ; build_dir=build         ;;
+                release) preset=release ; build_dir=build-release ;;
                 *) echo "build: unknown variant $variant (debug|release|static)" >&2
                    exit 1 ;;
               esac
               if [ ! -f "$build_dir/CMakeCache.txt" ]; then
-                echo ">>> Configuring $build_type build in $build_dir..."
-                cmake -B "$build_dir" -G Ninja \
-                  -DCMAKE_BUILD_TYPE=$build_type \
-                  $tests_flag
+                echo ">>> Configuring $variant build (preset $preset)..."
+                cmake --preset "$preset"
               fi
               cmake --build "$build_dir" -j"$(nproc)" "$@"
             ' _ "$@"
           '';
 
-          # `nix run .#test [-- asan|tsan|all]` — single test app
-          # with subarg-driven sanitizer select. Default vanilla
-          # debug (no instrumentation). \`asan\` and \`tsan\` build
-          # in dedicated \`build-asan\` / \`build-tsan\` trees with
-          # the appropriate flags + runtime env; \`all\` runs the
-          # vanilla, asan, and tsan suites in sequence and bails on
-          # the first failure. Trailing args after the variant are
-          # forwarded to ctest (e.g. \`test -- asan -R Noise\`).
+          # `nix run .#test [-- asan|tsan|coverage|all]` — single test
+          # app with subarg-driven sanitizer / coverage select. Default
+          # vanilla debug (no instrumentation). \`asan\` and \`tsan\`
+          # build in dedicated \`build-asan\` / \`build-tsan\` trees
+          # with the appropriate flags + runtime env; \`coverage\`
+          # builds in \`build-coverage\` under
+          # \`-fprofile-arcs -ftest-coverage\` + \`-O0 -g\` (the
+          # GOODNET_COVERAGE CMake option), runs ctest, then post-
+          # processes the .gcda / .gcno tree with lcov to print line +
+          # function coverage percent. \`all\` runs vanilla + asan +
+          # tsan in sequence and bails on the first failure — coverage
+          # is excluded because its lcov post-step is slow and would
+          # double the cost of a multi-pass run without adding pass /
+          # fail signal. Trailing args after the variant are forwarded
+          # to ctest (e.g. \`test -- asan -R Noise\`).
           gn-test = pkgs.writeShellScriptBin "gn-test" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               variant="''${1:-vanilla}"
@@ -366,6 +505,8 @@
               run_one() {
                 local v="$1"; shift
                 local build_dir flags runtime_env=""
+                local cmake_extra=""
+                local post_cmd=""
                 case "$v" in
                   vanilla)
                     build_dir=build flags=""
@@ -380,8 +521,19 @@
                     flags="-fsanitize=thread -O1 -g -fno-omit-frame-pointer"
                     runtime_env="TSAN_OPTIONS=halt_on_error=1:second_deadlock_stack=1:history_size=4"
                     ;;
+                  coverage)
+                    # Coverage is a CMake option (GOODNET_COVERAGE) rather
+                    # than a CFLAGS injection because the -O0 it needs
+                    # conflicts with the sanitiser -O1 path — keeping the
+                    # toggle inside CMake means the same configure cannot
+                    # accidentally combine coverage + sanitiser flags from
+                    # a stale env.
+                    build_dir=build-coverage
+                    cmake_extra="-DGOODNET_COVERAGE=ON"
+                    post_cmd="coverage_summary"
+                    ;;
                   *)
-                    echo "test: unknown variant $v (vanilla|asan|tsan|all)" >&2
+                    echo "test: unknown variant $v (vanilla|asan|tsan|coverage|all)" >&2
                     return 1
                     ;;
                 esac
@@ -395,7 +547,8 @@
                 if [ ! -f "$build_dir/CMakeCache.txt" ]; then
                   cmake -B "$build_dir" -G Ninja \
                     -DCMAKE_BUILD_TYPE=Debug \
-                    -DGOODNET_BUILD_TESTS=ON
+                    -DGOODNET_BUILD_TESTS=ON \
+                    $cmake_extra
                 fi
                 cmake --build "$build_dir" -j"$(nproc)"
                 if [ -n "$runtime_env" ]; then
@@ -405,8 +558,57 @@
                 else
                   ctest --test-dir "$build_dir" --output-on-failure "$@"
                 fi
+                if [ "$post_cmd" = "coverage_summary" ]; then
+                  coverage_summary "$build_dir"
+                fi
+              }
+              # `lcov --capture` reads the `.gcno` / `.gcda` tree that
+              # the gcov compile + run pair leaves under `build-coverage/`.
+              # The filter strips `/nix/store/*` (toolchain headers),
+              # `*/build*/*` (generated config + protobuf-ish stubs), and
+              # `*/tests/*` (the tests themselves — coverage of the test
+              # harness is not what the gate measures) so the printed
+              # totals reflect kernel + plugin source only. `lcov` is not
+              # in the dev shell; `nix shell nixpkgs#lcov --command`
+              # stages it inline so the script works whether or not the
+              # operator pre-installed lcov.
+              #
+              # `--ignore-errors inconsistent,unused,mismatch,negative`
+              # bridges a gcc-15 / lcov-2.3.2 protocol gap: gcc-15
+              # emits gcov line records whose end-line metadata
+              # occasionally disagrees with the intermediate-format
+              # span lcov computes (typical case: gtest TestBody
+              # methods whose macro-expanded body spans more lines
+              # than lcov walks) and reports the odd -1 hit count on
+              # template-heavy STL headers. lcov upgrades both to
+              # ERROR by default and refuses to write the `.info`
+              # file; the listed categories are the toolchain mismatch
+              # — silencing them is the documented workaround, see
+              # lcov(1) under `--ignore-errors`.
+              coverage_summary() {
+                bd="$1"
+                if command -v lcov >/dev/null 2>&1; then
+                  LCOV_CMD=""
+                else
+                  LCOV_CMD="${pkgs.nix}/bin/nix shell nixpkgs#lcov --command"
+                fi
+                $LCOV_CMD lcov --capture --directory "$bd" \
+                  --ignore-errors inconsistent,unused,mismatch,negative \
+                  --output-file "$bd/coverage.info"
+                $LCOV_CMD lcov --remove "$bd/coverage.info" \
+                  "/nix/store/*" "*/build*/*" "*/tests/*" \
+                  "*/gtest/*" "*/gmock/*" \
+                  --ignore-errors unused,inconsistent \
+                  --output-file "$bd/coverage.filtered.info"
+                $LCOV_CMD lcov --summary "$bd/coverage.filtered.info" \
+                  --ignore-errors inconsistent
               }
               if [ "$variant" = "all" ]; then
+                # `all` deliberately skips coverage — the lcov post-
+                # processing roughly doubles the wall time and provides
+                # no pass / fail signal beyond what ctest itself already
+                # produces. Coverage stays a deliberate `-- coverage`
+                # invocation.
                 run_one vanilla "$@" && run_one asan "$@" && run_one tsan "$@"
               else
                 run_one "$variant" "$@"
@@ -432,16 +634,15 @@
             echo "    bypass once : git commit/push --no-verify"
           '';
 
-          # `nix run .#run -- <demo|node|goodnetd> [args]` — single
-          # umbrella. \`demo\` builds + runs the self-contained
-          # two-node quickstart from `examples/two_node/`; \`node\`
-          # and \`goodnetd\` redirect the operator to the standalone
-          # `GoodNet-io/goodnetd` repo since the daemon binary no
-          # longer ships from this monorepo.
+          # `nix run .#run -- demo [args]` — runs the self-contained
+          # two-node quickstart from `examples/two_node/`. The operator
+          # daemon (`goodnetd`) now ships from the standalone repo
+          # `github.com/GoodNet-io/goodnetd`; `node` and `goodnetd`
+          # sub-commands print a redirect and exit 1.
           gn-run = pkgs.writeShellScriptBin "gn-run" ''
             exec ${pkgs.nix}/bin/nix develop "''${FLAKE_DIR:-.}" --command bash -c '
               if [ $# -lt 1 ]; then
-                echo "run: usage: nix run .#run -- <demo|node|goodnetd> [args]" >&2
+                echo "run: usage: nix run .#run -- demo [args]" >&2
                 exit 1
               fi
               kind="$1"; shift
@@ -467,7 +668,7 @@
                   exit 1
                   ;;
                 *)
-                  echo "run: unknown kind $kind (demo|node|goodnetd)" >&2
+                  echo "run: unknown kind $kind (demo)" >&2
                   exit 1
                   ;;
               esac
@@ -545,6 +746,33 @@
             '';
           };
 
+          # `nix run .#update-locks` — re-pins every in-tree plugin's
+          # flake.lock to the current kernel HEAD and current nixpkgs.
+          # Run this after tagging a kernel release so plugin standalone
+          # builds pick up the new SDK without manual per-plugin `nix
+          # flake update`. Idempotent: already-current locks are no-ops.
+          # Closes issue #15.
+          gn-update-locks = pkgs.writeShellApplication {
+            name = "gn-update-locks";
+            runtimeInputs = [ pkgs.nix ];
+            text = ''
+              set -euo pipefail
+              if [ ! -f flake.nix ]; then
+                echo "update-locks: run from the kernel monorepo root" >&2
+                exit 1
+              fi
+              root="$(pwd)"
+              for lock in plugins/*/*/flake.lock; do
+                dir="$(dirname "$lock")"
+                echo ">>> update-locks: $dir"
+                nix flake update --flake "$dir" \
+                  --override-input goodnet "path:$root"
+              done
+              echo ""
+              echo "update-locks: all plugin locks updated."
+            '';
+          };
+
           # Mirror builder (invoked from `gn-setup`) — bare-clone each
           # plugin's nested working git into `${MIRROR_DIR}/<repo>.git`
           # and wire `origin` in the working clone so subsequent
@@ -562,21 +790,51 @@
           # python `graphviz` package + doxygen) is sealed from
           # the host environment.
           gn-docs = import ./nix/docs.nix { inherit pkgs; };
+
+          # Downstream-app bootstrap layer — `nix run goodnet#init-app`,
+          # `goodnet#bootstrap-env`, `goodnet#sample-peer`. Reduces a
+          # fresh new-app sequence from 10+ manual steps (identity
+          # gen, manifest gen, plugin .so resolve, config write, dev
+          # shell, LD_LIBRARY_PATH) to three commands:
+          #
+          #     nix run goodnet#init-app -- my-thing
+          #     nix run goodnet#bootstrap-env          # one-time
+          #     cd my-thing && nix develop && cmake -B build && cmake --build build
+          #
+          # `init-app` scaffolds the consumer project; `bootstrap-env`
+          # lays down per-user `~/.local/share/goodnet/{identity,
+          # plugins,manifests,config.json}`; `sample-peer` spins up a
+          # throwaway peer the new consumer can dial against. The
+          # matching dev shell (`goodnet#app`, exported below)
+          # exports the env vars the `goodnet_app(...)` CMake helper
+          # macro and `gn::sdk::Core` ctor read. See
+          # `docs/operator/downstream-app-setup.en.md` for the full
+          # walkthrough.
+          gn-init-app =
+            pkgs.callPackage ./nix/init-app.nix { };
+          gn-bootstrap-env =
+            pkgs.callPackage ./nix/bootstrap-env.nix { };
+          gn-sample-peer =
+            pkgs.callPackage ./nix/sample-peer.nix { };
         in
         {
-          default = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          setup   = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
-          update  = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
-          build   = { type = "app"; program = "${gn-build}/bin/gn-build"; };
-          test    = { type = "app"; program = "${gn-test}/bin/gn-test"; };
-          run     = { type = "app"; program = "${gn-run}/bin/gn-run"; };
-          plugin  = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
-          docs    = { type = "app"; program = "${gn-docs}/bin/goodnet-docs"; };
+          default       = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          setup         = { type = "app"; program = "${gn-setup}/bin/goodnet-setup"; };
+          update        = { type = "app"; program = "${gn-update}/bin/goodnet-update"; };
+          update-locks  = { type = "app"; program = "${gn-update-locks}/bin/gn-update-locks"; };
+          build         = { type = "app"; program = "${gn-build}/bin/gn-build"; };
+          test          = { type = "app"; program = "${gn-test}/bin/gn-test"; };
+          run           = { type = "app"; program = "${gn-run}/bin/gn-run"; };
+          plugin        = { type = "app"; program = "${gn-plugin}/bin/goodnet-plugin"; };
+          docs          = { type = "app"; program = "${gn-docs}/bin/goodnet-docs"; };
+          init-app      = { type = "app"; program = "${gn-init-app}/bin/gn-init-app"; };
+          bootstrap-env = { type = "app"; program = "${gn-bootstrap-env}/bin/gn-bootstrap-env"; };
+          sample-peer   = { type = "app"; program = "${gn-sample-peer}/bin/gn-sample-peer"; };
         });
 
       devShells = forAllSystems (system: pkgs:
         let
-          stdenv = pkgs.gcc15Stdenv;
+          stdenv = mkStdenv system pkgs;
           # Explicit toolchain — kernel build deps plus the test
           # framework. Loadable plugin source is not in the
           # monorepo's git tree any more (each lives in its own
@@ -586,6 +844,7 @@
           # `nix develop` shell.
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl gbenchmark
+            (import ./nix/stdexec.nix { inherit pkgs; })
             # External bench baselines — iperf3 for raw TCP/UDP
             # throughput, socat for AF_UNIX echo. Both stage cleanly
             # in the dev shell so bench/comparison/runners/run_all.sh
@@ -606,6 +865,11 @@
             # without a second devShell, standalone plugin builds
             # inherit it through propagatedBuildInputs.
             c-ares
+            # libssh for apps/gssh. cmake --preset dev configures gssh
+            # when apps/gssh/ is checked out; without libssh the
+            # pkg_check_modules(LIBSSH REQUIRED) in gssh/CMakeLists.txt
+            # aborts the configure step.
+            libssh
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
@@ -620,13 +884,34 @@
             import ./nix/install-plugins.nix { inherit pkgs; };
           gn-install-hooks = pkgs.writeShellScriptBin "gn-install-hooks" ''
             set -euo pipefail
+            if ! git rev-parse --git-dir >/dev/null 2>&1; then
+              echo "install-hooks: not a git repository — skipping" >&2
+              exit 0
+            fi
             git config core.hooksPath .githooks
+            echo ">>> hooks installed: .githooks/"
+            echo "    pre-commit  : clang-tidy on staged C++"
+            echo "    pre-push    : test gate on push to main"
+            echo "    bypass once : git commit/push --no-verify"
           '';
           gn-setup = import ./nix/setup.nix {
             inherit pkgs;
             init-mirrors    = gn-init-mirrors;
             install-plugins = gn-install-plugins;
             install-hooks   = gn-install-hooks;
+          };
+
+          # `nix develop goodnet#app` — pre-wired shell for a
+          # downstream consumer that ran `init-app` + `bootstrap-env`.
+          # Exports `GOODNET_CORE_LIB` / `GOODNET_PLUGIN_PATH` /
+          # `GOODNET_IDENTITY` / `GOODNET_MANIFEST` + LD_LIBRARY_PATH
+          # so `cmake -B build && cmake --build build` + `./build
+          # /<target>` work out of the box. Reads the kernel shared
+          # object out of `self.packages.<system>.goodnet-core` so the
+          # shell pins the same kernel build the rest of the flake
+          # exposes.
+          gn-dev-shell-app = pkgs.callPackage ./nix/dev-shell-app.nix {
+            goodnet-core = self.packages.${system}.goodnet-core;
           };
         in
         {
@@ -673,20 +958,36 @@
               export CCACHE_DIR="$HOME/.cache/ccache"
               export CMAKE_C_COMPILER_LAUNCHER=ccache
               export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+              # Bake the gcc16 lib dir into CMake BUILD_RPATH so test
+              # binaries run outside nix develop (bare ctest, Forgejo runner).
+              export GOODNET_CXX_LIB_DIR="${stdenv.cc.cc.lib}/lib"
+              # LD_LIBRARY_PATH covers any remaining dynamic dep that
+              # didn't get the RPATH baked at configure time.
+              export LD_LIBRARY_PATH="${stdenv.cc.cc.lib}/lib''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
               _gn_plugin_slots="\
                 plugins/handlers/heartbeat \
                 plugins/handlers/store \
                 plugins/handlers/dns \
+                plugins/handlers/web_api_proxy \
                 plugins/links/tcp \
                 plugins/links/udp \
                 plugins/links/ws \
+                plugins/links/ws_inject \
                 plugins/links/ipc \
                 plugins/links/tls \
                 plugins/links/ice \
+                plugins/links/quic \
+                plugins/links/raw_inject \
+                plugins/links/portmap \
                 plugins/security/noise \
                 plugins/security/null \
-                bridges/cpp"
+                plugins/security/pkcs11 \
+                bridges/cpp \
+                bridges/python \
+                bridges/rust \
+                bridges/js \
+                tests/integration"
               _gn_missing=0
               for _gn_slot in $_gn_plugin_slots; do
                 if [ ! -d "$_gn_slot/.git" ]; then
@@ -703,7 +1004,7 @@
 
               cat <<'EOF'
 
-GoodNet devShell  (gcc15, C++23)
+GoodNet devShell  (gcc16, C++26)
 
   Setup / refresh:
     nix run .#setup            mirrors + plugins + hooks (one-shot)
@@ -712,10 +1013,11 @@ GoodNet devShell  (gcc15, C++23)
   Build / test:
     nix run .# [-- release|debug]            default debug
     nix run .#build [-- release|debug]
-    nix run .#test  [-- asan|tsan|all]       default vanilla
+    nix run .#test  [-- asan|tsan|coverage|all]   default vanilla
 
   Run artefacts:
-    nix run .#run -- <demo|node|goodnet> [args]
+    nix run .#run -- demo [args]
+    nix build github:GoodNet-io/goodnetd  # operator daemon
 
   Plugin lifecycle:
     nix run .#plugin -- <new|pull|install|update> [args]
@@ -725,6 +1027,11 @@ GoodNet devShell  (gcc15, C++23)
 EOF
             '';
           };
+
+          # See `nix/dev-shell-app.nix`. Linked here rather than
+          # built inline so the kernel + downstream views of the
+          # shell stay in lockstep when one or the other changes.
+          app = gn-dev-shell-app;
         });
     };
 }

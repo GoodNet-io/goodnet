@@ -36,21 +36,19 @@ std::size_t pos_of(const std::vector<ServiceDescriptor>& ordered,
 
 TEST(ServiceResolver_Empty, EmptyInputProducesEmptyOutput) {
     std::vector<ServiceDescriptor> input;
-    std::vector<ServiceDescriptor> ordered;
-    std::string diag;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered, &diag), GN_OK);
-    EXPECT_TRUE(ordered.empty());
-    EXPECT_TRUE(diag.empty());
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_TRUE(result->empty());
 }
 
 TEST(ServiceResolver_Trivial, SinglePluginNoDeps) {
     std::vector<ServiceDescriptor> input = {
         {.plugin_name = "alpha", .ext_requires = {}, .ext_provides = {}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered), GN_OK);
-    ASSERT_EQ(ordered.size(), 1u);
-    EXPECT_EQ(ordered[0].plugin_name, "alpha");
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 1u);
+    EXPECT_EQ((*result)[0].plugin_name, "alpha");
 }
 
 // ── linear chain ─────────────────────────────────────────────────────────
@@ -63,13 +61,13 @@ TEST(ServiceResolver_Chain, LinearABCOrder) {
         {.plugin_name = "B", .ext_requires = {"x"}, .ext_provides = {"y"}},
         {.plugin_name = "A", .ext_requires = {},     .ext_provides = {"x"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered), GN_OK);
-    ASSERT_EQ(ordered.size(), 3u);
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 3u);
 
-    const auto pa = pos_of(ordered, "A");
-    const auto pb = pos_of(ordered, "B");
-    const auto pc = pos_of(ordered, "C");
+    const auto pa = pos_of(*result, "A");
+    const auto pb = pos_of(*result, "B");
+    const auto pc = pos_of(*result, "C");
     EXPECT_LT(pa, pb);
     EXPECT_LT(pb, pc);
 }
@@ -86,14 +84,14 @@ TEST(ServiceResolver_Diamond, ABCDOrder) {
         {.plugin_name = "B", .ext_requires = {"x"},          .ext_provides = {"bx"}},
         {.plugin_name = "A", .ext_requires = {},             .ext_provides = {"x"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered), GN_OK);
-    ASSERT_EQ(ordered.size(), 4u);
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 4u);
 
-    const auto pa = pos_of(ordered, "A");
-    const auto pb = pos_of(ordered, "B");
-    const auto pc = pos_of(ordered, "C");
-    const auto pd = pos_of(ordered, "D");
+    const auto pa = pos_of(*result, "A");
+    const auto pb = pos_of(*result, "B");
+    const auto pc = pos_of(*result, "C");
+    const auto pd = pos_of(*result, "D");
     EXPECT_LT(pa, pb);
     EXPECT_LT(pa, pc);
     EXPECT_LT(pb, pd);
@@ -107,17 +105,17 @@ TEST(ServiceResolver_SelfProvide, AcceptedAndOrdered) {
     /// degenerate case the contract documents as fine. The toposort
     /// must accept it and order normally.
     std::vector<ServiceDescriptor> input = {
-        {.plugin_name = "self", .ext_requires = {"loopback"},
+        {.plugin_name = "self",  .ext_requires = {"loopback"},
                                   .ext_provides = {"loopback"}},
         {.plugin_name = "other", .ext_requires = {"loopback"},
-                                   .ext_provides = {}},
+                                  .ext_provides = {}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered), GN_OK);
-    ASSERT_EQ(ordered.size(), 2u);
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_TRUE(result.has_value());
+    ASSERT_EQ(result->size(), 2u);
 
-    const auto ps = pos_of(ordered, "self");
-    const auto po = pos_of(ordered, "other");
+    const auto ps = pos_of(*result, "self");
+    const auto po = pos_of(*result, "other");
     EXPECT_LT(ps, po);
 }
 
@@ -128,13 +126,11 @@ TEST(ServiceResolver_Duplicate, RejectedWithDiagnostic) {
         {.plugin_name = "A", .ext_requires = {}, .ext_provides = {"shared"}},
         {.plugin_name = "B", .ext_requires = {}, .ext_provides = {"shared"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    std::string diag;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered, &diag),
-              GN_ERR_LIMIT_REACHED);
-    EXPECT_FALSE(diag.empty());
-    EXPECT_NE(diag.find("shared"), std::string::npos);
-    EXPECT_TRUE(ordered.empty());
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, GN_ERR_LIMIT_REACHED);
+    EXPECT_FALSE(result.error().message.empty());
+    EXPECT_NE(result.error().message.find("shared"), std::string::npos);
 }
 
 TEST(ServiceResolver_Duplicate, NullDiagnosticAccepted) {
@@ -142,9 +138,9 @@ TEST(ServiceResolver_Duplicate, NullDiagnosticAccepted) {
         {.plugin_name = "A", .ext_requires = {}, .ext_provides = {"x"}},
         {.plugin_name = "B", .ext_requires = {}, .ext_provides = {"x"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered, nullptr),
-              GN_ERR_LIMIT_REACHED);
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, GN_ERR_LIMIT_REACHED);
 }
 
 // ── unresolved requirement ───────────────────────────────────────────────
@@ -154,13 +150,11 @@ TEST(ServiceResolver_Unresolved, RejectedWithDiagnostic) {
         {.plugin_name = "needsX", .ext_requires = {"missing"},
                                    .ext_provides = {}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    std::string diag;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered, &diag),
-              GN_ERR_NOT_FOUND);
-    EXPECT_FALSE(diag.empty());
-    EXPECT_NE(diag.find("missing"), std::string::npos);
-    EXPECT_TRUE(ordered.empty());
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, GN_ERR_NOT_FOUND);
+    EXPECT_FALSE(result.error().message.empty());
+    EXPECT_NE(result.error().message.find("missing"), std::string::npos);
 }
 
 // ── cycle ────────────────────────────────────────────────────────────────
@@ -172,13 +166,11 @@ TEST(ServiceResolver_Cycle, TwoNodeCycleRejected) {
         {.plugin_name = "A", .ext_requires = {"y"}, .ext_provides = {"x"}},
         {.plugin_name = "B", .ext_requires = {"x"}, .ext_provides = {"y"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    std::string diag;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered, &diag),
-              GN_ERR_INVALID_ENVELOPE);
-    EXPECT_FALSE(diag.empty());
-    EXPECT_NE(diag.find("cycle"), std::string::npos);
-    EXPECT_TRUE(ordered.empty());
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, GN_ERR_INVALID_ENVELOPE);
+    EXPECT_FALSE(result.error().message.empty());
+    EXPECT_NE(result.error().message.find("cycle"), std::string::npos);
 }
 
 TEST(ServiceResolver_Cycle, ThreeNodeCycleRejected) {
@@ -187,9 +179,9 @@ TEST(ServiceResolver_Cycle, ThreeNodeCycleRejected) {
         {.plugin_name = "B", .ext_requires = {"x"}, .ext_provides = {"y"}},
         {.plugin_name = "C", .ext_requires = {"y"}, .ext_provides = {"z"}},
     };
-    std::vector<ServiceDescriptor> ordered;
-    EXPECT_EQ(ServiceResolver::resolve(input, ordered),
-              GN_ERR_INVALID_ENVELOPE);
+    auto result = ServiceResolver::resolve(input);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().code, GN_ERR_INVALID_ENVELOPE);
 }
 
 }  // namespace

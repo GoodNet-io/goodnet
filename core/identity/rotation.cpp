@@ -6,6 +6,8 @@
 
 #include <sodium.h>
 
+#include "libsodium_signer.hpp"
+
 namespace gn::core::identity {
 
 namespace {
@@ -72,10 +74,23 @@ sign_rotation(const KeyPair&                prev_user_kp,
             GN_ERR_INVALID_STATE,
             "sign_rotation: prev_user keypair has no secret"});
     }
+    /// Route the keypair-based caller through the IdentitySigner
+    /// overload so the actual signing path is the Phase-1
+    /// abstraction. The transient signer wipes its copy of the
+    /// secret bytes on scope exit.
+    LibsodiumSigner transient{prev_user_kp.secret_key_view()};
+    return sign_rotation(transient, prev_user_kp.public_key(),
+                         new_user_pk, counter, valid_from_unix_ts);
+}
 
+::gn::Result<std::array<std::uint8_t, kRotationProofBytes>>
+sign_rotation(IdentitySigner&               prev_user_signer,
+              const ::gn::PublicKey&        prev_user_pk,
+              const ::gn::PublicKey&        new_user_pk,
+              std::uint64_t                 counter,
+              std::int64_t                  valid_from_unix_ts) {
     std::array<std::uint8_t, kRotationProofBytes> out{};
-    compose_signed_prefix(out.data(), new_user_pk,
-                           prev_user_kp.public_key(),
+    compose_signed_prefix(out.data(), new_user_pk, prev_user_pk,
                            counter, valid_from_unix_ts);
 
     /// SHA-256 of the signed prefix is the message Ed25519 signs.
@@ -86,9 +101,14 @@ sign_rotation(const KeyPair&                prev_user_kp,
             GN_ERR_OUT_OF_MEMORY, "sign_rotation: SHA-256 failed"});
     }
 
-    auto sig = prev_user_kp.sign(std::span<const std::uint8_t>(digest));
-    if (!sig) return std::unexpected(sig.error());
-    std::memcpy(out.data() + kRotationProofSigOffset, sig->data(), 64);
+    std::span<std::uint8_t, 64> sig_slot{
+        out.data() + kRotationProofSigOffset, 64};
+    const auto rc = prev_user_signer.sign(
+        std::span<const std::uint8_t>(digest), sig_slot);
+    if (rc != GN_OK) {
+        return std::unexpected(::gn::Error{
+            rc, "sign_rotation: signer rejected the digest"});
+    }
     return out;
 }
 

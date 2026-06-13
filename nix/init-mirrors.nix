@@ -49,15 +49,24 @@ pkgs.writeShellApplication {
       [plugins/handlers/heartbeat]=handler-heartbeat
       [plugins/handlers/store]=handler-store
       [plugins/handlers/dns]=handler-dns
+      [plugins/handlers/web_api_proxy]=handler-web-api-proxy
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
+      [plugins/links/ws_inject]=link-ws-inject
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
       [plugins/links/ice]=link-ice
+      [plugins/links/quic]=link-quic
+      [plugins/links/raw_inject]=link-raw-inject
+      [plugins/links/portmap]=link-portmap
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [plugins/security/pkcs11]=security-pkcs11
       [bridges/cpp]=bridges-cpp
+      [bridges/python]=bridges-python
+      [bridges/rust]=bridges-rust
+      [bridges/js]=bridges-js
       [tests/integration]=integration-tests
     )
 

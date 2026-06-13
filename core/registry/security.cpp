@@ -116,4 +116,20 @@ bool SecurityRegistry::is_active() const noexcept {
     return cur != nullptr && !cur->empty();
 }
 
+std::uint32_t SecurityEntry::provides_flags() const noexcept {
+    if (vtable == nullptr) return 0u;
+    if (!GN_API_HAS(gn_security_provider_vtable_t, vtable, provides_flags)) return 0u;
+    if (vtable->provides_flags == nullptr) return 0u;
+    const auto v = ::gn::core::safe_call_value<std::uint32_t>(
+        "security.provides_flags",
+        vtable->provides_flags, self);
+    return v.value_or(0u);
+}
+
+std::vector<SecurityEntry> SecurityRegistry::snapshot() const {
+    auto cur = entries_.load(std::memory_order_acquire);
+    if (!cur || cur->empty()) return {};
+    return *cur;
+}
+
 } // namespace gn::core

@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/handlers/store/`
-**Last verified:** 2026-05-13
+**Last verified:** 2026-05-19
 **Stability:** v1.x; wire layout below is locked, the `IStore`
               backend interface may grow new methods through
               size-prefix evolution.

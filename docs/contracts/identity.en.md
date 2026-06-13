@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/identity/`
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-29
 **Stability:** stable for v1.x. Mesh-address derivation, attestation
 wire form, sub-key registry layout, and rotation-proof wire form
 are all locked at the rc1 surface.
@@ -329,7 +329,62 @@ device_pk and the live noise session keep running.
 
 ---
 
-## 11. Cross-references
+## 11. Storage and signing today
+
+Today's reality, what an operator sees on disk and what the kernel
+does in-process:
+
+- **Storage.** A single libsodium-formatted file at
+  `~/.local/share/goodnet/identity/default.bin` (or whatever path
+  `--identity` / `identity_path` points at). Layout per §7 — a
+  4-byte `"GNID"` magic, version 1 byte, flag byte, expiry,
+  user seed, device seed, sub-key seeds, rotation counter and
+  history. File mode is `0600`.
+- **Signing.** The kernel loads both seeds at boot, derives the
+  public halves via `crypto_sign_ed25519_seed_keypair`, and
+  signs in-process with `crypto_sign_detached` whenever a slot
+  (attestation, rotation, sub-key invocation) needs a signature.
+  Secret bytes live in `KeyPair` move-only objects; zeroed on
+  destruction.
+
+This is the **current default and the only built-in option**. The
+file-copy failure mode — anyone who can read the file can mint
+attestations and rotation proofs under the node's identity — is
+the motivation for §12.
+
+---
+
+## 12. Pluggable backends — shipped
+
+The 5-phase refactor that moved identity from a file-backed primitive
+to a pluggable backend is complete. All phases landed before rc6.
+
+| Phase | Scope | Where |
+|---|---|---|
+| 1 | `core/identity/IdentitySigner` interface + `LibsodiumSigner` default. All in-kernel `crypto_sign_*` callers route through the abstraction. | `core/identity/identity_plugin_signer.{hpp,cpp}` |
+| 2 | `sdk/extensions/identity.h` + `gn_core_install_identity_from_provider()` public C ABI. Embedding hosts and plugins install external signers before the first attestation runs. | `sdk/core.h:199`, `core/kernel/core_c.cpp:169` |
+| 3 | `plugins/security/pkcs11/` dual-exposes `gn.identity.pkcs11` alongside `gn.security.pkcs11`. Same `.so`, two extensions. Operator-recommended HSM path. | `plugins/security/pkcs11/pkcs11_identity_ext.{hpp,cpp}` |
+| 4 | `goodnetd identity import-hsm`, `goodnetd doctor` HSM-presence checks, `goodnetd quickstart` HSM option. | `apps/goodnetd/subcommands/identity_import_hsm.cpp` |
+| 5 | `gn::sdk::Core` ctor + `Identity::from_hsm()` factory. Embedding apps select an HSM identity declaratively. | `sdk/cpp/identity.hpp:125`, `sdk/cpp/core.cpp:336` |
+
+The `IdentitySigner` interface takes the narrowest shape the existing
+call sites need — `sign(purpose, payload, out_sig)`,
+`public_key(purpose, out_pk)`, `describe()` — so a backend (PKCS#11,
+TPM, Keychain, WebAuthn) implements the interface without ever
+materialising the secret bytes. The file-backed `LibsodiumSigner`
+default stays as the bootstrap path and is never removed.
+
+The `plugins/identity/<backend>/` tree is open for additional backends:
+TPM 2.0 (TSS/ESAPI), macOS Keychain / Secure Enclave, Windows NCrypt,
+WebAuthn. Each registers under a distinct `gn.identity.<backend>`
+extension id.
+
+Tracking: goodnet-io/goodnet#6 (closed).
+Operator workflow: `operator/identity-hsm-setup.en.md`.
+
+---
+
+## 13. Cross-references
 
 - TrustClass policy that gates attestation use: `security-trust.en.md`.
 - Curve conversion (Ed25519 → X25519) for Noise DH: `plugins/security/noise/docs/handshake.md` §8.

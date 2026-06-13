@@ -48,6 +48,16 @@ public:
     [[nodiscard]] static ::gn::Result<KeyPair>
     from_seed(std::span<const std::uint8_t, kEd25519SeedBytes> seed);
 
+    /// Build a pubkey-only `KeyPair` — the secret half stays empty
+    /// (`has_secret() == false`). Used by HSM-backed `NodeIdentity`
+    /// composition where the private key never enters the process;
+    /// the kernel keeps the user public key as the binding identifier
+    /// while every signing operation routes through the plugin-side
+    /// `IdentitySigner`. `sign()` on a pubkey-only instance returns
+    /// `GN_ERR_INVALID_ENVELOPE` (same path as a wiped keypair).
+    [[nodiscard]] static KeyPair
+    from_public_key(const ::gn::PublicKey& pk) noexcept;
+
     /// Read-only access to the public key. The pk view stays
     /// valid for the lifetime of the KeyPair.
     [[nodiscard]] const ::gn::PublicKey& public_key() const noexcept { return pk_; }

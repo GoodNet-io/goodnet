@@ -87,9 +87,88 @@ TEST(ParseUri, EmptyInput) {
 }
 
 TEST(ParseUri, MissingPort) {
-    EXPECT_FALSE(::gn::parse_uri("tcp://127.0.0.1").has_value());
+    /// uri.en.md §5 #4: `host:` (empty port segment) and bare `host`
+    /// (no scheme, no `:`) still fail. `tcp://127.0.0.1` is now
+    /// path-style — see ParseUri.HostNoPortBecomesPathStyle.
     EXPECT_FALSE(::gn::parse_uri("host").has_value());
     EXPECT_FALSE(::gn::parse_uri("host:").has_value());
+}
+
+// ── §3.1 path-style on any scheme ────────────────────────────────────────
+
+TEST(ParseUri, QuicPeerPkPathStyle) {
+    /// QUIC's content-addressed peer URI: `quic://<64-hex peer-pk>`
+    /// has no port and no `:`. uri.en.md §3.1: path-style, the whole
+    /// authority becomes `path`. The QUIC plugin used to fall back to
+    /// a manual `://` split because the SDK rejected this shape.
+    constexpr const char* kPk =
+        "abcdef0123456789abcdef0123456789"
+        "abcdef0123456789abcdef0123456789";
+    auto r = ::gn::parse_uri(std::string{"quic://"} + kPk);
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->scheme, "quic");
+    EXPECT_EQ(r->path, kPk);
+    EXPECT_EQ(r->host, kPk);     /// host mirrors path
+    EXPECT_EQ(r->port, 0);
+    EXPECT_TRUE(r->is_path_style());
+    EXPECT_EQ(r->canonical(), std::string{"quic://"} + kPk);
+}
+
+TEST(ParseUri, WasmPathStyle) {
+    /// Generic opaque-body scheme — no port, no `:` in body. The
+    /// grammar (not a scheme allow-list) decides this is path-style.
+    auto r = ::gn::parse_uri("wasm://module-uuid");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->scheme, "wasm");
+    EXPECT_EQ(r->path, "module-uuid");
+    EXPECT_TRUE(r->is_path_style());
+    EXPECT_EQ(r->canonical(), "wasm://module-uuid");
+}
+
+TEST(ParseUri, HostNoPortBecomesPathStyle) {
+    /// uri.en.md §3.1: `tcp://hostname` (no `:` in authority) parses
+    /// as path-style with `path = "hostname"`. The historical
+    /// missing-port rejection only applies to `host:` and bare
+    /// `host` (no scheme).
+    auto r = ::gn::parse_uri("tcp://10.0.0.5");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->scheme, "tcp");
+    EXPECT_EQ(r->path, "10.0.0.5");
+    EXPECT_TRUE(r->is_path_style());
+    EXPECT_EQ(r->port, 0);
+}
+
+TEST(ParseUri, HostPortStillWorks) {
+    /// Regression — adding the path-style fallback must not divert
+    /// the host:port branch. `tcp://10.0.0.5:1234` stays strict.
+    auto r = ::gn::parse_uri("tcp://10.0.0.5:1234");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_FALSE(r->is_path_style());
+    EXPECT_EQ(r->host, "10.0.0.5");
+    EXPECT_EQ(r->port, 1234);
+    EXPECT_TRUE(r->path.empty());
+}
+
+TEST(ParseUri, IpcPathStyleStillWorks) {
+    /// Regression — ipc:// remains path-style after the §3.1
+    /// generalisation. Same expectations as ParseUri.IpcPathStyle
+    /// above; duplicated here so the regression intent is explicit.
+    auto r = ::gn::parse_uri("ipc:///tmp/sock");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->scheme, "ipc");
+    EXPECT_EQ(r->path, "/tmp/sock");
+    EXPECT_TRUE(r->is_path_style());
+}
+
+TEST(ParseUri, PathStyleWithQueryOnAnyScheme) {
+    /// `quic://<pk>?peer=abc` — query strip happens before path-style
+    /// detection, so the peer-pk path-style URI carries a query just
+    /// like ipc://.
+    auto r = ::gn::parse_uri("quic://abcdef?peer=xyz");
+    ASSERT_TRUE(r.has_value());
+    EXPECT_EQ(r->path, "abcdef");
+    EXPECT_TRUE(r->is_path_style());
+    EXPECT_EQ(r->query, "peer=xyz");
 }
 
 TEST(ParseUri, ZeroPortAccepted) {

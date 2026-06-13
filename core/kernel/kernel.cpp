@@ -10,9 +10,7 @@
 
 #include <sdk/extensions/link_capability.h>
 
-#include <algorithm>
 #include <chrono>
-#include <cstdint>
 #include <string>
 #include <thread>
 

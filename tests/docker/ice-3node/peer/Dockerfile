@@ -53,4 +53,11 @@ RUN chmod +x /usr/local/bin/peer-harness
 # image only needs the .so bytes — no separate manifest.
 COPY plugins/ /plugins/
 
+# Runtime .so closure staged by run_all.sh from ldd over harness +
+# plugins. The goodnet:nix-static base was built from rc3; its
+# /nix/store is missing libs the current harness links against
+# (openssl 3.6, spdlog 1.17, gcc-16 libstdc++). Ship them flat in
+# /usr/local/lib; run.sh prepends it to LD_LIBRARY_PATH.
+COPY libs/ /usr/local/lib/
+
 ENTRYPOINT ["/usr/local/bin/peer-run.sh"]

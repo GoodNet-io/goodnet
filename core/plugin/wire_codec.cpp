@@ -47,6 +47,7 @@ inline std::uint8_t make_initial(std::uint8_t major,
 /// convenience for the operator-facing log line.
 void note_diag(Reader& r, std::string_view what) noexcept {
     if (r.diag == nullptr) return;
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS)
     try {
         r.diag->assign(what);
         r.diag->append(" at byte ");
@@ -54,6 +55,19 @@ void note_diag(Reader& r, std::string_view what) noexcept {
     } catch (...) {
         // best-effort diagnostic; ignore.
     }
+#else
+    // nixpkgs `pkgsCross.wasi32` ships libc++ built with
+    // `LIBCXX_ENABLE_EXCEPTIONS=false` (see llvm/common/libcxx
+    // default.nix). The diagnostic sink stays best-effort; under
+    // the no-exceptions build the string ops are direct and a
+    // `std::bad_alloc` would crash the wasm module — that mirrors
+    // the rest of the wasi-libc behaviour where allocation failure
+    // is fatal anyway, so the loss of the swallow is acceptable
+    // for the kernel-core diagnostic surface.
+    r.diag->assign(what);
+    r.diag->append(" at byte ");
+    r.diag->append(std::to_string(r.pos));
+#endif
 }
 
 void emit_head(std::vector<std::uint8_t>& out,

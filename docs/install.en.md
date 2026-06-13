@@ -45,9 +45,12 @@ sudo install -m 0644 build-release/plugins/lib*.so /usr/lib/goodnet/
 ```
 
 The `nix develop` shell supplies every transitive build dep
-(gcc 15, cmake, ninja, libsodium, asio, spdlog, fmt, nlohmann-json,
-gtest) — host package versions do not matter as long as the dev
-shell is on the build path.
+(gcc 16 on x86_64-linux / gcc 15 on all other platforms, cmake,
+ninja, libsodium, spdlog, fmt, nlohmann-json, stdexec, gtest)
+— host package versions do not matter as long as the dev shell is
+on the build path.  The gcc 16 input is pinned via the
+`sempiternal-aurora/nixpkgs` flake input carrying the GCC 16 PR;
+other platforms continue to use the nixpkgs stable gcc 15.
 
 A non-Nix host can use the system toolchain directly; the only
 hard requirement is C++23 and libsodium 1.0.18+. CMake configure
@@ -165,6 +168,16 @@ goodnetd identity show /etc/goodnet/identity.bin
 The command prints `address`, `user_pk`, `device_pk`, `expiry`
 and exits 0; secret seeds never reach stdout.
 
+This file-backed path is the **current default and the only
+built-in option**. The single failure mode — anyone who can read
+the file can mint attestations under the node's identity — is
+acknowledged; HSM-backed identity (PKCS#11 token, TPM 2.0, macOS
+Keychain) lands across the 5-phase refactor documented in
+`identity.en.md` §12 and the forward-looking operator workflow at
+`operator/identity-hsm-setup.en.md`. Until Phase 4 lands operators
+who need hardware-backed signing apply defence-in-depth at the
+filesystem layer (encrypted-at-rest, `0600`, system-user-owned).
+
 ---
 
 ## 4. Installing the systemd unit
@@ -248,4 +261,8 @@ gives plugins 30 seconds to drain in-flight async work before
 - **Backup and key rotation** — NodeIdentity rotation policy is
   not yet specified. Operators copy `/etc/goodnet/identity.bin`
   before generating a replacement and update each peer's
-  `peers.json` entry by address.
+  `peers.json` entry by address. HSM-backed identity (Phase 4+,
+  see `identity.en.md` §12) shifts the backup discipline:
+  device-side signing key cannot be copied, user-side seed
+  needs offline backup (paper / second-HSM) the same way today's
+  identity needs `0600` + encrypted-at-rest filesystem.

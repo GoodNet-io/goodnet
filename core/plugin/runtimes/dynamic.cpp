@@ -1,7 +1,50 @@
 /// @file   core/plugin/runtimes/dynamic.cpp
 /// @brief  DynamicRuntime — dlopen-backed lifecycle dispatch.
+///
+/// WASI / Emscripten: this TU is excluded from the kernel-core
+/// source list by `nix/goodnet-wasm.nix` (no `dlopen` on WASI 1.0
+/// / no `SIDE_MODULE` integration in the wasm cross-build). A
+/// guarded shim at the top of the file keeps the unit self-
+/// protective if a downstream build forgets to filter — every
+/// member becomes a `GN_ERR_NOT_FOUND` stub mirroring the Windows
+/// path in `remote_host.cpp`.
 
 #include <core/plugin/runtimes/dynamic.hpp>
+
+#if defined(__wasi__) || defined(__EMSCRIPTEN__)
+
+#include <core/kernel/plugin_context.hpp>
+#include <core/plugin/plugin_manager.hpp>
+
+namespace gn::core {
+
+gn_result_t DynamicRuntime::load(const std::string& path,
+                                  const PluginLoadContext&,
+                                  PluginInstance&,
+                                  std::string& diag) {
+    diag = "DynamicRuntime: dlopen unavailable on WASI / Emscripten "
+           "(no shared-object plugin loading in the wasm kernel "
+           "build); path was: ";
+    diag += path;
+    return GN_ERR_NOT_FOUND;
+}
+
+gn_result_t DynamicRuntime::init(PluginInstance&)             { return GN_ERR_NOT_IMPLEMENTED; }
+gn_result_t DynamicRuntime::register_plugin(PluginInstance&)  { return GN_ERR_NOT_IMPLEMENTED; }
+void        DynamicRuntime::unregister(PluginInstance&)       {}
+void        DynamicRuntime::shutdown(PluginInstance&)         {}
+void        DynamicRuntime::close(PluginInstance&, bool)      {}
+
+gn_result_t DynamicRuntime::resolve_symbols_(void*,
+                                              DynamicPluginSymbols&,
+                                              std::string& diag) {
+    diag = "DynamicRuntime: resolve_symbols unavailable on WASI / Emscripten";
+    return GN_ERR_NOT_IMPLEMENTED;
+}
+
+}  // namespace gn::core
+
+#else  // POSIX / mingw path
 
 #include <core/plugin/dl_compat.hpp>
 
@@ -19,6 +62,7 @@
 #endif
 #endif
 
+#include <ranges>
 #include <string>
 
 #include <core/kernel/host_api_builder.hpp>
@@ -33,6 +77,12 @@
 namespace gn::core {
 
 namespace {
+
+/// Lazy range over a null-terminated `const char*` array.
+constexpr auto cstr_array_range(const char* const* p) noexcept {
+    return std::ranges::subrange(p, std::unreachable_sentinel)
+         | std::views::take_while([](const char* s) { return s != nullptr; });
+}
 
 [[nodiscard]] bool sdk_version_compatible(
     const DynamicPluginSymbols& syms) noexcept {
@@ -49,16 +99,12 @@ ServiceDescriptor descriptor_from_symbol(const DynamicPluginSymbols& syms,
         if (const auto* d = syms.descriptor()) {
             sd.plugin_name = d->name ? d->name : path_fallback;
             sd.kind        = d->kind;
-            if (d->ext_requires) {
-                for (const char* const* p = d->ext_requires; *p != nullptr; ++p) {
-                    sd.ext_requires.emplace_back(*p);
-                }
-            }
-            if (d->ext_provides) {
-                for (const char* const* p = d->ext_provides; *p != nullptr; ++p) {
-                    sd.ext_provides.emplace_back(*p);
-                }
-            }
+            if (d->ext_requires)
+                for (auto s : cstr_array_range(d->ext_requires))
+                    sd.ext_requires.emplace_back(s);
+            if (d->ext_provides)
+                for (auto s : cstr_array_range(d->ext_provides))
+                    sd.ext_provides.emplace_back(s);
             return sd;
         }
     }
@@ -296,10 +342,14 @@ void DynamicRuntime::close(PluginInstance& inst, bool drained) {
     /// dlopen call. Closing it now reclaims the fd number for
     /// future plugin loads — the kernel's TOCTOU guarantee was the
     /// dlopen point, not the fd's continued life.
+#ifdef __linux__
     if (inst.integrity_fd >= 0) {
         ::close(inst.integrity_fd);
         inst.integrity_fd = -1;
     }
+#endif
 }
 
 }  // namespace gn::core
+
+#endif  // !__wasi__ && !__EMSCRIPTEN__

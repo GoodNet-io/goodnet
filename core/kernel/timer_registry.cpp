@@ -3,7 +3,12 @@
 
 #include "timer_registry.hpp"
 
-#include <asio/post.hpp>
+#ifndef __EMSCRIPTEN__
+#include <stdexec/execution.hpp>
+#include <exec/timed_thread_scheduler.hpp>
+#include <exec/start_detached.hpp>
+namespace exec = experimental::execution;
+#endif
 
 #include <utility>
 
@@ -11,11 +16,70 @@
 
 namespace gn::core {
 
+#ifndef __EMSCRIPTEN__
 TimerRegistry::TimerRegistry()
-    : ioc_(),
-      work_(asio::make_work_guard(ioc_)) {
-    worker_ = std::thread([this] { ioc_.run(); });
+    : ctx_()
+{}
+#else
+TimerRegistry::TimerRegistry()
+{
+    wasm_worker_ = std::thread([this]{ wasm_run(); });
 }
+
+void TimerRegistry::wasm_run() noexcept {
+    for (;;) {
+        std::unique_lock<std::mutex> lk(wasm_mu_);
+        if (wasm_stop_) return;
+        if (wasm_queue_.empty()) {
+            wasm_cv_.wait(lk, [this]{ return wasm_stop_ || !wasm_queue_.empty(); });
+            continue;
+        }
+        auto when = wasm_queue_.top().fire_at;
+        auto now  = std::chrono::steady_clock::now();
+        if (when > now) {
+            wasm_cv_.wait_until(lk, when);
+            continue;
+        }
+        WasmEntry e = wasm_queue_.top();
+        wasm_queue_.pop();
+        lk.unlock();
+
+        gn_task_fn_t fn         = nullptr;
+        void*        user_data  = nullptr;
+        std::weak_ptr<PluginAnchor> anchor;
+        bool         has_anchor = false;
+        bool         is_post    = false;
+        {
+            std::lock_guard<std::mutex> lk2(mu_);
+            auto it = timers_.find(e.id);
+            if (it == timers_.end()) continue; // cancelled
+            fn         = it->second.fn;
+            user_data  = it->second.user_data;
+            anchor     = it->second.anchor;
+            has_anchor = !anchor.expired();
+            is_post    = it->second.is_post;
+            timers_.erase(it);
+        }
+
+        if (is_post) {
+            pending_tasks_.fetch_sub(1, std::memory_order_relaxed);
+        } else if (has_anchor) {
+            // set_timer increments active_timers; mirror the decrement here.
+            if (auto s = anchor.lock()) {
+                s->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+            }
+        }
+        if (fn) {
+            if (has_anchor) {
+                auto guard = GateGuard::acquire(anchor);
+                if (guard) safe_call_void(is_post ? "executor.task" : "timer.callback", fn, user_data);
+            } else {
+                safe_call_void(is_post ? "executor.task" : "timer.callback", fn, user_data);
+            }
+        }
+    }
+}
+#endif
 
 TimerRegistry::~TimerRegistry() {
     /// `shutdown()` joins the worker; bad_executor or thread-join
@@ -97,18 +161,7 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
         }
 
         gn_timer_id_t id = GN_INVALID_TIMER_ID;
-        std::shared_ptr<asio::steady_timer> timer;
         {
-            /// Hold `mu_` from the global-cap check through the
-            /// `emplace`. `limits.en.md` §4 — a cap of zero disables
-            /// enforcement. Releasing the lock between the size
-            /// check and the emplace would let two admits race
-            /// through the window and both observe `size() < cap`,
-            /// leaving the registry at `cap + 1`. Holding the lock
-            /// collapses the window at the cost of constructing
-            /// the asio timer and the entry under the mutex —
-            /// both are short and bounded (one heap allocation,
-            /// no syscalls).
             std::lock_guard lk(mu_);
             const std::uint32_t cap =
                 max_timers_.load(std::memory_order_relaxed);
@@ -120,62 +173,49 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
                 return GN_ERR_LIMIT_REACHED;
             }
             id = next_id_.fetch_add(1, std::memory_order_relaxed);
-            timer = std::make_shared<asio::steady_timer>(
-                ioc_, std::chrono::milliseconds{delay_ms});
             TimerEntry entry;
-            entry.timer     = timer;
             entry.anchor    = anchor;
             entry.fn        = fn;
             entry.user_data = user_data;
             timers_.emplace(id, std::move(entry));
         }
 
-        timer->async_wait([this, id, fn, user_data,
-                           anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
-                           anchor_set = static_cast<bool>(anchor)](
-            const std::error_code& ec) {
-            /// Refund the per-plugin timer quota at the head of the
-            /// callback so every dispatch path — natural fire,
-            /// cancel-before-fire, anchor-expired drop — credits
-            /// the slot back. Without this the cancel path would
-            /// leak the increment and the plugin would slowly
-            /// exhaust its budget.
-            if (anchor_set) {
-                if (auto strong = anchor_weak.lock()) {
-                    strong->active_timers.fetch_sub(
-                        1, std::memory_order_acq_rel);
+#ifndef __EMSCRIPTEN__
+        exec::start_detached(
+            exec::schedule_after(ctx_.get_scheduler(),
+                                 std::chrono::milliseconds{delay_ms})
+            | stdexec::then([this, id, fn, user_data,
+                             anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
+                             anchor_set  = static_cast<bool>(anchor)]() noexcept {
+                if (anchor_set) {
+                    if (auto s = anchor_weak.lock()) {
+                        s->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+                    }
                 }
-            }
-
-            TimerEntry consumed;
-            bool found = false;
-            {
-                std::lock_guard lk(mu_);
-                auto it = timers_.find(id);
-                if (it != timers_.end()) {
-                    consumed = std::move(it->second);
+                {
+                    std::lock_guard lk(mu_);
+                    auto it = timers_.find(id);
+                    if (it == timers_.end()) return; // cancelled
                     timers_.erase(it);
-                    found = true;
                 }
-            }
-            if (!found) return;          // cancelled before fire
-            if (ec)     return;          // operation_aborted, etc.
-
-            /// Cancellation gate: open a `GateGuard` for the
-            /// duration of the dispatch. Acquire fails if the
-            /// anchor expired or the rollback path already published
-            /// `shutdown_requested = true`; the guard's destructor
-            /// drops the in-flight counter and wakes the drain CV
-            /// on the last release. Anchor-less timers (in-tree
-            /// fixtures) skip the gate.
-            if (anchor_set) {
-                auto guard = GateGuard::acquire(anchor_weak);
-                if (!guard) return;
-                safe_call_void("timer.callback", fn, user_data);
-            } else {
-                safe_call_void("timer.callback", fn, user_data);
-            }
-        });
+                if (anchor_set) {
+                    auto guard = GateGuard::acquire(anchor_weak);
+                    if (!guard) return;
+                    safe_call_void("timer.callback", fn, user_data);
+                } else {
+                    safe_call_void("timer.callback", fn, user_data);
+                }
+            })
+            | stdexec::upon_stopped([]() noexcept {}) // absorb set_stopped when ctx_ shuts down
+        );
+#else
+        {
+            std::lock_guard<std::mutex> lk(wasm_mu_);
+            wasm_queue_.push({std::chrono::steady_clock::now() +
+                              std::chrono::milliseconds{delay_ms}, id});
+        }
+        wasm_cv_.notify_one();
+#endif
 
         if (out_id != nullptr) *out_id = id;
         return GN_OK;
@@ -195,18 +235,33 @@ gn_result_t TimerRegistry::set_timer(std::uint32_t  delay_ms,
 gn_result_t TimerRegistry::cancel_timer(gn_timer_id_t id) noexcept {
     if (id == GN_INVALID_TIMER_ID) return GN_ERR_NULL_ARG;
     try {
-        std::shared_ptr<asio::steady_timer> doomed;
+        std::weak_ptr<PluginAnchor> anchor_weak;
+        bool had_anchor = false;
+#ifdef __EMSCRIPTEN__
+        bool is_post = false;
+#endif
         {
             std::lock_guard lk(mu_);
             auto it = timers_.find(id);
-            if (it == timers_.end()) return GN_OK;  // idempotent
-            doomed = std::move(it->second.timer);
+            if (it == timers_.end()) return GN_OK;
+            anchor_weak = it->second.anchor;
+            had_anchor  = !anchor_weak.expired();
+#ifdef __EMSCRIPTEN__
+            is_post = it->second.is_post;
+#endif
             timers_.erase(it);
         }
-        /// `cancel()` on a steady_timer queues the wait callback
-        /// with `operation_aborted`; the lambda above sees
-        /// `found == false` because the entry is already erased.
-        if (doomed->cancel() > 0) {}
+#ifdef __EMSCRIPTEN__
+        if (had_anchor && !is_post) {
+#else
+        if (had_anchor) {
+#endif
+            if (auto s = anchor_weak.lock()) {
+                s->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+            }
+        }
+        // The pending entry will fire later and see the id absent
+        // from timers_, so it skips the callback cleanly.
         return GN_OK;
     } catch (const std::exception&) {
         return GN_ERR_NULL_ARG;
@@ -246,15 +301,13 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
     }
 
     try {
-        asio::post(ioc_,
-            [this, fn, user_data,
-             anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
-             anchor_set = static_cast<bool>(anchor)] {
+#ifndef __EMSCRIPTEN__
+        exec::start_detached(
+            stdexec::schedule(ctx_.get_scheduler())
+            | stdexec::then([this, fn, user_data,
+                             anchor_weak = std::weak_ptr<PluginAnchor>(anchor),
+                             anchor_set  = static_cast<bool>(anchor)]() noexcept {
                 pending_tasks_.fetch_sub(1, std::memory_order_relaxed);
-                /// See `set_timer` for the cancellation-gate
-                /// rationale — the GateGuard's `in_flight` bump
-                /// blocks `drain_anchor` from running `dlclose`
-                /// while the dispatch is still in plugin code.
                 if (anchor_set) {
                     auto guard = GateGuard::acquire(anchor_weak);
                     if (!guard) return;
@@ -262,7 +315,27 @@ gn_result_t TimerRegistry::post(gn_task_fn_t                 fn,
                 } else {
                     safe_call_void("executor.task", fn, user_data);
                 }
-            });
+            })
+            | stdexec::upon_stopped([]() noexcept {})
+        );
+#else
+        // Emscripten: route through the wasm background thread as a zero-delay timer.
+        gn_timer_id_t id = next_id_.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard<std::mutex> lk(mu_);
+            TimerEntry entry;
+            entry.anchor    = anchor;
+            entry.fn        = fn;
+            entry.user_data = user_data;
+            entry.is_post   = true;
+            timers_.emplace(id, std::move(entry));
+        }
+        {
+            std::lock_guard<std::mutex> lk(wasm_mu_);
+            wasm_queue_.push({std::chrono::steady_clock::now(), id});
+        }
+        wasm_cv_.notify_one();
+#endif
         return GN_OK;
     } catch (const std::bad_alloc&) {
         pending_tasks_.fetch_sub(1, std::memory_order_relaxed);
@@ -277,23 +350,24 @@ void TimerRegistry::cancel_for_anchor(
     const std::shared_ptr<PluginAnchor>& anchor) noexcept {
     if (!anchor) return;
     try {
-        std::vector<std::shared_ptr<asio::steady_timer>> doomed;
         {
             std::lock_guard lk(mu_);
             for (auto it = timers_.begin(); it != timers_.end(); ) {
                 auto locked = it->second.anchor.lock();
                 if (locked.get() == anchor.get()) {
-                    doomed.push_back(std::move(it->second.timer));
+#ifdef __EMSCRIPTEN__
+                    // wasm_run skips entries missing from timers_ without
+                    // decrementing active_timers, so we must do it here for
+                    // set_timer-originated entries (post tasks don't use the counter).
+                    if (!it->second.is_post) {
+                        anchor->active_timers.fetch_sub(1, std::memory_order_acq_rel);
+                    }
+#endif
                     it = timers_.erase(it);
                 } else {
                     ++it;
                 }
             }
-        }
-        /// Cancel outside the lock so the wait callback's lock
-        /// acquisition cannot self-deadlock.
-        for (auto& t : doomed) {
-            if (t->cancel() > 0) {}
         }
     } catch (const std::exception&) {
         /// Best-effort: the lifetime gate inside async_wait still
@@ -307,14 +381,20 @@ void TimerRegistry::shutdown() {
     if (shutdown_.exchange(true, std::memory_order_acq_rel)) return;
     {
         std::lock_guard lk(mu_);
-        for (auto& [_, entry] : timers_) {
-            if (entry.timer && entry.timer->cancel() > 0) {}
-        }
         timers_.clear();
     }
-    work_.reset();
-    ioc_.stop();
-    if (worker_.joinable()) worker_.join();
+#ifndef __EMSCRIPTEN__
+    // timed_thread_context dtor requests stop and joins its thread.
+    // Pending schedule_after operations complete with set_stopped;
+    // start_detached sinks those silently — no extra work needed.
+#else
+    {
+        std::lock_guard<std::mutex> lk(wasm_mu_);
+        wasm_stop_ = true;
+    }
+    wasm_cv_.notify_all();
+    if (wasm_worker_.joinable()) wasm_worker_.join();
+#endif
 }
 
 } // namespace gn::core

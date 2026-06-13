@@ -26,6 +26,9 @@ target_link_libraries(peer_harness
         OpenSSL::Crypto
         Threads::Threads
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(peer_harness PRIVATE GoodNet::protocol_gnet)
+endif()
 
 target_compile_features(peer_harness PRIVATE cxx_std_23)
 

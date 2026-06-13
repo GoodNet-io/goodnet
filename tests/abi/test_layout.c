@@ -43,6 +43,7 @@
 
 #include <sdk/extensions/heartbeat.h>
 #include <sdk/extensions/link.h>
+#include <sdk/topology.h>
 
 /* ── sdk/types.h ───────────────────────────────────────────────────────────── */
 
@@ -81,8 +82,16 @@ _Static_assert(offsetof(gn_conn_event_t, remote_pk) == 20,
                "gn_conn_event_t::remote_pk offset pinned at 20");
 _Static_assert(offsetof(gn_conn_event_t, pending_bytes) == 56,
                "gn_conn_event_t::pending_bytes offset pinned at 56");
-_Static_assert(offsetof(gn_conn_event_t, _reserved) == 64,
-               "gn_conn_event_t::_reserved offset pinned at 64");
+_Static_assert(offsetof(gn_conn_event_t, user_pk_prev) == 64,
+               "gn_conn_event_t::user_pk_prev offset pinned at 64");
+_Static_assert(offsetof(gn_conn_event_t, user_pk_next) == 72,
+               "gn_conn_event_t::user_pk_next offset pinned at 72");
+_Static_assert(offsetof(gn_conn_event_t, rotation_seq) == 80,
+               "gn_conn_event_t::rotation_seq offset pinned at 80");
+_Static_assert(offsetof(gn_conn_event_t, _reserved) == 88,
+               "gn_conn_event_t::_reserved offset pinned at 88");
+_Static_assert(sizeof(((gn_conn_event_t*)0)->_reserved) == sizeof(void*),
+               "gn_conn_event_t::_reserved holds 1 evolution slot after rc");
 
 /* ── sdk/endpoint.h ────────────────────────────────────────────────────────── */
 
@@ -281,8 +290,10 @@ _Static_assert(offsetof(gn_limits_t, max_subscriptions) == 92,
                "gn_limits_t::max_subscriptions offset pinned at 92");
 _Static_assert(offsetof(gn_limits_t, max_capability_blob_bytes) == 96,
                "gn_limits_t::max_capability_blob_bytes offset pinned at 96");
-_Static_assert(offsetof(gn_limits_t, _reserved) == 100,
-               "gn_limits_t::_reserved offset pinned at 100");
+_Static_assert(offsetof(gn_limits_t, max_inject_depth) == 100,
+               "gn_limits_t::max_inject_depth offset pinned at 100");
+_Static_assert(offsetof(gn_limits_t, _reserved) == 104,
+               "gn_limits_t::_reserved offset pinned at 104");
 
 /* ── sdk/log.h ─────────────────────────────────────────────────────────────── */
 
@@ -299,8 +310,8 @@ _Static_assert(offsetof(gn_log_api_t, _reserved) == 24,
 
 /* ── sdk/plugin.h ──────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(gn_plugin_descriptor_t) == 80,
-               "gn_plugin_descriptor_t size pinned at 80");
+_Static_assert(sizeof(gn_plugin_descriptor_t) == 88,
+               "gn_plugin_descriptor_t size pinned at 88");
 _Static_assert(offsetof(gn_plugin_descriptor_t, name) == 0,
                "gn_plugin_descriptor_t::name offset pinned at 0");
 _Static_assert(offsetof(gn_plugin_descriptor_t, version) == 8,
@@ -313,8 +324,12 @@ _Static_assert(offsetof(gn_plugin_descriptor_t, ext_provides) == 32,
                "gn_plugin_descriptor_t::ext_provides offset pinned at 32");
 _Static_assert(offsetof(gn_plugin_descriptor_t, kind) == 40,
                "gn_plugin_descriptor_t::kind offset pinned at 40");
-_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 48,
-               "gn_plugin_descriptor_t::_reserved offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, inject_targets) == 48,
+               "gn_plugin_descriptor_t::inject_targets offset pinned at 48");
+_Static_assert(offsetof(gn_plugin_descriptor_t, _reserved) == 56,
+               "gn_plugin_descriptor_t::_reserved offset pinned at 56");
+_Static_assert(sizeof(((gn_plugin_descriptor_t*)0)->_reserved) == 4 * sizeof(void*),
+               "gn_plugin_descriptor_t::_reserved holds 4 evolution slots");
 
 /* ── sdk/protocol.h ────────────────────────────────────────────────────────── */
 
@@ -380,8 +395,8 @@ _Static_assert(offsetof(gn_secure_buffer_t, free_user_data) == 16,
 _Static_assert(offsetof(gn_secure_buffer_t, free_fn) == 24,
                "gn_secure_buffer_t::free_fn offset pinned at 24");
 
-_Static_assert(sizeof(gn_security_provider_vtable_t) == 128,
-               "gn_security_provider_vtable_t size pinned at 128");
+_Static_assert(sizeof(gn_security_provider_vtable_t) == 136,
+               "gn_security_provider_vtable_t size pinned at 136");
 _Static_assert(offsetof(gn_security_provider_vtable_t, api_size) == 0,
                "gn_security_provider_vtable_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_security_provider_vtable_t, provider_id) == 8,
@@ -406,8 +421,10 @@ _Static_assert(offsetof(gn_security_provider_vtable_t, destroy) == 80,
                "gn_security_provider_vtable_t::destroy offset pinned at 80");
 _Static_assert(offsetof(gn_security_provider_vtable_t, allowed_trust_mask) == 88,
                "gn_security_provider_vtable_t::allowed_trust_mask offset pinned at 88");
-_Static_assert(offsetof(gn_security_provider_vtable_t, _reserved) == 96,
-               "gn_security_provider_vtable_t::_reserved offset pinned at 96");
+_Static_assert(offsetof(gn_security_provider_vtable_t, provides_flags) == 96,
+               "gn_security_provider_vtable_t::provides_flags offset pinned at 96");
+_Static_assert(offsetof(gn_security_provider_vtable_t, _reserved) == 104,
+               "gn_security_provider_vtable_t::_reserved offset pinned at 104");
 
 /* ── sdk/link.h ───────────────────────────────────────────────────────── */
 
@@ -418,8 +435,8 @@ _Static_assert(offsetof(gn_byte_span_t, bytes) == 0,
 _Static_assert(offsetof(gn_byte_span_t, size) == 8,
                "gn_byte_span_t::size offset pinned at 8");
 
-_Static_assert(sizeof(gn_link_vtable_t) == 112,
-               "gn_link_vtable_t size pinned at 112");
+_Static_assert(sizeof(gn_link_vtable_t) == 120,
+               "gn_link_vtable_t size pinned at 120");
 _Static_assert(offsetof(gn_link_vtable_t, api_size) == 0,
                "gn_link_vtable_t::api_size offset pinned at 0");
 _Static_assert(offsetof(gn_link_vtable_t, scheme) == 8,
@@ -440,8 +457,10 @@ _Static_assert(offsetof(gn_link_vtable_t, extension_vtable) == 64,
                "gn_link_vtable_t::extension_vtable offset pinned at 64");
 _Static_assert(offsetof(gn_link_vtable_t, destroy) == 72,
                "gn_link_vtable_t::destroy offset pinned at 72");
-_Static_assert(offsetof(gn_link_vtable_t, _reserved) == 80,
-               "gn_link_vtable_t::_reserved offset pinned at 80");
+_Static_assert(offsetof(gn_link_vtable_t, on_topology_sealed) == 80,
+               "gn_link_vtable_t::on_topology_sealed offset pinned at 80");
+_Static_assert(offsetof(gn_link_vtable_t, _reserved) == 88,
+               "gn_link_vtable_t::_reserved offset pinned at 88");
 
 /* ── sdk/extensions/heartbeat.h ────────────────────────────────────────────── */
 
@@ -529,3 +548,62 @@ _Static_assert(offsetof(gn_link_api_t, ctx) == 104,
                "gn_link_api_t::ctx offset pinned at 104");
 _Static_assert(offsetof(gn_link_api_t, _reserved) == 112,
                "gn_link_api_t::_reserved offset pinned at 112");
+
+/* ── sdk/topology.h ────────────────────────────────────────────────────────── */
+
+_Static_assert(sizeof(gn_topo_link_entry_t) == 16,
+               "gn_topo_link_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_link_entry_t, scheme) == 0,
+               "gn_topo_link_entry_t::scheme offset pinned at 0");
+_Static_assert(offsetof(gn_topo_link_entry_t, caps_flags) == 8,
+               "gn_topo_link_entry_t::caps_flags offset pinned at 8");
+_Static_assert(offsetof(gn_topo_link_entry_t, max_payload) == 12,
+               "gn_topo_link_entry_t::max_payload offset pinned at 12");
+
+_Static_assert(sizeof(gn_topo_security_entry_t) == 16,
+               "gn_topo_security_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_security_entry_t, provider_id) == 0,
+               "gn_topo_security_entry_t::provider_id offset pinned at 0");
+_Static_assert(offsetof(gn_topo_security_entry_t, allowed_trust_mask) == 8,
+               "gn_topo_security_entry_t::allowed_trust_mask offset pinned at 8");
+_Static_assert(offsetof(gn_topo_security_entry_t, provides_flags) == 12,
+               "gn_topo_security_entry_t::provides_flags offset pinned at 12");
+
+_Static_assert(sizeof(gn_topo_protocol_entry_t) == 8,
+               "gn_topo_protocol_entry_t size pinned at 8");
+_Static_assert(offsetof(gn_topo_protocol_entry_t, protocol_id) == 0,
+               "gn_topo_protocol_entry_t::protocol_id offset pinned at 0");
+
+_Static_assert(sizeof(gn_topo_handler_entry_t) == 16,
+               "gn_topo_handler_entry_t size pinned at 16");
+_Static_assert(offsetof(gn_topo_handler_entry_t, protocol_id) == 0,
+               "gn_topo_handler_entry_t::protocol_id offset pinned at 0");
+_Static_assert(offsetof(gn_topo_handler_entry_t, msg_id) == 8,
+               "gn_topo_handler_entry_t::msg_id offset pinned at 8");
+_Static_assert(offsetof(gn_topo_handler_entry_t, chain_length) == 12,
+               "gn_topo_handler_entry_t::chain_length offset pinned at 12");
+
+_Static_assert(sizeof(gn_topology_t) == 120,
+               "gn_topology_t size pinned at 120");
+_Static_assert(offsetof(gn_topology_t, fingerprint) == 0,
+               "gn_topology_t::fingerprint offset pinned at 0");
+_Static_assert(offsetof(gn_topology_t, link_count) == 32,
+               "gn_topology_t::link_count offset pinned at 32");
+_Static_assert(offsetof(gn_topology_t, security_count) == 36,
+               "gn_topology_t::security_count offset pinned at 36");
+_Static_assert(offsetof(gn_topology_t, protocol_count) == 40,
+               "gn_topology_t::protocol_count offset pinned at 40");
+_Static_assert(offsetof(gn_topology_t, handler_count) == 44,
+               "gn_topology_t::handler_count offset pinned at 44");
+_Static_assert(offsetof(gn_topology_t, links) == 48,
+               "gn_topology_t::links offset pinned at 48");
+_Static_assert(offsetof(gn_topology_t, security) == 56,
+               "gn_topology_t::security offset pinned at 56");
+_Static_assert(offsetof(gn_topology_t, protocols) == 64,
+               "gn_topology_t::protocols offset pinned at 64");
+_Static_assert(offsetof(gn_topology_t, handlers) == 72,
+               "gn_topology_t::handlers offset pinned at 72");
+_Static_assert(offsetof(gn_topology_t, contour_gaps) == 80,
+               "gn_topology_t::contour_gaps offset pinned at 80");
+_Static_assert(offsetof(gn_topology_t, _reserved) == 88,
+               "gn_topology_t::_reserved offset pinned at 88");

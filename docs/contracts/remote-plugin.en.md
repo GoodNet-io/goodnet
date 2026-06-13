@@ -1,6 +1,7 @@
 # Remote plugin wire protocol
 
 **Status:** active · v1
+**Last verified:** 2026-05-19
 **Implements:** `sdk/remote/{wire,slots}.h` + a single-threaded
 reference runtime.
 **Stability:** stable for v1.x; new opcodes append at the tail

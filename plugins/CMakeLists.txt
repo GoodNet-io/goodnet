@@ -19,17 +19,17 @@
 #     find_package(GoodNet REQUIRED)
 #     # ... include plugins/helper.cmake or define the target manually
 #
-# The mandatory mesh-framing plugin (plugins/protocols/gnet) is added
-# directly from the root CMakeLists; it links statically into the
-# kernel binary and is not a `dlopen`-able plugin.
+# The gnet mesh-framing protocol (plugins/protocols/gnet) has been
+# extracted to GoodNet-io/protocol-gnet; it is consumed as an
+# external plugin and is not bundled in this tree.
 #
 # Windows MVP (mingw cross-build) currently skips plugins that need
 # OpenSSL mingw (TLS, QUIC, WS) or rely on POSIX-only resolver
 # subsystems (handler/dns via c-ares). ICE and store/strategies stay
 # off the first cut until their CI smoke is wired. The lean Windows
-# bundle is kernel + gnet + Noise + Null + TCP + UDP + IPC +
-# Heartbeat; the rest will lift in a follow-up cut once each plugin's
-# mingw build is verified.
+# bundle is kernel + Noise + Null + TCP + UDP + IPC + Heartbeat;
+# the rest will lift in a follow-up cut once each plugin's mingw
+# build is verified.
 set(_GOODNET_WINDOWS_SKIP FALSE)
 if(WIN32)
     set(_GOODNET_WINDOWS_SKIP TRUE)
@@ -41,6 +41,21 @@ endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/noise/CMakeLists.txt")
     add_subdirectory(security/noise)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/security/pkcs11/CMakeLists.txt")
+    # PKCS#11 plugin needs `p11-kit-1` (pkg-config); skip silently
+    # when the devShell / sysroot doesn't carry it so vanilla `nix
+    # develop` shells (which don't pull p11-kit yet) still configure.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_P11_KIT QUIET p11-kit-1)
+    endif()
+    if(_GOODNET_HAVE_P11_KIT_FOUND)
+        add_subdirectory(security/pkcs11)
+    else()
+        message(STATUS "Skipping plugins/security/pkcs11: p11-kit-1 not found")
+    endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/tcp/CMakeLists.txt")
@@ -61,12 +76,39 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(handlers/dns)
 endif()
 
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/web_api_proxy/CMakeLists.txt")
+    add_subdirectory(handlers/web_api_proxy)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/handlers/zstd_decompress/CMakeLists.txt")
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_ZSTD QUIET libzstd)
+    endif()
+    if(_GOODNET_HAVE_ZSTD_FOUND)
+        add_subdirectory(handlers/zstd_decompress)
+    else()
+        message(STATUS "Skipping plugins/handlers/zstd_decompress: libzstd not found")
+    endif()
+endif()
+
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ipc/CMakeLists.txt")
     add_subdirectory(links/ipc)
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/raw_inject/CMakeLists.txt")
-    add_subdirectory(links/raw_inject)
+    # raw_inject plugin needs `libzstd` (pkg-config); skip silently
+    # when the kernel's base devShell / sysroot doesn't carry it so
+    # top-level unified development builds still configure.
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(_GOODNET_HAVE_ZSTD QUIET libzstd)
+    endif()
+    if(_GOODNET_HAVE_ZSTD_FOUND)
+        add_subdirectory(links/raw_inject)
+    else()
+        message(STATUS "Skipping plugins/links/raw_inject: libzstd not found")
+    endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/udp/CMakeLists.txt")
@@ -83,6 +125,28 @@ endif()
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws/CMakeLists.txt")
     add_subdirectory(links/ws)
+endif()
+
+# ws_inject after ws: composes over gn.link.ws carrier.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/ws_inject/ws_inject.cpp")
+    add_subdirectory(links/ws_inject)
+endif()
+
+# PortMap sources are now bundled inside the ICE plugin. The object
+# library is added first so goodnet_portmap_objects is available when
+# links/ice processes its CMakeLists.txt.
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
+    add_subdirectory(links/portmap)
+endif()
+
+# mDNS discovery plugin — object library added before ICE so that
+# goodnet_mdns_objects is available when links/ice processes its
+# CMakeLists.txt (ICE tests link it for direct MdnsManager access).
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/discovery/mdns/CMakeLists.txt")
+    add_subdirectory(discovery/mdns)
 endif()
 
 # ICE before QUIC so that QUIC's `test_quic` fixture (which now
@@ -103,16 +167,6 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/quic)
 endif()
 
-# PortMap surfaces the `gn.link.portmap` extension (NAT-PMP / PCP /
-# UPnP IGD) consumed by ICE before host-candidate gathering. Added
-# before strategies so the in-tree ICE composer fixture can resolve
-# the extension at conditional time when the integration tests link
-# it.
-if(NOT _GOODNET_WINDOWS_SKIP
-   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/links/portmap/CMakeLists.txt")
-    add_subdirectory(links/portmap)
-endif()
-
 # Strategy plugins consume `sdk/extensions/strategy.h`.
 # FloatSendRtt is the reference implementation — picks min-RTT
 # conn with hysteresis. Added after every L1 link so its tests can
@@ -120,6 +174,15 @@ endif()
 if(NOT _GOODNET_WINDOWS_SKIP
    AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/float_send_rtt/CMakeLists.txt")
     add_subdirectory(strategies/float_send_rtt)
+endif()
+
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/strategies/multipath_bond/CMakeLists.txt")
+    add_subdirectory(strategies/multipath_bond)
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/protocols/gnet/CMakeLists.txt")
+    add_subdirectory(protocols/gnet)
 endif()
 
 # Subprocess workers — separate executables (not `.so` plugins) that

@@ -9,11 +9,8 @@
 ///         all registered through the same `host_api`).
 ///   §B.2  strategy-driven carrier selection through the in-tree
 ///         `goodnet_float_send_rtt` picker.
-///   §B.3  post-handshake security provider handoff Noise→Null —
-///         PoC by zeroing the kernel-side InlineCrypto state on an
-///         established session (compile-gated through
-///         `GOODNET_BENCH_SHOWCASE`; default builds drop the hook
-///         entirely).
+///   §B.3  Noise+IPC steady-state round-trip + topology seal proof
+///         (`build_topology` cost, fingerprint determinism).
 ///   §B.5  carrier failover via manual `CONN_DOWN` injection.
 ///         The kernel auto-fires `CONN_DOWN` from
 ///         `notify_disconnect` in production; the bench drives
@@ -45,7 +42,10 @@
 #include <vector>
 
 #include <bench/test_bench_helper.hpp>
-#include <core/security/session.hpp>
+
+#ifdef GOODNET_BENCH_ZSTD
+#include <plugins/handlers/zstd_decompress/zstd_decompress.hpp>
+#endif
 
 #include <plugins/links/ipc/ipc.hpp>
 #include <plugins/links/tcp/tcp.hpp>
@@ -263,51 +263,37 @@ inline void inject_conn_down(
         GN_PATH_EVENT_CONN_DOWN, &s);
 }
 
-/// ── B.3 Provider handoff PoC ──────────────────────────────────────
-///
-/// Reach into the kernel's `SessionRegistry`, find the session
-/// for @p conn, and zero its inline-crypto state. Subsequent
-/// encrypt_transport / decrypt_transport on that session fall
-/// through to the provider vtable; for `gn.security.null` that
-/// vtable is copy-through, so per-frame AEAD cost drops to zero
-/// while identity-binding established at Noise handshake survives.
-///
-/// Compile-gated through `_test_clear_inline_crypto` — the
-/// kernel-side method exists only when the build defines
-/// `GOODNET_BENCH_SHOWCASE`. Production binaries do not compile
-/// the method at all, so the bench helper has nothing to link
-/// against; this header refuses to compile a caller outside the
-/// gate to surface the misuse at build time rather than link
-/// time. The kernel still enforces a phase guard inside the
-/// method so a bench harness cannot wipe inline crypto on a
-/// session that never finished the handshake.
-inline gn_result_t downgrade_inline_crypto(
-    Kernel& kernel, gn_conn_id_t conn) {
-#ifdef GOODNET_BENCH_SHOWCASE
-    auto session = kernel.sessions().find(conn);
-    if (!session) return GN_ERR_NOT_FOUND;
-    return session->_test_clear_inline_crypto();
-#else
-    (void)kernel;
-    (void)conn;
-    return GN_ERR_NOT_IMPLEMENTED;
-#endif
-}
 
-/// Convenience: clear inline crypto on BOTH halves of an
-/// established loopback peer pair. Bench cases call this from the
-/// dispatcher thread between iterations so the next round-trip
-/// runs through the vtable path. Returns `GN_OK` only when both
-/// sides flipped successfully; reports first failure to the caller.
-inline gn_result_t downgrade_pair(
-    Kernel& a_kernel, gn_conn_id_t a_conn,
-    Kernel& b_kernel, gn_conn_id_t b_conn) {
-    if (auto rc = downgrade_inline_crypto(a_kernel, a_conn); rc != GN_OK)
-        return rc;
-    if (auto rc = downgrade_inline_crypto(b_kernel, b_conn); rc != GN_OK)
-        return rc;
-    return GN_OK;
+#ifdef GOODNET_BENCH_ZSTD
+/// Register a `ZstdDecompressHandler` on @p k as a handler for
+/// `kDefaultCompressedMsgId` (0x0701) at priority 255. The handler
+/// decompresses inbound frames and re-injects them under 0x0700 via
+/// `api->inject`. The vtable's `handle_message` thunk is stored in
+/// static storage so the pointer remains valid for the kernel's lifetime.
+inline gn_handler_id_t register_zstd_decompress(
+    Kernel& k,
+    gn::handler::zstd_decompress::ZstdDecompressHandler& h) {
+    static const gn_handler_vtable_t kVtable = [] {
+        gn_handler_vtable_t v{};
+        v.api_size = sizeof(v);
+        v.handle_message = [](void* self,
+                               const gn_message_t* env) -> gn_propagation_t {
+            if (!self || !env) return GN_PROPAGATION_CONTINUE;
+            return static_cast<
+                gn::handler::zstd_decompress::ZstdDecompressHandler*>(self)
+                ->handle_message(*env);
+        };
+        return v;
+    }();
+    gn_handler_id_t hid = GN_INVALID_ID;
+    (void)k.handlers().register_handler(
+        "gnet-v1",
+        gn::handler::zstd_decompress::kDefaultCompressedMsgId,
+        /*priority*/255,
+        &kVtable, &h, &hid);
+    return hid;
 }
+#endif  // GOODNET_BENCH_ZSTD
 
 /// ── CSV side-channel for time-series benches (§B.3, §B.5, §B.6) ──
 ///

@@ -132,6 +132,12 @@ public:
     [[nodiscard]] CapabilityBlobBus& capability_blob_bus() noexcept {
         return capability_blob_bus_;
     }
+    [[nodiscard]] const std::vector<std::uint8_t>& topology_wire_blob() const noexcept {
+        return topology_wire_blob_;
+    }
+    void set_topology_wire_blob(std::vector<std::uint8_t> blob) noexcept {
+        topology_wire_blob_ = std::move(blob);
+    }
     [[nodiscard]] MetricsRegistry& metrics() noexcept { return metrics_; }
     [[nodiscard]] const MetricsRegistry& metrics() const noexcept {
         return metrics_;
@@ -252,7 +258,7 @@ private:
 
     /// Atomic-shared like `protocol_layer_`: secrets stay alive for
     /// the caller's snapshot scope across concurrent identity install.
-    std::atomic<std::shared_ptr<const identity::NodeIdentity>> node_identity_;
+    util::AtomicSharedPtr<const identity::NodeIdentity> node_identity_;
 
     /// Per-source rate limiter for `host_api->inject_*` per
     /// `host-api.en.md` §8: 100 msg/s, burst 50, LRU cap 4096 sources.
@@ -265,6 +271,10 @@ private:
     /// mutual exchange complete.
     AttestationDispatcher                 attestation_dispatcher_;
     CapabilityBlobBus                     capability_blob_bus_;
+
+    /// Pre-encoded topology capability wire blob. Set by `gn_core_start`
+    /// and `gn_core_reload_topology`; empty until then.
+    std::vector<std::uint8_t>             topology_wire_blob_;
 
     /// Named-counter store the kernel maintains for built-in
     /// observability targets (`route.outcome.*`, `drop.*`,

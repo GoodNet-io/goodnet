@@ -11,6 +11,8 @@ set(_goodnet_kernel_sources
     identity/keypair.cpp
     identity/derive.cpp
     identity/attestation.cpp
+    identity/libsodium_signer.cpp
+    identity/identity_plugin_signer.cpp
     identity/node_identity.cpp
     identity/sub_key_registry.cpp
     identity/rotation.cpp
@@ -39,6 +41,7 @@ set(_goodnet_kernel_sources
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
     kernel/metrics_registry.cpp
+    topology/topology_builder.cpp
     plugin/plugin_manager.cpp
     plugin/plugin_manifest.cpp
     plugin/wire_codec.cpp
@@ -67,6 +70,7 @@ target_include_directories(goodnet_ctx_accessors PUBLIC
 set_target_properties(goodnet_ctx_accessors PROPERTIES
     POSITION_INDEPENDENT_CODE ON
     EXPORT_NAME ctx_accessors
+    INTERPROCEDURAL_OPTIMIZATION OFF
 )
 add_library(GoodNet::ctx_accessors ALIAS goodnet_ctx_accessors)
 goodnet_apply_pch(goodnet_ctx_accessors)
@@ -103,7 +107,11 @@ if(WIN32)
     target_link_libraries(goodnet_kernel_objects PUBLIC ws2_32 mswsock)
 endif()
 
-target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_23)
+target_compile_features(goodnet_kernel_objects PUBLIC cxx_std_26)
+target_compile_options(goodnet_kernel_objects PRIVATE
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:-fcontracts>)
+target_link_libraries(goodnet_kernel_objects PUBLIC
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:stdc++exp>)
 
 # Precompiled-header umbrella for the asio / spdlog / fmt block plus
 # the C++23 stdlib slices the kernel reaches everywhere. Single
@@ -150,6 +158,8 @@ if(NOT WIN32 AND NOT GOODNET_STATIC_PLUGINS)
     set_target_properties(goodnet_kernel_shared PROPERTIES
         EXPORT_NAME  kernel_shared
         OUTPUT_NAME  goodnet_kernel
+        SOVERSION    1
+        VERSION      "${PROJECT_VERSION}"
     )
     add_library(GoodNet::kernel_shared ALIAS goodnet_kernel_shared)
 
@@ -157,7 +167,7 @@ if(NOT WIN32 AND NOT GOODNET_STATIC_PLUGINS)
                     goodnet_ctx_accessors
         EXPORT GoodNetTargets
         ARCHIVE
-        LIBRARY
+        LIBRARY NAMELINK_SKIP
     )
 else()
     install(TARGETS goodnet_kernel goodnet_kernel_objects

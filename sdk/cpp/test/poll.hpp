@@ -80,4 +80,22 @@ template <class Predicate>
     return pred();
 }
 
+template <class Predicate>
+[[nodiscard]] bool wait_for_bench(
+    Predicate&& pred,
+    std::chrono::milliseconds timeout = std::chrono::milliseconds{1000}) {
+    
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        if (pred()) return true;
+        
+        #if defined(__x86_64__) || defined(_M_X64)
+        __builtin_ia32_pause(); 
+        #elif defined(__aarch64__)
+        asm volatile("yield" ::: "memory");
+        #endif
+    }
+    return pred();
+}
+
 }  // namespace gn::sdk::test

@@ -21,10 +21,20 @@
 #include <vector>
 
 #include <core/identity/node_identity.hpp>
+#include <core/kernel/host_api_builder.hpp>
+#include <core/kernel/plugin_anchor.hpp>
+#include <core/kernel/plugin_context.hpp>
+#include <core/plugin/plugin_manager.hpp>
 #include <core/plugin/plugin_manifest.hpp>
+#include <core/plugin/plugin_runtime.hpp>
 #include <core/util/log.hpp>
 
+#include <core/identity/identity_plugin_signer.hpp>
+#include <sdk/cpp/capability_tlv.hpp>
+
+#include <sdk/extensions/identity.h>
 #include <sdk/extensions/link.h>
+#include <sdk/plugin_runtime.h>
 
 namespace {
 
@@ -94,6 +104,11 @@ void gn_core_destroy(gn_core_t* core) {
     /// channels they live on. `unregister_handler` and channel
     /// `unsubscribe` are idempotent — the post-stop walk just clears
     /// the std::vector slots.
+    if (core->topology_caps_sub_ != 0) {
+        core->kernel.capability_blob_bus().unsubscribe(core->topology_caps_sub_);
+        core->topology_caps_sub_ = 0;
+    }
+
     {
         std::lock_guard lk(core->subs_mu);
         for (auto& sub : core->message_subs) {
@@ -154,6 +169,88 @@ gn_result_t gn_core_install_identity_from_file(gn_core_t*  core,
     const auto pk = loaded->device().public_key();
     core->kernel.identities().add(pk);
     core->kernel.set_node_identity(std::move(*loaded));
+    return GN_OK;
+}
+
+gn_result_t gn_core_install_identity_from_provider(
+    gn_core_t* core, const char* extension_id, const char* key_label) {
+
+    if (core == nullptr) return GN_ERR_NULL_ARG;
+    if (extension_id == nullptr || *extension_id == '\0') return GN_ERR_NULL_ARG;
+    if (key_label == nullptr) return GN_ERR_NULL_ARG;
+
+    /// Same pre-init gate `gn_core_install_identity_from_file` uses —
+    /// the install has to land before `gn_core_init` runs the
+    /// fresh-keypair mint. Mutually exclusive with the file path: a
+    /// kernel that already carries an installed identity rejects a
+    /// second install so operators don't accidentally swap secrets
+    /// mid-startup.
+    if (core->init_done.load(std::memory_order_acquire)) {
+        return GN_ERR_INVALID_STATE;
+    }
+    if (core->kernel.has_node_identity()) {
+        return GN_ERR_INVALID_STATE;
+    }
+
+    /// Look up the extension by id under the canonical identity-signer
+    /// version pin from `sdk/extensions/identity.h`. The kernel
+    /// requires the registered major to match exactly and the minor
+    /// to be at least the pinned one (`abi-evolution.en.md` §2);
+    /// older plugins surface as `GN_ERR_VERSION_MISMATCH` here.
+    const void* vtable_raw = nullptr;
+    const auto query_rc = core->kernel.extensions().query_extension_checked(
+        extension_id, GN_EXT_IDENTITY_SIGNER_VERSION, &vtable_raw);
+    if (query_rc != GN_OK) {
+        return query_rc;
+    }
+    if (vtable_raw == nullptr) return GN_ERR_NOT_FOUND;
+
+    const auto* vtable =
+        static_cast<const gn_identity_signer_vtable_t*>(vtable_raw);
+
+    /// `api_size` minimum: producer struct must extend at least
+    /// through the `sign` thunk so both thunks are addressable. A
+    /// plugin built against a future SDK that appended more thunks
+    /// is still accepted — the kernel only uses the slots it knows.
+    constexpr std::size_t required_api_size =
+        offsetof(gn_identity_signer_vtable_t, sign) +
+        sizeof(static_cast<gn_identity_signer_vtable_t*>(nullptr)->sign);
+    if (vtable->api_size < required_api_size) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
+    /// `ctx` passed to plugin thunks is the vtable pointer itself —
+    /// plugins that need self-state embed the vtable as the first
+    /// member of a wrapper struct so `(void*)ctx == &wrapper` lets
+    /// them recover their state by cast. Plugins that don't need any
+    /// state simply ignore the argument. The kernel never
+    /// dereferences `ctx` directly.
+    void* const ctx =
+        const_cast<void*>(static_cast<const void*>(vtable));
+
+    auto signer = std::make_unique<gn::core::identity::IdentityPluginSigner>(
+        vtable, ctx, std::string{key_label});
+
+    /// `NodeIdentity::from_signer` runs the eager pubkey fetch
+    /// (plugin populates the user public key once and the kernel
+    /// caches it) plus the attestation signing pass through the
+    /// plugin, so a misbehaving provider surfaces as a deterministic
+    /// install-time failure rather than a runtime crash mid-session.
+    auto identity = gn::core::identity::NodeIdentity::from_signer(
+        std::move(signer), /*expiry*/ 0);
+    if (!identity) {
+        const auto err = identity.error().code;
+        /// Bubble up the precise diagnostic where possible —
+        /// `GN_ERR_NOT_IMPLEMENTED` from a vtable missing a thunk,
+        /// `GN_ERR_NULL_ARG` from a NULL output, etc. — and fall back
+        /// to `GN_ERR_INTEGRITY_FAILED` only for unexpected paths.
+        if (err != GN_OK) return err;
+        return GN_ERR_INTEGRITY_FAILED;
+    }
+
+    const auto device_pk = identity->device().public_key();
+    core->kernel.identities().add(device_pk);
+    core->kernel.set_node_identity(std::move(*identity));
     return GN_OK;
 }
 
@@ -219,10 +316,54 @@ gn_result_t gn_core_init(gn_core_t* core) {
     return GN_OK;
 }
 
+/// Kernel-internal capability blob subscriber: checks incoming blobs
+/// for TLV type 0x0004 (topology fingerprint) and marks the connection.
+static void topology_caps_cb(void* user_data,
+                              gn_conn_id_t from_conn,
+                              const std::uint8_t* blob,
+                              std::size_t size,
+                              int64_t /*expires*/) noexcept {
+    auto* core = static_cast<gn_core_t*>(user_data);
+    if (!core || !core->topology_) return;
+
+    auto records = gn::sdk::parse_tlv(std::span<const std::uint8_t>{blob, size});
+    if (!records.has_value()) return;
+
+    for (const auto& rec : *records) {
+        if (rec.type != gn::sdk::kTlvTypeTopologyFingerprint) continue;
+        if (rec.value.size() != 32) {
+            ::gn::log::warn("topology_caps: malformed fingerprint record "
+                            "from conn={} size={}",
+                            static_cast<std::uint64_t>(from_conn),
+                            rec.value.size());
+            return;
+        }
+        const bool match = std::memcmp(
+            rec.value.data(),
+            core->topology_->topo.fingerprint,
+            32) == 0;
+
+        core->kernel.connections().set_peer_caps_verified(from_conn, match);
+
+        if (!match) {
+            ::gn::log::warn("topology_caps: fingerprint mismatch from "
+                            "conn={} — peer stack differs",
+                            static_cast<std::uint64_t>(from_conn));
+        }
+        return;
+    }
+}
+
 gn_result_t gn_core_start(gn_core_t* core) {
     if (core == nullptr) return GN_ERR_NULL_ARG;
     walk_to_ready(core->kernel);
     (void)core->kernel.advance_to(gn::core::Phase::Running);
+    core->topology_           = gn::core::topology::build_topology(core->kernel);
+    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
+                                    core->topology_->topo);
+    core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
+    core->topology_caps_sub_ = core->kernel.capability_blob_bus().subscribe(
+        &topology_caps_cb, core, nullptr);
     return GN_OK;
 }
 
@@ -323,6 +464,60 @@ gn_result_t gn_core_connect(gn_core_t* core,
     return ext->connect(ext->ctx, uri, out_conn);
 }
 
+gn_result_t gn_core_dial(gn_core_t* core, const char* uri) {
+    if (core == nullptr || uri == nullptr) return GN_ERR_NULL_ARG;
+    /// Kernel-path outbound connect that mirrors `gn_core_listen`: resolves
+    /// through the kernel link registry (not the `gn.link.<scheme>`
+    /// extension's compositor slot), so the link plugin calls
+    /// `notify_connect` → `kick_handshake` and the resulting connection
+    /// surfaces via `GN_CONN_EVENT_CONNECTED` / `GN_CONN_EVENT_TRUST_UPGRADED`
+    /// exactly like an inbound connection from `gn_core_listen` does.
+    const std::string_view scheme_sv = derive_scheme(std::string_view{uri});
+    if (scheme_sv.empty()) return GN_ERR_NOT_FOUND;
+    auto entry = core->kernel.links().find_by_scheme(scheme_sv);
+    if (!entry.has_value() ||
+        entry->vtable == nullptr ||
+        entry->vtable->connect == nullptr) {
+        return GN_ERR_NOT_FOUND;
+    }
+    return entry->vtable->connect(entry->self, uri);
+}
+
+gn_result_t gn_core_listen(gn_core_t* core, const char* uri) {
+    if (core == nullptr || uri == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    /// Derive scheme from the URI prefix. The connect-side accepts
+    /// an explicit override; listen has no such parameter today —
+    /// every host call site passes a canonical `<scheme>://...`
+    /// URI, and adding a second parameter would diverge from
+    /// `gn_core_connect`'s NULL-derive-from-uri default without a
+    /// concrete need. If a future link uses a non-prefixed scheme
+    /// the signature can grow `gn_core_listen_ex(core, uri, scheme)`
+    /// alongside this entry without breaking the additive contract.
+    const std::string_view scheme_sv =
+        derive_scheme(std::string_view{uri});
+    if (scheme_sv.empty()) return GN_ERR_NOT_FOUND;
+
+    /// Resolve through the kernel link registry rather than the
+    /// `gn.link.<scheme>` extension's `listen` slot — the latter
+    /// is the L2 composer entry and returns `GN_ERR_NOT_IMPLEMENTED`
+    /// on baseline links (TCP, UDP). The registry's vtable
+    /// `listen` is the kernel-driven path the link plugin's
+    /// `Class::listen` implements; accepted conns surface through
+    /// the link's `notify_connect` calls, which the kernel forwards
+    /// onto the conn-event channel `gn_core_on_conn_state`
+    /// subscribers see.
+    auto entry = core->kernel.links().find_by_scheme(scheme_sv);
+    if (!entry.has_value() ||
+        entry->vtable == nullptr ||
+        entry->vtable->listen == nullptr) {
+        return GN_ERR_NOT_FOUND;
+    }
+    return entry->vtable->listen(entry->self, uri);
+}
+
 gn_result_t gn_core_send_to(gn_core_t* core,
                              gn_conn_id_t conn,
                              uint32_t msg_id,
@@ -421,10 +616,7 @@ namespace {
 gn_propagation_t message_sub_handle(void* self, const gn_message_t* env) {
     auto* sub = static_cast<gn_core_s::MessageSub*>(self);
     if (sub != nullptr && sub->cb != nullptr && env != nullptr) {
-        /// Connection id is not on the envelope; we do not surface it
-        /// to the C callback today. A future minor adds an envelope
-        /// `_reserved` slot for it (host-api.en.md §11 evolution path).
-        sub->cb(sub->user, /*conn=*/GN_INVALID_ID, env->msg_id,
+        sub->cb(sub->user, env->conn_id, env->msg_id,
                 env->payload, env->payload_size);
     }
     return GN_PROPAGATION_CONTINUE;
@@ -621,6 +813,273 @@ gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name) {
     /// closing the `.so`. Unknown names report `GN_ERR_NOT_FOUND`;
     /// the call is idempotent past that point.
     return core->plugins.unload(std::string_view{name});
+}
+
+/* ── External plugin runtime adapter ─────────────────────────────────────── */
+
+namespace {
+
+/// Bridge between the kernel-private `IPluginRuntime` C++ interface
+/// and the public C-ABI `gn_plugin_runtime_vtable_t` declared in
+/// `sdk/plugin_runtime.h`. A host that wants to load plugins under a
+/// non-built-in kind (Wasm, JVM bridge, sandbox proxy) implements the
+/// C vtable; `gn_core_register_runtime` constructs one of these
+/// adapters, drives the vtable's runtime-level `init` thunk, and
+/// hands the adapter to `PluginManager::register_runtime`.
+///
+/// Lifecycle mapping — see `sdk/plugin_runtime.h` for the
+/// design rationale. The C ABI collapses the C++ interface's six
+/// lifecycle methods to four because a non-`dlopen` runtime has no
+/// meaningful distinction between «open the artefact» and «activate
+/// its handlers»:
+///
+///   IPluginRuntime::load           → vtable `register_plugin` thunk
+///   IPluginRuntime::init           → no-op (folded into load)
+///   IPluginRuntime::register_plugin→ no-op (folded into load)
+///   IPluginRuntime::unregister     → vtable `unregister` thunk
+///   IPluginRuntime::shutdown       → no-op (folded into unregister)
+///   IPluginRuntime::close          → no-op
+///
+/// The vtable's runtime-level `init` / `shutdown` thunks bracket the
+/// adapter's own lifetime (init runs from the adapter ctor, shutdown
+/// from the dtor).
+class CAbiRuntime final : public gn::core::IPluginRuntime {
+public:
+    CAbiRuntime(std::string                       kind,
+                const gn_plugin_runtime_vtable_t& vtable,
+                void*                             ctx) noexcept
+        : kind_(std::move(kind)),
+          vtable_(vtable),
+          ctx_(ctx) {}
+
+    /// The adapter dtor fires the runtime-level shutdown thunk
+    /// exactly when the host's `init` had returned GN_OK. The adapter
+    /// is owned by `PluginManager::runtimes_` (a `std::map` of
+    /// `unique_ptr<IPluginRuntime>`), so the dtor runs when
+    /// `PluginManager::~PluginManager` drops the runtime registry —
+    /// after every instance has been torn down. The `init_succeeded_`
+    /// gate skips the `shutdown` thunk when the runtime was dropped
+    /// because its own `init` failed; the host did not get a paired
+    /// init, so the kernel does not fire an unpaired shutdown.
+    ~CAbiRuntime() override {
+        if (init_succeeded_ && vtable_.shutdown != nullptr) {
+            (void)vtable_.shutdown(ctx_);
+        }
+    }
+
+    CAbiRuntime(const CAbiRuntime&)            = delete;
+    CAbiRuntime& operator=(const CAbiRuntime&) = delete;
+
+    /// Dispatch the vtable's runtime-level `init` thunk. Caller is
+    /// `gn_core_register_runtime`; a non-`GN_OK` return rolls back
+    /// the registration (the adapter is dropped before the
+    /// PluginManager sees it; `init_succeeded_` stays false so the
+    /// dtor skips the unpaired `shutdown` thunk).
+    [[nodiscard]] gn_result_t dispatch_init() noexcept {
+        if (vtable_.init == nullptr) {
+            init_succeeded_ = true;
+            return GN_OK;
+        }
+        const auto rc = vtable_.init(ctx_);
+        if (rc == GN_OK) init_succeeded_ = true;
+        return rc;
+    }
+
+    gn_result_t load(const std::string&                       path,
+                      const gn::core::PluginLoadContext&       ctx,
+                      gn::core::PluginInstance&                out,
+                      std::string&                             diag) override {
+        if (ctx.kernel == nullptr) {
+            diag = "c-abi runtime requires kernel context";
+            return GN_ERR_NULL_ARG;
+        }
+        if (vtable_.register_plugin == nullptr) {
+            diag = "c-abi runtime '" + kind_ +
+                   "' has no register_plugin thunk";
+            return GN_ERR_NOT_IMPLEMENTED;
+        }
+
+        /// The descriptor's `plugin_name` doubles as the foreign
+        /// runtime's `entry_name`. The manifest entry's path is the
+        /// only artefact reference the kernel has, so the C-side
+        /// runtime must derive both the human-readable name and the
+        /// resource locator from it. The plugin name defaults to the
+        /// path with the `.so`-style suffix trimmed; downstream the
+        /// foreign runtime can override by writing its own descriptor
+        /// once a richer manifest schema lands.
+        out.path = path;
+        std::string plugin_name = path;
+        if (auto slash = plugin_name.find_last_of('/');
+            slash != std::string::npos) {
+            plugin_name.erase(0, slash + 1);
+        }
+        if (auto dot = plugin_name.rfind('.');
+            dot != std::string::npos && dot > 0) {
+            plugin_name.erase(dot);
+        }
+        out.descriptor.plugin_name = std::move(plugin_name);
+
+        gn_plugin_instance_t instance = GN_PLUGIN_INSTANCE_INVALID;
+        const auto rc = vtable_.register_plugin(
+            ctx_, out.descriptor.plugin_name.c_str(),
+            path.c_str(), &instance);
+        if (rc != GN_OK) {
+            diag = "c-abi runtime '" + kind_ +
+                   "' register_plugin returned ";
+            diag += gn_strerror(rc);
+            diag += " for ";
+            diag += path;
+            return rc;
+        }
+        if (instance == GN_PLUGIN_INSTANCE_INVALID) {
+            diag = "c-abi runtime '" + kind_ +
+                   "' returned GN_OK but did not mint a handle for ";
+            diag += path;
+            return GN_ERR_INTERNAL;
+        }
+
+        out.ctx = std::make_unique<gn::core::PluginContext>();
+        out.ctx->plugin_name   = out.descriptor.plugin_name;
+        out.ctx->kernel        = ctx.kernel;
+        out.ctx->plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+        out.api      = gn::core::build_host_api(*out.ctx);
+        out.runtime  = this;
+        /// Smuggle the foreign instance handle through `PluginInstance::self`
+        /// — the slot is otherwise reserved for the plugin's opaque
+        /// state pointer (`gn_plugin_init`'s `**self_out`), and our
+        /// foreign runtime has neither. Cast goes through `uintptr_t`
+        /// so the round-trip is well-defined across 32/64-bit hosts.
+        out.self     = reinterpret_cast<void*>(
+            static_cast<std::uintptr_t>(instance));
+        out.registered = false;
+        return GN_OK;
+    }
+
+    gn_result_t init(gn::core::PluginInstance&) override {
+        /// The C ABI vtable's `register_plugin` thunk performs both
+        /// "open the artefact" and "run its init" — there is no
+        /// separate per-plugin init step at this layer. Returning
+        /// GN_OK lets PluginManager's two-phase activation walk
+        /// straight to register_one.
+        return GN_OK;
+    }
+
+    gn_result_t register_plugin(gn::core::PluginInstance&) override {
+        /// Same rationale as `init`: the foreign runtime registered
+        /// the plugin during the load thunk.
+        return GN_OK;
+    }
+
+    void unregister(gn::core::PluginInstance& inst) override {
+        if (vtable_.unregister == nullptr) return;
+        const auto handle = static_cast<gn_plugin_instance_t>(
+            reinterpret_cast<std::uintptr_t>(inst.self));
+        if (handle == GN_PLUGIN_INSTANCE_INVALID) return;
+        (void)vtable_.unregister(ctx_, handle);
+        /// Stamp the handle out so a second unregister (idempotent
+        /// teardown chain) is a true no-op rather than a stale
+        /// dispatch with a recycled handle.
+        inst.self = nullptr;
+    }
+
+    void shutdown(gn::core::PluginInstance&) override {
+        /// Folded into `unregister` for the C ABI.
+    }
+
+    void close(gn::core::PluginInstance& /*inst*/, bool /*drained*/) override {
+        /// No kernel-side load state to release — the foreign runtime
+        /// owns its own resources and dropped them in `unregister`.
+    }
+
+    [[nodiscard]] std::string_view name() const noexcept override {
+        return kind_;
+    }
+
+private:
+    std::string                       kind_;
+    gn_plugin_runtime_vtable_t        vtable_;
+    void*                             ctx_;
+    /// Flipped to true once the host's `init` thunk returned GN_OK
+    /// (or was NULL). The dtor consults the flag to decide whether
+    /// to fire the paired `shutdown` thunk — an unpaired shutdown on
+    /// a half-constructed runtime would surprise the host with a
+    /// teardown it never set up.
+    bool                              init_succeeded_{false};
+};
+
+/// Reserved kinds — the kernel ships built-in runtimes for these and
+/// `PluginManager::register_runtime` would reject the second
+/// `emplace`. We catch the case earlier with a friendlier diagnostic
+/// so downstream hosts see `LIMIT_REACHED` from the C ABI rather than
+/// finding out at first-load time.
+constexpr std::string_view kReservedKinds[] = {"static", "dynamic", "remote"};
+
+}  // namespace
+
+gn_result_t gn_core_register_runtime(
+    gn_core_t*                              core,
+    const char*                             kind,
+    const gn_plugin_runtime_vtable_t*       vtable,
+    void*                                   ctx) {
+    if (core == nullptr || kind == nullptr || *kind == '\0' ||
+        vtable == nullptr) {
+        return GN_ERR_NULL_ARG;
+    }
+
+    /// `api_size` gate per `abi-evolution.en.md` §3a: the producer-side
+    /// size must cover at least every thunk the kernel reads. Smaller
+    /// means the vtable is older than this kernel; reject up front
+    /// rather than dereference a fragment.
+    if (vtable->api_size < GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE) {
+        return GN_ERR_VERSION_MISMATCH;
+    }
+
+    /// Reserved-kind shortcut. `PluginManager::register_runtime` will
+    /// also reject these — they are populated by the ctor — but
+    /// catching here keeps the diagnostic uniform across hosts that
+    /// inspect the error code without consulting the manager.
+    const std::string_view kind_sv{kind};
+    for (const auto reserved : kReservedKinds) {
+        if (kind_sv == reserved) return GN_ERR_LIMIT_REACHED;
+    }
+
+    /// Duplicate-key check BEFORE firing the `init` thunk. A
+    /// duplicate registration must not invoke the host's
+    /// runtime-level init — the host would see a paired init/shutdown
+    /// pair against a slot it does not own. The lookup is read-only
+    /// and races with concurrent registrations, but the manager's
+    /// later `emplace` is the source of truth; this is a friendliness
+    /// fast-path, not a TOCTOU guard.
+    if (core->plugins.runtime_for(kind_sv) != nullptr) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+
+    /// Construct the adapter on the heap so we can hand a
+    /// `unique_ptr<IPluginRuntime>` to the manager. The adapter
+    /// captures `vtable` by value and `ctx` by raw pointer; the host
+    /// must keep `ctx`'s storage live for the kernel's lifetime.
+    auto adapter = std::make_unique<CAbiRuntime>(
+        std::string(kind), *vtable, ctx);
+
+    /// Fire the runtime-level `init` thunk now, before handing off to
+    /// the manager. A failing init rolls back the registration — the
+    /// adapter destructor would call the `shutdown` thunk otherwise,
+    /// even though the host's `init` did not succeed. Dropping the
+    /// `unique_ptr` here keeps that contract: the dtor still runs but
+    /// the `shutdown` thunk only fires when `init` returned GN_OK and
+    /// the manager actually owns the adapter.
+    if (const auto rc = adapter->dispatch_init(); rc != GN_OK) {
+        return rc;
+    }
+
+    /// Hand off to the manager. The manager treats the runtime as
+    /// owned for the rest of its life (drop at PluginManager dtor).
+    /// A duplicate slipping past the pre-check (concurrent host
+    /// register from another thread) still surfaces as
+    /// `GN_ERR_LIMIT_REACHED`; the adapter dtor then fires the
+    /// paired shutdown because init had already succeeded.
+    return core->plugins.register_runtime(std::string(kind),
+                                            std::move(adapter));
 }
 
 /* ── Provider registration ───────────────────────────────────────────────── */
@@ -832,6 +1291,22 @@ gn_result_t gn_core_unregister_extension(gn_core_t* core, const char* name) {
 const host_api_t* gn_core_host_api(gn_core_t* core) {
     if (core == nullptr) return nullptr;
     return &core->api;
+}
+
+/* ── Topology ────────────────────────────────────────────────────────────── */
+
+const gn_topology_t* gn_core_get_topology(gn_core_t* core) {
+    if (core == nullptr || !core->topology_) return nullptr;
+    return &core->topology_->topo;
+}
+
+gn_result_t gn_core_reload_topology(gn_core_t* core) {
+    if (core == nullptr) return GN_ERR_NULL_ARG;
+    core->topology_           = gn::core::topology::build_topology(core->kernel);
+    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
+                                    core->topology_->topo);
+    core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
+    return GN_OK;
 }
 
 /* ── Version ─────────────────────────────────────────────────────────────── */

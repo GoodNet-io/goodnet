@@ -24,9 +24,26 @@ static_kernel=""
 static_stripped=""
 closure_kb=""
 docker_image_kb=""
+kernel_libs_bytes=0
+plugins_libs_bytes=0
+
+# Sum the on-disk size of every distinct .so a binary links against
+# (mirrors comparison_weights.sh::weigh_one). Skips linux-vdso (not
+# a real file) and handles missing ldd gracefully.
+sum_ldd_libs() {
+    local path="$1"
+    [[ -f "$path" ]] || { echo 0; return; }
+    ldd "$path" 2>/dev/null \
+        | awk '/=>/ { print $3 }' \
+        | grep -v '^$' \
+        | sort -u \
+        | xargs -r stat -c %s 2>/dev/null \
+        | awk '{s+=$1} END {print s+0}'
+}
 
 if [[ -f build-release/bin/goodnetd ]]; then
     dyn_kernel=$(stat -c %s build-release/bin/goodnetd)
+    kernel_libs_bytes=$(sum_ldd_libs build-release/bin/goodnetd)
 fi
 _plugin_so_count=$(find build-release/plugins -maxdepth 1 -name 'lib*.so' 2>/dev/null | wc -l)
 if [[ ${_plugin_so_count:-0} -gt 0 ]]; then
@@ -34,6 +51,17 @@ if [[ ${_plugin_so_count:-0} -gt 0 ]]; then
         -printf '%s\n' 2>/dev/null |
         awk '{s+=$1} END {print s+0}')
     dyn_plugin_count=$_plugin_so_count
+    # Aggregate ldd deps across all plugins (deduplicated per-binary,
+    # summed across plugins — intentionally counts shared libs
+    # multiple times to reflect the realistic operator install cost
+    # when not every plugin is installed together).
+    plugins_libs_bytes=$(find build-release/plugins -maxdepth 1 -name 'lib*.so' \
+        2>/dev/null -print0 |
+        xargs -0 -r -I{} bash -c 'sum_ldd_libs() {
+            ldd "$1" 2>/dev/null | awk '"'"'/=>/ {print $3}'"'"' | grep -v "^$" |
+            sort -u | xargs -r stat -c %s 2>/dev/null | awk '"'"'{s+=$1} END {print s+0}'"'"';
+        }; sum_ldd_libs "{}"' |
+        awk '{s+=$1} END {print s+0}')
 fi
 if [[ -f build-static/bin/goodnetd ]]; then
     static_kernel=$(stat -c %s build-static/bin/goodnetd)
@@ -83,12 +111,15 @@ fi
 cat <<EOF
 {
   "metric": "binary_sizes",
-  "kernel_dynamic_bytes": ${dyn_kernel:-null},
-  "plugins_sum_bytes":    ${dyn_plugins_total:-0},
-  "plugin_count":         ${dyn_plugin_count:-0},
-  "kernel_static_bytes":  ${static_kernel:-null},
+  "kernel_dynamic_bytes":         ${dyn_kernel:-null},
+  "kernel_libs_bytes":            ${kernel_libs_bytes:-0},
+  "kernel_dynamic_total_bytes":   $(( ${dyn_kernel:-0} + ${kernel_libs_bytes:-0} )),
+  "plugins_sum_bytes":            ${dyn_plugins_total:-0},
+  "plugins_libs_bytes":           ${plugins_libs_bytes:-0},
+  "plugin_count":                 ${dyn_plugin_count:-0},
+  "kernel_static_bytes":          ${static_kernel:-null},
   "kernel_static_stripped_bytes": ${static_stripped:-null},
-  "nix_closure_kb":       ${closure_kb:-null},
-  "docker_image_kb":      ${docker_image_kb:-null}
+  "nix_closure_kb":               ${closure_kb:-null},
+  "docker_image_kb":              ${docker_image_kb:-null}
 }
 EOF

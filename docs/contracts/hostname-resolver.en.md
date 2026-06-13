@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** every transport plugin that accepts hostnames in its URI
-**Last verified:** 2026-05-13
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the helper signature is locked, the resolver
 backend may swap.
 

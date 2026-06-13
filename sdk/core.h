@@ -63,8 +63,10 @@
 #include <sdk/host_api.h>
 #include <sdk/limits.h>
 #include <sdk/link.h>
+#include <sdk/plugin_runtime.h>
 #include <sdk/protocol.h>
 #include <sdk/security.h>
+#include <sdk/topology.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -147,6 +149,58 @@ GN_EXPORT void gn_core_destroy(gn_core_t* core);
 GN_EXPORT gn_result_t gn_core_install_identity_from_file(
     gn_core_t*  core,
     const char* path);
+
+/**
+ * @brief Install a `NodeIdentity` backed by a plugin-supplied signer.
+ *
+ * The kernel queries extension `extension_id` (typically a more
+ * specific name from the `gn.identity.*` family declared in
+ * `sdk/extensions/identity.h` — `gn.identity.pkcs11`,
+ * `gn.identity.tpm`, `gn.identity.keychain`, `gn.identity.webauthn`),
+ * reads the `gn_identity_signer_vtable_t` from the queried entry,
+ * and wraps it in an internal `IdentityPluginSigner` adapter that
+ * routes every `sign()` through the plugin. The user public key is
+ * eagerly fetched via the vtable's `get_pubkey` thunk so the
+ * `NodeIdentity`'s cached identifier is populated before the install
+ * returns. A fresh in-process device keypair is minted alongside —
+ * device-key handshake bytes always live inside the kernel because
+ * inline-crypto needs them available without a syscall.
+ *
+ * `key_label` is plugin-opaque: PKCS#11 plugins forward it as the
+ * `CKA_LABEL` of the target key, TPM plugins parse it as a
+ * persistent-handle string, Keychain plugins use it as the item
+ * name, and so on. The kernel never inspects the bytes.
+ *
+ * Must be called between `gn_core_create` and `gn_core_init`, and is
+ * mutually exclusive with `gn_core_install_identity_from_file` — the
+ * second install on the same kernel returns `GN_ERR_INVALID_STATE`.
+ *
+ * @param core         Kernel handle returned by `gn_core_create`.
+ * @param extension_id @borrowed NUL-terminated extension name under
+ *                     which the provider plugin registered its vtable.
+ * @param key_label    @borrowed NUL-terminated plugin-opaque key
+ *                     identifier handed to the vtable's `get_pubkey`
+ *                     and `sign` thunks.
+ *
+ * @return `GN_OK` on success;
+ *         `GN_ERR_NULL_ARG` when @p core / @p extension_id / @p
+ *         key_label are NULL or @p extension_id is the empty string;
+ *         `GN_ERR_NOT_FOUND` when no extension is registered under
+ *         @p extension_id;
+ *         `GN_ERR_INVALID_STATE` after `gn_core_init` has begun, or
+ *         when another identity is already installed;
+ *         `GN_ERR_VERSION_MISMATCH` when the producer-side `api_size`
+ *         is below the minimum that covers `get_pubkey` + `sign`
+ *         (vtable incompatible — peer SDK is too old);
+ *         `GN_ERR_NOT_IMPLEMENTED` when the vtable is missing one of
+ *         those two required thunks;
+ *         `GN_ERR_INTEGRITY_FAILED` when the eager pubkey query or
+ *         attestation signing through the plugin fails.
+ */
+GN_EXPORT gn_result_t gn_core_install_identity_from_provider(
+    gn_core_t*  core,
+    const char* extension_id,
+    const char* key_label);
 
 /**
  * @brief Bring the kernel to the `Ready` phase.
@@ -283,6 +337,72 @@ GN_EXPORT gn_result_t gn_core_connect(gn_core_t* core,
                                        const char* uri,
                                        const char* scheme,
                                        gn_conn_id_t* out_conn);
+
+/**
+ * @brief Bind a passive listener on @p uri.
+ *
+ * Mirrors `gn_core_connect` for inbound binds: the scheme component
+ * of the URI (e.g. `tcp://`, `udp://`, `ws://`) selects the
+ * registered link plugin, the kernel resolves it through the
+ * `LinkRegistry`, and the call forwards to the link's vtable
+ * `listen` slot. The bind itself is synchronous; the accept loop
+ * runs on the link's IO worker.
+ *
+ * Inbound accepted connections surface through the existing
+ * connection-state subscription path — register a callback via
+ * `gn_core_on_conn_state` before calling `gn_core_listen` and you
+ * will see `GN_CONN_EVENT_CONNECTED` events for every accepted
+ * peer (and `GN_CONN_EVENT_TRUST_UPGRADED` once the security
+ * provider lifts the trust class). No new callback shape is
+ * introduced; this is purely the missing inbound counterpart to
+ * `gn_core_connect`.
+ *
+ * Teardown: every listener bound through this entry is torn down
+ * by `gn_core_stop` / `gn_core_destroy` walking the
+ * `PreShutdown → Shutdown` FSM and tearing each link plugin's
+ * acceptor along with the rest of its state. No separate
+ * `gn_core_stop_listen` is required.
+ *
+ * @param core   Kernel handle returned by `gn_core_create`.
+ * @param uri    @borrowed Scheme+endpoint URI
+ *               (e.g. `"tcp://0.0.0.0:9001"`). NUL-terminated; the
+ *               kernel does not retain the pointer past return.
+ *
+ * @return `GN_OK` on a successful bind; `GN_ERR_NULL_ARG` on NULL
+ *         @p core / @p uri; `GN_ERR_NOT_FOUND` when no link is
+ *         registered for the resolved scheme or the URI has no
+ *         `://` separator; whatever the link plugin's `listen`
+ *         returns on transport-level failure (e.g.
+ *         `EADDRINUSE` → the plugin's chosen `gn_result_t`).
+ *
+ * @threading Safe from any thread once `gn_core_init` has returned
+ *            `GN_OK`. The accept loop runs on the link plugin's IO
+ *            worker; conn-state callbacks fire there.
+ */
+GN_EXPORT gn_result_t gn_core_listen(gn_core_t* core, const char* uri);
+
+/**
+ * @brief Kernel-path outbound connect — the counterpart to gn_core_listen.
+ *
+ * Routes through the kernel link registry (not the `gn.link.<scheme>`
+ * compositor extension), so the link plugin calls `notify_connect` /
+ * `kick_handshake` on successful TCP connect and the resulting connection
+ * surfaces via `GN_CONN_EVENT_CONNECTED` / `GN_CONN_EVENT_TRUST_UPGRADED`
+ * exactly like an inbound connection accepted by `gn_core_listen`.
+ *
+ * The connection id is delivered asynchronously through the
+ * `gn_core_on_conn_state` callback (`ev.conn` in the
+ * `GN_CONN_EVENT_CONNECTED` event). No synchronous id is returned here.
+ *
+ * Use `gn_core_connect` instead when a synchronous compositor-level
+ * handle is required (WS/TLS/ICE L2 pipelines).
+ *
+ * @param core  Kernel handle returned by gn_core_create().
+ * @param uri   @borrowed; `<scheme>://<host>:<port>` peer address.
+ * @return `GN_OK` if the async connect was started; `GN_ERR_NOT_FOUND`
+ *         when no link is registered for the scheme.
+ */
+GN_EXPORT gn_result_t gn_core_dial(gn_core_t* core, const char* uri);
 
 /**
  * @brief Send a single application message on @p conn.
@@ -503,6 +623,60 @@ GN_EXPORT gn_result_t gn_core_load_plugins_batch(
  */
 GN_EXPORT gn_result_t gn_core_unload_plugin(gn_core_t* core, const char* name);
 
+/**
+ * @brief Register a custom plugin runtime under @p kind.
+ *
+ * The kind name maps 1:1 to the runtime selector the kernel uses
+ * when picking a runtime for a manifest entry. The built-in kinds
+ * are `"static"`, `"dynamic"`, and `"remote"`; attempting to
+ * register one of these returns `GN_ERR_LIMIT_REACHED` (the kernel
+ * treats the runtime registry as a `kind → runtime` map without a
+ * replace-in-place slot).
+ *
+ * Custom runtimes are addressed through the runtime lookup
+ * (`PluginManager::runtime_for(kind)`) — a future minor will
+ * extend the manifest schema with a free-form `runtime` field that
+ * routes manifest entries to non-built-in kinds. In the meantime,
+ * downstream hosts driving non-`dlopen` plugins (Wasm, JVM bridge,
+ * sandbox proxies) can register the kind here and dispatch through
+ * the runtime directly from their loader; the kernel-side rollback
+ * and quiescence-wait chain covers both built-in and custom
+ * runtimes uniformly.
+ *
+ * `vtable` must point at a `gn_plugin_runtime_vtable_t` whose
+ * `api_size` is at least `GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`; smaller
+ * values fail with `GN_ERR_VERSION_MISMATCH`. The kernel copies the
+ * vtable so the caller may drop the pointer after return — but @p
+ * ctx is captured by reference and must outlive every thunk
+ * dispatch (i.e., until the kernel calls the `shutdown` thunk during
+ * `gn_core_destroy`).
+ *
+ * @param core   Kernel handle returned by `gn_core_create`. Must
+ *               not be NULL.
+ * @param kind   @borrowed NUL-terminated runtime kind name. Copied
+ *               internally. NULL or empty returns `GN_ERR_NULL_ARG`.
+ * @param vtable @borrowed pointer to the size-prefixed vtable. NULL
+ *               returns `GN_ERR_NULL_ARG`. The kernel reads up to
+ *               `vtable->api_size` bytes.
+ * @param ctx    Opaque pointer passed to every thunk call. May be
+ *               NULL when the runtime is stateless.
+ *
+ * @return `GN_OK` on success;
+ *         `GN_ERR_NULL_ARG` on NULL @p core / @p kind / @p vtable
+ *         (or empty @p kind);
+ *         `GN_ERR_VERSION_MISMATCH` when `vtable->api_size <
+ *         GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`;
+ *         `GN_ERR_LIMIT_REACHED` when @p kind is already registered
+ *         (including the built-in reserved kinds);
+ *         the `init` thunk's return code when init fails (registration
+ *         is rolled back).
+ */
+GN_EXPORT gn_result_t gn_core_register_runtime(
+    gn_core_t*                              core,
+    const char*                             kind,
+    const gn_plugin_runtime_vtable_t*       vtable,
+    void*                                   ctx);
+
 /* ── Provider registration (in-process, no .so) ──────────────────────────── */
 
 /**
@@ -606,6 +780,37 @@ GN_EXPORT gn_result_t gn_core_register_extension(
 /** Cancel an extension registration by name. */
 GN_EXPORT gn_result_t gn_core_unregister_extension(gn_core_t* core,
                                                     const char* name);
+
+/* ── Topology ────────────────────────────────────────────────────────────── */
+
+/**
+ * @brief Return a borrowed pointer to the current topology snapshot.
+ *
+ * Built once by `gn_core_start()` when the kernel enters Phase::Running.
+ * Returns NULL before `gn_core_start()` is called. The pointer is valid
+ * until `gn_core_destroy()` or `gn_core_reload_topology()`.
+ *
+ * All fields in the returned struct (strings, entry arrays) are @borrowed
+ * from kernel-owned storage. The caller must not free them.
+ *
+ * @return @borrowed pointer; lifetime tied to @p core (or until reload).
+ */
+GN_EXPORT const gn_topology_t* gn_core_get_topology(gn_core_t* core);
+
+/**
+ * @brief Rebuild the topology snapshot from current registry state.
+ *
+ * Re-snapshots all registries, recomputes the fingerprint and contour_gaps,
+ * and calls `on_topology_sealed` on every registered link plugin again.
+ * Replaces the snapshot returned by `gn_core_get_topology`.
+ *
+ * Use when plugins have been registered or unregistered after
+ * `gn_core_start()`. In normal operation the topology is sealed once
+ * at startup and this call is not needed.
+ *
+ * @return `GN_OK` on success; `GN_ERR_NULL_ARG` when @p core is NULL.
+ */
+GN_EXPORT gn_result_t gn_core_reload_topology(gn_core_t* core);
 
 /* ── host_api accessor ───────────────────────────────────────────────────── */
 

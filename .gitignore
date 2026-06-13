@@ -4,12 +4,14 @@
 !*/
 
 # Top-level project files
+!.gitmodules
 !.gitignore
 !.envrc
 !.clang-tidy
 !flake.nix
 !flake.lock
 !CMakeLists.txt
+!CMakePresets.json
 !Makefile
 !LICENSE
 !README.md
@@ -19,12 +21,14 @@
 !CONTRIBUTING.md
 !CODE_OF_CONDUCT.md
 !GOVERNANCE.md
+!CONTEST.md
 
 # Git hooks (opt-in via `nix run .#install-hooks`)
 !.githooks/*
 
 # Editor configs
 !.vscode/*.json
+!goodnet.code-workspace
 
 # Build / output dirs (re-block after top-level rules)
 build/
@@ -56,6 +60,7 @@ result-*
 
 # Diagram + math generators
 !tools/*.py
+!tools/*.sh
 !tools/math/*.py
 # Livedoc package — abi_extract, renderers, roadmap resolver,
 # inventory walker, plus the YAML feature map.
@@ -66,6 +71,8 @@ __pycache__/
 # CI
 !.github/**/*.yml
 !.github/**/*.yaml
+!.forgejo/**/*.yml
+!.forgejo/**/*.yaml
 
 # SDK (header-only headers + the worker stub static library — the
 # stub mirrors `core/plugin/remote_host.*` from the worker side so
@@ -105,37 +112,40 @@ __pycache__/
 !plugins/workers/**/*.cpp
 !plugins/workers/**/*.hpp
 !plugins/workers/**/CMakeLists.txt
-# raw_inject is the SOCKS5-style bridge plugin — small enough to
-# ride in-tree as a proof for the inject API. Whitelisted explicitly
-# so the kernel monorepo tracks it alongside the other in-tree
-# fixtures.
-!plugins/links/raw_inject/**/*.cpp
-!plugins/links/raw_inject/**/*.hpp
-!plugins/links/raw_inject/**/*.c
-!plugins/links/raw_inject/**/CMakeLists.txt
-!plugins/links/raw_inject/LICENSE
-!plugins/links/raw_inject/README.md
+# raw_inject extracted to goodnet-io/link-raw-inject; directory
+# remains in the working tree but is no longer tracked here.
+plugins/links/raw_inject/
 plugins/handlers/heartbeat/
 plugins/handlers/store/
 plugins/handlers/dns/
 plugins/handlers/mycelium/
+plugins/handlers/web_api_proxy/
+plugins/handlers/zstd_decompress/
 plugins/links/tcp/
 plugins/links/udp/
 plugins/links/ws/
+plugins/links/ws_inject/
 plugins/links/ipc/
 plugins/links/tls/
 plugins/links/ice/
 plugins/links/portmap/
 plugins/links/quic/
 plugins/security/noise/
+plugins/discovery/mdns/
 plugins/security/null/
+plugins/security/pkcs11/
 
-# bridges/cpp/ is the slot for the bridges-cpp repo — operator-side
-# C++ binding over `sdk/core.h`. Lives in its own git (mirror at
-# `~/.local/share/goodnet-mirrors/bridges-cpp.git`); the explicit
-# block stops git from auto-registering the nested `.git/` as a
-# submodule when something runs `git add -A` from the monorepo root.
+# bridges/{cpp,python,rust,js}/ are the slots for the bridges-{cpp,
+# python,rust,js} repos — operator-side bindings over `sdk/core.h`
+# plus the browser-side `goodnet-js` client. Each lives in its own
+# git (mirrors at `~/.local/share/goodnet-mirrors/bridges-*.git`);
+# the explicit block stops git from auto-registering the nested
+# `.git/` as a submodule when something runs `git add -A` from
+# the monorepo root.
 bridges/cpp/
+bridges/python/
+bridges/rust/
+bridges/js/
 
 # tests/integration/ is the slot for the goodnet-integration-tests
 # repo — pulled by `install-plugins`, gitignored from the kernel
@@ -155,6 +165,7 @@ tests/integration/
 !tests/docker/**/*.yml
 !tests/docker/**/*.tmpl
 !tests/docker/**/*.md
+!tests/docker/**/*.nix
 
 # Tests
 !tests/**/*.c
@@ -172,11 +183,13 @@ tests/integration/
 !pytest.ini
 
 # Examples
+examples/.goodnet/
 !examples/**/*.cpp
 !examples/**/*.hpp
 !examples/**/*.md
 !examples/**/CMakeLists.txt
 !examples/**/LICENSE
+!examples/**/*.nix
 
 # Bench suite
 !bench/**/*.cpp
@@ -204,3 +217,7 @@ tests/integration/
 # manifesto/ is a separate writing repo (per MEMORY.md), not a submodule
 manifesto/
 plugins/strategies/
+
+# Sub-repos: app binaries vendored as standalone repos
+apps/gssh/
+apps/goodnetd/

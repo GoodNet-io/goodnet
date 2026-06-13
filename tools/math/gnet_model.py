@@ -22,7 +22,9 @@ from typing import List
 class TransportType(Enum):
     TCP  = "tcp"
     UDP  = "udp"
+    QUIC = "quic"
     ICE  = "ice"
+    IPC  = "ipc"
     BLE  = "ble"
     BT   = "bt"
     MQTT = "mqtt"
@@ -36,7 +38,8 @@ class TransportProps:
     nat_traversal: bool
     range_m: float      # approx range in meters, inf for WAN
     mode: str           # "stream" | "datagram" | "pubsub"
-    bandwidth_mbps: float  # typical bandwidth
+    bandwidth_mbps: float  # typical link bandwidth
+    handshake_us: float = 0.0  # P50 measured loopback (852c20a), 0 = connectionless
 
     @property
     def effective_payload(self) -> int:
@@ -47,9 +50,17 @@ class TransportProps:
 
 
 TRANSPORTS = {
-    TransportType.TCP:  TransportProps("tcp",  0,    True,  False, float('inf'), "stream",   10_000),
+    # bandwidth_mbps = typical link capacity (WAN/LAN deployment, not loopback).
+    # Loopback latency/overhead numbers live in BenchMeasurements — don't mix.
+    TransportType.TCP:  TransportProps("tcp",  0,    True,  False, float('inf'), "stream",   10_000, handshake_us=65.5),
     TransportType.UDP:  TransportProps("udp",  1200, False, False, float('inf'), "datagram",  5_000),
+    # QUIC link capacity matches TCP on real networks.  The 3–9× RTT gap in
+    # loopback benchmarks (issue #43) is a loopback artefact: CUBIC/BBR arm
+    # congestion timers and PTO even on 127.0.0.1 — not representative of WAN.
+    TransportType.QUIC: TransportProps("quic", 1200, True,  True,  float('inf'), "stream",   10_000, handshake_us=22_700.0),
     TransportType.ICE:  TransportProps("ice",  1200, False, True,  float('inf'), "datagram",    100),
+    # IPC = AF_UNIX; range_m=0 means same host only
+    TransportType.IPC:  TransportProps("ipc",  0,    True,  False, 0,            "stream",    9_000),
     TransportType.BLE:  TransportProps("ble",  247,  False, False, 30,           "datagram",      1),
     TransportType.BT:   TransportProps("bt",   0,    True,  False, 100,          "stream",        3),
     TransportType.MQTT: TransportProps("mqtt", 0,    True,  False, float('inf'), "pubsub",      100),
@@ -135,20 +146,25 @@ class RelayConfig:
 class IceUpgradeConfig:
     """Models the relay→direct upgrade via ICE (ice.cpp:s_upgrade)."""
     # NAT type distribution (real-world estimates)
-    nat_full_cone:      float = 0.30  # p_ice = 0.95
-    nat_restricted:     float = 0.25  # p_ice = 0.90
+    nat_full_cone:       float = 0.30  # p_ice = 0.95
+    nat_restricted:      float = 0.25  # p_ice = 0.90
     nat_port_restricted: float = 0.25  # p_ice = 0.80
-    nat_symmetric:      float = 0.15  # p_ice = 0.30 (needs TURN)
-    nat_public:         float = 0.05  # p_ice = 1.00
+    nat_symmetric:       float = 0.15  # p_ice = 0.30 (needs TURN)
+    nat_public:          float = 0.05  # p_ice = 1.00
 
-    # Timing
-    signal_roundtrip_ms: float = 300   # ICE_SIGNAL via relay
-    ice_gather_ms: float = 1000        # STUN gathering
-    ice_check_ms: float = 500          # connectivity checks
+    # Timing — from session.hpp defaults
+    signal_roundtrip_ms: float = 300    # ICE_SIGNAL via relay
+    ice_gather_ms:       float = 1_000  # STUN gathering
+    # Per-pair pacing (session.hpp:137); 500 pairs × 50ms = 25s check phase
+    # → total theoretical upgrade time ≈ 26.3s ("25→27s" regime)
+    check_interval_ms:   float = 50     # session.hpp:137 default
+    n_candidate_pairs:   int   = 500    # typical many-peer scenario
+    # Hard deadline from session.hpp:105; cuts off at 10s regardless of n_pairs
+    session_timeout_s:   int   = 10
 
     @property
     def avg_ice_success_rate(self) -> float:
-        """Weighted average ICE success probability."""
+        """Weighted average ICE success probability (theoretical, when working)."""
         return (self.nat_full_cone * 0.95 +
                 self.nat_restricted * 0.90 +
                 self.nat_port_restricted * 0.80 +
@@ -156,25 +172,52 @@ class IceUpgradeConfig:
                 self.nat_public * 1.00)
 
     @property
+    def ice_check_ms(self) -> float:
+        """Total check phase: n_candidate_pairs × check_interval_ms pacing."""
+        return self.n_candidate_pairs * self.check_interval_ms
+
+    @property
     def upgrade_time_s(self) -> float:
-        """Time for one ICE upgrade attempt."""
+        """Theoretical time for one ICE upgrade attempt (may exceed session_timeout_s)."""
         return (self.signal_roundtrip_ms + self.ice_gather_ms + self.ice_check_ms) / 1000
 
     @property
+    def effective_upgrade_time_s(self) -> float:
+        """Actual allowed time: capped at session_timeout_s."""
+        return min(self.upgrade_time_s, float(self.session_timeout_s))
+
+    @property
+    def effective_success_rate(self) -> float:
+        """Success rate accounting for session_timeout cutoff."""
+        if self.upgrade_time_s > self.session_timeout_s:
+            # Only pairs checked within the window can succeed
+            return self.avg_ice_success_rate * (self.session_timeout_s / self.upgrade_time_s)
+        return self.avg_ice_success_rate
+
+    @property
     def upgrade_rate(self) -> float:
-        """Lambda: successful upgrades per second."""
-        return self.avg_ice_success_rate / self.upgrade_time_s
+        """Lambda: effective successful upgrades per second."""
+        t = self.effective_upgrade_time_s
+        if t <= 0:
+            return 0.0
+        return self.effective_success_rate / t
 
     def relay_fraction(self, t: float, r0: float = 1.0) -> float:
         """Fraction of connections still using relay at time t."""
-        return r0 * exp(-self.upgrade_rate * t)
+        lam = self.upgrade_rate
+        if lam <= 0:
+            return r0
+        return r0 * exp(-lam * t)
 
     def time_to_percent_direct(self, target_direct: float = 0.95) -> float:
         """Seconds until target% of connections are direct."""
         target_relay = 1.0 - target_direct
         if target_relay <= 0:
             return float('inf')
-        return -log(target_relay) / self.upgrade_rate
+        lam = self.upgrade_rate
+        if lam <= 0:
+            return float('inf')
+        return -log(target_relay) / lam
 
     def amortized_cost(self, session_duration_s: float, msg_rate: float,
                        gossip_cost: float) -> float:
@@ -188,6 +231,8 @@ class IceUpgradeConfig:
         # Relay phase: integral of R(t) * gossip_cost from 0 to t95
         # ∫₀^t95 e^(-λt) dt = (1 - e^(-λ*t95)) / λ
         lam = self.upgrade_rate
+        if lam <= 0:
+            return gossip_cost
         relay_integral = (1 - exp(-lam * t95)) / lam
         relay_msgs = msg_rate * gossip_cost * relay_integral
 
@@ -198,6 +243,69 @@ class IceUpgradeConfig:
         bootstrap = gossip_cost
 
         return (bootstrap + relay_msgs + direct_msgs) / total_msgs
+
+
+# ── Measured bench values (report 852c20a, i5-1235U, loopback) ───────────────
+
+@dataclass
+class BenchMeasurements:
+    """Real loopback numbers from bench/reports/852c20a (1024 B payload).
+
+    Production stack = kernel + gnet protocol + Noise XX security.
+    Parody = raw link plugin, no security, no protocol layer.
+    """
+    # One-way latency (production, μs)
+    tcp_oneway_p50_us:  float = 21.1
+    tcp_oneway_p99_us:  float = 43.2
+    udp_oneway_p50_us:  float = 20.3
+    udp_oneway_p99_us:  float = 41.6
+    ipc_oneway_p50_us:  float = 18.1
+    ipc_oneway_p99_us:  float = 32.8
+
+    # RTT (production, μs)
+    tcp_rtt_p50_us:     float = 43.6
+    tcp_rtt_p99_us:     float = 82.1
+    udp_rtt_p50_us:     float = 44.7
+    udp_rtt_p99_us:     float = 89.3
+    ipc_rtt_p50_us:     float = 33.3
+    ipc_rtt_p99_us:     float = 57.0
+
+    # QUIC+Noise RTT — 3–9× TCP (issue #43)
+    quic_noise_rtt_p50_us:  float = 137.9
+    quic_noise_rtt_p99_us:  float = 2_400.0
+
+    # QUIC+TLS RTT — fixture broken (issue #44); P5=P95=0 ns, values invalid
+    quic_tls_rtt_invalid: bool = True
+
+    # Throughput, production stack, 1024 B (MiB/s)
+    tcp_throughput_mbs:   float = 43.66
+    udp_throughput_mbs:   float = 45.35
+    ipc_throughput_mbs:   float = 51.95
+    quic_noise_tput_mbs:  float = 8.32   # ~66 Mbit/s; 5× below TCP
+
+    # Handshake P50 (μs)
+    tcp_handshake_us:     float = 65.5
+    tls_handshake_us:     float = 3_500.0
+    dtls_handshake_us:    float = 22_100.0
+    quic_handshake_us:    float = 22_700.0
+    noise_xx_us:          float = 271.3
+    noise_ik_us:          float = 340.7
+
+    # ICE kernel-dispatch cost (not real wire ICE — bench_ice.cpp fixtures)
+    ice_cid_alloc_ns:     float = 109.0   # ComposerConnectCidAllocation
+    ice_metrics_lookup_ns: float = 20.0   # NominationMetricsLookup
+    ice_fresh_session_us:  float = 8.2    # ComposerConnectFreshSession
+
+    # examples/bench: TCP+Noise+gnet, 64 KB payload, LOOPBACK ONLY.
+    # Linear scaling 1→8 connections because each connection has its own AEAD
+    # pipeline with no shared lock on the hot path.
+    # Numbers are loopback-only and CPU-scheduler-dependent (i5-1235U):
+    #   typical avg ~20 Gbit/s at 8 conns; peak 30–40 when P-cores are assigned.
+    # These do NOT represent real network deployment capacity.
+    tcp_64k_per_conn_loopback_gbps: float = 5.0   # ~5 Gbit/s per connection (loopback)
+    tcp_64k_linear_cap_conns:       int   = 8      # linear up to ~8 (CPU-bound after)
+    tcp_64k_8conn_avg_gbps:         float = 20.0   # typical avg on i5-1235U
+    tcp_64k_8conn_peak_gbps:        float = 40.0   # peak when hitting P-cores
 
 
 # ── Multi-path reliability ───────────────────────────────────────────────────
@@ -312,25 +420,49 @@ if __name__ == "__main__":
     print("  GNET Mathematical Model v2 — with ICE upgrade dynamics")
     print("=" * 70)
 
+    bench = BenchMeasurements()
+
     # ── Transports ──
     print("\n── Transport Properties ──")
-    print(f"  {'Name':<6} {'MTU':>6} {'Payload':>8} {'Reliable':>9} {'NAT':>5} {'BW(Mbps)':>9}")
-    print("  " + "-" * 48)
+    print(f"  {'Name':<6} {'MTU':>6} {'Payload':>8} {'Reliable':>9} {'NAT':>5} {'BW(Mbps)':>9} {'HS(μs)':>9}")
+    print("  " + "-" * 58)
     for t, p in TRANSPORTS.items():
         mtu_s = "stream" if p.mtu == 0 else str(p.mtu)
         rel_s = "yes" if p.reliable else "no"
         nat_s = "yes" if p.nat_traversal else "no"
+        hs_s  = f"{p.handshake_us:.0f}" if p.handshake_us > 0 else "—"
         print(f"  {p.name:<6} {mtu_s:>6} {p.effective_payload:>8} "
-              f"{rel_s:>9} {nat_s:>5} {p.bandwidth_mbps:>9.0f}")
+              f"{rel_s:>9} {nat_s:>5} {p.bandwidth_mbps:>9.0f} {hs_s:>9}")
+
+    # ── Bench measurements ──
+    print("\n── Measured Latency (loopback, production stack, 1024 B, 852c20a) ──")
+    print(f"  {'Transport':<10} {'One-way P50':>13} {'One-way P99':>13} {'RTT P50':>9} {'RTT P99':>9}")
+    print("  " + "-" * 57)
+    rows = [
+        ("TCP+Noise",  bench.tcp_oneway_p50_us, bench.tcp_oneway_p99_us, bench.tcp_rtt_p50_us, bench.tcp_rtt_p99_us),
+        ("UDP+Noise",  bench.udp_oneway_p50_us, bench.udp_oneway_p99_us, bench.udp_rtt_p50_us, bench.udp_rtt_p99_us),
+        ("IPC+Noise",  bench.ipc_oneway_p50_us, bench.ipc_oneway_p99_us, bench.ipc_rtt_p50_us, bench.ipc_rtt_p99_us),
+        ("QUIC+Noise", None,                    None,                    bench.quic_noise_rtt_p50_us, bench.quic_noise_rtt_p99_us),
+    ]
+    for name, ow50, ow99, rtt50, rtt99 in rows:
+        ow50_s = f"{ow50:.1f} μs" if ow50 else "—"
+        ow99_s = f"{ow99:.1f} μs" if ow99 else "—"
+        print(f"  {name:<10} {ow50_s:>13} {ow99_s:>13} {rtt50:>6.1f} μs {rtt99:>6.0f} μs")
+    print(f"  QUIC+TLS: fixture broken (issue #44) — P5=P95=0 ns, all values invalid")
 
     # ── ICE upgrade ──
-    print("\n── ICE Upgrade Model (from ice.cpp:s_upgrade) ──")
-    print(f"  Avg ICE success rate:  {ice.avg_ice_success_rate:.2%}")
-    print(f"  Upgrade time:          {ice.upgrade_time_s:.1f} s")
-    print(f"  Upgrade rate (lambda): {ice.upgrade_rate:.3f} /s")
-    print(f"  Time to 90% direct:    {ice.time_to_percent_direct(0.90):.1f} s")
+    print("\n── ICE Upgrade Model (session.hpp defaults) ──")
+    print(f"  State:                 ok")
+    print(f"  check_interval_ms:     {ice.check_interval_ms:.0f} ms  (session.hpp:137)")
+    print(f"  n_candidate_pairs:     {ice.n_candidate_pairs}")
+    print(f"  session_timeout_s:     {ice.session_timeout_s} s  (session.hpp:105, hard deadline)")
+    print(f"  Theoretical upgrade:   {ice.upgrade_time_s:.1f} s  "
+          f"({ice.signal_roundtrip_ms:.0f}+{ice.ice_gather_ms:.0f}+{ice.ice_check_ms:.0f} ms)")
+    print(f"  Effective upgrade:     {ice.effective_upgrade_time_s:.1f} s  (capped at session_timeout_s)")
+    print(f"  Avg ICE success (th):  {ice.avg_ice_success_rate:.2%}  (theoretical, when working)")
+    print(f"  Effective success:     {ice.effective_success_rate:.2%}")
+    print(f"  Upgrade rate (lambda): {ice.upgrade_rate:.4f} /s")
     print(f"  Time to 95% direct:    {ice.time_to_percent_direct(0.95):.1f} s")
-    print(f"  Time to 99% direct:    {ice.time_to_percent_direct(0.99):.1f} s")
 
     print("\n  Relay fraction over time:")
     for t in [0, 1, 2, 3, 5, 7, 10, 15, 20, 30]:
@@ -391,6 +523,26 @@ if __name__ == "__main__":
     for s in PathStrategy:
         bw = multipath_bandwidth(bws, s)
         print(f"  {s.value:<16} WiFi(100)+LTE(50)+BLE(10) = {bw:.0f} Mbit/s")
+
+    # ── TCP multi-connection scaling (examples/bench, 64 KB, LOOPBACK) ──
+    print("\n── TCP Multi-Connection Scaling (examples/bench, 64 KB, LOOPBACK ONLY) ──")
+    print(f"  Context: both kernels in the same process, loopback TCP, no real network.")
+    print(f"  One AEAD pipeline per connection — no shared lock on hot path.")
+    print(f"  Linear to ~{bench.tcp_64k_linear_cap_conns} conns, then CPU-bound (i5-1235U: avg ~{bench.tcp_64k_8conn_avg_gbps:.0f}, peak ~{bench.tcp_64k_8conn_peak_gbps:.0f} Gbit/s).")
+    print(f"  These numbers do NOT model real network deployment throughput.")
+    print(f"  {'Conns':>6} {'Model (n×5)':>12} {'Measured avg':>14} {'Note':>12}")
+    print("  " + "-" * 48)
+    per = bench.tcp_64k_per_conn_loopback_gbps
+    for n in [1, 2, 4, 8, 16]:
+        expected = per * n
+        if n == bench.tcp_64k_linear_cap_conns:
+            meas_s = f"~{bench.tcp_64k_8conn_avg_gbps:.0f} (pk {bench.tcp_64k_8conn_peak_gbps:.0f})"
+        elif n == 1:
+            meas_s = f"~{per:.0f}"
+        else:
+            meas_s = "—"
+        note = "linear" if n <= bench.tcp_64k_linear_cap_conns else "CPU-sat"
+        print(f"  {n:>6} {expected:>10.0f} G  {meas_s:>14}  {note}")
 
     # ── Network scale ──
     print("\n── Network Scale ──")

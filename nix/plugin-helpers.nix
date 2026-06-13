@@ -102,10 +102,8 @@ let
   # this dev shell always wins regardless of what the operator
   # happens to have under `~/.nix-profile`.
   mkPluginDevShell = pkgs:
-    { plugin, extraPackages ? [ ], welcomeText ? "" }:
-    let
-      stdenv = pkgs.gcc15Stdenv;
-    in
+    { plugin, extraPackages ? [ ], welcomeText ? ""
+    , stdenv ? pkgs.gcc15Stdenv }:
     (pkgs.mkShell.override { inherit stdenv; }) {
       inputsFrom = [ plugin ];
       packages = (with pkgs; [

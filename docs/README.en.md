@@ -26,7 +26,10 @@ plugin author's reading order is:
 3. [`contracts/plugin-lifetime.en.md`](contracts/plugin-lifetime.en.md) —
    when the kernel calls each entry point and what each phase may
    safely do.
-4. The contract for the role you are filling: `link.en.md`,
+4. [`contracts/lifecycle.en.md`](contracts/lifecycle.en.md) — the
+   plugin-side complement: the six-step shutdown ordering and the
+   test recipe that catches races like #100.
+5. The contract for the role you are filling: `link.en.md`,
    `handler-registration.en.md`, `plugins/security/noise/docs/handshake.md`, etc.
 
 ---
@@ -140,6 +143,7 @@ manual edits.
 | tls | `tls` | [`plugins/links/tls`](../../plugins/links/tls) | yes | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | `udp` | [`plugins/links/udp`](../../plugins/links/udp) | yes | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
 | ws | `ws` | [`plugins/links/ws`](../../plugins/links/ws) | yes | WebSocket transport for GoodNet. Wraps a `ws://host:port/path` |
+| ws_inject | `ws_inject` | [`plugins/links/ws_inject`](../../plugins/links/ws_inject) | yes | WebSocket device/browser bridge for goodnetd. Composes over the |
 <!-- /livedoc:link_carriers_list -->
 
 ### All plugin kinds
@@ -154,6 +158,8 @@ manual edits.
 | dns | [`plugins/handlers/dns`](../../plugins/handlers/dns) | Real DNS service for a GoodNet cluster. Typed RR storage on top of |
 | heartbeat | [`plugins/handlers/heartbeat`](../../plugins/handlers/heartbeat) | Two-way liveness check between connected peers. Emits PING on |
 | store | [`plugins/handlers/store`](../../plugins/handlers/store) | Distributed key-value store handler — brings the legacy |
+| web_api_proxy | [`plugins/handlers/web_api_proxy`](../../plugins/handlers/web_api_proxy) | Browser-gateway handler plugin for the GoodNet kernel. A goodnetd |
+| zstd_decompress | [`plugins/handlers/zstd_decompress`](../../plugins/handlers/zstd_decompress) | Middleware handler that decompresses ZSTD-wrapped payloads and |
 
 ### Links plugins
 
@@ -168,6 +174,7 @@ manual edits.
 | tls | [`plugins/links/tls`](../../plugins/links/tls) | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | [`plugins/links/udp`](../../plugins/links/udp) | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
 | ws | [`plugins/links/ws`](../../plugins/links/ws) | WebSocket transport for GoodNet. Wraps a `ws://host:port/path` |
+| ws_inject | [`plugins/links/ws_inject`](../../plugins/links/ws_inject) | WebSocket device/browser bridge for goodnetd. Composes over the |
 
 ### Security plugins
 
@@ -175,10 +182,12 @@ manual edits.
 |---|---|---|
 | noise | [`plugins/security/noise`](../../plugins/security/noise) | Noise XX security provider for GoodNet. Pattern |
 | null | [`plugins/security/null`](../../plugins/security/null) | Loopback / IntraNode pass-through security provider. Used on |
+| pkcs11 | [`plugins/security/pkcs11`](../../plugins/security/pkcs11) | Hardware key store provider for GoodNet — PKCS#11 backend. The |
 
 ### Strategies plugins
 
 | Name | Path | Notes |
 |---|---|---|
 | float_send_rtt | [`plugins/strategies/float_send_rtt`](../../plugins/strategies/float_send_rtt) | Reference multi-path strategy plugin. Picks the connection with |
+| multipath_bond | [`plugins/strategies/multipath_bond`](../../plugins/strategies/multipath_bond) |  |
 <!-- /livedoc:plugin_inventory -->

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** every plugin that exchanges capability state with a peer
             (heartbeat, discovery plugins, future companion handlers)
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-25
 **Stability:** v1.x; type registry grows append-only.
 
 ---
@@ -99,8 +99,23 @@ contract, alphabetised by name to make merge conflicts loud.
 | `0x0000` | `transport-set` | bitmap of `1u << GN_LINK_CAP_*` for each transport scheme the peer can speak; `1u << 31` reserved |
 | `0x0001` | `protocol-set` | bitmap of supported `gn.protocol.<name>` slugs in declaration order; `protocol-list` (type `0x0002`) carries the canonical ordering |
 | `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
+| `0x0003` | `compression-set` | `u8` bitmask: bit 0 = ZSTD (`0x01`) |
+| `0x0004` | `topology-fingerprint` | exactly 32 bytes — SHA-256 over sorted structural layers (link / security / protocol / handler sections); see `layer-capability.en.md §6` for the hash algorithm. Sent automatically by the kernel after Noise XX reaches Transport phase. Receiver compares against local fingerprint and sets `ConnectionRecord::peer_caps_verified`. |
 | `0x0100 – 0x01ff` | _reserved_ | do not allocate; the range is held for future cross-cutting families |
 | `0x0200` | `heartbeat-interval-ms` | u32 big-endian; the peer's preferred PING cadence |
+
+Type `0x0003` is advertised via `present_capability_blob` after connection
+establishment. A plugin enables a compression algorithm on a connection only
+when both sides have advertised the corresponding bit. The extension that
+provides compression services is `gn.compress` (see `sdk/extensions/compress.h`).
+
+Type `0x0004` is sent automatically by the kernel (not by plugins) immediately
+after the security session reaches `Transport` phase — on the same call path
+as attestation. The expiry is set to `INT64_MAX` (valid for the kernel's
+lifetime). A peer that receives this record but has not yet built a topology
+(pre-`gn_core_start`) silently ignores it. The constant
+`gn::sdk::kTlvTypeTopologyFingerprint` in `sdk/cpp/capability_tlv.hpp`
+names the type for consumers.
 
 A consumer that receives an unknown type **must** skip the record
 (advance by `length`) and continue parsing. This is what makes
@@ -162,3 +177,5 @@ to implement; the contract here scopes only the one-frame case.
   `sdk/extensions/link.h` (`GN_LINK_CAP_*`).
 - Limits the value size honours: `limits.en.md` §2
   (`max_payload_bytes`).
+- Topology fingerprint algorithm and `ConnectionRecord::peer_caps_verified`:
+  `layer-capability.en.md §6`.

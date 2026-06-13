@@ -17,6 +17,8 @@
 #include <string>
 #include <vector>
 
+#include <sdk/cpp/endian.hpp>
+
 namespace gn::sdk {
 
 /// One TLV record. The encoder validates `value.size() <= 0xffff` and
@@ -83,12 +85,10 @@ parse_tlv(std::span<const std::uint8_t> blob) {
                 TlvError::Kind::Truncated, pos,
                 "header runs past blob end"});
         }
-        const std::uint16_t type =
-            static_cast<std::uint16_t>(blob[pos] << 8 |
-                                        blob[pos + 1]);
-        const std::uint16_t length =
-            static_cast<std::uint16_t>(blob[pos + 2] << 8 |
-                                        blob[pos + 3]);
+        const std::uint16_t type   = gn::endian::read_be_ptr<std::uint16_t>(
+                                         blob.data() + pos);
+        const std::uint16_t length = gn::endian::read_be_ptr<std::uint16_t>(
+                                         blob.data() + pos + 2);
         const std::size_t value_off = pos + 4;
         if (blob.size() - value_off < length) {
             return std::unexpected(TlvError{
@@ -106,5 +106,17 @@ parse_tlv(std::span<const std::uint8_t> blob) {
     }
     return out;
 }
+
+/// TLV type for compression capability advertisement (capability-tlv.en.md §2.3).
+/// Value: one-byte bitmask. Exchange via present_capability_blob after connect.
+inline constexpr std::uint16_t kTlvTypeCompressionSet = 0x0003u;
+/// Bit 0 of compression-set value: ZSTD algorithm supported.
+inline constexpr std::uint8_t  kCompressionSetZstd    = 0x01u;
+
+/// TLV type for topology fingerprint exchange (layer-capability.en.md §6).
+/// Value: exactly 32 bytes — SHA-256 over sorted structural layers.
+/// Sent automatically after Noise XX reaches Transport phase.
+/// Peer fingerprint mismatch logs the diff and sets peer_caps_verified=false.
+inline constexpr std::uint16_t kTlvTypeTopologyFingerprint = 0x0004u;
 
 }  // namespace gn::sdk

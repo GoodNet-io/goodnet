@@ -9,17 +9,58 @@ counters:
   - file: plugins/links/ipc/ipc.cpp
     line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 728
+    line: 730
   - file: plugins/links/tcp/tcp.cpp
-    line: 768
+    line: 770
   - file: plugins/links/tls/tls.cpp
-    line: 864
+    line: 868
   - file: plugins/links/tls/tls.cpp
-    line: 902
+    line: 906
+- name: gn.multipath-bond.degraded_peers
+  family: gn
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/strategies/multipath_bond/multipath_bond.cpp
+    line: 236
+- name: raw_inject.drop.zstd_error
+  family: raw_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 336
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 345
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 353
+  - file: plugins/links/raw_inject/raw_inject.cpp
+    line: 373
 - name: raw_inject.inject.error
   family: raw_inject
   kinds:
   - emit_counter
   sources:
   - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 306
+    line: 390
+- name: ws_inject.drop.short_stream
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 301
+- name: ws_inject.drop.too_large
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 290
+- name: ws_inject.inject.error
+  family: ws_inject
+  kinds:
+  - emit_counter
+  sources:
+  - file: plugins/links/ws_inject/ws_inject.cpp
+    line: 320

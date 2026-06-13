@@ -1,0 +1,81 @@
+# Host-candidate-only ICE topology.
+#
+# Two peers + one coordinator on a SINGLE docker bridge. No NAT, no
+# STUN, no TURN. Both peers gather only RFC 8445 host candidates
+# (the bridge IPs themselves) and exchange them through the shared
+# signal volume. The connectivity-check / nomination FSM is exercised
+# in isolation from any address-translation or relay plumbing.
+#
+# Smallest possible ICE smoke test — if this scenario fails, the
+# breakage is in the FSM itself, not in the NAT emulation or the
+# STUN/TURN servers. Pass = green light for layering the harder
+# srflx / relay / tcp scenarios on top.
+#
+# Peer image built from ../ice-3node/peer/ so the harness binary +
+# plugin .so set + busybox-static are shared with the 3-node tests
+# (run `tests/docker/ice-3node/peer/build-harness.sh` once before
+# the first compose-up; ice-host's run.sh stages it automatically).
+
+services:
+  coordinator:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icehost_coordinator
+    networks:
+      net: { ipv4_address: 10.40.0.10 }
+    environment:
+      ROLE: coordinator
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  peer_a:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icehost_peer_a
+    networks:
+      net: { ipv4_address: 10.40.0.20 }
+    environment:
+      ROLE:          peer
+      PEER_NAME:     A
+      WAIT_FOR_PEER: B
+      SIGNAL_DIR:    /var/lib/ice3-signal
+      ICE_HOST_ONLY: "true"
+      NAT_GATEWAY:   ""
+      ICE_DEBUG:     "1"
+    depends_on:
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  peer_b:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icehost_peer_b
+    networks:
+      net: { ipv4_address: 10.40.0.30 }
+    environment:
+      ROLE:          peer
+      PEER_NAME:     B
+      WAIT_FOR_PEER: A
+      SIGNAL_DIR:    /var/lib/ice3-signal
+      ICE_HOST_ONLY: "true"
+      NAT_GATEWAY:   ""
+      ICE_DEBUG:     "1"
+    depends_on:
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+networks:
+  net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet:  10.40.0.0/24
+          gateway: 10.40.0.254
+
+volumes:
+  signal:

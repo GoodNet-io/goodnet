@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** every C ABI structure in `sdk/`
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-19
 **Stability:** the rules in this document do not change inside the v1.x line.
 
 ---
@@ -37,6 +37,27 @@ The SDK exposes a semantic version triple in `sdk/types.h`:
 | `MAJOR` | Field removed or repurposed; struct layout broken; semantic of an existing function changed | **breaking** — plugins must rebuild |
 | `MINOR` | New struct, new function pointer appended at the end of an existing vtable, new `_reserved` slot promoted | additive — old plugins keep working |
 | `PATCH` | Documentation, comments, non-binary fixes | none |
+
+### Shared library naming (SOVERSION)
+
+`libgoodnet_kernel.so` follows the ELF SONAME convention. The SOVERSION
+tracks `GN_SDK_VERSION_MAJOR`:
+
+```
+libgoodnet_kernel.so.1       ← SONAME embedded in the binary (runtime link name)
+libgoodnet_kernel.so.1.0.0   ← actual file (full VERSION string)
+libgoodnet_kernel.so         ← development symlink (NAMELINK, for -l flags)
+```
+
+The `install(TARGETS ... LIBRARY NAMELINK_SKIP)` rule in `core/CMakeLists.txt`
+installs only the versioned files (`*.so.1` and `*.so.1.0.0`) in the runtime
+package. A separate install with `NAMELINK_ONLY` is used for the dev-headers
+package. Downstream consumers that dlopen the kernel (Rust / Python / Go
+bindings, `gn::sdk::Core`) must request `libgoodnet_kernel.so.1` by SONAME,
+not the bare `.so` link.
+
+When `GN_SDK_VERSION_MAJOR` bumps: increment SOVERSION in
+`core/CMakeLists.txt` and update the layout table above before tagging.
 
 A plugin reports its build-time SDK version through:
 
@@ -183,6 +204,8 @@ without `git log`-archaeology.
 | 2026-05-12 | `gn_link_api_t` | inline reshape: two new slots `subscribe_accept` / `unsubscribe_accept` inserted before `ctx` (composer accept-bus); `_reserved[4]` tail unchanged; sizeof grows 120 → 136 bytes — covered by api_size versioning | `feat/link-bus-and-dsl-core` |
 | 2026-05-12 | `gn_link_api_t` | inline reshape: new `composer_listen_port` slot inserted before `ctx` so a composer (WS / WSS / ICE) can read back the ephemeral L1 port after `tcp://host:0`-style listen; sizeof grows 136 → 144 bytes — covered by api_size versioning | `feat/ws-on-carrier` |
 | 2026-05-15 | `host_api_t` | additive: new `notify_rtt_sample` slot appended before `_reserved`; LINK / HANDLER / UNKNOWN kinds publish observed RTT samples, kernel folds into per-conn EWMA(α = 1/8) and republishes the smoothed value to every `gn.strategy.*` extension via `on_path_event(GN_PATH_EVENT_RTT_UPDATE)`; sizeof grows 488 → 496 bytes — covered by api_size versioning; `_reserved[8]` tail unchanged | `dev` |
+| 2026-06-02 | `gn_security_provider_vtable_t` | additive: new `uint32_t (*provides_flags)(void*)` slot appended before existing `_reserved[4]`; returns `GN_SEC_PROVIDES_*` bitmask read once by the kernel at topology-build time (`build_topology`); NULL-safe via `GN_API_HAS` — old plugins that omit it return 0 | `feat/layer-capability` |
+| 2026-06-02 | `gn_link_vtable_t` | additive: new `void (*on_topology_sealed)(void*, const struct gn_topology_s*)` slot appended before existing `_reserved[4]`; called once synchronously inside `build_topology` when the kernel transitions to `Phase::Running`; NULL-safe via `GN_API_HAS` — plugins that omit it receive no callback | `feat/layer-capability` |
 
 ---
 

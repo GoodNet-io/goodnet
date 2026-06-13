@@ -66,6 +66,7 @@ def step_catalogs() -> None:
     config_keys.write()
     rfc_coverage.write()
     test_inventory.write()
+    inventory.write()
 
 
 def _load_facts() -> dict:
@@ -226,6 +227,17 @@ def _retarget(docs: Path) -> None:
     abi_extract.FACTS_ROOT = docs / "_facts"
     roadmap_status.FACTS_PATH = docs / "_facts" / "roadmap_status.yaml"
     roadmap_status.ROADMAP_PATH = docs / "ROADMAP.en.md"
+    # Catalog modules each keep their own FACTS_PATH module global; if
+    # we forget to retarget one, run_check() writes that fact file
+    # straight to the real docs tree during a check-mode invocation
+    # and masks the intent of --check (which is supposed to be read-
+    # only against the working tree). Keep this list aligned with the
+    # `step_catalogs()` writer set.
+    config_keys.FACTS_PATH = docs / "_facts" / "config_keys.yaml"
+    test_inventory.FACTS_PATH = docs / "_facts" / "test_inventory.yaml"
+    rfc_coverage.FACTS_PATH = docs / "_facts" / "rfc_coverage.yaml"
+    metrics_catalog.FACTS_PATH = docs / "_facts" / "metrics_catalog.yaml"
+    inventory.FACTS_PATH = docs / "_facts" / "bridges_inventory.yaml"
     global FACTS_ROOT, DOCS_ROOT  # noqa: PLW0603
     FACTS_ROOT = docs / "_facts"
     DOCS_ROOT = docs

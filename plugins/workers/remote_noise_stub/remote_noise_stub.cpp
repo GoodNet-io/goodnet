@@ -151,6 +151,7 @@ constexpr gn_security_provider_vtable_t kVtable{
     .handshake_close       = &stub_handshake_close,
     .destroy               = &stub_destroy,
     .allowed_trust_mask    = &stub_allowed_trust_mask,
+    .provides_flags        = nullptr,
     ._reserved             = {nullptr, nullptr, nullptr, nullptr},
 };
 

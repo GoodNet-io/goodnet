@@ -2,9 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 # Run the staged iroh echo binary across the standard payload sweep
-# and emit aggregate.py-compatible JSON. iroh's open_bi()-per-round
-# pattern is RPC-shaped; small payloads carry the QUIC stream open
-# overhead disproportionately, which the row's `note` flags.
+# and emit aggregate.py-compatible JSON. Uses one persistent bi-directional
+# stream (same methodology as libp2p-echo).
 #
 # Usage: iroh.sh [duration_s]
 
@@ -37,6 +36,6 @@ done
 joined=$(IFS=','; echo "${rows[*]}")
 cat <<EOF
 {"metric": "iroh_echo_throughput",
- "note": "iroh 0.32 (QUIC + TLS 1.3) loopback echo, ${duration}s per size, RPC-style open_bi per round",
+ "note": "iroh 0.32 (QUIC + TLS 1.3) loopback echo, ${duration}s per size, persistent stream, same methodology as libp2p",
  "rows": [${joined}]}
 EOF

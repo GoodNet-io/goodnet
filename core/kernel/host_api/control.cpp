@@ -6,6 +6,8 @@
 
 #include "../host_api_internal.hpp"
 
+#include <array>
+#include <cstddef>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -17,6 +19,7 @@
 
 #include <core/util/log.hpp>
 
+#include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 
 #include "../connection_context.hpp"
@@ -80,17 +83,30 @@ constexpr std::uint64_t kRegisterTokenMask    =
     return id & kRegisterTokenMask;
 }
 
+/// Translation table from the SDK log-level enum to spdlog's. Indexed
+/// by the C enum's underlying value (`GN_LOG_TRACE == 0` ...
+/// `GN_LOG_FATAL == 5`); the `static_assert` keeps the table aligned
+/// with the SDK enum so a new level is a single new array entry.
+constexpr std::array<::spdlog::level::level_enum, 6> kSpdlogLevelByGnLevel = {
+    ::spdlog::level::trace,
+    ::spdlog::level::debug,
+    ::spdlog::level::info,
+    ::spdlog::level::warn,
+    ::spdlog::level::err,
+    ::spdlog::level::critical,
+};
+
+static_assert(static_cast<std::size_t>(GN_LOG_FATAL) + 1
+                  == kSpdlogLevelByGnLevel.size(),
+              "kSpdlogLevelByGnLevel must stay aligned with the "
+              "gn_log_level_t enum.");
+
 [[nodiscard]] ::spdlog::level::level_enum
 map_log_level(gn_log_level_t level) noexcept {
-    switch (level) {
-        case GN_LOG_TRACE: return ::spdlog::level::trace;
-        case GN_LOG_DEBUG: return ::spdlog::level::debug;
-        case GN_LOG_INFO:  return ::spdlog::level::info;
-        case GN_LOG_WARN:  return ::spdlog::level::warn;
-        case GN_LOG_ERROR: return ::spdlog::level::err;
-        case GN_LOG_FATAL: return ::spdlog::level::critical;
-    }
-    return ::spdlog::level::off;
+    const auto idx = static_cast<std::size_t>(level);
+    return idx < kSpdlogLevelByGnLevel.size()
+               ? kSpdlogLevelByGnLevel[idx]
+               : ::spdlog::level::off;
 }
 
 }  // namespace
@@ -449,6 +465,28 @@ gn_result_t notify_rtt_sample(void* host_ctx,
             (void)sapi->on_path_event(
                 sapi->ctx, rec->remote_pk.data(),
                 GN_PATH_EVENT_RTT_UPDATE, &sample);
+        }
+    }
+
+    /// Same RTT_UPDATE delivery to float-send plugins.
+    {
+        auto float_sends =
+            pc->kernel->extensions().query_prefix("gn.float-send.");
+        if (!float_sends.empty()) {
+            gn_path_sample_t sample{};
+            sample.conn   = conn;
+            sample.rtt_us = *smoothed;
+            for (const auto& entry : float_sends) {
+                const auto* fapi =
+                    static_cast<const gn_float_send_api_t*>(entry.vtable);
+                if (!fapi || !fapi->on_path_event ||
+                    fapi->api_size < sizeof(gn_float_send_api_t)) {
+                    continue;
+                }
+                (void)fapi->on_path_event(
+                    fapi->ctx, rec->remote_pk.data(),
+                    GN_PATH_EVENT_RTT_UPDATE, &sample);
+            }
         }
     }
     return GN_OK;

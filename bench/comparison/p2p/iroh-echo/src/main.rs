@@ -1,5 +1,6 @@
 // iroh loopback echo benchmark. QUIC underneath, TLS 1.3, iroh keypair.
 // Both endpoints on 127.0.0.1, relay disabled, no discovery — pure direct path.
+// Uses ONE persistent bi-directional stream (same methodology as libp2p-echo).
 
 use std::time::{Duration, Instant};
 use iroh::{Endpoint, NodeAddr, RelayMode, SecretKey};
@@ -30,16 +31,23 @@ async fn main() -> anyhow::Result<()> {
             while let Some(incoming) = server.accept().await {
                 tokio::spawn(async move {
                     let conn = incoming.await?;
+                    // Accept ONE stream and echo persistently — mirrors libp2p-echo.
+                    let (mut send, mut recv) = match conn.accept_bi().await {
+                        Ok(p) => p,
+                        Err(_) => return Ok::<(), anyhow::Error>(()),
+                    };
+                    let mut buf = vec![0u8; 65536];
                     loop {
-                        let (mut send, mut recv) = match conn.accept_bi().await {
-                            Ok(p) => p,
-                            Err(_) => return Ok::<(), anyhow::Error>(()),
-                        };
-                        let buf = recv.read_to_end(64 * 1024 * 1024).await?;
-                        send.write_all(&buf).await?;
-                        send.finish()?;
-                        send.stopped().await?;
+                        match recv.read(&mut buf).await {
+                            Ok(Some(n)) => {
+                                if send.write_all(&buf[..n]).await.is_err() {
+                                    break;
+                                }
+                            }
+                            _ => break,
+                        }
                     }
+                    Ok(())
                 });
             }
         })
@@ -56,16 +64,23 @@ async fn main() -> anyhow::Result<()> {
     let conn = client.connect(server_addr, ALPN).await?;
     let handshake = t_dial.elapsed();
 
+    // Open ONE stream outside the loop — persistent stream, same methodology as libp2p.
+    let (mut send, mut recv) = conn.open_bi().await?;
     let payload = vec![0xAAu8; payload_size];
+    let mut buf = vec![0u8; payload_size];
     let t_start = Instant::now();
     let deadline = t_start + Duration::from_secs(duration_s);
     let mut sent: u64 = 0;
     while Instant::now() < deadline {
-        let (mut send, mut recv) = conn.open_bi().await?;
         send.write_all(&payload).await?;
-        send.finish()?;
-        let got = recv.read_to_end(payload_size * 2).await?;
-        sent += got.len() as u64;
+        let mut got = 0usize;
+        while got < payload_size {
+            match recv.read(&mut buf[got..]).await? {
+                Some(n) => got += n,
+                None => break,
+            }
+        }
+        sent += payload_size as u64;
     }
     let elapsed = t_start.elapsed();
     let bps = sent as f64 / elapsed.as_secs_f64();
@@ -75,6 +90,7 @@ async fn main() -> anyhow::Result<()> {
         bps / 1024.0 / 1024.0,
         handshake.as_secs_f64() * 1000.0
     );
+    drop(send);
     drop(conn);
     server_task.abort();
     Ok(())

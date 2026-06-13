@@ -24,6 +24,29 @@ if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor ]]; then
     governor="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor)"
 fi
 
+# Scaling driver (intel_pstate vs acpi-cpufreq vs cppc_cpufreq etc.)
+# Needed because intel_pstate "powersave" is NOT the same as
+# acpi-cpufreq "powersave": with HWP the CPU still boosts to max
+# under load regardless of the governor name.
+scaling_driver="unknown"
+if [[ -r /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver ]]; then
+    scaling_driver="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_driver)"
+fi
+
+# Detect "governor says powersave but CPU is actually running at max freq"
+# — common on intel_pstate where HWP boosts to cpuinfo_max_freq under load.
+# Report an explicit note so the aggregator does not mislead the reader.
+governor_note=""
+if [[ "${governor}" == "powersave" && "${scaling_driver}" == "intel_pstate" ]]; then
+    max_freq="$(cat /sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq 2>/dev/null || echo 0)"
+    smax_freq="$(cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_max_freq 2>/dev/null || echo 0)"
+    if [[ "${max_freq}" -gt 0 && "${max_freq}" == "${smax_freq}" ]]; then
+        governor_note="intel_pstate_at_max"
+    else
+        governor_note="intel_pstate_limited"
+    fi
+fi
+
 # Turbo. intel_pstate exposes `no_turbo` (inverted boolean). AMD's
 # cpufreq driver exposes `boost`. Default to "unknown" when neither
 # path is readable so a reader notices the gap rather than getting a
@@ -81,6 +104,8 @@ cat <<JSON
   "ram":       "${ram_human}",
   "kernel":    "${kernel}",
   "governor":  "${governor}",
+  "scaling_driver": "${scaling_driver}",
+  "governor_note":  "${governor_note}",
   "turbo":     "${turbo}",
   "smt":       "${smt}",
   "aslr":      "${aslr}",

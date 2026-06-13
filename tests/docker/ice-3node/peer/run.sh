@@ -16,6 +16,8 @@
 #    * wait for the peer's pubkey
 #    * trigger an ICE connect to it
 #    * on first inbound byte, write `${SIGNAL_DIR}/${PEER_NAME}.done`
+#      and `${PEER_NAME}.report.json` (structured nomination details)
+#    * on any failure, write `${PEER_NAME}.fail` before exiting non-zero
 #
 # Exits 0 on success, non-zero on timeout / hard failure. The
 # scenario test scripts in `run_all.sh` assert on the `.done` /
@@ -34,23 +36,37 @@ fi
 
 : "${PEER_NAME:?PEER_NAME unset}"
 : "${SIGNAL_DIR:=/var/lib/ice3-signal}"
-: "${STUN_URI:=stun://10.10.0.10:3478}"
-: "${TURN_URI:=turn://goodnet:bench-only-credentials@10.10.0.11:3478}"
+# `=` (not `:=`) so an explicit empty value (e.g. ice-srflx setting
+# TURN_URI="" in compose to forbid relay) is preserved through to the
+# json template. `:=` would have re-substituted the default for an
+# empty env, which would silently enable TURN gathering against an
+# unreachable server.
+: "${STUN_URI=stun://10.10.0.10:3478}"
+: "${TURN_URI=turn://goodnet:bench-only-credentials@10.10.0.11:3478}"
 : "${WAIT_FOR_PEER:=B}"
 
 # Replace the docker-bridge default route with one that points at
 # the per-LAN NAT container. docker's IPAM places the bridge
 # gateway at .254 of each subnet (see docker-compose.yml's `ipam`
 # block); the NAT container takes .1 and is the only route to the
-# `net` subnet (10.10.0.0/24) where STUN + TURN live. The PATH
-# the route uses comes from PEER_NAME — A → 10.20.0.1, B →
-# 10.30.0.1. busybox `ip` from /usr/local/bin/ip handles the
-# netlink talk; the goodnet base image ships only coreutils.
-case "${PEER_NAME}" in
-    A) nat_gateway="10.20.0.1" ;;
-    B) nat_gateway="10.30.0.1" ;;
-    *) nat_gateway="" ;;
-esac
+# `net` subnet (10.10.0.0/24) where STUN + TURN live. The path the
+# route uses comes from PEER_NAME — A → 10.20.0.1, B → 10.30.0.1 —
+# unless NAT_GATEWAY is set explicitly. busybox `ip` from
+# /usr/local/bin/ip handles the netlink talk; the goodnet base
+# image ships only coreutils.
+#
+# Single-bridge harnesses (ice-host) want to keep the docker
+# default route — they have no NAT containers — so they set
+# NAT_GATEWAY= (empty) and the swap is skipped.
+if [ -n "${NAT_GATEWAY+set}" ]; then
+    nat_gateway="${NAT_GATEWAY}"
+else
+    case "${PEER_NAME}" in
+        A) nat_gateway="10.20.0.1" ;;
+        B) nat_gateway="10.30.0.1" ;;
+        *) nat_gateway="" ;;
+    esac
+fi
 if [ -n "${nat_gateway}" ] && [ -x /usr/local/bin/ip ]; then
     echo "[peer-${PEER_NAME}] swapping default route → ${nat_gateway}"
     /usr/local/bin/ip route del default 2>/dev/null || true
@@ -67,14 +83,36 @@ fi
 # treats missing keys as defaults too, but emitting them with
 # explicit values keeps the rendered config diffable.
 : "${TURN_BACKUP_INTERVAL_S:=5}"
+: "${ICE_MAX_CHECK_RETRIES:=4}"
+: "${ICE_CHECK_INTERVAL_MS:=50}"
+: "${ICE_AGGRESSIVE_NOMINATION:=false}"
 : "${ICE_LITE_MODE:=false}"
 : "${ICE_MDNS_OBFUSCATE:=false}"
 : "${ICE_ENABLE_IPV6:=false}"
 : "${ICE_PMTU_ACTIVE_PROBING:=false}"
 : "${ICE_PORT_PREDICTION_STRIDE_MAX:=0}"
+# Derive the boolean enable flag from the stride-max knob so
+# scenario files only need to set ICE_PORT_PREDICTION_STRIDE_MAX.
+if [ "${ICE_PORT_PREDICTION_STRIDE_MAX}" -gt 0 ] 2>/dev/null; then
+    ICE_SYMMETRIC_PRED_ENABLED=true
+else
+    ICE_SYMMETRIC_PRED_ENABLED=false
+fi
 : "${ICE_TCP_TLS_ONLY:=false}"
+: "${ICE_SESSION_TIMEOUT_S:=10}"
 : "${TURN_USER:=goodnet}"
 : "${TURN_PASS:=bench-only-credentials}"
+# TURN-over-TCP (RFC 5389 §7.2.2): when true, the session talks STUN
+# framed with the 2-byte length prefix over a TCP socket to the TURN
+# server. Independent from `ICE_TURN_REQUESTED_TRANSPORT` below, which
+# controls the *relay-side* transport (RFC 6062). Operators behind
+# UDP-blocked firewalls flip both together.
+: "${ICE_TURN_TCP:=false}"
+# RFC 6062 REQUESTED-TRANSPORT in TURN ALLOCATE. "udp" / "17" emits a
+# UDP relay (default). "tcp" / "6" emits a TCP relay — the TURN server
+# accepts inbound TCP from the remote peer via the Connect /
+# ConnectionBind methods instead of ChannelBind / Send-Indication.
+: "${ICE_TURN_REQUESTED_TRANSPORT:=udp}"
 
 # QUIC-over-ICE knob. When true, load gn.link.quic alongside
 # gn.link.ice and switch the default connect scheme to
@@ -99,7 +137,10 @@ mkdir -p "${SIGNAL_DIR}" /etc/goodnet /var/lib/goodnet
 join_uris() {
     primary="$1"
     extras="$2"
-    out="\"${primary}\""
+    out=""
+    if [ -n "${primary}" ]; then
+        out="\"${primary}\""
+    fi
     if [ -n "${extras}" ]; then
         IFS=','
         for u in ${extras}; do
@@ -109,15 +150,30 @@ join_uris() {
             while [ "${u#" "}" != "${u}" ]; do u="${u#" "}"; done
             while [ "${u%" "}" != "${u}" ]; do u="${u%" "}"; done
             [ -z "${u}" ] && continue
-            out="${out}, \"${u}\""
+            if [ -z "${out}" ]; then
+                out="\"${u}\""
+            else
+                out="${out}, \"${u}\""
+            fi
         done
         unset IFS
     fi
     printf '%s' "${out}"
 }
 
-STUN_SERVERS_JSON="$(join_uris "${STUN_URI}" "${STUN_URI_EXTRA}")"
-TURN_SERVERS_JSON="$(join_uris "${TURN_URI}" "${TURN_URI_EXTRA}")"
+# ICE_HOST_ONLY=true forces both server lists to empty so the ICE
+# plugin skips srflx + relay gathering and only emits host candidates.
+# Used by the ice-host harness (tests/docker/ice-host/) to exercise
+# the RFC 8445 connectivity-check FSM in isolation, without dragging
+# STUN/TURN/NAT plumbing into the picture.
+: "${ICE_HOST_ONLY:=false}"
+if [ "${ICE_HOST_ONLY}" = "true" ]; then
+    STUN_SERVERS_JSON=""
+    TURN_SERVERS_JSON=""
+else
+    STUN_SERVERS_JSON="$(join_uris "${STUN_URI}" "${STUN_URI_EXTRA}")"
+    TURN_SERVERS_JSON="$(join_uris "${TURN_URI}" "${TURN_URI_EXTRA}")"
+fi
 
 # Materialise the per-peer config via a heredoc. Shell variable
 # expansion inside an unquoted-marker heredoc handles every
@@ -129,11 +185,17 @@ cat > /etc/goodnet/peer.json <<EOF
     "node_id": "${PEER_NAME}",
     "identity_path": "/var/lib/goodnet/identity-${PEER_NAME}.bin"
   },
+  "log": {
+    "level": "${ICE3_LOG_LEVEL:-info}",
+    "console_level": "${ICE3_LOG_LEVEL:-info}"
+  },
   "plugins": [
     { "name": "goodnet_security_null",     "path": "/plugins/libgoodnet_security_null.so"     },
     { "name": "goodnet_security_noise",    "path": "/plugins/libgoodnet_security_noise.so"    },
     { "name": "goodnet_link_udp",          "path": "/plugins/libgoodnet_link_udp.so"          },
     { "name": "goodnet_link_tcp",          "path": "/plugins/libgoodnet_link_tcp.so"          },
+    { "name": "goodnet_link_portmap",      "path": "/plugins/libgoodnet_link_portmap.so"      },
+    { "name": "goodnet_discovery_mdns",   "path": "/plugins/libgoodnet_discovery_mdns.so"    },
     { "name": "goodnet_link_ice",          "path": "/plugins/libgoodnet_link_ice.so"          }${QUIC_PLUGIN_ENTRY},
     { "name": "goodnet_handler_heartbeat", "path": "/plugins/libgoodnet_handler_heartbeat.so" }
   ],
@@ -142,17 +204,23 @@ cat > /etc/goodnet/peer.json <<EOF
     "turn_servers": [ ${TURN_SERVERS_JSON} ],
     "turn_username": "${TURN_USER}",
     "turn_password": "${TURN_PASS}",
-    "session_timeout_s": 30,
+    "session_timeout_s": ${ICE_SESSION_TIMEOUT_S:-30},
     "keepalive_interval_s": 10,
     "consent_max_failures": 3,
     "consent_max_recovery": 3,
     "turn_backup_interval_s": ${TURN_BACKUP_INTERVAL_S},
+    "max_check_retries": ${ICE_MAX_CHECK_RETRIES},
+    "check_interval_ms": ${ICE_CHECK_INTERVAL_MS},
+    "aggressive_nomination": ${ICE_AGGRESSIVE_NOMINATION},
     "lite_mode": ${ICE_LITE_MODE},
     "mdns_obfuscate_host_candidates": ${ICE_MDNS_OBFUSCATE},
     "enable_ipv6": ${ICE_ENABLE_IPV6},
-    "pmtud_active_probing": ${ICE_PMTU_ACTIVE_PROBING},
-    "port_prediction_stride_max": ${ICE_PORT_PREDICTION_STRIDE_MAX},
-    "tcp_tls_only": ${ICE_TCP_TLS_ONLY}
+    "pmtu_active_probing": ${ICE_PMTU_ACTIVE_PROBING},
+    "symmetric_port_prediction_enabled": ${ICE_SYMMETRIC_PRED_ENABLED},
+    "symmetric_port_prediction_attempts": ${ICE_PORT_PREDICTION_STRIDE_MAX},
+    "tcp_tls_only": ${ICE_TCP_TLS_ONLY},
+    "turn_tcp": ${ICE_TURN_TCP},
+    "turn_requested_transport": "${ICE_TURN_REQUESTED_TRANSPORT}"
   },
   "signal": {
     "shared_dir": "${SIGNAL_DIR}",
@@ -182,8 +250,12 @@ export SIGNAL_DIR
 export CONFIG=/etc/goodnet/peer.json
 export PLUGINS_DIR=/plugins
 export QUIC_OVER_ICE
-: "${HARNESS_TIMEOUT_S:=30}"
+: "${HARNESS_TIMEOUT_S:=18}"
 export HARNESS_TIMEOUT_S
+
+# Runtime libs staged by run_all.sh live here; base image may lack
+# matching nix store paths (built from rc3, current harness uses newer).
+export LD_LIBRARY_PATH=/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
 
 echo "[peer-${PEER_NAME}] starting peer-harness"
 exec /usr/local/bin/peer-harness

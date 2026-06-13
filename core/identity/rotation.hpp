@@ -35,6 +35,7 @@
 #include <sdk/cpp/types.hpp>
 
 #include "keypair.hpp"
+#include "signer.hpp"
 
 namespace gn::core::identity {
 
@@ -56,9 +57,24 @@ struct RotationProof {
 };
 
 /// Sign a rotation proof with @p prev_user_kp and pack it onto the
-/// 150-byte wire buffer. Returns `GN_OK` on success.
+/// 150-byte wire buffer. Returns `GN_OK` on success. Thin wrapper
+/// over the `IdentitySigner` overload below — retained so existing
+/// rotation tests that hold a `KeyPair` keep compiling.
 [[nodiscard]] ::gn::Result<std::array<std::uint8_t, kRotationProofBytes>>
 sign_rotation(const KeyPair&                prev_user_kp,
+              const ::gn::PublicKey&        new_user_pk,
+              std::uint64_t                 counter,
+              std::int64_t                  valid_from_unix_ts);
+
+/// `sign_rotation` against an abstract `IdentitySigner`. The kernel
+/// path in `host_api/identity.cpp::announce_rotation` goes through
+/// this overload so the rotation signing flow uses the same
+/// abstraction as the rest of identity-key signing — Phase 2 can
+/// then route rotation proofs through HSM-backed signers without
+/// reaching into `NodeIdentity::user()`.
+[[nodiscard]] ::gn::Result<std::array<std::uint8_t, kRotationProofBytes>>
+sign_rotation(IdentitySigner&               prev_user_signer,
+              const ::gn::PublicKey&        prev_user_pk,
               const ::gn::PublicKey&        new_user_pk,
               std::uint64_t                 counter,
               std::int64_t                  valid_from_unix_ts);

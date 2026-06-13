@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/limits.h`, every code path that enforces a bound
-**Last verified:** 2026-04-27
+**Last verified:** 2026-05-19
 **Stability:** v1.x; new fields added at the end of the struct.
 
 ---
@@ -32,6 +32,7 @@ network byte order on the C ABI:
 | `pending_queue_bytes_low` | 32 | 256 KiB | backpressure release (per conn) |
 | `pending_queue_bytes_hard` | 32 | 4 MiB | disconnect threshold (per conn) |
 | `max_payload_bytes` | 32 | 64 KiB − header | per-message payload ceiling |
+| `max_capability_blob_bytes` | 32 | 0 (disabled) | maximum size of a capability advertisement blob; 0 disables the gate |
 | `max_frame_bytes` | 32 | 64 KiB | total wire-frame ceiling |
 | `max_handlers_per_msg_id` | 32 | 8 | dispatch chain length |
 | `max_relay_ttl` | 32 | 4 | forwarded message hop count |
@@ -65,6 +66,7 @@ rejects:
 | `max_payload_bytes + sizeof(GnetHeader) ≤ max_frame_bytes` | frame ceiling shorter than payload |
 | `max_relay_ttl > 0 && max_relay_ttl ≤ 8` | infinite relay loop OR amplification |
 | `max_storage_value_bytes ≤ max_payload_bytes` | storage entry won't fit a single frame |
+| `max_capability_blob_bytes > max_payload_bytes` (when non-zero) | capability blob can never be delivered in a single message |
 
 Failure is fail-fast: `gn_core_init` returns `GN_ERR_INVALID_CONFIG`
 with the offending field name in the error message. There is no

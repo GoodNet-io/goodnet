@@ -17,6 +17,8 @@
 #include <string>
 #include <string_view>
 
+#include <sdk/cpp/contract.hpp>
+
 namespace gn {
 
 /// Parsed connection URI per uri.en.md §3.
@@ -119,7 +121,8 @@ struct UriParts {
 /// `docs/contracts/uri.en.md` §5; never throws, never writes through a
 /// partial result.
 [[nodiscard]] inline std::optional<UriParts>
-parse_uri(std::string_view uri) {
+parse_uri(std::string_view uri)
+{
     UriParts out;
 
     if (uri_has_control_bytes(uri)) return std::nullopt;
@@ -131,18 +134,36 @@ parse_uri(std::string_view uri) {
         uri = uri.substr(0, q);
     }
 
-    /// Optional `scheme://` prefix.
+    /// Optional `scheme://` prefix. `had_scheme_sep` records whether the
+    /// `://` separator was present so the path-style fallback below only
+    /// fires for `scheme://body` inputs — bare `host` (no separator)
+    /// must still fail as missing-port per uri.en.md §5 #4.
+    bool had_scheme_sep = false;
     if (auto sep = uri.find("://"); sep != std::string_view::npos) {
         out.scheme.assign(uri.substr(0, sep));
         uri = uri.substr(sep + 3);
+        had_scheme_sep = true;
     }
 
     if (uri.empty()) return std::nullopt;
 
-    /// Path-style schemes carry a path / abstract name where host:port
-    /// would normally sit. Detected by scheme so a stray missing port
-    /// on a host:port URI still fails fast.
-    if (out.scheme == "ipc") {
+    /// Path-style URIs carry a path / abstract name where host:port
+    /// would normally sit. Two cases collapse into one rule
+    /// (uri.en.md §3):
+    ///   1. `ipc://…` — historical path-style scheme.
+    ///   2. Any `scheme://…` whose authority part contains no `:` —
+    ///      e.g. `quic://<64-hex peer-pk>`, `wasm://<module-uuid>`,
+    ///      `tcp://hostname`. The kernel-internal `is_path_style()`
+    ///      (port==0 && !path.empty()) already gates path-vs-authority
+    ///      routing, so the parser only has to populate `path` in
+    ///      these cases instead of failing.
+    /// A bare `host` (no `scheme://` prefix) still falls into the
+    /// host:port branch and fails fast on the missing colon — only
+    /// inputs that carried `://` opt into the path-style fallback.
+    if (had_scheme_sep &&
+        (out.scheme == "ipc" ||
+         (uri.front() != '[' && uri.find(':') == std::string_view::npos)))
+    {
         out.path.assign(uri);
         out.host = out.path;  // back-compat: host mirrors path
         return out;
@@ -197,7 +218,8 @@ parse_uri(std::string_view uri) {
 /// Returns `nullopt` on either malformed URI or scheme mismatch.
 [[nodiscard]] inline std::optional<UriParts>
 parse_uri_strict(std::string_view uri,
-                  std::string_view expected_scheme) noexcept {
+                  std::string_view expected_scheme) noexcept
+{
     auto parts = parse_uri(uri);
     if (!parts) return std::nullopt;
     if (parts->scheme != expected_scheme) return std::nullopt;

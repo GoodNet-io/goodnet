@@ -44,7 +44,23 @@ typedef enum gn_trust_class_e {
      * the connection's URI scope is loopback (see
      * `core/kernel/router.cpp::is_loopback_scope`).
      */
-    GN_TRUST_ANONYMOUS_LOOPBACK = 4
+    GN_TRUST_ANONYMOUS_LOOPBACK = 4,
+
+    /**
+     * External connection whose encryption is provided by the link
+     * layer (e.g. TLS) rather than by a session-layer provider.
+     *
+     * Assigned automatically by the kernel at `notify_connect` when
+     * the link reports `GN_LINK_CAP_ENCRYPTED_PATH` and the operator
+     * has set `security.allow_link_only: true` in the config.
+     * The matching security provider (`gn.security.link-only`) passes
+     * frames through without AEAD; `provides_flags` is 0 so the
+     * topology correctly records that session-layer crypto is absent.
+     *
+     * Peer identity is not verified by the session layer; higher-layer
+     * attestation or the TLS certificate chain covers it.
+     */
+    GN_TRUST_LINK_ENCRYPTED = 5
 } gn_trust_class_t;
 
 /**

@@ -12,10 +12,11 @@
 # `dlopen`s at runtime: handler-{heartbeat, store, dns},
 # link-{tcp, udp, ws, ipc, tls, ice}, security-{noise, null};
 # plus the operator-side bridges-cpp slot at `bridges/cpp/`.
-# Statically-linked plugins under `plugins/protocols/` are part
-# of the kernel build and do not need pulling. The link-quic and
-# strategy-float_send_rtt plugins exist in-tree but have no
-# external mirror yet, so they are not part of the install set.
+# plugins/protocols/gnet is a git submodule (GoodNet-io/protocol-gnet)
+# and is initialised by `nix run .#setup` via `git submodule update
+# --init --recursive`; it does not go through this script. The
+# strategy-float_send_rtt plugin exists in-tree but has no
+# external mirror yet, so it is not part of the install set.
 #
 # Source lookup (first hit wins):
 #   1. `${GOODNET_PLUGIN_MIRROR_DIR}/<repo>.git`  (env override)
@@ -70,15 +71,24 @@ pkgs.writeShellApplication {
       [plugins/handlers/heartbeat]=handler-heartbeat
       [plugins/handlers/store]=handler-store
       [plugins/handlers/dns]=handler-dns
+      [plugins/handlers/web_api_proxy]=handler-web-api-proxy
       [plugins/links/tcp]=link-tcp
       [plugins/links/udp]=link-udp
       [plugins/links/ws]=link-ws
+      [plugins/links/ws_inject]=link-ws-inject
       [plugins/links/ipc]=link-ipc
       [plugins/links/tls]=link-tls
       [plugins/links/ice]=link-ice
+      [plugins/links/quic]=link-quic
+      [plugins/links/raw_inject]=link-raw-inject
+      [plugins/links/portmap]=link-portmap
       [plugins/security/noise]=security-noise
       [plugins/security/null]=security-null
+      [plugins/security/pkcs11]=security-pkcs11
       [bridges/cpp]=bridges-cpp
+      [bridges/python]=bridges-python
+      [bridges/rust]=bridges-rust
+      [bridges/js]=bridges-js
       [tests/integration]=integration-tests
     )
 
@@ -105,6 +115,14 @@ pkgs.writeShellApplication {
           skipped=$((skipped + 1))
         fi
         continue
+      fi
+
+      # Slot dir exists but has no .git — stub from a stale kernel
+      # commit (e.g. ws_inject files force-added to the monorepo).
+      # Remove it so git clone can proceed cleanly.
+      if [ -d "$slot" ]; then
+        echo "install-plugins: removing stale stub at $slot"
+        rm -rf "$slot"
       fi
 
       mkdir -p "$(dirname "$slot")"

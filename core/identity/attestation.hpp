@@ -15,6 +15,7 @@
 #include <sdk/cpp/types.hpp>
 
 #include "keypair.hpp"
+#include "signer.hpp"
 
 namespace gn::core::identity {
 
@@ -30,9 +31,24 @@ struct Attestation {
     std::array<std::uint8_t, kEd25519SignatureBytes>  signature{};
 
     /// Build an attestation by signing `(user_pk || device_pk ||
-    /// expiry_be64)` with @p user.
+    /// expiry_be64)` with @p user. Thin wrapper retained so test
+    /// fixtures that hold a `KeyPair` directly keep compiling;
+    /// internally it routes through the `IdentitySigner` overload
+    /// below so the actual signing path is the Phase-1 abstraction.
     [[nodiscard]] static ::gn::Result<Attestation> create(
         const KeyPair&         user,
+        const ::gn::PublicKey& device_pk,
+        std::int64_t           expiry_unix_ts);
+
+    /// Build an attestation by signing through @p user_signer (whose
+    /// public key the caller passes as @p user_pk for the binding
+    /// payload). Used by `NodeIdentity::compose` so the identity-key
+    /// signing path is the same whether the signer is the in-process
+    /// `LibsodiumSigner` or, in a later phase, an HSM-backed
+    /// implementation that never exposes the seed.
+    [[nodiscard]] static ::gn::Result<Attestation> create(
+        IdentitySigner&        user_signer,
+        const ::gn::PublicKey& user_pk,
         const ::gn::PublicKey& device_pk,
         std::int64_t           expiry_unix_ts);
 

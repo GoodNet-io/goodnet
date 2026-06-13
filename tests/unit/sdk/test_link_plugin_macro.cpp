@@ -10,17 +10,17 @@
 /// plugin that calls the macro (tcp, udp, ws, tls, quic, ipc,
 /// raw_inject). What this file covers:
 ///
-///   1. `default_trust_class_dispatch` forwards the supplied trust
-///      class to a link class that exposes
-///      `set_default_trust_class` — proving the EX variant's
-///      trust-class hint reaches the impl.
-///   2. The same helper is a silent no-op for link classes that
-///      omit the slot — proving the existing `GN_LINK_PLUGIN`
-///      desugar stays a structural identity for every link plugin
-///      that has not opted in to the EX surface.
+///   1. `dispatch_void<&T::set_default_trust_class>` forwards the
+///      supplied trust class to a link class that exposes the slot —
+///      proving the EX variant's trust-class hint reaches the impl.
+///   2. The same path is a silent no-op for link classes that omit
+///      the slot — proving the existing `GN_LINK_PLUGIN` desugar
+///      stays a structural identity for every link plugin that has
+///      not opted in to the EX surface.
 
 #include <gtest/gtest.h>
 
+#include <sdk/cpp/dispatcher.hpp>
 #include <sdk/cpp/link_plugin.hpp>
 #include <sdk/trust.h>
 #include <sdk/types.h>
@@ -40,24 +40,30 @@ struct LinkWithoutTrust {
     int touched = 0;
 };
 
+/// Mirror of the dispatch pattern the GN_LINK_PLUGIN_EX macro emits.
+/// Exists only to test the "absent slot → no-op" branch without
+/// repeating the macro expansion.
+template <class T>
+void trust_dispatch(T& obj, gn_trust_class_t t) noexcept {
+    if constexpr (requires { obj.set_default_trust_class(t); })
+        ::gn::sdk::detail::dispatch_void<&T::set_default_trust_class>(obj, t);
+}
+
 }  // namespace
 
 TEST(LinkPluginMacro, DefaultTrustClassDispatchForwardsWhenPresent) {
     LinkWithTrust link;
-    ::gn::sdk::detail::default_trust_class_dispatch(
-        link, GN_TRUST_ANONYMOUS_LOOPBACK);
+    trust_dispatch(link, GN_TRUST_ANONYMOUS_LOOPBACK);
     EXPECT_EQ(link.calls, 1);
     EXPECT_EQ(link.observed, GN_TRUST_ANONYMOUS_LOOPBACK);
 
-    ::gn::sdk::detail::default_trust_class_dispatch(
-        link, GN_TRUST_INTRA_NODE);
+    trust_dispatch(link, GN_TRUST_INTRA_NODE);
     EXPECT_EQ(link.calls, 2);
     EXPECT_EQ(link.observed, GN_TRUST_INTRA_NODE);
 }
 
 TEST(LinkPluginMacro, DefaultTrustClassDispatchNoopWhenAbsent) {
     LinkWithoutTrust link;
-    ::gn::sdk::detail::default_trust_class_dispatch(
-        link, GN_TRUST_ANONYMOUS_LOOPBACK);
+    trust_dispatch(link, GN_TRUST_ANONYMOUS_LOOPBACK);
     EXPECT_EQ(link.touched, 0);
 }

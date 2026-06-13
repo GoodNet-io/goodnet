@@ -48,10 +48,11 @@ using namespace std::chrono_literals;
 /// wall-clock duration; the bench body uses google-benchmark for
 /// reporting but the bench-internal windowing is independent.
 struct WindowSample {
-    std::uint64_t                          sends_ok      = 0;
-    std::uint64_t                          sends_err     = 0;
+    std::uint64_t                          sends_ok          = 0;
+    std::uint64_t                          sends_err         = 0;
+    std::uint64_t                          sends_backpressure = 0;
     std::chrono::nanoseconds               duration{0};
-    std::uint64_t                          bytes_sent    = 0;
+    std::uint64_t                          bytes_sent        = 0;
 };
 
 struct SustainedFixture : public ::benchmark::Fixture {
@@ -145,11 +146,11 @@ BENCHMARK_DEFINE_F(SustainedFixture, TcpThroughput60s)
             if (rc == GN_OK) {
                 ++current.sends_ok;
                 current.bytes_sent += kPayloadBytes;
+            } else if (rc == GN_ERR_LIMIT_REACHED) {
+                ++current.sends_backpressure;
+                std::this_thread::sleep_for(10us);
             } else {
                 ++current.sends_err;
-                /// Backpressure yield mirrors `bench_tcp.cpp`'s
-                /// throughput body — sleep a tick so the kernel
-                /// write pump drains the per-conn queue.
                 std::this_thread::sleep_for(10us);
             }
             const auto t_window_end =
@@ -175,14 +176,16 @@ BENCHMARK_DEFINE_F(SustainedFixture, TcpThroughput60s)
     window_bps.reserve(windows.size());
     std::uint64_t total_bytes = 0;
     std::uint64_t total_sends_ok = 0;
+    std::uint64_t total_backpressure = 0;
     for (const auto& w : windows) {
         if (w.duration.count() > 0) {
             const double secs =
                 static_cast<double>(w.duration.count()) / 1e9;
             window_bps.push_back(
                 static_cast<double>(w.bytes_sent) / secs);
-            total_bytes    += w.bytes_sent;
-            total_sends_ok += w.sends_ok;
+            total_bytes       += w.bytes_sent;
+            total_sends_ok    += w.sends_ok;
+            total_backpressure += w.sends_backpressure;
         }
     }
     std::size_t flagged_windows = 0;
@@ -209,8 +212,17 @@ BENCHMARK_DEFINE_F(SustainedFixture, TcpThroughput60s)
     state.counters["window_bps_max"]     = max_bps;
     state.counters["windows_flagged_15pct_below_median"] =
         static_cast<double>(flagged_windows);
-    state.counters["total_bytes"]    = static_cast<double>(total_bytes);
-    state.counters["total_sends_ok"] = static_cast<double>(total_sends_ok);
+    state.counters["total_bytes"]       = static_cast<double>(total_bytes);
+    state.counters["total_sends_ok"]    = static_cast<double>(total_sends_ok);
+    state.counters["total_backpressure"]= static_cast<double>(total_backpressure);
+    {
+        const double denom =
+            static_cast<double>(total_sends_ok + total_backpressure);
+        state.counters["bp_ratio"] =
+            denom > 0.0
+                ? static_cast<double>(total_backpressure) / denom
+                : 0.0;
+    }
     if (median_bps > 0) {
         state.counters["bytes_per_second"] = median_bps;
     }

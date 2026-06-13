@@ -1,0 +1,4 @@
+[submodule "plugins/protocols/gnet"]
+	path = plugins/protocols/gnet
+	url = https://github.com/GoodNet-io/protocol-gnet
+	branch = main

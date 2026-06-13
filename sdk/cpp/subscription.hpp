@@ -31,6 +31,7 @@
 #include <utility>
 
 #include <sdk/conn_events.h>
+#include <sdk/cpp/contract.hpp>
 #include <sdk/host_api.h>
 #include <sdk/identity.h>
 #include <sdk/types.h>
@@ -48,9 +49,9 @@ public:
         std::int64_t                 expires_unix_ts;
     };
 
-    using ConnStateFn      = std::function<void(const gn_conn_event_t&)>;
-    using ConfigReloadFn   = std::function<void()>;
-    using CapabilityBlobFn = std::function<void(const CapabilityBlob&)>;
+    using ConnStateFn      = std::move_only_function<void(const gn_conn_event_t&)>;
+    using ConfigReloadFn   = std::move_only_function<void()>;
+    using CapabilityBlobFn = std::move_only_function<void(const CapabilityBlob&)>;
 
     Subscription() noexcept = default;
 
@@ -76,47 +77,35 @@ public:
     /// (`valid() == false`) if @p api is null, the subscribe slot is
     /// unset, or the kernel rejected the registration.
     [[nodiscard]] static Subscription
-    on_conn_state(const host_api_t* api, ConnStateFn fn) {
-        if (!api || !api->subscribe_conn_state || !fn) return {};
-        auto holder = new ConnStateFn(std::move(fn));
-        gn_subscription_id_t id = GN_INVALID_SUBSCRIPTION_ID;
-        const gn_result_t rc = api->subscribe_conn_state(
-            api->host_ctx,
-            &conn_state_thunk, holder, &destroy_conn_state, &id);
-        if (rc != GN_OK || id == GN_INVALID_SUBSCRIPTION_ID) {
-            delete holder;
-            return {};
-        }
-        return Subscription(api, id);
+    on_conn_state(const host_api_t* api, ConnStateFn fn)
+    {
+        if (!api) return {};
+        return subscribe_impl<ConnStateFn>(api, std::move(fn),
+                                           api->subscribe_conn_state,
+                                           &conn_state_thunk);
     }
 
     /// Subscribe to `GN_SUBSCRIBE_CONFIG_RELOAD`. Same null-handle
     /// semantics as `on_conn_state`.
     [[nodiscard]] static Subscription
-    on_config_reload(const host_api_t* api, ConfigReloadFn fn) {
-        if (!api || !api->subscribe_config_reload || !fn) return {};
-        auto holder = new ConfigReloadFn(std::move(fn));
-        gn_subscription_id_t id = GN_INVALID_SUBSCRIPTION_ID;
-        const gn_result_t rc = api->subscribe_config_reload(
-            api->host_ctx,
-            &config_reload_thunk, holder, &destroy_config_reload, &id);
-        if (rc != GN_OK || id == GN_INVALID_SUBSCRIPTION_ID) {
-            delete holder;
-            return {};
-        }
-        return Subscription(api, id);
+    on_config_reload(const host_api_t* api, ConfigReloadFn fn)
+    {
+        if (!api) return {};
+        return subscribe_impl<ConfigReloadFn>(api, std::move(fn),
+                                              api->subscribe_config_reload,
+                                              &config_reload_thunk);
     }
 
     /// Event-typed conn-state subscribers — sugar over
     /// `on_conn_state` that pre-filters by `kind` so the lambda
     /// signature only carries fields relevant to that event. Wraps
     /// the `match (ev.kind) { ... }` boilerplate plugins write today.
-    using ConnectedFn = std::function<void(gn_conn_id_t,
-                                            const gn_conn_event_t&)>;
-    using DisconnectedFn = std::function<void(gn_conn_id_t)>;
-    using TrustUpgradedFn = std::function<void(gn_conn_id_t,
-                                                 gn_trust_class_t)>;
-    using BackpressureFn  = std::function<void(gn_conn_id_t, bool soft)>;
+    using ConnectedFn     = std::move_only_function<void(gn_conn_id_t,
+                                                          const gn_conn_event_t&)>;
+    using DisconnectedFn  = std::move_only_function<void(gn_conn_id_t)>;
+    using TrustUpgradedFn = std::move_only_function<void(gn_conn_id_t,
+                                                          gn_trust_class_t)>;
+    using BackpressureFn  = std::move_only_function<void(gn_conn_id_t, bool soft)>;
 
     /// Fires only on `GN_CONN_EVENT_CONNECTED`. Lambda receives the
     /// new conn id and the full event (for trust class, role, etc.).
@@ -124,7 +113,7 @@ public:
     on_connected(const host_api_t* api, ConnectedFn fn) {
         if (!fn) return {};
         return on_conn_state(api,
-            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+            [cb = std::move(fn)](const gn_conn_event_t& ev) mutable {
                 if (ev.kind == GN_CONN_EVENT_CONNECTED) cb(ev.conn, ev);
             });
     }
@@ -136,7 +125,7 @@ public:
     on_disconnected(const host_api_t* api, DisconnectedFn fn) {
         if (!fn) return {};
         return on_conn_state(api,
-            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+            [cb = std::move(fn)](const gn_conn_event_t& ev) mutable {
                 if (ev.kind == GN_CONN_EVENT_DISCONNECTED) cb(ev.conn);
             });
     }
@@ -147,7 +136,7 @@ public:
     on_trust_upgraded(const host_api_t* api, TrustUpgradedFn fn) {
         if (!fn) return {};
         return on_conn_state(api,
-            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+            [cb = std::move(fn)](const gn_conn_event_t& ev) mutable {
                 if (ev.kind == GN_CONN_EVENT_TRUST_UPGRADED) {
                     cb(ev.conn, ev.trust);
                 }
@@ -162,7 +151,7 @@ public:
     on_backpressure(const host_api_t* api, BackpressureFn fn) {
         if (!fn) return {};
         return on_conn_state(api,
-            [cb = std::move(fn)](const gn_conn_event_t& ev) {
+            [cb = std::move(fn)](const gn_conn_event_t& ev) mutable {
                 if (ev.kind == GN_CONN_EVENT_BACKPRESSURE_SOFT) {
                     cb(ev.conn, /*soft=*/true);
                 } else if (ev.kind == GN_CONN_EVENT_BACKPRESSURE_CLEAR) {
@@ -175,18 +164,12 @@ public:
     /// handle if the slot is unset (the kernel build dropped the
     /// blob bus) or the kernel rejected the registration.
     [[nodiscard]] static Subscription
-    on_capability_blob(const host_api_t* api, CapabilityBlobFn fn) {
-        if (!api || !api->subscribe_capability_blob || !fn) return {};
-        auto holder = new CapabilityBlobFn(std::move(fn));
-        gn_subscription_id_t id = GN_INVALID_SUBSCRIPTION_ID;
-        const gn_result_t rc = api->subscribe_capability_blob(
-            api->host_ctx,
-            &capability_blob_thunk, holder, &destroy_capability_blob, &id);
-        if (rc != GN_OK || id == GN_INVALID_SUBSCRIPTION_ID) {
-            delete holder;
-            return {};
-        }
-        return Subscription(api, id);
+    on_capability_blob(const host_api_t* api, CapabilityBlobFn fn)
+    {
+        if (!api) return {};
+        return subscribe_impl<CapabilityBlobFn>(api, std::move(fn),
+                                                api->subscribe_capability_blob,
+                                                &capability_blob_thunk);
     }
 
 private:
@@ -209,25 +192,40 @@ private:
         id_  = GN_INVALID_SUBSCRIPTION_ID;
     }
 
+    /// Generic subscribe helper. Allocates @p fn on the heap, calls
+    /// @p slot with the typed thunk and destroy, returns a valid
+    /// Subscription on success. Frees @p fn and returns invalid on
+    /// any failure. Both slot-null and fn-falsy cases short-circuit.
+    template <typename FnType, typename SlotFn, typename ThunkFn>
+    [[nodiscard]] static Subscription subscribe_impl(
+        const host_api_t* api, FnType fn, SlotFn slot, ThunkFn thunk)
+    {
+        if (!slot || !fn) return {};
+        auto* holder = new FnType(std::move(fn));
+        gn_subscription_id_t id = GN_INVALID_SUBSCRIPTION_ID;
+        const gn_result_t rc = slot(api->host_ctx, thunk, holder,
+                                     &destroy_holder<FnType>, &id);
+        if (rc != GN_OK || id == GN_INVALID_SUBSCRIPTION_ID) {
+            destroy_holder<FnType>(holder);
+            return {};
+        }
+        return Subscription(api, id);
+    }
+
+    template <typename T>
+    static void destroy_holder(void* p) noexcept {
+        delete static_cast<T*>(p);
+    }
+
     static void conn_state_thunk(void* user,
                                   const gn_conn_event_t* ev) noexcept {
         if (!user || !ev) return;
-        try { (*static_cast<ConnStateFn*>(user))(*ev); } catch (...) {  // NOLINT(bugprone-empty-catch)
-            // Kernel callback boundary is noexcept across the C ABI.
-        }
-    }
-    static void destroy_conn_state(void* user) noexcept {
-        delete static_cast<ConnStateFn*>(user);
+        try { (*static_cast<ConnStateFn*>(user))(*ev); } catch (...) {}  // NOLINT(bugprone-empty-catch)
     }
 
     static void config_reload_thunk(void* user) noexcept {
         if (!user) return;
-        try { (*static_cast<ConfigReloadFn*>(user))(); } catch (...) {  // NOLINT(bugprone-empty-catch)
-            // Kernel callback boundary is noexcept across the C ABI.
-        }
-    }
-    static void destroy_config_reload(void* user) noexcept {
-        delete static_cast<ConfigReloadFn*>(user);
+        try { (*static_cast<ConfigReloadFn*>(user))(); } catch (...) {}  // NOLINT(bugprone-empty-catch)
     }
 
     static void capability_blob_thunk(void* user,
@@ -239,12 +237,7 @@ private:
         CapabilityBlob b{from_conn,
                           std::span<const std::uint8_t>(blob, size),
                           expires};
-        try { (*static_cast<CapabilityBlobFn*>(user))(b); } catch (...) {  // NOLINT(bugprone-empty-catch)
-            // Kernel callback boundary is noexcept across the C ABI.
-        }
-    }
-    static void destroy_capability_blob(void* user) noexcept {
-        delete static_cast<CapabilityBlobFn*>(user);
+        try { (*static_cast<CapabilityBlobFn*>(user))(b); } catch (...) {}  // NOLINT(bugprone-empty-catch)
     }
 
     const host_api_t*    api_ = nullptr;

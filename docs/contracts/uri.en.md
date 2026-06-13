@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `sdk/cpp/uri.hpp` (parser), `core/util/uri_query.hpp` (peer-pk decode)
-**Last verified:** 2026-04-28
+**Last verified:** 2026-05-25
 **Stability:** v1.x; new schemes append to the recognition table without changing the grammar.
 
 ---
@@ -33,6 +33,7 @@ topic, ICE candidate negotiation).
 | `[v6-literal]:port` | `[::1]:9000` | bare bracketed v6 |
 | `ipc://path` | `ipc:///run/goodnet.sock` | path-style — `port` stays 0, `path` carries the filesystem name |
 | `ipc://path?query` | `ipc:///tmp/sock?peer=abc` | path-style with optional query |
+| `scheme://opaque` | `quic://<64-hex peer-pk>`, `wasm://module-uuid`, `tcp://hostname` | path-style on any scheme — see §3.1 |
 
 A trailing query is permitted on every form. Anything after the first
 unmatched `?` is the raw query string; the parser does not interpret
@@ -60,6 +61,32 @@ branches.
 
 The `host` of a bracketed IPv6 URI is stored **without** brackets so
 callers can hand it straight to the platform's address parser.
+
+### 3.1 Path-style detection
+
+A URI is parsed as path-style when **both** of these hold:
+
+1. The input carried the `scheme://` separator (bare `host:port` is
+   never path-style; bare `host` with no `:` still fails per §5 #4).
+2. The authority part after `scheme://` contains no `:` **and** does
+   not start with `[` (bracketed IPv6 still goes through the
+   host:port branch).
+
+Under this rule the path-style branch covers any opaque-body scheme
+without a scheme-specific allow-list:
+
+- `ipc:///run/sock` — historical filesystem path.
+- `quic://<64-hex peer-pk>` — QUIC's content-addressed peer key (the
+  refactor in `plugins/transport/quic` surfaced this case; the SDK
+  used to require an allow-list and the plugin fell back to a manual
+  `://` split).
+- `wasm://module-uuid`, `tcp://hostname` — every other
+  no-colon authority is path-style, port stays 0, `is_path_style()`
+  returns true.
+
+The asymmetry "ipc is path-style, everything else needs `host:port`"
+that existed before v1.x is gone — schemes do not opt in, the
+grammar decides.
 
 ---
 
@@ -96,8 +123,10 @@ inputs **must** fail:
 1. Empty input.
 2. Scheme prefix without a body: `tcp://`.
 3. Query-only input: `?peer=abc`.
-4. Missing port on host:port form: `tcp://127.0.0.1`, `host:`,
-   bare `host`.
+4. Missing port on host:port form. `host:` (empty port segment) and
+   bare `host` (no scheme, no `:`) fail. `tcp://127.0.0.1` and
+   similar `scheme://no-colon-body` inputs **do not fail** — they
+   are path-style per §3.1.
 5. Port zero is **accepted** by the parser. Port 0 has a real
    meaning on the listen side — the OS allocates an ephemeral port
    and the actual value is read back through the transport's

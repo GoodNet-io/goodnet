@@ -1,0 +1,100 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 22, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "dev",
+      "displayName": "Development (Debug, all features)",
+      "description": "Debug build with all plugins, apps, examples, and tests. Canonical in-tree developer path inside nix develop.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":              "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOODNET_BUILD_TESTS":           "ON",
+        "GOODNET_BUILD_BUNDLED_PLUGINS": "ON",
+        "GOODNET_BUILD_APPS":            "ON",
+        "GOODNET_BUILD_EXAMPLES":        "ON"
+      }
+    },
+    {
+      "name": "release",
+      "displayName": "Release (optimised, no tests)",
+      "description": "Release build with LTO, all plugins and apps. Mirrors the nix build .#goodnet-core derivation flags.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":              "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOODNET_BUILD_TESTS":           "OFF",
+        "GOODNET_BUILD_BUNDLED_PLUGINS": "ON",
+        "GOODNET_BUILD_APPS":            "ON",
+        "GOODNET_BUILD_EXAMPLES":        "OFF",
+        "GOODNET_BUILD_BENCH":           "ON",
+        "GOODNET_USE_LTO":               "ON"
+      }
+    },
+    {
+      "name": "ci-asan",
+      "displayName": "CI — AddressSanitizer + UBSan",
+      "description": "Mirrors nix run .#test -- asan. Apps excluded to keep sanitiser scope tight.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-asan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":              "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOODNET_BUILD_TESTS":           "ON",
+        "GOODNET_BUILD_BUNDLED_PLUGINS": "ON",
+        "GOODNET_BUILD_APPS":            "OFF",
+        "GOODNET_BUILD_EXAMPLES":        "OFF",
+        "GOODNET_SANITIZE":              "address,undefined"
+      }
+    },
+    {
+      "name": "ci-tsan",
+      "displayName": "CI — ThreadSanitizer",
+      "description": "Mirrors nix run .#test -- tsan.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-tsan",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":              "Debug",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOODNET_BUILD_TESTS":           "ON",
+        "GOODNET_BUILD_BUNDLED_PLUGINS": "ON",
+        "GOODNET_BUILD_APPS":            "OFF",
+        "GOODNET_BUILD_EXAMPLES":        "OFF",
+        "GOODNET_SANITIZE":              "thread"
+      }
+    },
+    {
+      "name": "kernel-only",
+      "displayName": "Kernel + SDK only (downstream consumer check)",
+      "description": "Minimal build for downstream find_package(GoodNet) consumers. No plugins, no apps.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-kernel-only",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE":              "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "GOODNET_BUILD_TESTS":           "OFF",
+        "GOODNET_BUILD_BUNDLED_PLUGINS": "OFF",
+        "GOODNET_BUILD_APPS":            "OFF",
+        "GOODNET_BUILD_EXAMPLES":        "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    { "name": "dev",          "configurePreset": "dev" },
+    { "name": "release",      "configurePreset": "release" },
+    { "name": "ci-asan",      "configurePreset": "ci-asan" },
+    { "name": "ci-tsan",      "configurePreset": "ci-tsan" },
+    { "name": "kernel-only",  "configurePreset": "kernel-only" }
+  ],
+  "testPresets": [
+    {
+      "name": "dev",
+      "configurePreset": "dev",
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    }
+  ]
+}

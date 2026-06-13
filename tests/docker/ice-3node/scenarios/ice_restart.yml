@@ -1,0 +1,13 @@
+# Scenario: short consent timeout forces ICE restart before the harness
+# timeout. Verifies the auto-restart-on-consent-loss path (RFC 7675 §5.4)
+# — the harness window is long enough for two consent cycles.
+services:
+  peer_a:
+    environment:
+      ICE_SESSION_TIMEOUT_S: "5"
+      HARNESS_TIMEOUT_S: "25"
+  peer_b:
+    environment:
+      ICE_SESSION_TIMEOUT_S: "5"
+      HARNESS_TIMEOUT_S: "25"
+      WAIT_FOR_PEER: A

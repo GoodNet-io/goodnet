@@ -4,8 +4,11 @@
 #include "attestation.hpp"
 
 #include <cstring>
+#include <memory>
 
 #include <sdk/cpp/endian.hpp>
+
+#include "libsodium_signer.hpp"
 
 namespace gn::core::identity {
 
@@ -35,17 +38,40 @@ namespace {
     const ::gn::PublicKey& device_pk,
     std::int64_t           expiry_unix_ts) {
 
+    /// Wrap the keypair's secret bytes in a transient signer so the
+    /// signing path is the same as the production `NodeIdentity`
+    /// flow. Test fixtures and standalone keypair callers exercise
+    /// this overload; the kernel itself reaches the `IdentitySigner`
+    /// overload directly through `NodeIdentity::compose`.
+    if (!user.has_secret()) {
+        return std::unexpected(::gn::Error{
+            GN_ERR_INVALID_STATE,
+            "Attestation::create: keypair has no secret"});
+    }
+    LibsodiumSigner transient{user.secret_key_view()};
+    return create(transient, user.public_key(), device_pk, expiry_unix_ts);
+}
+
+::gn::Result<Attestation> Attestation::create(
+    IdentitySigner&        user_signer,
+    const ::gn::PublicKey& user_pk,
+    const ::gn::PublicKey& device_pk,
+    std::int64_t           expiry_unix_ts) {
+
     Attestation att;
-    att.user_pk        = user.public_key();
+    att.user_pk        = user_pk;
     att.device_pk      = device_pk;
     att.expiry_unix_ts = expiry_unix_ts;
 
     auto payload = canonical_payload(att.user_pk, att.device_pk,
                                       att.expiry_unix_ts);
-    auto sig = user.sign(std::span<const std::uint8_t>(payload));
-    if (!sig) return std::unexpected(sig.error());
-
-    att.signature = *sig;
+    const auto rc = user_signer.sign(
+        std::span<const std::uint8_t>(payload),
+        std::span<std::uint8_t, kEd25519SignatureBytes>(att.signature));
+    if (rc != GN_OK) {
+        return std::unexpected(::gn::Error{
+            rc, "Attestation::create: signer rejected the payload"});
+    }
     return att;
 }
 

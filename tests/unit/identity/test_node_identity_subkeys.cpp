@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 

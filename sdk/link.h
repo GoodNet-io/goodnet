@@ -19,6 +19,11 @@
 extern "C" {
 #endif
 
+/* Forward declaration. Full definition is in sdk/topology.h, which is
+ * included after sdk/link.h in sdk/core.h. Plugin headers that only
+ * pass the pointer through do not need the full definition. */
+struct gn_topology_s;
+
 /**
  * @brief Scatter-gather descriptor for batched send.
  *
@@ -117,6 +122,18 @@ typedef struct gn_link_vtable_s {
      *        full quiescence. Plugin frees `self`-owned resources.
      */
     void (*destroy)(void* self);
+
+    /**
+     * @brief Called once by the kernel when transitioning to Running phase.
+     *
+     * The topology pointer is valid for the lifetime of the kernel. Link plugins
+     * use this to self-configure based on what security layers are registered above
+     * them (e.g. ICE adjusts candidate strategy based on security provides_flags).
+     * May be NULL — kernel checks GN_API_HAS before calling.
+     *
+     * See `docs/contracts/layer-capability.en.md`.
+     */
+    void (*on_topology_sealed)(void* self, const struct gn_topology_s* topo);
 
     void* _reserved[4];
 } gn_link_vtable_t;

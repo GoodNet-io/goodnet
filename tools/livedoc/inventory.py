@@ -7,17 +7,30 @@ Each plugin lives in its own standalone git checkout under
 top-level `README.md` (if present) for a one-line description, and
 greps the plugin source for scheme strings and composer-surface
 exports.
+
+In addition to the `plugins/<kind>/` tree, this module also walks
+the `bridges/{cpp,python,rust,js}` siblings — those are cross-
+language SDK bindings that ship as standalone sub-repos but are
+NOT plugins (no vtable, no registry slot). The `bridges` inventory
+is emitted as a separate fact file so docs can reference the
+binding family alongside the plugin family without conflating
+them.
 """
 
 from __future__ import annotations
 
 import re
 import subprocess
+import sys
 from pathlib import Path
+
+import yaml
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLUGINS_ROOT = REPO_ROOT / "plugins"
+BRIDGES_ROOT = REPO_ROOT / "bridges"
+FACTS_PATH = REPO_ROOT / "docs" / "_facts" / "bridges_inventory.yaml"
 
 SCHEME_RE = re.compile(r'GN_LINK_SCHEMES?\s*=\s*"([^"]+)"')
 COMPOSER_HINT_RE = re.compile(r"composer_(listen|connect|subscribe)")
@@ -122,3 +135,87 @@ def discover_all() -> dict[str, list[dict]]:
         "strategies": discover_strategies(),
         "extensions": discover_extensions(),
     }
+
+
+# ── bridges/ — cross-language SDK bindings ──────────────────────────
+
+# Marker files that disambiguate the binding's host language. Picked
+# from each sub-repo's canonical build-system entry point so we don't
+# false-positive on a stray header.
+_BRIDGE_LANG_MARKERS = {
+    "cpp":    ("CMakeLists.txt", "core.hpp"),
+    "python": ("pyproject.toml", "setup.py", "setup.cfg"),
+    "rust":   ("Cargo.toml",),
+    "js":     ("package.json",),
+}
+
+
+def _bridge_lang(bridge_dir: Path) -> str:
+    """Best-effort host-language tag for a bridges/<slot>/ sub-repo."""
+    for lang, markers in _BRIDGE_LANG_MARKERS.items():
+        if bridge_dir.name == lang:
+            return lang
+        for marker in markers:
+            if (bridge_dir / marker).is_file():
+                return lang
+    return bridge_dir.name
+
+
+def discover_bridges() -> list[dict]:
+    """Enumerate `bridges/<slot>/` sub-repos.
+
+    Each entry mirrors the plugin entry shape: `name`, `path`, and
+    `notes` (first prose line of the bridge's `README.md`). The
+    `lang` field tags the host language so renderers can group by
+    binding family.
+    """
+    if not BRIDGES_ROOT.is_dir():
+        return []
+    out: list[dict] = []
+    for bridge in sorted(BRIDGES_ROOT.iterdir()):
+        if not bridge.is_dir():
+            continue
+        if bridge.name.startswith("."):
+            continue
+        rel = bridge.relative_to(REPO_ROOT).as_posix()
+        out.append({
+            "name":  bridge.name,
+            "path":  rel,
+            "lang":  _bridge_lang(bridge),
+            "notes": _first_paragraph(bridge / "README.md"),
+        })
+    return out
+
+
+def collect_bridges() -> dict:
+    """Return the dict shape written to `bridges_inventory.yaml`."""
+    bridges = discover_bridges()
+    return {
+        "total":   len(bridges),
+        "bridges": bridges,
+    }
+
+
+def write(path: Path | None = None) -> Path:
+    """Write the bridges inventory fact file."""
+    if path is None:
+        path = FACTS_PATH
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(collect_bridges(), sort_keys=False,
+                                    allow_unicode=True))
+    return path
+
+
+def main(argv: list[str]) -> int:
+    p = write()
+    rel = p.relative_to(REPO_ROOT)
+    d = yaml.safe_load(p.read_text())
+    print(
+        f"  bridges inventory → {rel}  ({d['total']} bridge sub-repos)",
+        file=sys.stderr,
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

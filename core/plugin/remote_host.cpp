@@ -85,6 +85,11 @@ void RemoteHost::clear_reply_timeout_overrides() {
 #include <sys/wait.h>
 #include <unistd.h>
 
+#if defined(__linux__)
+#  include <sys/prctl.h>
+#  include <sys/resource.h>
+#endif
+
 extern "C" char** environ;
 
 namespace gn::core {
@@ -165,6 +170,43 @@ gn_result_t RemoteHost::spawn(const std::string& worker_path,
             }
             ::close(fds[1]);
         }
+#if defined(__linux__)
+        // Drop the four OS-level mitigations the audit flagged
+        // (09-security-and-provider-switch §S-1): zero RLIMIT_CORE +
+        // PR_SET_DUMPABLE so a crashed worker cannot leak shared
+        // secrets via a coredump, PR_SET_NO_NEW_PRIVS so an exec'd
+        // helper cannot regain setuid/setgid bits the kernel just
+        // dropped, and closefrom(kWorkerSocketFd + 1) so no inherited
+        // fd above the wire pipe (open log files, /proc handles,
+        // listening sockets the parent forgot to FD_CLOEXEC) reaches
+        // user-supplied worker code. Any failure here leaves the
+        // child in a partially-hardened state — exit 127 so the
+        // parent surfaces a clean spawn failure instead of running
+        // the worker under weaker policy.
+        if (::prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) != 0) {
+            _exit(127);
+        }
+        if (::prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) {
+            _exit(127);
+        }
+        struct ::rlimit zero_core{};
+        zero_core.rlim_cur = 0;
+        zero_core.rlim_max = 0;
+        if (::setrlimit(RLIMIT_CORE, &zero_core) != 0) {
+            _exit(127);
+        }
+#  if defined(__GLIBC__) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 34))
+        ::closefrom(kWorkerSocketFd + 1);
+#  else
+        {
+            const long max_fd = ::sysconf(_SC_OPEN_MAX);
+            for (int fd = kWorkerSocketFd + 1;
+                 fd < static_cast<int>(max_fd); ++fd) {
+                ::close(fd);
+            }
+        }
+#  endif
+#endif  // __linux__
         // Build argv. argv[0] is the worker path; remainder mirrors
         // `args` verbatim.
         std::vector<char*> argv;

@@ -103,26 +103,39 @@ gn_result_t sign_local(void* host_ctx,
     auto current = pc->kernel->node_identity();
     if (!current) return GN_ERR_INVALID_STATE;
 
-    const identity::KeyPair* kp = nullptr;
+    /// Identity-key purposes (assert / rotation sign) route through
+    /// the abstract IdentitySigner so HSM-backed identities in
+    /// Phase 2 sign here without touching the in-process keypair.
+    /// Device + sub-key purposes still resolve to a `KeyPair`
+    /// because those keys are not part of the identity-key migration
+    /// (device keys feed the Noise session; sub-keys are app-level
+    /// material owned by host plugins).
     switch (purpose) {
     case GN_KEY_PURPOSE_ASSERT:
-    case GN_KEY_PURPOSE_ROTATION_SIGN:
-        kp = &current->user();
-        break;
-    case GN_KEY_PURPOSE_AUTH:
-    case GN_KEY_PURPOSE_KEY_AGREEMENT:
-        kp = &current->device();
-        break;
-    default:
-        kp = current->sub_keys().find_first_of_purpose(purpose);
-        break;
+    case GN_KEY_PURPOSE_ROTATION_SIGN: {
+        auto* signer = current->signer();
+        if (!signer) return GN_ERR_INVALID_STATE;
+        std::span<std::uint8_t, 64> out_span{out_sig, 64};
+        return signer->sign(
+            std::span<const std::uint8_t>(payload, size), out_span);
     }
-    if (!kp) return GN_ERR_NOT_FOUND;
-
-    auto sig = kp->sign(std::span<const std::uint8_t>(payload, size));
-    if (!sig) return sig.error().code;
-    std::memcpy(out_sig, sig->data(), 64);
-    return GN_OK;
+    case GN_KEY_PURPOSE_AUTH:
+    case GN_KEY_PURPOSE_KEY_AGREEMENT: {
+        const auto& kp = current->device();
+        auto sig = kp.sign(std::span<const std::uint8_t>(payload, size));
+        if (!sig) return sig.error().code;
+        std::memcpy(out_sig, sig->data(), 64);
+        return GN_OK;
+    }
+    default: {
+        const auto* kp = current->sub_keys().find_first_of_purpose(purpose);
+        if (!kp) return GN_ERR_NOT_FOUND;
+        auto sig = kp->sign(std::span<const std::uint8_t>(payload, size));
+        if (!sig) return sig.error().code;
+        std::memcpy(out_sig, sig->data(), 64);
+        return GN_OK;
+    }
+    }
 }
 
 gn_result_t sign_local_by_id(void* host_ctx,
@@ -212,8 +225,14 @@ gn_result_t announce_rotation(void* host_ctx,
     if (!cloned) return cloned.error().code;
     const auto next_counter = cloned->bump_rotation_counter();
 
+    /// Sign the rotation proof through the identity signer instead
+    /// of `current->user().sign(...)` — same observable bytes, but
+    /// Phase 2's HSM-backed signers slot in here unchanged.
+    auto* signer = current->signer();
+    if (!signer) return GN_ERR_INVALID_STATE;
     auto proof = identity::sign_rotation(
-        current->user(), new_user_kp->public_key(),
+        *signer, current->user().public_key(),
+        new_user_kp->public_key(),
         next_counter, valid_from_unix_ts);
     if (!proof) return proof.error().code;
 

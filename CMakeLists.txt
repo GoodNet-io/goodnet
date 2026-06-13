@@ -9,11 +9,11 @@ project(GoodNet
 # string is published (CLI banner, package metadata, Nix derivation).
 # CMake's `project(... VERSION ...)` is strictly numeric; the rc tail
 # rides separately. Drop to empty when cutting `v1.0.0` final.
-set(GOODNET_VERSION_SUFFIX "-rc5" CACHE STRING "Pre-release suffix (e.g. -rc4); empty for stable")
+set(GOODNET_VERSION_SUFFIX "-rc7" CACHE STRING "Pre-release suffix (e.g. -rc7); empty for stable")
 set(GOODNET_VERSION_FULL "${PROJECT_VERSION}${GOODNET_VERSION_SUFFIX}")
 
 # ── Project settings ─────────────────────────────────────────────────────────
-set(CMAKE_CXX_STANDARD          23)
+set(CMAKE_CXX_STANDARD          26)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS         OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -24,6 +24,16 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS  ON)
 # and the resulting `-fmodules-ts` / `-fdeps-format=p1689r5` GCC flags
 # trip clang-tidy when it parses `compile_commands.json`.
 set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+
+# Bake the C++ runtime lib dir into build-tree RPATHs so test binaries
+# run correctly outside nix develop (e.g. bare ctest, Forgejo runner).
+# GOODNET_CXX_LIB_DIR is exported by the devShell shellHook to the
+# gcc16 (or gcc15) lib directory; binaries built with that compiler
+# embed the matching libstdc++.so path and never pick up a mismatched
+# system version.
+if(DEFINED ENV{GOODNET_CXX_LIB_DIR} AND NOT "$ENV{GOODNET_CXX_LIB_DIR}" STREQUAL "")
+    list(APPEND CMAKE_BUILD_RPATH "$ENV{GOODNET_CXX_LIB_DIR}")
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
@@ -129,11 +139,45 @@ option(GOODNET_USE_LTO  "Link-time optimization (Release default ON)" ${_goodnet
 option(GOODNET_USE_PCH  "Precompile <asio.hpp> + spdlog + fmt umbrella" ON)
 option(GOODNET_USE_MOLD "Use mold linker if available"                  ON)
 
+# Line + function coverage. Third sanitiser-style pillar from audit
+# §sanitizer-and-coverage. ASan / TSan ride on CFLAGS / CXXFLAGS /
+# LDFLAGS env injected by `nix run .#test -- asan|tsan`; coverage
+# needs `-O0 -g` (sanitisers pick `-O1 -g`) so it lives behind its own
+# CMake option to avoid colliding with the sanitiser env path. The
+# `nix run .#test -- coverage` app passes `-DGOODNET_COVERAGE=ON` into
+# the configure of `build-coverage/`, then post-processes the .gcda /
+# .gcno files with `lcov --capture` + `--remove` to filter the nix
+# store, build trees, and the test sources themselves out of the
+# summary line + function percent.
+option(GOODNET_COVERAGE "Build with gcov line+function coverage" OFF)
+if(GOODNET_COVERAGE)
+    add_compile_options(-fprofile-arcs -ftest-coverage -O0 -g)
+    add_link_options(-fprofile-arcs -ftest-coverage)
+endif()
+
 # Release strips the implicit `-O2` GCC default for `-O3`. Sanitizer
 # builds set their own `-O1 -g` per `nix/sanitize.nix`; Debug stays
 # unoptimised so stack traces remain readable.
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-O3)
+endif()
+
+# `-fno-sanitize=enum` under Clang when UBSan is active. Tests
+# deliberately load out-of-range enum values (e.g. `gn_register_kind_t
+# = 99`) to verify the kernel rejects unknown kinds via switch-default
+# or explicit comparison. Clang's strict UBSan trips on the load
+# itself ("load of value 99, which is not a valid value for type
+# 'gn_register_kind_t'") before the kernel's rejection logic runs;
+# gcc's default UBSan does not check enum-range loads, so the same
+# tests pass there. Silencing the check on Clang aligns the matrix —
+# the validation lives in the source, not in the sanitizer. Gcc has
+# no `enum` sub-check so the flag is Clang-gated to avoid polluting
+# the gcc diagnostic surface.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+   AND (CMAKE_CXX_FLAGS MATCHES "sanitize=.*undefined"
+        OR CMAKE_C_FLAGS   MATCHES "sanitize=.*undefined"))
+    add_compile_options(-fno-sanitize=enum)
+    add_link_options(-fno-sanitize=enum)
 endif()
 
 # `mold` is the single biggest link-time win for a multi-target build
@@ -153,6 +197,12 @@ endif()
 # build survives an unexpected toolchain.
 if(GOODNET_USE_LTO AND CMAKE_BUILD_TYPE STREQUAL "Release")
     include(CheckIPOSupported)
+    # Propagate explicit compiler to the try_compile sub-project so
+    # check_ipo_supported uses the same toolchain as the parent build,
+    # not whatever g++ is first on PATH (can differ on Nix multi-GCC setups).
+    list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+        CMAKE_CXX_COMPILER CMAKE_C_COMPILER
+        CMAKE_CXX_COMPILER_LAUNCHER CMAKE_C_COMPILER_LAUNCHER)
     check_ipo_supported(RESULT _goodnet_ipo_ok OUTPUT _goodnet_ipo_msg)
     if(_goodnet_ipo_ok)
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
@@ -204,6 +254,9 @@ add_library(asio::asio INTERFACE IMPORTED)
 target_link_libraries(asio::asio INTERFACE PkgConfig::ASIO)
 target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
 
+find_package(stdexec REQUIRED)
+add_compile_definitions(GN_CXX26_EXEC=1)
+
 # ── Test framework discovery ─────────────────────────────────────────────────
 # Hoisted before plugin/test subdirectories so per-plugin
 # `tests/CMakeLists.txt` files (added under each plugin's umbrella when
@@ -215,25 +268,16 @@ if(GOODNET_BUILD_TESTS)
     find_package(rapidcheck REQUIRED)
     include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake")
     goodnet_patch_rapidcheck_targets()
+    # Defer test-binary execution from build time to ctest run time so the
+    # build succeeds on hosts where the GCC 16 runtime is not on LD_LIBRARY_PATH
+    # (gtest_discover_tests default mode runs the binary during `ninja` to
+    # enumerate test cases, which fails with GLIBCXX_3.4.35 not found).
+    set(CMAKE_GTEST_DISCOVER_TESTS_DISCOVERY_MODE PRE_TEST)
 endif()
 
 # ── Platform: SDK + kernel ───────────────────────────────────────────────────
 add_subdirectory(sdk)
 add_subdirectory(core)
-
-# Mandatory mesh-framing plugin lives in plugins/protocols/gnet/ but is
-# statically linked into the kernel binary. Added directly so the kernel
-# build does not depend on GOODNET_BUILD_BUNDLED_PLUGINS.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/protocols/gnet/CMakeLists.txt")
-    add_subdirectory(plugins/protocols/gnet)
-endif()
-
-# Raw protocol — alternative layer for simulation harnesses, PCAP replay,
-# foreign-protocol passthrough. Built unconditionally so tests can link
-# it; production kernel builds with `gnet-v1` linked.
-if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/plugins/protocols/raw/CMakeLists.txt")
-    add_subdirectory(plugins/protocols/raw)
-endif()
 
 # ── Bundled plugins (development convenience) ────────────────────────────────
 # Production: each plugin is a separate build/derivation, depends on the
@@ -399,6 +443,7 @@ install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/GoodNetConfigVersion.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/AddPlugin.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/GoodNetTesting.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/goodnet_app.cmake"
     DESTINATION "${GOODNET_CMAKE_DIR}")
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -411,6 +456,7 @@ message(STATUS "  Tests             : ${GOODNET_BUILD_TESTS}")
 message(STATUS "  Fuzz harness      : ${GOODNET_BUILD_FUZZ}")
 message(STATUS "  Examples          : ${GOODNET_BUILD_EXAMPLES}")
 message(STATUS "  Bundled plugins   : ${GOODNET_BUILD_BUNDLED_PLUGINS}")
+message(STATUS "  Coverage (gcov)   : ${GOODNET_COVERAGE}")
 if(CMAKE_INTERPROCEDURAL_OPTIMIZATION)
     message(STATUS "  LTO               : ON (Release IPO)")
 elseif(GOODNET_USE_LTO)

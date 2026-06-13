@@ -1,0 +1,197 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  forgejo-ci.svg — Forgejo is the single CI source-of-truth; GitHub
+  is publish-only. nix-serve cache feeds runners. 24 sub-repo mirrors
+  alongside the kernel repo.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="700"
+     viewBox="0 0 1180 700" font-family="JetBrains Mono,Fira Code,monospace">
+  <title>Forgejo CI topology — kernel + 24 sub-repos</title>
+  <desc>Local Forgejo with sole CI matrix; nix-serve cache;
+        GitHub Releases as publish-only sink via gh CLI.</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#585b70"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a6e3a1"/>
+    </marker>
+    <marker id="arrP" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#fab387"/>
+    </marker>
+  </defs>
+
+  <rect width="1180" height="700" fill="#1e1e2e"/>
+
+  <text x="24" y="36" fill="#cdd6f4" font-size="15" font-weight="bold">
+    Forgejo CI topology  —  localhost:3000 = sole CI; GitHub = publish-only sink
+  </text>
+  <text x="24" y="56" fill="#585b70" font-size="11">
+    Every PR / merge runs the matrix on Forgejo. GitHub Releases get the artefacts pushed from a Forgejo runner via the gh CLI.
+  </text>
+
+  <!-- Forgejo box -->
+  <g>
+    <rect x="48" y="92" width="528" height="380" rx="8"
+          fill="#181825" stroke="#cba6f7" stroke-width="1.5"/>
+    <text x="60" y="116" fill="#cba6f7" font-size="12" font-weight="bold">
+      Forgejo  (localhost:3000)
+    </text>
+    <text x="60" y="134" fill="#585b70" font-size="10">single-host instance; deployed via tools/mirror-to-forgejo.sh</text>
+
+    <!-- Kernel repo -->
+    <rect x="72" y="148" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="84" y="170" fill="#a6e3a1" font-size="11" font-weight="bold">GoodNet/kernel</text>
+    <text x="84" y="188" fill="#cdd6f4" font-size="9">tree-of-record; pushes here</text>
+    <text x="84" y="202" fill="#cdd6f4" font-size="9">are the authoritative commits</text>
+    <text x="84" y="216" fill="#cdd6f4" font-size="9">branches: dev / main / rc-*</text>
+
+    <!-- Plugin mirrors stack -->
+    <rect x="324" y="148" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#94e2d5" stroke-width="1.5"/>
+    <text x="336" y="170" fill="#94e2d5" font-size="11" font-weight="bold">24 sub-repo mirrors</text>
+    <text x="336" y="188" fill="#cdd6f4" font-size="9">plugins/links/{tcp,udp,ws,…},</text>
+    <text x="336" y="202" fill="#cdd6f4" font-size="9">plugins/handlers/{store,dns,…},</text>
+    <text x="336" y="216" fill="#cdd6f4" font-size="9">apps/{goodnetd,gssh}, bridges/*</text>
+
+    <!-- Runner -->
+    <rect x="72" y="248" width="240" height="100" rx="6"
+          fill="#45475a" stroke="#f9e2af" stroke-width="1.5"/>
+    <text x="84" y="270" fill="#f9e2af" font-size="11" font-weight="bold">forgejo-runner (act_runner)</text>
+    <text x="84" y="288" fill="#cdd6f4" font-size="9">  · runs .forgejo/workflows/*.yml</text>
+    <text x="84" y="302" fill="#cdd6f4" font-size="9">  · nix-based container exec</text>
+    <text x="84" y="316" fill="#cdd6f4" font-size="9">  · matrix:</text>
+    <text x="84" y="330" fill="#cdd6f4" font-size="9">      {build,asan,tsan} × {gcc16,clang20}</text>
+    <text x="84" y="344" fill="#cdd6f4" font-size="9">  · livedoc-check, ctest, plugin-pull</text>
+
+    <!-- nix-serve cache -->
+    <rect x="324" y="248" width="240" height="100" rx="6"
+          fill="#45475a" stroke="#cba6f7" stroke-width="1.5"/>
+    <text x="336" y="270" fill="#cba6f7" font-size="11" font-weight="bold">nix-serve  (:5555)</text>
+    <text x="336" y="288" fill="#cdd6f4" font-size="9">  · binary cache on same host</text>
+    <text x="336" y="302" fill="#cdd6f4" font-size="9">  · serves /nix/store/* over HTTP</text>
+    <text x="336" y="316" fill="#cdd6f4" font-size="9">  · keys: ~/.config/nix/cache-priv</text>
+    <text x="336" y="330" fill="#cdd6f4" font-size="9">  · used by every workflow build step</text>
+    <text x="336" y="344" fill="#cdd6f4" font-size="9">  · cold-start: ~minutes; warm: ~seconds</text>
+
+    <!-- Artefact area -->
+    <rect x="72" y="368" width="492" height="92" rx="6"
+          fill="#45475a" stroke="#89b4fa" stroke-width="1.5"/>
+    <text x="84" y="388" fill="#89b4fa" font-size="11" font-weight="bold">Forgejo Releases (artefact staging)</text>
+    <text x="84" y="406" fill="#cdd6f4" font-size="9">  · build outputs from successful main / rc-* runs</text>
+    <text x="84" y="420" fill="#cdd6f4" font-size="9">  · goodnet-linux-x86_64.tar.zst, *.deb, container images</text>
+    <text x="84" y="434" fill="#cdd6f4" font-size="9">  · stays here until a tag is cut; then a publish job runs (see right)</text>
+    <text x="84" y="448" fill="#cdd6f4" font-size="9">  · binary signatures: cosign + ssh-host-key on the Forgejo machine</text>
+  </g>
+
+  <!-- GitHub sink -->
+  <g>
+    <rect x="624" y="92" width="528" height="380" rx="8"
+          fill="#181825" stroke="#89b4fa" stroke-width="1.5"/>
+    <text x="636" y="116" fill="#89b4fa" font-size="12" font-weight="bold">GitHub  (publish-only sink)</text>
+    <text x="636" y="134" fill="#585b70" font-size="10">no CI runs here; one-way push from Forgejo</text>
+
+    <rect x="648" y="148" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#cdd6f4" stroke-width="1.2"/>
+    <text x="660" y="170" fill="#cdd6f4" font-size="11" font-weight="bold">github.com/GoodNet/*</text>
+    <text x="660" y="188" fill="#cdd6f4" font-size="9">mirror push from Forgejo on each</text>
+    <text x="660" y="202" fill="#cdd6f4" font-size="9">main / rc-* / tag landing</text>
+    <text x="660" y="216" fill="#cdd6f4" font-size="9">read-only for the public</text>
+
+    <rect x="900" y="148" width="240" height="80" rx="6"
+          fill="#45475a" stroke="#cdd6f4" stroke-width="1.2"/>
+    <text x="912" y="170" fill="#cdd6f4" font-size="11" font-weight="bold">GitHub Releases</text>
+    <text x="912" y="188" fill="#cdd6f4" font-size="9">downstream consumers fetch</text>
+    <text x="912" y="202" fill="#cdd6f4" font-size="9">artefacts from here</text>
+    <text x="912" y="216" fill="#cdd6f4" font-size="9">populated by gh release upload</text>
+
+    <rect x="648" y="248" width="492" height="100" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="660" y="270" fill="#fab387" font-size="11" font-weight="bold">publish-only job (.forgejo/workflows/release.yml)</text>
+    <text x="660" y="288" fill="#cdd6f4" font-size="9">  · trigger: refs/tags/v*</text>
+    <text x="660" y="302" fill="#cdd6f4" font-size="9">  · runs on the same Forgejo runner pool</text>
+    <text x="660" y="316" fill="#cdd6f4" font-size="9">  · env: GH_TOKEN (PAT, releases scope only)</text>
+    <text x="660" y="330" fill="#cdd6f4" font-size="9">  · uses gh release create + gh release upload</text>
+    <text x="660" y="344" fill="#cdd6f4" font-size="9">  · idempotent; safe to re-run</text>
+
+    <rect x="648" y="368" width="492" height="92" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"/>
+    <text x="660" y="388" fill="#585b70" font-size="10" font-weight="bold">Why this asymmetry?</text>
+    <text x="660" y="406" fill="#cdd6f4" font-size="9">  · GitHub Actions has hard minute limits + opaque runner pool — bad for matrix-heavy native builds.</text>
+    <text x="660" y="420" fill="#cdd6f4" font-size="9">  · Forgejo on a dedicated machine = unlimited minutes, reproducible nix environment, local binary cache.</text>
+    <text x="660" y="434" fill="#cdd6f4" font-size="9">  · GitHub still gets every commit (mirror) and every release artefact — public visibility, zero CI dependency.</text>
+    <text x="660" y="448" fill="#cdd6f4" font-size="9">  · See docs/operator/ci-forgejo-setup.en.md for the runner / TLS setup.</text>
+  </g>
+
+  <!-- Bottom: 24 sub-repos detail -->
+  <g>
+    <rect x="48" y="500" width="1104" height="180" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"/>
+    <text x="60" y="522" fill="#585b70" font-size="11" font-weight="bold">24 sub-repos — mirrored alongside the kernel, each with its own CI run</text>
+
+    <text x="60" y="544" fill="#94e2d5" font-size="10">plugins/links (7):</text>
+    <text x="220" y="544" fill="#cdd6f4" font-size="10">tcp, udp, ws, tls, quic, ipc, ice</text>
+
+    <text x="60" y="562" fill="#94e2d5" font-size="10">plugins/handlers (7):</text>
+    <text x="220" y="562" fill="#cdd6f4" font-size="10">store, dns, heartbeat, audit, sftp, forwarding, web_api_proxy</text>
+
+    <text x="60" y="580" fill="#94e2d5" font-size="10">plugins/security (2):</text>
+    <text x="220" y="580" fill="#cdd6f4" font-size="10">noise, pkcs11</text>
+
+    <text x="60" y="598" fill="#94e2d5" font-size="10">plugins/protocols (1):</text>
+    <text x="220" y="598" fill="#cdd6f4" font-size="10">heartbeat</text>
+
+    <text x="60" y="616" fill="#94e2d5" font-size="10">plugins/strategies (1):</text>
+    <text x="220" y="616" fill="#cdd6f4" font-size="10">float_send_rtt</text>
+
+    <text x="60" y="634" fill="#94e2d5" font-size="10">apps (2):</text>
+    <text x="220" y="634" fill="#cdd6f4" font-size="10">goodnetd, gssh</text>
+
+    <text x="60" y="652" fill="#94e2d5" font-size="10">bridges (4):</text>
+    <text x="220" y="652" fill="#cdd6f4" font-size="10">cpp, python, rust, js</text>
+
+    <text x="600" y="544" fill="#585b70" font-size="10">Each sub-repo:</text>
+    <text x="600" y="562" fill="#cdd6f4" font-size="10">  · independent .forgejo/workflows/build.yml</text>
+    <text x="600" y="580" fill="#cdd6f4" font-size="10">  · its own dev/main branches</text>
+    <text x="600" y="598" fill="#cdd6f4" font-size="10">  · pulled into kernel via plugin-pull at build time</text>
+    <text x="600" y="616" fill="#cdd6f4" font-size="10">  · matrix shared via reusable workflow</text>
+    <text x="600" y="634" fill="#cdd6f4" font-size="10">  · all mirrored to GitHub on each main push</text>
+    <text x="600" y="652" fill="#cdd6f4" font-size="10">  · total runner pool serves kernel + 24 sub-repos</text>
+  </g>
+
+  <!-- Arrows -->
+  <path d="M 312 188 L 324 188" stroke="#585b70" stroke-width="1.0"
+        fill="none" marker-end="url(#arr)"/>
+
+  <path d="M 250 228 L 250 248" stroke="#a6e3a1" stroke-width="1.2"
+        fill="none" marker-end="url(#arrG)"/>
+  <text x="256" y="244" fill="#a6e3a1" font-size="9">PR</text>
+
+  <path d="M 312 298 L 324 298" stroke="#585b70" stroke-width="1.0"
+        fill="none" marker-end="url(#arr)"/>
+  <text x="316" y="290" fill="#585b70" font-size="9">cache</text>
+
+  <path d="M 250 348 L 250 368" stroke="#a6e3a1" stroke-width="1.2"
+        fill="none" marker-end="url(#arrG)"/>
+  <text x="256" y="364" fill="#a6e3a1" font-size="9">build</text>
+
+  <!-- Forgejo → GitHub mirror -->
+  <path d="M 576 188 L 648 188" stroke="#89b4fa" stroke-width="1.5"
+        fill="none" marker-end="url(#arr)"/>
+  <text x="582" y="180" fill="#89b4fa" font-size="9">mirror push (every main / tag)</text>
+
+  <!-- Forgejo release → publish job → GH Releases -->
+  <path d="M 564 414 L 648 298" stroke="#fab387" stroke-width="1.5"
+        fill="none" marker-end="url(#arrP)"/>
+  <text x="568" y="386" fill="#fab387" font-size="9">gh release upload</text>
+
+  <path d="M 1100 268 L 1100 228" stroke="#fab387" stroke-width="1.5"
+        fill="none" marker-end="url(#arrP)"/>
+  <text x="1006" y="246" fill="#fab387" font-size="9">artefacts attached</text>
+
+</svg>

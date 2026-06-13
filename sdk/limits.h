@@ -123,12 +123,22 @@ typedef struct gn_limits_s {
      * cap; 0 disables the gate. Default 16 KiB. */
     uint32_t max_capability_blob_bytes;
 
-    /* MUST be zero. Slot count `5` (uint32_t) follows the
-     * operator-tunable family per `abi-evolution.en.md` §4 — limits
-     * accumulate faster than vtable slots over the platform's
-     * lifetime, and the wider tail keeps a MAJOR bump off this
-     * surface. */
-    uint32_t _reserved[5];
+    /** Maximum inject-chain depth per kernel snapshot pass.
+     *
+     * Each `host_api->inject()` call inside a handler fires a new
+     * horizontal handler-dispatch pass on the same thread. A chain of
+     * depth N means at minimum N full handler-chain passes before the
+     * original snapshot completes — cost scales linearly with depth.
+     * Default: 0 → use GN_INJECT_MAX_DEPTH compile-time default (5).
+     * Operators on constrained devices may lower to 2–3; high-throughput
+     * servers may raise conservatively. Depth exceeded → GN_ERR_LIMIT_REACHED.
+     *
+     * Promoted from _reserved[] per abi-evolution.en.md §4. */
+    uint32_t max_inject_depth;
+
+    /* MUST be zero. Slot count `4` (uint32_t) — one slot consumed by
+     * max_inject_depth above per `abi-evolution.en.md` §4. */
+    uint32_t _reserved[4];
 } gn_limits_t;
 
 /* ── Default values ──────────────────────────────────────────────────────── */
@@ -139,6 +149,13 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_LOW      (256u << 10)  /* 256 KiB */
 #define GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_HARD     (4u  << 20)   /*  4 MiB */
 #define GN_LIMITS_DEFAULT_MAX_FRAME_BYTES              (64u << 10)   /* 64 KiB */
+/** Maximum application payload per message. Protocol plugins add their own
+ *  headers on top — 80 bytes reserves enough headroom for the worst-case
+ *  overhead of any bundled protocol (gnet worst-case: 78 bytes). Operators
+ *  may raise or lower this independently of max_frame_bytes; 0 disables the
+ *  kernel-level check and defers enforcement to the active protocol plugin. */
+#define GN_LIMITS_DEFAULT_MAX_PAYLOAD_BYTES \
+    (GN_LIMITS_DEFAULT_MAX_FRAME_BYTES - 80u)
 #define GN_LIMITS_DEFAULT_MAX_HANDLERS_PER_MSG_ID      8u
 #define GN_LIMITS_DEFAULT_MAX_RELAY_TTL                4u
 #define GN_LIMITS_DEFAULT_MAX_PLUGINS                  64u
@@ -154,6 +171,9 @@ typedef struct gn_limits_s {
 #define GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES            8192u
 #define GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS            256u
 #define GN_LIMITS_DEFAULT_MAX_CAPABILITY_BLOB_BYTES    (16u << 10)  /* 16 KiB */
+/** Compile-time ceiling for inject chain depth. Used when
+ *  gn_limits_t::max_inject_depth is 0 (operator left at default). */
+#define GN_INJECT_MAX_DEPTH                            5u
 
 #ifdef __cplusplus
 } /* extern "C" */

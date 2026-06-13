@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/plugin/manager`, every plugin
-**Last verified:** 2026-04-29
+**Last verified:** 2026-05-25
 **Stability:** v1.x; lifecycle phases stable, hooks are size-prefix-evolvable
 
 ---
@@ -365,6 +365,9 @@ as under a live kernel.
 
 ## 10. Cross-references
 
+- Plugin-side shutdown ordering (six-step sequence): `lifecycle.en.md` §4.
+  This document specifies the kernel-side protocol; `lifecycle.en.md`
+  pins the plugin's `shutdown()` member ordering as a hard invariant.
 - C ABI evolution: `abi-evolution.en.md` §3.
 - The host vtable used at registration: `host-api.en.md`.
 - Quiescence wait mechanics: `fsm-events.en.md` §6 (generation counter).

@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!--
+  identity-hsm-flow.svg — five-phase HSM identity provider rollout.
+  Hand-drawn; Catppuccin Mocha palette to match the gen_diagrams.py
+  output style. Colour key:
+    GREEN  #a6e3a1  landed / done
+    PEACH  #fab387  in flight
+    YELLOW #f9e2af  about to start
+    GHOST  #585b70  future (TPM / Keychain / WebAuthn)
+  Arrows: solid → hard dependency, dashed → optional / future.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="700"
+     viewBox="0 0 1180 700" font-family="JetBrains Mono,Fira Code,monospace">
+  <title>Identity five-phase HSM provider flow</title>
+  <desc>Phase 1 (IdentitySigner) through Phase 5 (sdk/cpp factory),
+        with ghost boxes for future backends (TPM, Keychain, WebAuthn).</desc>
+
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#585b70"/>
+    </marker>
+    <marker id="arrG" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#a6e3a1"/>
+    </marker>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1180" height="700" fill="#1e1e2e"/>
+
+  <!-- Title -->
+  <text x="24" y="36" fill="#cdd6f4" font-size="15" font-weight="bold">
+    Identity HSM provider — five-phase rollout
+  </text>
+  <text x="24" y="56" fill="#585b70" font-size="11">
+    sdk/identity.h IdentitySigner abstraction → C ABI → PKCS#11 plugin → goodnetd UX → sdk/cpp factory
+  </text>
+
+  <!-- Phase 1 — IdentitySigner abstraction (kernel-internal) -->
+  <g>
+    <rect x="48" y="96" width="280" height="120" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="60" y="118" fill="#a6e3a1" font-size="11" font-weight="bold">Phase 1 — IdentitySigner (kernel-internal)</text>
+    <text x="60" y="138" fill="#a6e3a1" font-size="10">core/identity/identity_signer.hpp</text>
+    <text x="60" y="154" fill="#cdd6f4" font-size="10">  · virtual sign(msg, sig_out)</text>
+    <text x="60" y="170" fill="#cdd6f4" font-size="10">  · virtual public_key() const</text>
+    <text x="60" y="186" fill="#cdd6f4" font-size="10">  · LocalSigner holds secret_key</text>
+    <text x="60" y="202" fill="#a6e3a1" font-size="10">  status: GREEN (sentinel-locked)</text>
+  </g>
+
+  <!-- Phase 2 — gn_core_install_identity_from_provider C ABI -->
+  <g>
+    <rect x="372" y="96" width="320" height="120" rx="6"
+          fill="#45475a" stroke="#a6e3a1" stroke-width="1.5"/>
+    <text x="384" y="118" fill="#a6e3a1" font-size="11" font-weight="bold">Phase 2 — C ABI surface</text>
+    <text x="384" y="138" fill="#a6e3a1" font-size="10">sdk/core.h</text>
+    <text x="384" y="154" fill="#cdd6f4" font-size="10">  gn_core_install_identity_from_provider(</text>
+    <text x="384" y="170" fill="#cdd6f4" font-size="10">      ext_name, version, params, &amp;out_err)</text>
+    <text x="384" y="186" fill="#cdd6f4" font-size="10">  → resolves gn.identity.* ext → wraps</text>
+    <text x="384" y="202" fill="#cdd6f4" font-size="10">    plugin-provided signer into kernel</text>
+  </g>
+
+  <!-- Phase 3 — PKCS#11 dual-expose plugin -->
+  <g>
+    <rect x="736" y="96" width="400" height="120" rx="6"
+          fill="#45475a" stroke="#fab387" stroke-width="1.5"/>
+    <text x="748" y="118" fill="#fab387" font-size="11" font-weight="bold">Phase 3 — PKCS#11 plugin (dual-expose)</text>
+    <text x="748" y="138" fill="#fab387" font-size="10">plugins/security/pkcs11/  (one .so)</text>
+    <text x="748" y="154" fill="#cdd6f4" font-size="10">  · exports gn.security.pkcs11  (existing)</text>
+    <text x="748" y="170" fill="#cdd6f4" font-size="10">  · exports gn.identity.pkcs11  (new)</text>
+    <text x="748" y="186" fill="#cdd6f4" font-size="10">  · same C_GetSlotList / C_Sign path,</text>
+    <text x="748" y="202" fill="#cdd6f4" font-size="10">    two separate register_extension calls</text>
+  </g>
+
+  <!-- Phase 4 — goodnetd identity import-hsm -->
+  <g>
+    <rect x="200" y="280" width="380" height="120" rx="6"
+          fill="#45475a" stroke="#f9e2af" stroke-width="1.5"/>
+    <text x="212" y="302" fill="#f9e2af" font-size="11" font-weight="bold">Phase 4 — goodnetd UX</text>
+    <text x="212" y="322" fill="#f9e2af" font-size="10">apps/goodnetd/identity_cmd.cpp</text>
+    <text x="212" y="338" fill="#cdd6f4" font-size="10">  goodnetd identity import-hsm \</text>
+    <text x="212" y="354" fill="#cdd6f4" font-size="10">      --provider gn.identity.pkcs11 \</text>
+    <text x="212" y="370" fill="#cdd6f4" font-size="10">      --module /usr/lib/opensc-pkcs11.so \</text>
+    <text x="212" y="386" fill="#cdd6f4" font-size="10">      --slot 0 --pin-env GN_HSM_PIN</text>
+  </g>
+
+  <!-- Phase 5 — sdk/cpp/Core::Identity::from_hsm -->
+  <g>
+    <rect x="630" y="280" width="380" height="120" rx="6"
+          fill="#45475a" stroke="#f9e2af" stroke-width="1.5"/>
+    <text x="642" y="302" fill="#f9e2af" font-size="11" font-weight="bold">Phase 5 — sdk/cpp factory</text>
+    <text x="642" y="322" fill="#f9e2af" font-size="10">sdk/cpp/identity.hpp</text>
+    <text x="642" y="338" fill="#cdd6f4" font-size="10">  Core::Identity::from_hsm(</text>
+    <text x="642" y="354" fill="#cdd6f4" font-size="10">      "gn.identity.pkcs11",</text>
+    <text x="642" y="370" fill="#cdd6f4" font-size="10">      params) -&gt; goodnet::Identity</text>
+    <text x="642" y="386" fill="#cdd6f4" font-size="10">  thin wrapper over Phase 2 ABI</text>
+  </g>
+
+  <!-- Future backends (ghosts) -->
+  <text x="48" y="470" fill="#585b70" font-size="11" font-weight="bold">
+    Future backends — same gn.identity.* extension contract:
+  </text>
+
+  <g>
+    <rect x="48" y="488" width="240" height="84" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"
+          stroke-dasharray="6,3"/>
+    <text x="60" y="510" fill="#585b70" font-size="11" font-weight="bold">gn.identity.tpm  (Linux TPM2)</text>
+    <text x="60" y="528" fill="#585b70" font-size="10">tpm2_tss / tpm2-pkcs11 backend</text>
+    <text x="60" y="544" fill="#585b70" font-size="10">platform: Linux, ChromeOS</text>
+    <text x="60" y="560" fill="#585b70" font-size="10">status: ghost / future</text>
+  </g>
+  <g>
+    <rect x="308" y="488" width="240" height="84" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"
+          stroke-dasharray="6,3"/>
+    <text x="320" y="510" fill="#585b70" font-size="11" font-weight="bold">gn.identity.keychain</text>
+    <text x="320" y="528" fill="#585b70" font-size="10">macOS Keychain Services / Secure Enclave</text>
+    <text x="320" y="544" fill="#585b70" font-size="10">platform: macOS, iOS</text>
+    <text x="320" y="560" fill="#585b70" font-size="10">status: ghost / future</text>
+  </g>
+  <g>
+    <rect x="568" y="488" width="240" height="84" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"
+          stroke-dasharray="6,3"/>
+    <text x="580" y="510" fill="#585b70" font-size="11" font-weight="bold">gn.identity.webauthn</text>
+    <text x="580" y="528" fill="#585b70" font-size="10">CTAP2 / FIDO2 platform authenticators</text>
+    <text x="580" y="544" fill="#585b70" font-size="10">platform: browser, web-node</text>
+    <text x="580" y="560" fill="#585b70" font-size="10">status: ghost / future</text>
+  </g>
+  <g>
+    <rect x="828" y="488" width="240" height="84" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"
+          stroke-dasharray="6,3"/>
+    <text x="840" y="510" fill="#585b70" font-size="11" font-weight="bold">gn.identity.androidks</text>
+    <text x="840" y="528" fill="#585b70" font-size="10">Android Keystore / StrongBox</text>
+    <text x="840" y="544" fill="#585b70" font-size="10">platform: Android (API 28+)</text>
+    <text x="840" y="560" fill="#585b70" font-size="10">status: ghost / future</text>
+  </g>
+
+  <!-- Note: contract / extension -->
+  <g>
+    <rect x="48" y="600" width="1084" height="76" rx="6"
+          fill="#181825" stroke="#585b70" stroke-width="1.2"/>
+    <text x="60" y="622" fill="#585b70" font-size="10" font-weight="bold">Why this layout?</text>
+    <text x="60" y="640" fill="#585b70" font-size="10">  · Phases 1–2 land in kernel + sdk/core.h: every backend reuses the same C ABI and the same IdentitySigner wrapper.</text>
+    <text x="60" y="656" fill="#585b70" font-size="10">  · Phase 3 (PKCS#11) is the first concrete backend — proves the extension contract by dual-exposing two ext names from one .so.</text>
+    <text x="60" y="672" fill="#585b70" font-size="10">  · Phases 4–5 sit purely above the ABI; goodnetd + sdk/cpp factories never see HSM specifics, only the gn.identity.* extension name.</text>
+  </g>
+
+  <!-- Arrows: Phase 1 → 2 → 3 (top row, solid green) -->
+  <path d="M 328 156 L 372 156" stroke="#a6e3a1" stroke-width="1.5"
+        fill="none" marker-end="url(#arrG)"/>
+  <path d="M 692 156 L 736 156" stroke="#a6e3a1" stroke-width="1.5"
+        fill="none" marker-end="url(#arrG)"/>
+
+  <!-- Arrows: Phase 2 → 4 (down-left), Phase 3 → 5 (down) -->
+  <path d="M 480 216 L 390 280" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+  <path d="M 936 216 L 820 280" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+  <!-- Arrow: Phase 4 ↔ Phase 5 (operator UX wraps factory; factory wraps ABI) -->
+  <path d="M 580 340 L 630 340" stroke="#585b70" stroke-width="1.2"
+        fill="none" marker-end="url(#arr)"/>
+
+  <!-- Arrows: phase 3 → ghosts (extension contract reuse) -->
+  <path d="M 820 220 L 170 488" stroke="#585b70" stroke-width="1.0"
+        fill="none" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <path d="M 870 220 L 428 488" stroke="#585b70" stroke-width="1.0"
+        fill="none" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <path d="M 920 220 L 688 488" stroke="#585b70" stroke-width="1.0"
+        fill="none" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+  <path d="M 970 220 L 948 488" stroke="#585b70" stroke-width="1.0"
+        fill="none" stroke-dasharray="4,3" marker-end="url(#arr)"/>
+
+  <!-- Legend -->
+  <g transform="translate(900,40)">
+    <rect x="0" y="-12" width="14" height="14" fill="#a6e3a1"/>
+    <text x="18" y="-1" fill="#cdd6f4" font-size="10">done</text>
+    <rect x="60" y="-12" width="14" height="14" fill="#fab387"/>
+    <text x="78" y="-1" fill="#cdd6f4" font-size="10">in flight</text>
+    <rect x="148" y="-12" width="14" height="14" fill="#f9e2af"/>
+    <text x="166" y="-1" fill="#cdd6f4" font-size="10">upcoming</text>
+    <rect x="230" y="-12" width="14" height="14" fill="#585b70"/>
+    <text x="248" y="-1" fill="#cdd6f4" font-size="10">future</text>
+  </g>
+</svg>

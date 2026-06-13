@@ -10,7 +10,7 @@
 # `packages.<linux-system>.goodnet-windows` slot — it stays
 # Linux-host-only because mingw cross is a host-cross-target shape:
 # pkgsCross runs on Linux and emits a Windows PE.
-{ pkgs, ... }:
+{ pkgs, version ? "dev", ... }:
 
 let
   cross = pkgs.pkgsCross.mingwW64;
@@ -55,7 +55,7 @@ let
 in
 cross.stdenv.mkDerivation {
   pname   = "goodnet-windows";
-  version = "1.0.0-rc3";
+  inherit version;
 
   src = pkgs.lib.cleanSourceWith {
     src    = ./..;
@@ -119,6 +119,7 @@ cross.stdenv.mkDerivation {
       fmt-static
       spdlog-static
       sodium-static
+      (import ./stdexec.nix { pkgs = cross; })
     ] ++ (with cross; [
       nlohmann_json
       # `windows.pthreads` provides libwinpthread; mingw's gcc
@@ -140,6 +141,8 @@ cross.stdenv.mkDerivation {
     "-DGOODNET_USE_MOLD=OFF"
     "-DGOODNET_USE_LTO=OFF"
     "-DGOODNET_USE_PCH=OFF"
+    # mingw toolchain does not support c++26 yet
+    "-DCMAKE_CXX_STANDARD=23"
   ];
 
   doCheck = false;

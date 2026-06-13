@@ -45,6 +45,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <memory>
 #include <new>
@@ -53,6 +54,8 @@
 #include <vector>
 
 #include <sdk/abi.h>
+#include <sdk/cpp/contract.hpp>
+#include <sdk/cpp/dispatcher.hpp>
 #include <sdk/handler.h>
 #include <sdk/host_api.h>
 #include <sdk/plugin.h>
@@ -67,6 +70,9 @@ struct HandlerPluginInstance {
     std::unique_ptr<T> handler;
     gn_handler_id_t   handler_id           = GN_INVALID_ID;
     bool              extension_registered = false;
+    // Per-instance msg_id list — avoids static state that breaks hot-reload
+    // (a second register call with new extra_msg_ids would silently use stale data).
+    std::vector<std::uint32_t> msg_ids;
 };
 
 template <class T>
@@ -81,34 +87,11 @@ template <class T>
 }
 
 template <class T>
-void on_init_dispatch(T& h) noexcept {
-    if constexpr (requires { h.on_init(); }) {
-        try { h.on_init(); } catch (...) {  // NOLINT(bugprone-empty-catch)
-        // Plugin entry points must be noexcept across the C ABI;
-        // an unhandled exception here would unwind into kernel C frames.
-    }
-    } else { (void)h; }
-}
-
-template <class T>
-void on_shutdown_dispatch(T& h) noexcept {
-    if constexpr (requires { h.on_shutdown(); }) {
-        try { h.on_shutdown(); } catch (...) {  // NOLINT(bugprone-empty-catch)
-        // Plugin entry points must be noexcept across the C ABI;
-        // an unhandled exception here would unwind into kernel C frames.
-    }
-    } else { (void)h; }
-}
-
-template <class T>
 void on_result_dispatch(T& h, const gn_message_t* envelope,
                          gn_propagation_t result) noexcept {
     if constexpr (requires { h.on_result(*envelope, result); }) {
         if (!envelope) return;
-        try { h.on_result(*envelope, result); } catch (...) {  // NOLINT(bugprone-empty-catch)
-        // Plugin entry points must be noexcept across the C ABI;
-        // an unhandled exception here would unwind into kernel C frames.
-    }
+        try { h.on_result(*envelope, result); } catch (...) {}  // NOLINT(bugprone-empty-catch)
     } else { (void)h; (void)envelope; (void)result; }
 }
 
@@ -194,6 +177,33 @@ struct handler_provides<T, true> {
     static constexpr const char* const* value = &names[0];
 };
 
+/// Returns the class's `inject_targets` if it declares one, else nullptr.
+template <class T>
+consteval const gn_inject_dep_t* get_inject_targets() noexcept {
+    if constexpr (requires { T::inject_targets; })
+        return T::inject_targets;
+    else
+        return nullptr;
+}
+
+/// Compile-time validation for a null-terminated `gn_inject_dep_t` array.
+/// Returns false if any entry before the sentinel has an empty protocol_id
+/// or if any two entries share the same (protocol_id, msg_id) pair.
+consteval bool validate_inject_targets(const gn_inject_dep_t* arr) noexcept {
+    if (!arr) return true;
+    std::size_t n = 0;
+    while (arr[n].protocol_id != nullptr) {
+        if (arr[n].protocol_id[0] == '\0') return false;
+        for (std::size_t j = 0; j < n; ++j)
+            if (arr[j].msg_id == arr[n].msg_id &&
+                std::string_view(arr[j].protocol_id) ==
+                std::string_view(arr[n].protocol_id))
+                return false;
+        ++n;
+    }
+    return true;
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_HANDLER_PLUGIN(Class, "plugin_name", "version")`. See file
@@ -213,23 +223,17 @@ struct handler_provides<T, true> {
         return *static_cast<_gn_handler_instance_t*>(p)->handler;              \
     }                                                                          \
                                                                                \
-    /* Persisted across calls because supported_msg_ids returns @borrowed. */  \
-    inline std::span<const std::uint32_t>                                      \
-    _gn_handler_persisted_msg_ids(_gn_handler_class_t* h, bool refresh) {      \
-        static std::vector<std::uint32_t> ids;                                 \
-        static bool                       inited = false;                      \
-        if (!inited || refresh) {                                              \
-            ids.clear();                                                       \
-            ids.push_back(_gn_handler_class_t::msg_id());                      \
-            auto extras = ::gn::sdk::detail::msg_ids_dispatch(*h);             \
-            for (auto m : extras) {                                            \
-                bool dup = false;                                              \
-                for (auto x : ids) if (x == m) { dup = true; break; }          \
-                if (!dup) ids.push_back(m);                                    \
-            }                                                                  \
-            inited = true;                                                     \
-        }                                                                      \
-        return {ids.data(), ids.size()};                                       \
+    /* Build per-instance msg_id list on first registration.                   \
+     * Stored on HandlerPluginInstance so hot-reload gets a fresh list.        \
+     * O(N log N) dedup via sort+unique. */                                    \
+    inline void _gn_handler_build_msg_ids(_gn_handler_instance_t& inst) {      \
+        auto& ids = inst.msg_ids;                                              \
+        ids.clear();                                                           \
+        ids.push_back(_gn_handler_class_t::msg_id());                          \
+        auto extras = ::gn::sdk::detail::msg_ids_dispatch(*inst.handler);      \
+        ids.insert(ids.end(), extras.begin(), extras.end());                   \
+        std::sort(ids.begin(), ids.end());                                     \
+        ids.erase(std::unique(ids.begin(), ids.end()), ids.end());             \
     }                                                                          \
                                                                                \
     const char* _gn_handler_protocol_thunk(void*) noexcept {                   \
@@ -238,27 +242,40 @@ struct handler_provides<T, true> {
     void _gn_handler_supported_thunk(void* self,                               \
                                      const std::uint32_t** out_ids,            \
                                      std::size_t* out_count) noexcept {        \
-        auto sp = _gn_handler_persisted_msg_ids(                               \
-            &_gn_handler_of(self), false);                                     \
-        if (out_ids) *out_ids = sp.data();                                     \
-        if (out_count) *out_count = sp.size();                                 \
+        auto* inst = static_cast<_gn_handler_instance_t*>(self);               \
+        if (out_ids)   *out_ids   = inst->msg_ids.data();                      \
+        if (out_count) *out_count = inst->msg_ids.size();                      \
     }                                                                          \
     gn_propagation_t _gn_handler_handle_thunk(                                 \
-        void* self, const gn_message_t* env) noexcept {                        \
+        void* self, const gn_message_t* env) noexcept                          \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return GN_PROPAGATION_REJECT;                               \
         return ::gn::sdk::detail::handle_message_dispatch(                     \
             _gn_handler_of(self), env);                                        \
     }                                                                          \
     void _gn_handler_on_result_thunk(                                          \
         void* self, const gn_message_t* env,                                   \
-        gn_propagation_t r) noexcept {                                         \
+        gn_propagation_t r) noexcept                                           \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
         ::gn::sdk::detail::on_result_dispatch(                                 \
             _gn_handler_of(self), env, r);                                     \
     }                                                                          \
-    void _gn_handler_on_init_thunk(void* self) noexcept {                      \
-        ::gn::sdk::detail::on_init_dispatch(_gn_handler_of(self));             \
+    void _gn_handler_on_init_thunk(void* self) noexcept                        \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
+        try { ::gn::sdk::detail::dispatch_on_init(_gn_handler_of(self)); }     \
+        catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
     }                                                                          \
-    void _gn_handler_on_shutdown_thunk(void* self) noexcept {                  \
-        ::gn::sdk::detail::on_shutdown_dispatch(_gn_handler_of(self));         \
+    void _gn_handler_on_shutdown_thunk(void* self) noexcept                    \
+        GN_EXPECTS(self != nullptr)                                            \
+    {                                                                          \
+        if (!self) return;                                                     \
+        try { ::gn::sdk::detail::dispatch_on_shutdown(_gn_handler_of(self)); } \
+        catch (...) {}  /* NOLINT(bugprone-empty-catch) */                     \
     }                                                                          \
                                                                                \
     gn_handler_vtable_t _gn_handler_make_vtable() noexcept {                   \
@@ -285,8 +302,14 @@ struct handler_provides<T, true> {
         /* ext_provides      */ ::gn::sdk::detail::handler_provides<           \
                                     _gn_handler_class_t>::value,               \
         /* kind              */ GN_PLUGIN_KIND_HANDLER,                        \
-        /* _reserved         */ {nullptr, nullptr, nullptr, nullptr},          \
+        /* inject_targets    */ ::gn::sdk::detail::get_inject_targets<          \
+                                    _gn_handler_class_t>(),                    \
+        /* _reserved         */ {},                                              \
     };                                                                         \
+    static_assert(                                                             \
+        ::gn::sdk::detail::validate_inject_targets(                            \
+            ::gn::sdk::detail::get_inject_targets<_gn_handler_class_t>()),     \
+        #ClassName ": inject_targets has empty protocol_id or duplicate entry");\
     } /* anonymous namespace */                                                \
                                                                                \
     extern "C" {                                                               \
@@ -312,8 +335,8 @@ struct handler_provides<T, true> {
             delete p;                                                          \
             return GN_ERR_OUT_OF_MEMORY;                                       \
         }                                                                      \
-        /* Force msg_ids cache to populate before kernel queries it. */        \
-        (void)_gn_handler_persisted_msg_ids(p->handler.get(), true);           \
+        /* Build per-instance msg_id list before kernel queries it. */          \
+        _gn_handler_build_msg_ids(*p);                                         \
         *out_self = p;                                                         \
         return GN_OK;                                                          \
     }                                                                          \

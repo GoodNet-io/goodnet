@@ -182,13 +182,17 @@ static inline const void* gn_query_ext_checked_value(
 
 /* ── Foreign-payload injection ───────────────────────────────────────────── */
 
-#define gn_inject_external_message(api, source, msg_id, payload, size) \
+/* Route bytes from a foreign source into the handler-registry namespace
+ * `ns`.  `ns` must be non-NULL and non-empty (e.g. "gnet-v1", "mqtt.v1"). */
+#define gn_inject_message(api, source, ns, msg_id, payload, size) \
     (api)->inject((api)->host_ctx, GN_INJECT_LAYER_MESSAGE, \
-                  (source), (msg_id), (payload), (size))
+                  (source), (ns), (msg_id), (payload), (size))
 
-#define gn_inject_frame(api, source, frame, size) \
+/* Feed a raw wire frame through the source connection's deframer, then
+ * dispatch each envelope into namespace `ns`. */
+#define gn_inject_frame(api, source, ns, frame, size) \
     (api)->inject((api)->host_ctx, GN_INJECT_LAYER_FRAME, \
-                  (source), 0, (frame), (size))
+                  (source), (ns), 0, (frame), (size))
 
 /* ── Logging ─────────────────────────────────────────────────────────────── */
 

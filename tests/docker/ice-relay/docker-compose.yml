@@ -1,0 +1,186 @@
+# TURN-only ICE topology.
+#
+# Two peers, each behind its own symmetric NAT, with STUN + TURN
+# servers on the "Internet" subnet. Symmetric NAT mappings rewrite
+# the source port per destination, so a srflx tuple learnt against
+# the STUN server is useless against the other peer. The check list
+# falls through to the relay-candidate pair; the TURN allocations
+# proxy every byte. Exercises RFC 5766 §11 ChannelBind fast-path.
+#
+# Pass criterion: both reports nominated=true, uses_relay=true, and
+# at least one relay candidate was gathered (proves TURN allocation
+# succeeded). Host + srflx candidates may still be present in the
+# gathered list — what matters is that the *nominated* pair is the
+# relay pair.
+#
+# Subnets are offset by +2 from ../ice-3node/docker-compose.yml
+# (10.42.x / 10.22.x / 10.32.x) so this stack can coexist with the
+# 3-node and ice-srflx stacks on the same docker daemon.
+
+services:
+  stun:
+    build:
+      context: ../ice-3node/stun
+      network: host
+    container_name: icerelay_stun
+    networks:
+      net: { ipv4_address: 10.42.0.10 }
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -uz 127.0.0.1 3478"]
+      interval: 2s
+      retries: 10
+
+  turn:
+    build:
+      context: ../ice-3node/turn
+      network: host
+    container_name: icerelay_turn
+    networks:
+      net: { ipv4_address: 10.42.0.11 }
+    environment:
+      TURN_USER:   goodnet
+      TURN_PASS:   bench-only-credentials
+      TURN_REALM:  ice3.local
+    healthcheck:
+      test: ["CMD", "sh", "-c", "nc -uz 127.0.0.1 3478"]
+      interval: 2s
+      retries: 10
+
+  coordinator:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icerelay_coordinator
+    networks:
+      net: { ipv4_address: 10.42.0.12 }
+    environment:
+      ROLE: coordinator
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  nat_a:
+    build:
+      context: ../ice-3node/nat-a
+      network: host
+    container_name: icerelay_nat_a
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
+      net.ipv6.conf.all.forwarding: 1
+    networks:
+      lan_a: { ipv4_address: 10.22.0.1 }
+      net:   { ipv4_address: 10.42.0.20 }
+    environment:
+      NAT_MODE:   symmetric
+      LAN_SUBNET: 10.22.0.0/24
+      WAN_SUBNET: 10.42.0.0/24
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/nat-ready"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 0s
+
+  nat_b:
+    build:
+      context: ../ice-3node/nat-a
+      network: host
+    container_name: icerelay_nat_b
+    cap_add: [NET_ADMIN]
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
+      net.ipv6.conf.all.forwarding: 1
+    networks:
+      lan_b: { ipv4_address: 10.32.0.1 }
+      net:   { ipv4_address: 10.42.0.30 }
+    environment:
+      NAT_MODE:   symmetric
+      LAN_SUBNET: 10.32.0.0/24
+      WAN_SUBNET: 10.42.0.0/24
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/nat-ready"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 0s
+
+  peer_a:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icerelay_peer_a
+    cap_add: [NET_ADMIN]
+    networks:
+      lan_a: { ipv4_address: 10.22.0.20 }
+    environment:
+      ROLE:          peer
+      PEER_NAME:     A
+      WAIT_FOR_PEER: B
+      SIGNAL_DIR:    /var/lib/ice3-signal
+      STUN_URI:      stun://10.42.0.10:3478
+      TURN_URI:      turn://goodnet:bench-only-credentials@10.42.0.11:3478
+      ICE_HOST_ONLY: "false"
+      ICE_DEBUG:     "1"
+      NAT_GATEWAY:   10.22.0.1
+      HARNESS_TIMEOUT_S: "60"
+    depends_on:
+      stun:        { condition: service_healthy }
+      turn:        { condition: service_healthy }
+      nat_a:       { condition: service_healthy }
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+  peer_b:
+    build:
+      context: ../ice-3node/peer
+      network: host
+    container_name: icerelay_peer_b
+    cap_add: [NET_ADMIN]
+    networks:
+      lan_b: { ipv4_address: 10.32.0.20 }
+    environment:
+      ROLE:          peer
+      PEER_NAME:     B
+      WAIT_FOR_PEER: A
+      SIGNAL_DIR:    /var/lib/ice3-signal
+      STUN_URI:      stun://10.42.0.10:3478
+      TURN_URI:      turn://goodnet:bench-only-credentials@10.42.0.11:3478
+      ICE_HOST_ONLY: "false"
+      ICE_DEBUG:     "1"
+      NAT_GATEWAY:   10.32.0.1
+      HARNESS_TIMEOUT_S: "60"
+    depends_on:
+      stun:        { condition: service_healthy }
+      turn:        { condition: service_healthy }
+      nat_b:       { condition: service_healthy }
+      coordinator: { condition: service_started }
+    volumes:
+      - signal:/var/lib/ice3-signal
+
+networks:
+  net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet:  10.42.0.0/24
+          gateway: 10.42.0.254
+  lan_a:
+    driver: bridge
+    ipam:
+      config:
+        - subnet:  10.22.0.0/24
+          gateway: 10.22.0.254
+  lan_b:
+    driver: bridge
+    ipam:
+      config:
+        - subnet:  10.32.0.0/24
+          gateway: 10.32.0.254
+
+volumes:
+  signal:

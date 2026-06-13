@@ -39,10 +39,7 @@ std::uint64_t pick_u64(const nlohmann::json& obj, const char* field, std::uint64
     return static_cast<std::uint64_t>(v);
 }
 
-gn_limits_t server_profile() noexcept {
-    /// Canonical defaults from `sdk/limits.h`. Matches the
-    /// historical hard-coded values the kernel held inline before
-    /// the profile system landed.
+constexpr gn_limits_t server_profile() noexcept {
     gn_limits_t L{};
     L.max_connections             = GN_LIMITS_DEFAULT_MAX_CONNECTIONS;
     L.max_outbound_connections    = GN_LIMITS_DEFAULT_MAX_OUTBOUND_CONNECTIONS;
@@ -50,7 +47,7 @@ gn_limits_t server_profile() noexcept {
     L.pending_queue_bytes_low     = GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_LOW;
     L.pending_queue_bytes_hard    = GN_LIMITS_DEFAULT_PENDING_QUEUE_BYTES_HARD;
     L.max_frame_bytes             = GN_LIMITS_DEFAULT_MAX_FRAME_BYTES;
-    L.max_payload_bytes           = GN_LIMITS_DEFAULT_MAX_FRAME_BYTES - 14u;
+    L.max_payload_bytes           = GN_LIMITS_DEFAULT_MAX_PAYLOAD_BYTES;
     L.max_handlers_per_msg_id     = GN_LIMITS_DEFAULT_MAX_HANDLERS_PER_MSG_ID;
     L.max_relay_ttl               = GN_LIMITS_DEFAULT_MAX_RELAY_TTL;
     L.max_plugins                 = GN_LIMITS_DEFAULT_MAX_PLUGINS;
@@ -66,6 +63,7 @@ gn_limits_t server_profile() noexcept {
     L.max_counter_names           = GN_LIMITS_DEFAULT_MAX_COUNTER_NAMES;
     L.max_subscriptions           = GN_LIMITS_DEFAULT_MAX_SUBSCRIPTIONS;
     L.max_capability_blob_bytes   = GN_LIMITS_DEFAULT_MAX_CAPABILITY_BLOB_BYTES;
+    L.max_inject_depth            = 0; /* 0 → use GN_INJECT_MAX_DEPTH (5) */
     return L;
 }
 
@@ -74,7 +72,7 @@ gn_limits_t server_profile() noexcept {
 /// timer pool, narrowed inject limiter so a single peer cannot
 /// monopolise the device's tiny budget. Embedded operators tune
 /// further from this baseline through the JSON `limits` block.
-gn_limits_t embedded_profile() noexcept {
+constexpr gn_limits_t embedded_profile() noexcept {
     gn_limits_t L = server_profile();
     L.max_connections             = 64;
     L.max_outbound_connections    = 16;
@@ -82,7 +80,7 @@ gn_limits_t embedded_profile() noexcept {
     L.pending_queue_bytes_low     = 16u  * 1024;       //  16 KiB
     L.pending_queue_bytes_hard    = 256u * 1024;       // 256 KiB
     L.max_frame_bytes             = 8u   * 1024;       //   8 KiB
-    L.max_payload_bytes           = L.max_frame_bytes - 14u;
+    L.max_payload_bytes           = L.max_frame_bytes - 80u;
     L.max_handlers_per_msg_id     = 4;
     L.max_relay_ttl               = 2;
     L.max_plugins                 = 8;
@@ -95,6 +93,7 @@ gn_limits_t embedded_profile() noexcept {
     L.inject_rate_per_source      = 10;
     L.inject_rate_burst           = 8;
     L.inject_rate_lru_cap         = 64;
+    L.max_capability_blob_bytes   = L.max_payload_bytes;
     return L;
 }
 
@@ -102,7 +101,7 @@ gn_limits_t embedded_profile() noexcept {
 /// Server: enough headroom for active development and casual
 /// peer-to-peer use, without the per-process memory budget the
 /// Server profile assumes.
-gn_limits_t desktop_profile() noexcept {
+constexpr gn_limits_t desktop_profile() noexcept {
     gn_limits_t L = server_profile();
     L.max_connections             = 512;
     L.max_outbound_connections    = 128;
@@ -117,7 +116,41 @@ gn_limits_t desktop_profile() noexcept {
     return L;
 }
 
-gn_limits_t default_limits() noexcept { return server_profile(); }
+constexpr gn_limits_t default_limits() noexcept { return server_profile(); }
+
+// Compile-time invariant checks — mirror validate_limits() runtime logic.
+static_assert(server_profile().max_outbound_connections
+              <= server_profile().max_connections,
+              "server profile: max_outbound > max_connections");
+static_assert(server_profile().pending_queue_bytes_low
+              < server_profile().pending_queue_bytes_high,
+              "server profile: low watermark >= high watermark");
+static_assert(server_profile().pending_queue_bytes_high
+              <= server_profile().pending_queue_bytes_hard,
+              "server profile: high watermark > hard limit");
+
+static_assert(embedded_profile().max_outbound_connections
+              <= embedded_profile().max_connections,
+              "embedded profile: max_outbound > max_connections");
+static_assert(embedded_profile().pending_queue_bytes_low
+              < embedded_profile().pending_queue_bytes_high,
+              "embedded profile: low watermark >= high watermark");
+static_assert(embedded_profile().pending_queue_bytes_high
+              <= embedded_profile().pending_queue_bytes_hard,
+              "embedded profile: high watermark > hard limit");
+static_assert(embedded_profile().max_payload_bytes
+              <= embedded_profile().max_frame_bytes,
+              "embedded profile: max_payload > max_frame");
+
+static_assert(desktop_profile().max_outbound_connections
+              <= desktop_profile().max_connections,
+              "desktop profile: max_outbound > max_connections");
+static_assert(desktop_profile().pending_queue_bytes_low
+              < desktop_profile().pending_queue_bytes_high,
+              "desktop profile: low watermark >= high watermark");
+static_assert(desktop_profile().pending_queue_bytes_high
+              <= desktop_profile().pending_queue_bytes_hard,
+              "desktop profile: high watermark > hard limit");
 
 } // namespace
 
@@ -180,6 +213,8 @@ gn_limits_t Config::parse_limits(const nlohmann::json& root) {
     GN_PICK_U32(inject_rate_lru_cap);
     GN_PICK_U32(max_counter_names);
     GN_PICK_U32(max_subscriptions);
+    GN_PICK_U32(max_inject_depth);
+    GN_PICK_U32(max_capability_blob_bytes);
 #undef GN_PICK_U32
 #undef GN_PICK_U64
     return L;
@@ -278,20 +313,17 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
         note("limits.max_relay_ttl out of range");
         return GN_ERR_LIMIT_REACHED;
     }
-    if (L.max_storage_value_bytes > L.max_payload_bytes) {
+    if (L.max_payload_bytes != 0 &&
+        L.max_storage_value_bytes > L.max_payload_bytes) {
         note("limits.max_storage_value_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
-    /// `limits.en.md §3` invariant: a payload plus the fixed 14-byte
-    /// GNET header must fit in one wire frame; otherwise a max-size
-    /// payload accepted at the inject path produces a frame that
-    /// the deframer rejects.
-    constexpr std::uint32_t kGnetFixedHeaderBytes = 14;
-    if (L.max_payload_bytes >
-        L.max_frame_bytes - kGnetFixedHeaderBytes) {
-        note("limits.max_payload_bytes + 14 > max_frame_bytes");
+    if (L.max_payload_bytes != 0 &&
+        L.max_payload_bytes > L.max_frame_bytes) {
+        note("limits.max_payload_bytes > max_frame_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
+
     /// Inject rate limiter: burst must cover at least half a second
     /// of refill so a momentary spike never starves the legitimate
     /// caller. With `rate=0` the bucket never refills (a valid
@@ -305,6 +337,12 @@ gn_result_t Config::validate_limits(const gn_limits_t& L,
     }
     if (L.inject_rate_per_source != 0 && L.inject_rate_burst == 0) {
         note("limits.inject_rate_burst must be > 0 when rate > 0");
+        return GN_ERR_LIMIT_REACHED;
+    }
+    if (L.max_capability_blob_bytes != 0 &&
+        L.max_payload_bytes  != 0 &&
+        L.max_capability_blob_bytes > L.max_payload_bytes) {
+        note("limits.max_capability_blob_bytes > max_payload_bytes");
         return GN_ERR_LIMIT_REACHED;
     }
     return GN_OK;
@@ -324,7 +362,7 @@ std::optional<nlohmann::json> Config::resolve(std::string_view dotted_key) const
         auto it = node->find(std::string{seg});
         if (it == node->end()) return std::nullopt;
         if (end == std::string_view::npos) {
-            return *it;
+            return std::optional<nlohmann::json>{*it};
         }
         node = &(*it);
         start = end + 1;

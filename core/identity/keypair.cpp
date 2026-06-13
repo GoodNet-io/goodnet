@@ -3,6 +3,7 @@
 
 #include "keypair.hpp"
 
+#include <cstdlib>
 #include <cstring>
 #include <mutex>
 
@@ -87,6 +88,19 @@ void KeyPair::wipe() noexcept {
             GN_ERR_INVALID_ENVELOPE, "crypto_sign_seed_keypair failed"});
     }
     kp.present_ = true;
+    return kp;
+}
+
+KeyPair KeyPair::from_public_key(const ::gn::PublicKey& pk) noexcept {
+    KeyPair kp;
+    kp.pk_      = pk;
+    /// `present_` stays false — the secret half is empty. `sign()`
+    /// short-circuits with `GN_ERR_INVALID_ENVELOPE` and the
+    /// `secret_key_view` consumer pipelines never see this instance
+    /// (the HSM-backed NodeIdentity stamps the plugin signer into
+    /// `signer_` directly, so attestation / handshake code goes
+    /// through `signer()->sign(...)` instead of `user().sign(...)`).
+    kp.present_ = false;
     return kp;
 }
 

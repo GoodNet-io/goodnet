@@ -76,10 +76,12 @@ services:
       TURN_URI: turn://goodnet:bench-only-credentials@10.10.0.11:3478
       SIGNAL_DIR: /var/lib/ice3-signal
       WAIT_FOR_PEER: B
+      ICE_DEBUG: "1"
     depends_on:
       stun:        { condition: service_healthy }
       turn:        { condition: service_healthy }
       coordinator: { condition: service_started }
+      nat_a:       { condition: service_healthy }
     volumes:
       - signal:/var/lib/ice3-signal
 
@@ -98,10 +100,12 @@ services:
       TURN_URI: turn://goodnet:bench-only-credentials@10.10.0.11:3478
       SIGNAL_DIR: /var/lib/ice3-signal
       WAIT_FOR_PEER: A
+      ICE_DEBUG: "1"
     depends_on:
       stun:        { condition: service_healthy }
       turn:        { condition: service_healthy }
       coordinator: { condition: service_started }
+      nat_b:       { condition: service_healthy }
     volumes:
       - signal:/var/lib/ice3-signal
 
@@ -130,6 +134,16 @@ services:
     # NAT_MODE flipped by scenario overrides: full_cone | symmetric | shared
     environment:
       NAT_MODE: full_cone
+    healthcheck:
+      # init-nat.sh writes /tmp/nat-ready after all iptables rules are
+      # in place, immediately before exec-ing miniupnpd.  This flag
+      # ensures peer_a doesn't start sending STUN probes before the
+      # MASQUERADE rule is actually active.
+      test: ["CMD-SHELL", "test -f /tmp/nat-ready"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 0s
 
   nat_b:
     build:
@@ -147,6 +161,12 @@ services:
       net:   { ipv4_address: 10.10.0.30 }
     environment:
       NAT_MODE: full_cone
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tmp/nat-ready"]
+      interval: 1s
+      timeout: 3s
+      retries: 15
+      start_period: 0s
 
 networks:
   # Docker reserves the bridge's gateway IP (the host-side endpoint

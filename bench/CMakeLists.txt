@@ -296,19 +296,45 @@ if(NOT GOODNET_STATIC_PLUGINS
     # (everything is linked into the kernel binary instead). Skip the
     # bench entirely in static builds; the static plugin layout is
     # exercised by the regular kernel binary via `goodnet run`.
-    add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
-    target_link_libraries(bench_real_e2e PRIVATE
+    add_executable(bench_handler_registry
+        plugins/bench_handler_registry.cpp)
+    target_link_libraries(bench_handler_registry PRIVATE
         goodnet_bench_harness
         goodnet_kernel
-        GoodNet::protocol_gnet
         goodnet_tcp_objects
-        goodnet_udp_objects
-        goodnet_ipc_objects
         OpenSSL::Crypto
         PkgConfig::SODIUM
         benchmark::benchmark_main
         ${CMAKE_DL_LIBS}
     )
+    if(TARGET GoodNet::protocol_gnet)
+        target_link_libraries(bench_handler_registry PRIVATE GoodNet::protocol_gnet)
+    endif()
+    add_dependencies(bench_handler_registry goodnet_security_noise)
+    target_compile_definitions(bench_handler_registry PRIVATE
+        "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+    )
+    set_target_properties(bench_handler_registry PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+
+    add_executable(bench_real_e2e plugins/bench_real_e2e.cpp)
+    target_link_libraries(bench_real_e2e PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        goodnet_tcp_objects
+        goodnet_udp_objects
+        goodnet_ipc_objects
+        goodnet_quic_objects
+        OpenSSL::Crypto
+        OpenSSL::SSL
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+        ${CMAKE_DL_LIBS}
+    )
+    if(TARGET GoodNet::protocol_gnet)
+        target_link_libraries(bench_real_e2e PRIVATE GoodNet::protocol_gnet)
+    endif()
     add_dependencies(bench_real_e2e goodnet_security_noise)
     target_compile_definitions(bench_real_e2e PRIVATE
         "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
@@ -323,6 +349,23 @@ endif()
 # rather than C++ — see bench/comparison/README.md for the harness
 # layout that drives both GoodNet and reference stacks through the
 # same payload matrix.
+
+# inject_message throughput — kernel hot-path routing with no link
+# plugin or security provider; links only goodnet_kernel + gnet.
+if(TARGET goodnet_kernel AND TARGET GoodNet::protocol_gnet)
+    add_executable(bench_inject plugins/bench_inject.cpp)
+    target_link_libraries(bench_inject PRIVATE
+        goodnet_bench_harness
+        goodnet_kernel
+        GoodNet::protocol_gnet
+        OpenSSL::Crypto
+        PkgConfig::SODIUM
+        benchmark::benchmark_main
+    )
+    set_target_properties(bench_inject PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"
+    )
+endif()
 
 # ── Free-kernel showcase bench ────────────────────────────────────────
 #

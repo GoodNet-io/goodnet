@@ -40,5 +40,14 @@ fi
 cp -f "${built_binary}" "${staged_binary}"
 chmod +x "${staged_binary}"
 
+# Stage the discovery plugin .so alongside the other plugins.
+# goodnet_link_ice depends on the gn.discovery.mdns extension for
+# mDNS host-candidate obfuscation (ipv6_mdns scenario).
+mdns_so="${build_dir}/plugins/libgoodnet_discovery_mdns.so"
+if [[ -f "${mdns_so}" ]]; then
+    cp -f "${mdns_so}" "${script_dir}/plugins/libgoodnet_discovery_mdns.so"
+    echo "[build-harness] staged libgoodnet_discovery_mdns.so"
+fi
+
 echo "[build-harness] staged ${staged_binary} ($(stat -c '%s' "${staged_binary}") bytes)"
 echo "${staged_binary}"

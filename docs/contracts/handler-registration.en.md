@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/registry/handler.hpp`, `core/kernel/router.cpp`
-**Last verified:** 2026-05-09
+**Last verified:** 2026-05-19
 **Stability:** RC tags do not freeze the public surface; the
 plain `v1.0.0` tag closes the reshape window per
 `abi-evolution.en.md` §3b.

@@ -26,15 +26,19 @@ and may move to per-plugin repositories once the surface stabilises.
 ## Setup
 
 ```bash
-nix develop      # toolchain pinned through flake.nix
-cmake -B build -G Ninja
-cmake --build build
-ctest --test-dir build
+nix run .#setup           # one-time: clone plugins, install hooks
+nix run .#build           # debug build → build/  (no nix develop needed)
+nix run .#test            # full test suite
 ```
 
-The `nix develop` shell carries gcc 15, libsodium, OpenSSL, asio,
-spdlog, nlohmann_json, gtest, rapidcheck, clang-tidy 21. Direnv
-lifts the shell automatically when the operator opts in.
+For IDE integration, `cmake --preset dev` inside `nix develop` is
+available. The `nix develop` shell carries gcc 16 (x86_64-linux) /
+gcc 15 (other platforms), libsodium, OpenSSL, asio, spdlog,
+nlohmann_json, gtest, rapidcheck, clang-tidy 21. Direnv lifts the
+shell automatically when the operator opts in.
+
+See [`docs/operator/build.en.md`](docs/operator/build.en.md) for the
+full build reference including CMakePresets and cross-platform matrix.
 
 ## Branch model
 
@@ -185,3 +189,20 @@ smallest reproduction the reporter can build.
 ## Code of conduct
 
 By participating you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+## Community submissions
+
+The **GoodNet Plugin Challenge** has two tracks. Full rules in
+[`CONTEST.md`](CONTEST.md).
+
+**Track A** — take a problem ICE, VPN, file sync, or routing already
+solves, and write it freed from IP-era constraints. Identity is a
+public key, not an IP address; the carrier is any link; the session
+is `peer_pk`, not a socket. The result must work over at least two
+structurally different link plugins.
+
+**Track B** — most structurally compliant, physically absurd link
+plugin. `notify_inbound_bytes` called with valid data — eventually.
+Paper jams, courier latency, and 1,280-year RTTs are correct behaviour
+per the link contract. Founding entries and rules in
+[issue #42](https://github.com/GoodNet-io/goodnet/issues/42).

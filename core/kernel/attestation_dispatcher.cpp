@@ -270,12 +270,11 @@ int AttestationDispatcher::on_inbound(Kernel&                       kernel,
     std::span<const std::uint8_t, GN_HASH_BYTES> binding{
         session.transport_keys().handshake_hash, GN_HASH_BYTES};
 
-    NowSec clock_copy;
+    std::int64_t now;
     {
         std::lock_guard lock(mu_);
-        clock_copy = clock_;
+        now = clock_ ? clock_() : default_now_unix_seconds();
     }
-    const std::int64_t now = clock_copy ? clock_copy() : default_now_unix_seconds();
 
     ::gn::PublicKey user_pk{};
     ::gn::PublicKey device_pk{};

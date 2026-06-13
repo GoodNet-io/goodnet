@@ -10,12 +10,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <flat_map>
 #include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 #include <sdk/link.h>
 #include <sdk/types.h>
@@ -78,10 +78,14 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept;
 
+    /// Snapshot of all registered link entries in scheme order.
+    /// Used by the topology builder and `on_topology_sealed` dispatch.
+    [[nodiscard]] std::vector<LinkEntry> snapshot() const;
+
 private:
-    mutable std::shared_mutex                       mu_;
-    std::unordered_map<std::string, LinkEntry> by_scheme_;
-    std::unordered_map<gn_link_id_t, std::string> by_id_;
+    mutable std::shared_mutex                                  mu_;
+    std::flat_map<std::string, LinkEntry, std::less<>>         by_scheme_;
+    std::flat_map<gn_link_id_t, std::string>                   by_id_;
 
     std::atomic<gn_link_id_t> next_id_{1};
 };

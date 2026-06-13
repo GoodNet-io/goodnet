@@ -14,10 +14,12 @@
 #include <utility>
 
 #include <core/kernel/kernel.hpp>
-#include <core/plugin/remote_host.hpp>
 #include <core/plugin/runtimes/dynamic.hpp>
-#include <core/plugin/runtimes/remote.hpp>
 #include <core/plugin/runtimes/static.hpp>
+#ifndef __EMSCRIPTEN__
+#  include <core/plugin/remote_host.hpp>
+#  include <core/plugin/runtimes/remote.hpp>
+#endif
 #include <core/plugin/static_registry.hpp>
 #include <core/util/log.hpp>
 
@@ -34,7 +36,9 @@ PluginManager::PluginManager(Kernel& kernel) noexcept : kernel_(kernel) {
     /// through `PluginInstance::runtime`.
     runtimes_.emplace("dynamic", std::make_unique<DynamicRuntime>());
     runtimes_.emplace("static",  std::make_unique<StaticRuntime>());
+#ifndef __EMSCRIPTEN__
     runtimes_.emplace("remote",  std::make_unique<RemoteRuntime>());
+#endif
 }
 
 PluginManager::~PluginManager() { shutdown(); }
@@ -145,14 +149,13 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
     }
 
     /// Resolve dependency order.
-    std::vector<ServiceDescriptor> ordered;
-    std::string diag;
-    if (auto rc = ServiceResolver::resolve(descriptors, ordered, &diag);
-        rc != GN_OK) {
-        note(diag);
+    auto resolve_result = ServiceResolver::resolve(descriptors);
+    if (!resolve_result) {
+        note(resolve_result.error().message);
         rollback();
-        return rc;
+        return resolve_result.error().code;
     }
+    auto& ordered = *resolve_result;
 
     /// Reorder instances_ to match the resolver's output. The
     /// resolver returned descriptors by value; match them back to
@@ -202,7 +205,6 @@ gn_result_t PluginManager::load(std::span<const std::string> paths,
         }
     }
 
-    /// Phase 5: register_all.
     for (auto& inst : instances_) {
         const auto rc = register_one(inst);
         if (rc != GN_OK) {

@@ -124,6 +124,7 @@ TEST(CoreC, NullHandleReturnsNullArg) {
     gn_conn_id_t out_conn = GN_INVALID_ID;
     EXPECT_EQ(gn_core_connect(nullptr, "tcp://1.2.3.4:9", "tcp", &out_conn),
               GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_listen(nullptr, "tcp://0.0.0.0:0"), GN_ERR_NULL_ARG);
     EXPECT_EQ(gn_core_send_to(nullptr, /*conn*/ 1, /*msg_id*/ 1, nullptr, 0),
               GN_ERR_NULL_ARG);
     EXPECT_EQ(gn_core_disconnect(nullptr, /*conn*/ 1), GN_ERR_NULL_ARG);
@@ -310,6 +311,257 @@ TEST(CoreC, ConnectMissingSchemeReturnsNotFound) {
     EXPECT_EQ(gn_core_connect(core, "no-scheme-here", /*scheme*/ nullptr, &out),
               GN_ERR_NOT_FOUND);
 
+    gn_core_destroy(core);
+}
+
+// ── gn_core_listen — public C ABI listen path ───────────────────────────────
+//
+// `gn_core_listen` mirrors `gn_core_connect`: derives the scheme prefix from
+// the URI, resolves the link plugin via `LinkRegistry::find_by_scheme`, and
+// forwards to its vtable `listen` slot. The tests below pin the four
+// observable behaviours of that path: NULL arg defence, missing scheme,
+// no-link-registered, and the happy-path forward into a stub link's vtable.
+
+namespace listen_test {
+
+/// Minimal stub link that records the URIs passed to its `listen` slot.
+/// Mirrors the `Loopback` helper in `test_send_loopback.cpp` but exposes
+/// only the slots `gn_core_listen` actually drives — every other vtable
+/// entry returns `GN_ERR_NOT_IMPLEMENTED` so an accidental call from the
+/// wider kernel surface gets caught loud rather than hiding behind a
+/// no-op stub.
+struct StubLink {
+    std::mutex                                mu;
+    std::vector<std::string>                  listen_uris;
+    std::atomic<int>                          listen_calls{0};
+    /// Result the stub returns from `listen`. Tests flip it before
+    /// dispatching to assert the C ABI plumbs the link's verdict
+    /// back to the caller verbatim.
+    std::atomic<gn_result_t>                  listen_result{GN_OK};
+
+    static const char* do_scheme(void*) { return "stublisten"; }
+
+    static gn_result_t do_listen(void* self, const char* uri) {
+        auto* s = static_cast<StubLink*>(self);
+        s->listen_calls.fetch_add(1, std::memory_order_relaxed);
+        {
+            std::lock_guard lk(s->mu);
+            s->listen_uris.emplace_back(uri ? uri : "");
+        }
+        return s->listen_result.load(std::memory_order_acquire);
+    }
+    static gn_result_t do_connect(void*, const char*)                { return GN_ERR_NOT_IMPLEMENTED; }
+    static gn_result_t do_send(void*, gn_conn_id_t,
+                               const std::uint8_t*, std::size_t)    { return GN_ERR_NOT_IMPLEMENTED; }
+    static gn_result_t do_send_batch(void*, gn_conn_id_t,
+                                     const gn_byte_span_t*, std::size_t) {
+        return GN_ERR_NOT_IMPLEMENTED;
+    }
+    static gn_result_t do_disconnect(void*, gn_conn_id_t)            { return GN_ERR_NOT_IMPLEMENTED; }
+    static const char* do_extension_name(void*)                       { return ""; }
+    static const void* do_extension_vtable(void*)                     { return nullptr; }
+    static void        do_destroy(void*)                              {}
+
+    static gn_link_vtable_t make_vtable() {
+        gn_link_vtable_t v{};
+        v.api_size         = sizeof(gn_link_vtable_t);
+        v.scheme           = &do_scheme;
+        v.listen           = &do_listen;
+        v.connect          = &do_connect;
+        v.send             = &do_send;
+        v.send_batch       = &do_send_batch;
+        v.disconnect       = &do_disconnect;
+        v.extension_name   = &do_extension_name;
+        v.extension_vtable = &do_extension_vtable;
+        v.destroy          = &do_destroy;
+        return v;
+    }
+};
+
+inline gn_link_id_t register_stub_link(gn_core_t* core, StubLink& stub,
+                                       const gn_link_vtable_t& vt) {
+    gn_register_meta_t meta{};
+    meta.api_size = sizeof(meta);
+    meta.name     = "stublisten";
+    return gn_core_register_link(core, &meta, &vt, &stub);
+}
+
+}  // namespace listen_test
+
+TEST(CoreListen, NullUriReturnsNullArg) {
+    /// Symmetric with the `gn_core_connect` NULL defence; non-NULL handle,
+    /// NULL URI must surface `GN_ERR_NULL_ARG` rather than dereference.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, /*uri*/ nullptr), GN_ERR_NULL_ARG);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, MissingSchemeReturnsNotFound) {
+    /// URI without a `://` separator — the derive-scheme helper returns
+    /// an empty view and the entry short-circuits with `NOT_FOUND` (same
+    /// shape as `gn_core_connect`'s NULL-scheme + URI-without-prefix).
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, "no-scheme-here"), GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, WithoutLinkReturnsNotFound) {
+    /// No link plugin registered for the resolved scheme → the registry
+    /// lookup misses and the entry surfaces `NOT_FOUND`. Mirrors
+    /// `ConnectWithoutLinkReturnsNotFound` for the inbound side.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    EXPECT_EQ(gn_core_listen(core, "tcp://0.0.0.0:0"), GN_ERR_NOT_FOUND);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, LifecycleSmokeWithStubLink) {
+    /// End-to-end lifecycle: create → init → register stub link →
+    /// listen → stop → destroy. The stub captures the URI it was
+    /// asked to bind on, so the test asserts the C ABI forwarded
+    /// to the vtable slot intact and that teardown completes without
+    /// crashing even though no real acceptor exists.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    listen_test::StubLink stub;
+    const auto vt = listen_test::StubLink::make_vtable();
+    const gn_link_id_t link_id = listen_test::register_stub_link(core, stub, vt);
+    ASSERT_NE(link_id, GN_INVALID_LINK_ID);
+
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    /// Conn-state subscription pre-installed: the contract on
+    /// `gn_core_listen` says inbound accepted conns surface through
+    /// this channel without a new callback shape. The stub does not
+    /// actually accept anything, but we install the subscription so
+    /// the test pins the «register before listen» discipline the
+    /// docstring describes.
+    std::atomic<int> conn_events{0};
+    const auto conn_sub = gn_core_on_conn_state(
+        core,
+        +[](void* ud, const gn_conn_event_t* /*ev*/) {
+            static_cast<std::atomic<int>*>(ud)->fetch_add(1);
+        },
+        &conn_events);
+    ASSERT_NE(conn_sub, 0u);
+
+    EXPECT_EQ(gn_core_listen(core, "stublisten://1.2.3.4:0"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 1);
+    {
+        std::lock_guard lk(stub.mu);
+        ASSERT_EQ(stub.listen_uris.size(), 1u);
+        EXPECT_EQ(stub.listen_uris.front(), "stublisten://1.2.3.4:0");
+    }
+
+    /// A second listen on the same scheme forwards again — the entry
+    /// is stateless on the C ABI side and trusts the link plugin's
+    /// own duplicate-listen policy.
+    EXPECT_EQ(gn_core_listen(core, "stublisten://5.6.7.8:9"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 2);
+
+    /// Verdict from the link plugin propagates verbatim. Flip the
+    /// stub to a transport-style failure and assert the C ABI does
+    /// not mask or remap it.
+    stub.listen_result.store(GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_listen(core, "stublisten://busy:0"),
+              GN_ERR_LIMIT_REACHED);
+
+    gn_core_off_conn_state(core, conn_sub);
+    gn_core_destroy(core);
+}
+
+TEST(CoreListen, InboundConnEventSurfacesThroughConnState) {
+    /// Pin the «inbound accepted conns surface through the existing
+    /// conn-state subscription path» contract in `sdk/core.h`. We
+    /// drive the kernel's host_api `notify_connect` directly — that's
+    /// the slot a real link plugin would call from its accept loop —
+    /// and assert the host-side conn-state subscriber sees the event
+    /// without `gn_core_listen` having to introduce a new callback
+    /// shape. The actual `listen()` call exercises the same scheme
+    /// lookup the previous test pinned; this test focuses on the
+    /// event-surfacing half of the contract.
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    listen_test::StubLink stub;
+    const auto vt = listen_test::StubLink::make_vtable();
+    const gn_link_id_t link_id = listen_test::register_stub_link(core, stub, vt);
+    ASSERT_NE(link_id, GN_INVALID_LINK_ID);
+
+    ASSERT_EQ(gn_core_start(core), GN_OK);
+
+    struct Captured {
+        std::atomic<int>          fires{0};
+        std::atomic<gn_conn_id_t> last_conn{GN_INVALID_ID};
+        std::atomic<int>          last_kind{0};
+    } captured;
+
+    const auto sub = gn_core_on_conn_state(
+        core,
+        +[](void* ud, const gn_conn_event_t* ev) {
+            auto* c = static_cast<Captured*>(ud);
+            if (ev == nullptr) return;
+            c->fires.fetch_add(1);
+            c->last_conn.store(ev->conn);
+            c->last_kind.store(static_cast<int>(ev->kind));
+        },
+        &captured);
+    ASSERT_NE(sub, 0u);
+
+    /// Bind through the C ABI. The stub's `listen` records the URI but
+    /// does not run a real accept loop — the simulated accept below
+    /// drives `notify_connect` directly, the same slot a real link's
+    /// accept handler would call.
+    ASSERT_EQ(gn_core_listen(core, "stublisten://127.0.0.1:0"), GN_OK);
+    EXPECT_EQ(stub.listen_calls.load(), 1);
+    (void)link_id;  // touched only to assert non-zero registration above
+
+    /// Simulated inbound accept: a real link plugin calls
+    /// `host_api->notify_connect` from its acceptor when it admits a
+    /// peer. We do the same here so the test pins the «host-side
+    /// `gn_core_on_conn_state` subscriber sees accepted conns» half of
+    /// the contract without depending on the TCP plugin being part of
+    /// the unit-test target.
+    const host_api_t* api = gn_core_host_api(core);
+    ASSERT_NE(api, nullptr);
+    ASSERT_NE(api->notify_connect, nullptr);
+
+    gn_conn_id_t inbound_conn = GN_INVALID_ID;
+    std::uint8_t peer_pk[GN_PUBLIC_KEY_BYTES] = {};
+    const auto rc = api->notify_connect(
+        api->host_ctx,
+        peer_pk,
+        /*uri=*/"stublisten://127.0.0.1:54321",
+        GN_TRUST_LOOPBACK,
+        GN_ROLE_RESPONDER,
+        &inbound_conn);
+    ASSERT_EQ(rc, GN_OK);
+    ASSERT_NE(inbound_conn, GN_INVALID_ID);
+
+    /// `notify_connect` publishes `CONNECTED` synchronously before
+    /// returning, so by the time we look the subscriber has already
+    /// fired. No polling needed.
+    EXPECT_GE(captured.fires.load(), 1);
+    EXPECT_EQ(captured.last_conn.load(), inbound_conn);
+    EXPECT_EQ(captured.last_kind.load(),
+              static_cast<int>(GN_CONN_EVENT_CONNECTED));
+
+    gn_core_off_conn_state(core, sub);
     gn_core_destroy(core);
 }
 
@@ -723,3 +975,282 @@ TEST(CoreC, UnloadPluginNullArgRejected) {
 }
 
 #endif  // GOODNET_NULL_PLUGIN_PATH
+
+// ── gn_core_register_runtime — C ABI external runtime kind ──────────────────
+//
+// Mirrors `sdk/plugin_runtime.h`. The tests below pin the four observable
+// behaviours of that path: argument validation, reserved-kind rejection,
+// api_size truncation acceptance, init-thunk dispatch on registration, and
+// end-to-end load through the registered runtime's `register_plugin` thunk.
+
+#include <sdk/plugin_runtime.h>
+
+#include <core/kernel/core_c_internal.hpp>
+#include <core/plugin/plugin_runtime.hpp>
+#include <core/plugin/remote_host.hpp>  // PluginInstance carries a unique_ptr<RemoteHost>
+
+namespace runtime_test {
+
+/// Free-function thunks share state through `void* ctx` — kept as
+/// free functions (not lambdas-with-captures) so the test exercises
+/// the exact C ABI shape a Rust / Go / C host would use.
+struct Counters {
+    std::atomic<int>           init_calls{0};
+    std::atomic<int>           shutdown_calls{0};
+    std::atomic<int>           register_calls{0};
+    std::atomic<int>           unregister_calls{0};
+    std::atomic<gn_result_t>   init_return{GN_OK};
+    std::mutex                 mu;
+    std::vector<std::string>   last_names;
+    std::vector<std::string>   last_paths;
+    /// Monotonic instance handle the test thunk hands back to the
+    /// kernel. Starts at 1 so the very first mint is non-zero.
+    std::atomic<std::uint32_t> next_instance{1};
+};
+
+inline gn_result_t do_init(void* ctx) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->init_calls.fetch_add(1);
+    return c->init_return.load();
+}
+
+inline gn_result_t do_shutdown(void* ctx) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->shutdown_calls.fetch_add(1);
+    return GN_OK;
+}
+
+inline gn_result_t do_register(void* ctx,
+                               const char* name,
+                               const char* path,
+                               gn_plugin_instance_t* out_instance) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->register_calls.fetch_add(1);
+    {
+        std::lock_guard lk(c->mu);
+        c->last_names.emplace_back(name ? name : "");
+        c->last_paths.emplace_back(path ? path : "");
+    }
+    if (out_instance != nullptr) {
+        *out_instance = c->next_instance.fetch_add(1);
+    }
+    return GN_OK;
+}
+
+inline gn_result_t do_unregister(void* ctx, gn_plugin_instance_t /*inst*/) {
+    auto* c = static_cast<Counters*>(ctx);
+    c->unregister_calls.fetch_add(1);
+    return GN_OK;
+}
+
+inline gn_plugin_runtime_vtable_t make_vtable() {
+    gn_plugin_runtime_vtable_t v{};
+    v.api_size        = sizeof(gn_plugin_runtime_vtable_t);
+    v.init            = &do_init;
+    v.register_plugin = &do_register;
+    v.unregister      = &do_unregister;
+    v.shutdown        = &do_shutdown;
+    return v;
+}
+
+}  // namespace runtime_test
+
+TEST(CoreRegisterRuntime, NullArgsReturnInvalid) {
+    /// Every NULL combination on the registration entry must surface
+    /// `GN_ERR_NULL_ARG` — symmetric with the rest of the C ABI's
+    /// «never dereference on a NULL handshake» discipline.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    EXPECT_EQ(gn_core_register_runtime(nullptr, "k", &vt, &counters),
+              GN_ERR_NULL_ARG);
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, nullptr, &vt, &counters),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_register_runtime(core, "", &vt, &counters),
+              GN_ERR_NULL_ARG);
+    EXPECT_EQ(gn_core_register_runtime(core, "k", nullptr, &counters),
+              GN_ERR_NULL_ARG);
+
+    /// The valid combination must NOT have fired any thunks.
+    EXPECT_EQ(counters.init_calls.load(),     0);
+    EXPECT_EQ(counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, ReservedKindsReject) {
+    /// Built-in kinds ("static", "dynamic", "remote") are populated
+    /// by the PluginManager ctor; a host registration attempt under
+    /// any of these returns `GN_ERR_LIMIT_REACHED` per the
+    /// runtime-registry's duplicate-key policy.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, "static", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_register_runtime(core, "dynamic", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(gn_core_register_runtime(core, "remote", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+
+    /// Rejections fired before any thunk ran.
+    EXPECT_EQ(counters.init_calls.load(),     0);
+    EXPECT_EQ(counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, SmallApiSizeAccepted) {
+    /// A vtable that declares exactly `GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE`
+    /// is the minimum the kernel accepts — anything smaller means the
+    /// producer was built against an even older SDK than the one this
+    /// header ships. `MIN_SIZE` today covers all four thunks, but a
+    /// future minor that appends a fifth thunk lets older hosts keep
+    /// working with their original (smaller) `api_size`.
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+    vt.api_size = GN_PLUGIN_RUNTIME_VTABLE_MIN_SIZE;
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(gn_core_register_runtime(core, "minsize", &vt, &counters),
+              GN_OK);
+
+    /// A truly truncated vtable — smaller than min — is rejected.
+    gn_plugin_runtime_vtable_t too_small{};
+    too_small.api_size        = sizeof(std::size_t);  // only the api_size field
+    too_small.init            = &runtime_test::do_init;
+    too_small.register_plugin = &runtime_test::do_register;
+    too_small.unregister      = &runtime_test::do_unregister;
+    too_small.shutdown        = &runtime_test::do_shutdown;
+    EXPECT_EQ(gn_core_register_runtime(core, "too-small", &too_small, &counters),
+              GN_ERR_VERSION_MISMATCH);
+
+    gn_core_destroy(core);
+}
+
+TEST(CoreRegisterRuntime, RegistrationCallsInit) {
+    /// The runtime-level `init` thunk fires once during
+    /// `gn_core_register_runtime`. The paired `shutdown` thunk fires
+    /// when the kernel drops the runtime, which happens at
+    /// `gn_core_destroy` time (PluginManager dtor walks the runtime
+    /// registry).
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+
+    EXPECT_EQ(counters.init_calls.load(), 0);
+    EXPECT_EQ(gn_core_register_runtime(core, "init-counter", &vt, &counters),
+              GN_OK);
+    EXPECT_EQ(counters.init_calls.load(), 1);
+
+    /// Re-registering the same kind hits the LIMIT_REACHED path and
+    /// must NOT fire a second init.
+    EXPECT_EQ(gn_core_register_runtime(core, "init-counter", &vt, &counters),
+              GN_ERR_LIMIT_REACHED);
+    EXPECT_EQ(counters.init_calls.load(), 1);
+
+    /// A non-OK init return rolls back the registration without
+    /// firing the paired shutdown — an unpaired teardown would
+    /// surprise the host with a release of state it never set up.
+    runtime_test::Counters fail_counters;
+    fail_counters.init_return.store(GN_ERR_INTEGRITY_FAILED);
+    EXPECT_EQ(gn_core_register_runtime(core, "init-fails", &vt, &fail_counters),
+              GN_ERR_INTEGRITY_FAILED);
+    EXPECT_EQ(fail_counters.init_calls.load(),     1);
+    EXPECT_EQ(fail_counters.shutdown_calls.load(), 0);
+
+    gn_core_destroy(core);
+    /// Destroy walked the PluginManager dtor which dropped every
+    /// registered runtime; the OK-init counter saw its paired
+    /// shutdown thunk fire.
+    EXPECT_EQ(counters.shutdown_calls.load(), 1);
+    /// The fail-init runtime was never owned by the manager — its
+    /// shutdown thunk stays at zero.
+    EXPECT_EQ(fail_counters.shutdown_calls.load(), 0);
+}
+
+TEST(CoreRegisterRuntime, LoadCustomKindEndToEnd) {
+    /// End-to-end: register a `"test-runtime"` kind, dispatch through
+    /// the kernel's runtime registry, and assert the vtable thunk
+    /// saw the entry name + path. This drives the same dispatch path
+    /// `PluginManager::open_one` would take if the manifest schema
+    /// already supported a free-form `runtime` field. The test
+    /// reaches into the C++ runtime registry via the internal core
+    /// handle to invoke `load()` directly — the public C ABI for
+    /// custom-kind loads will land in a later commit (today the
+    /// manifest still only maps to dynamic/static/remote).
+    runtime_test::Counters counters;
+    auto vt = runtime_test::make_vtable();
+
+    gn_core_t* core = gn_core_create();
+    ASSERT_NE(core, nullptr);
+    ASSERT_EQ(gn_core_init(core), GN_OK);
+
+    ASSERT_EQ(gn_core_register_runtime(core, "test-runtime", &vt, &counters),
+              GN_OK);
+
+    /// Reach through `gn_core_s` to the PluginManager's runtime
+    /// registry. `runtime_for` returns a borrowed pointer; the
+    /// manager owns the adapter and keeps it alive for the lifetime
+    /// of `core`.
+    auto* runtime = core->plugins.runtime_for("test-runtime");
+    ASSERT_NE(runtime, nullptr);
+    EXPECT_EQ(runtime->name(), "test-runtime");
+
+    /// Dispatch a fake load through the runtime. The kernel-internal
+    /// `PluginLoadContext` is the only argument we have to pass
+    /// directly — the manager builds it the same way during
+    /// `open_one`.
+    gn::core::PluginInstance inst{};
+    gn::core::PluginManifest empty_manifest;
+    gn::core::PluginLoadContext lc{
+        .kernel = &core->kernel,
+        .manifest = &empty_manifest,
+        .manifest_required = false,
+    };
+    std::string diag;
+    EXPECT_EQ(runtime->load("/virtual/path/wasm-plugin.wasm", lc, inst, diag),
+              GN_OK)
+        << "diag: " << diag;
+
+    /// The thunk recorded the canonical entry name + path. The
+    /// adapter derives the name from the path's basename minus the
+    /// extension; the path is forwarded verbatim.
+    EXPECT_EQ(counters.register_calls.load(), 1);
+    {
+        std::lock_guard lk(counters.mu);
+        ASSERT_EQ(counters.last_names.size(), 1u);
+        ASSERT_EQ(counters.last_paths.size(), 1u);
+        EXPECT_EQ(counters.last_names.front(), "wasm-plugin");
+        EXPECT_EQ(counters.last_paths.front(), "/virtual/path/wasm-plugin.wasm");
+    }
+    /// The adapter wrote a non-zero handle into `inst.self` (smuggled
+    /// through as a uintptr_t round-trip).
+    EXPECT_NE(inst.self, nullptr);
+
+    /// Tear the fake instance down through the same runtime — the
+    /// `unregister` thunk runs once, then `close` is a no-op.
+    runtime->unregister(inst);
+    EXPECT_EQ(counters.unregister_calls.load(), 1);
+    runtime->shutdown(inst);
+    runtime->close(inst, /*drained=*/true);
+
+    /// Second unregister is idempotent: `self` was nulled out so the
+    /// thunk skips the dispatch.
+    runtime->unregister(inst);
+    EXPECT_EQ(counters.unregister_calls.load(), 1);
+
+    gn_core_destroy(core);
+    EXPECT_EQ(counters.shutdown_calls.load(), 1);
+}

@@ -32,6 +32,16 @@ if(NOT TARGET goodnet_security_null)
          EXCLUDE REGEX "test_plugin_manager\\.cpp$")
 endif()
 
+# test_inject_depth.cpp requires GCC ≥ 16 (C++26 toolchain). Exclude it on
+# older compilers so builds on GCC 15 (devShell fallback, plugin-repo CI)
+# still succeed. The source carries a matching #error as backstop for
+# out-of-tree inclusion without this guard.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND
+   CMAKE_CXX_COMPILER_VERSION VERSION_LESS "16.0")
+    list(FILTER goodnet_unit_test_sources
+         EXCLUDE REGEX "test_inject_depth\\.cpp$")
+endif()
+
 if(NOT goodnet_unit_test_sources)
     message(STATUS "tests/unit: no test_*.cpp sources found; skipping")
     return()
@@ -42,13 +52,16 @@ add_executable(goodnet_unit_tests ${goodnet_unit_test_sources})
 target_link_libraries(goodnet_unit_tests
     PRIVATE
         goodnet_kernel
-        GoodNet::protocol_gnet
+        GoodNet::sdk_dx
         GTest::gtest
         GTest::gtest_main
         rapidcheck
         rapidcheck_gtest
         ${CMAKE_DL_LIBS}
 )
+if(TARGET GoodNet::protocol_gnet)
+    target_link_libraries(goodnet_unit_tests PRIVATE GoodNet::protocol_gnet)
+endif()
 
 # raw_inject integration test pulls the link's OBJECT lib plus the
 # raw-v1 protocol layer. The OBJECT lib is only present when the
@@ -62,6 +75,8 @@ endif()
 if(TARGET GoodNet::protocol_raw)
     target_link_libraries(goodnet_unit_tests
         PRIVATE GoodNet::protocol_raw)
+    target_compile_definitions(goodnet_unit_tests
+        PRIVATE GOODNET_HAS_PROTOCOL_RAW)
 endif()
 
 target_compile_features(goodnet_unit_tests PRIVATE cxx_std_23)

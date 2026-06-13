@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/kernel`, every plugin that observes connection state
-**Last verified:** 2026-05-08
+**Last verified:** 2026-05-19
 **Stability:** v1.x; the event-kind enum grows additively at the tail.
 
 ---

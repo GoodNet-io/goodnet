@@ -279,6 +279,30 @@ TEST(Config_Validate, InjectRateZeroRateAcceptedAnyBurst) {
     EXPECT_EQ(c.load_json(doc), GN_OK);
 }
 
+TEST(Config_Validate, CapabilityBlobExceedsPayloadRejectedAtLoad) {
+    /// capability blobs go on-wire as payloads; a blob limit above
+    /// the payload cap would silently promise something the transport
+    /// can never honour.
+    Config c;
+    const char* doc = R"({"limits": {
+        "max_payload_bytes": 4096,
+        "max_frame_bytes":   5000,
+        "max_capability_blob_bytes": 8192
+    }})";
+    EXPECT_EQ(c.load_json(doc), GN_ERR_LIMIT_REACHED);
+}
+
+TEST(Config_Validate, CapabilityBlobZeroDisablesGate) {
+    Config c;
+    const char* doc = R"({"limits": {
+        "max_payload_bytes": 4096,
+        "max_frame_bytes":   5000,
+        "max_storage_value_bytes": 512,
+        "max_capability_blob_bytes": 0
+    }})";
+    EXPECT_EQ(c.load_json(doc), GN_OK);
+}
+
 // ── get_string ───────────────────────────────────────────────────────────
 
 TEST(Config_GetString, TopLevelKey) {

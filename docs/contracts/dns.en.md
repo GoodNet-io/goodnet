@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `plugins/handlers/dns/`
-**Last verified:** 2026-05-13
+**Last verified:** 2026-05-19
 **Stability:** v1.x; wire layout below is locked. The handler
               rides the `gn.store` extension for storage today; if
               an operator-facing `IDnsBackend` split lands later

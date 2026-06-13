@@ -18,14 +18,15 @@
 
 #pragma once
 
-#include <atomic>
 #include <memory>
+#include <atomic>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include <sdk/security.h>
 #include <sdk/types.h>
+#include <core/util/atomic_shared_ptr.hpp>
 
 namespace gn::core {
 
@@ -47,6 +48,11 @@ struct SecurityEntry {
     /// and `SessionRegistry::create` cannot drift apart on the
     /// gate's interpretation.
     [[nodiscard]] std::uint32_t trust_mask() const noexcept;
+
+    /// Read the provider's `provides_flags` bitmask (GN_SEC_PROVIDES_*).
+    /// Guards with GN_API_HAS for vtables built before this slot existed.
+    /// Returns 0 on NULL vtable, missing slot, or throwing slot.
+    [[nodiscard]] std::uint32_t provides_flags() const noexcept;
 };
 
 class SecurityRegistry {
@@ -84,9 +90,14 @@ public:
     /// True when at least one provider is registered.
     [[nodiscard]] bool is_active() const noexcept;
 
+    /// Atomic snapshot of all registered providers in registration order.
+    /// Used by the topology builder. Returns an empty vector when none are
+    /// registered.
+    [[nodiscard]] std::vector<SecurityEntry> snapshot() const;
+
 private:
     using EntryVec = std::vector<SecurityEntry>;
-    std::atomic<std::shared_ptr<const EntryVec>> entries_{nullptr};
+    util::AtomicSharedPtr<const EntryVec> entries_;
 };
 
 } // namespace gn::core

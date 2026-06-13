@@ -487,12 +487,28 @@ def main(argv):
         out.append(f"| RAM | {env.get('ram', '?')} |")
         out.append(f"| Kernel | {env.get('kernel', '?')} |")
         gov = env.get('governor', '?')
-        gov_str = (f"`{gov}` (run `cpupower frequency-set -g performance` "
-                   f"for production-grade numbers — see "
-                   f"`docs/perf/methodology.en.md` §Environmental controls)"
-                   if gov not in ("performance", "?")
-                   else f"`{gov}`")
-        out.append(f"| CPU governor | {gov_str} |")
+        gov_note = env.get('governor_note', '')
+        scaling_driver = env.get('scaling_driver', '')
+        if gov_note == 'intel_pstate_at_max':
+            # intel_pstate "powersave" + scaling_max == cpuinfo_max: HWP
+            # boosts to max under load. Bench is not throttled; no action
+            # needed. Note the parse caveat so the reader understands why
+            # governor reads "powersave" while all recorded frequencies
+            # were at the CPU's rated maximum.
+            gov_str = (f"`{gov}` (intel_pstate — HWP at max freq; "
+                       f"governor label is misleading, CPU ran at rated max "
+                       f"throughout the bench run)")
+        elif gov_note == 'intel_pstate_limited':
+            gov_str = (f"`{gov}` (intel_pstate — scaling_max_freq < "
+                       f"cpuinfo_max_freq; turbo may be capped by policy)")
+        elif gov not in ("performance", "?"):
+            gov_str = (f"`{gov}` (run `cpupower frequency-set -g performance` "
+                       f"for production-grade numbers — see "
+                       f"`docs/perf/methodology.en.md` §Environmental controls)")
+        else:
+            gov_str = f"`{gov}`"
+        driver_suffix = f" / driver: `{scaling_driver}`" if scaling_driver not in ('', 'unknown') else ''
+        out.append(f"| CPU governor | {gov_str}{driver_suffix} |")
         out.append(f"| Turbo | {env.get('turbo', '?')} |")
         out.append(f"| SMT | {env.get('smt', '?')} |")
         out.append(f"| ASLR | {env.get('aslr', '?')} (0=off, 1=stack, 2=full) |")
@@ -635,14 +651,21 @@ def main(argv):
     # neither libp2p nor iroh's primary transport so the column is
     # dropped) against the libp2p / iroh runner outputs. Same stack
     # shape on every row: transport + AEAD + framing/mux.
-    #   * GoodNet TCP+Noise+gnet  ↔  libp2p (TCP+Noise+Yamux)
-    #   * GoodNet QUIC+TLS+gnet   ↔  iroh   (QUIC+TLS 1.3)   [pending]
+    #   * GoodNet TCP+Noise+gnet   ↔  libp2p (TCP+Noise+Yamux)
+    #   * GoodNet QUIC+Noise+gnet  ↔  iroh   (QUIC+TLS 1.3)  — full stack
+    #   * GoodNet QUIC+TLS+gnet    ↔  iroh   (QUIC+TLS 1.3)  — 1:1, no Noise
     # iperf3 / socat parody rows live in `## Cross-implementation
     # throughput` and are NOT directly comparable to this section.
     # See `docs/perf/methodology.en.md` §1.3 (pairing rule).
     echo_re = re.compile(
-        r"^RealFixture(?P<plug>Tcp|Ipc|Quic)Echo/"
-        r"(?:Tcp|Ipc|Quic)EchoRoundtrip/(?P<sz>\d+)/")
+        r"^RealFixture(?P<plug>Tcp|Ipc|Quic|QuicTls)Echo/"
+        r"(?:Tcp|Ipc|Quic|QuicTls)EchoRoundtrip/(?P<sz>\d+)/")
+    _echo_col = {
+        "Tcp":     "GoodNet TCP+Noise+gnet",
+        "Ipc":     "GoodNet IPC+Noise+gnet",
+        "Quic":    "GoodNet QUIC+Noise+gnet",
+        "QuicTls": "GoodNet QUIC+TLS+gnet",
+    }
     by_payload: dict[int, dict[str, float]] = {}
     # Track which `mode` tag each cell landed with so the pivot can
     # fail fast if a parody row sneaks in via a future runner
@@ -654,7 +677,7 @@ def main(argv):
         if not m or not r.get("throughput_bps"):
             continue
         sz = int(m.group("sz"))
-        col = f"GoodNet {m.group('plug').upper()}+Noise+gnet"
+        col = _echo_col.get(m.group("plug"), f"GoodNet {m.group('plug').upper()}+Noise+gnet")
         by_payload.setdefault(sz, {})[col] = float(r["throughput_bps"])
         cell_modes.append((col, r.get("mode", "real")))
     for tbl in aggregated.get("tables", []):
@@ -662,36 +685,39 @@ def main(argv):
                 "libp2p_echo_throughput", "iroh_echo_throughput"):
             continue
         tbl_mode = tbl.get("mode", "real")
+        _stack_display = {
+            "libp2p": "libp2p (TCP+Noise+Yamux)",
+            "iroh":   "iroh (QUIC+TLS1.3)",
+        }
         for row in tbl.get("rows", []):
             sz = row.get("payload")
             bps = row.get("bytes_per_sec", 0)
             if not isinstance(sz, (int, float)) or not bps:
                 continue
-            col = row.get("stack", "?")
+            col = _stack_display.get(row.get("stack", "?"),
+                                     row.get("stack", "?"))
             by_payload.setdefault(int(sz), {})[col] = float(bps)
             cell_modes.append((col, tbl_mode))
     _validate_pivot_modes(cell_modes,
                           "А. Comparable echo round-trip")
     if by_payload:
         stacks = ["GoodNet TCP+Noise+gnet", "GoodNet IPC+Noise+gnet",
-                  "GoodNet QUIC+Noise+gnet",
+                  "GoodNet QUIC+Noise+gnet", "GoodNet QUIC+TLS+gnet",
                   "libp2p (TCP+Noise+Yamux)", "iroh (QUIC+TLS1.3)"]
         out.append("## А. Comparable echo round-trip — "
                    "production stack vs libp2p / iroh")
         out.append("")
         out.append("_Same conceptual stack on every row: transport "
                    "+ AEAD + framing/mux. GoodNet rows are "
-                   "`RealFixture<plug>Echo` cases (kernel + Noise XX "
-                   "+ gnet protocol). libp2p uses Noise XX + Yamux; "
-                   "iroh uses TLS 1.3 + QUIC streams. Compare "
-                   "directly within this section. iperf3 / socat "
-                   "parody rows live in `## Cross-implementation "
-                   "throughput` and are NOT directly comparable — see "
-                   "`docs/perf/methodology.en.md` §1.3 (pairing rule). "
-                   "Real-QUIC fixture is not wired; the QuicLink "
-                   "carrier-bring-up path needs a LinkCarrier + "
-                   "`composer_listen` / `composer_connect` fixture "
-                   "before the iroh row can land here._")
+                   "`RealFixture<plug>Echo` cases (kernel + gnet "
+                   "protocol). `QUIC+Noise` adds Noise XX on top of "
+                   "QUIC TLS; `QUIC+TLS` is QUIC TLS 1.3 only — "
+                   "1:1 comparable with iroh. libp2p uses Noise XX "
+                   "+ Yamux; iroh uses TLS 1.3 + QUIC streams. "
+                   "iperf3 / socat parody rows live in `## Cross-"
+                   "implementation throughput` and are NOT directly "
+                   "comparable — see "
+                   "`docs/perf/methodology.en.md` §1.3 (pairing rule)._")
         out.append("")
         out.append("| Payload | " + " | ".join(stacks) + " |")
         out.append("|---|" + "---|" * len(stacks))

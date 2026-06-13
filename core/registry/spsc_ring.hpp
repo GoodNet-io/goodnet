@@ -18,6 +18,10 @@
 #include <array>
 #include <atomic>
 #include <cstddef>
+#if __has_include(<inplace_vector>)
+#  include <inplace_vector>
+#  define GOODNET_HAS_INPLACE_VECTOR 1
+#endif
 #include <type_traits>
 #include <vector>
 
@@ -64,6 +68,28 @@ public:
         tail_.store((tail + 1) & kMask, std::memory_order_release);
         return true;
     }
+
+#ifdef GOODNET_HAS_INPLACE_VECTOR
+    /// Consumer: drain up to @p max items into @p out. Returns count drained.
+    /// Overload for `std::inplace_vector` — no heap allocation, bounded capacity.
+    template <std::size_t OutCap>
+    std::size_t drain(std::inplace_vector<T, OutCap>& out, std::size_t max) noexcept(
+        std::is_nothrow_move_assignable_v<T>) {
+        const std::size_t tail = tail_.load(std::memory_order_relaxed);
+        const std::size_t head = head_.load(std::memory_order_acquire);
+        if (tail == head) return 0;
+        const std::size_t avail = (head - tail) & kMask;
+        const std::size_t room  = OutCap - out.size();
+        const std::size_t n     = std::min({max, avail, room});
+        std::size_t pos = tail;
+        for (std::size_t i = 0; i < n; ++i) {
+            out.push_back(std::move(buf_[pos]));
+            pos = (pos + 1) & kMask;
+        }
+        tail_.store(pos, std::memory_order_release);
+        return n;
+    }
+#endif
 
     /// Consumer: drain up to @p max items into @p out. Returns count drained.
     std::size_t drain(std::vector<T>& out, std::size_t max) {
@@ -130,6 +156,14 @@ public:
     std::size_t drain(std::vector<T>& out, std::size_t max) {
         return ring_.drain(out, max);
     }
+
+#ifdef GOODNET_HAS_INPLACE_VECTOR
+    template <std::size_t OutCap>
+    std::size_t drain(std::inplace_vector<T, OutCap>& out, std::size_t max)
+        noexcept(std::is_nothrow_move_assignable_v<T>) {
+        return ring_.drain(out, max);
+    }
+#endif
 
     /// Single-consumer pop — no lock needed.
     bool try_pop(T& out) noexcept(std::is_nothrow_move_assignable_v<T>) {

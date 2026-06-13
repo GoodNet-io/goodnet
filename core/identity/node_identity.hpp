@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -19,6 +20,7 @@
 #include "attestation.hpp"
 #include "derive.hpp"
 #include "keypair.hpp"
+#include "signer.hpp"
 #include "sub_key_registry.hpp"
 
 namespace gn::core::identity {
@@ -57,10 +59,32 @@ public:
     [[nodiscard]] static ::gn::Result<NodeIdentity>
     compose(KeyPair&& user, KeyPair&& device, std::int64_t expiry_unix_ts);
 
+    /// Compose around a host-supplied `IdentitySigner`. The user
+    /// public key is whatever @p signer reports through `pubkey(...)`;
+    /// the user `KeyPair` stays pubkey-only (`has_secret() == false`)
+    /// because the private bytes live outside the process (PKCS#11
+    /// token, TPM handle, OS keychain, WebAuthn authenticator, ...).
+    /// A fresh in-process device keypair is minted for the transport
+    /// handshake — same shape as `generate` / `compose`, the device
+    /// keypair is always kernel-local because it has to be available
+    /// to inline crypto.
+    [[nodiscard]] static ::gn::Result<NodeIdentity>
+    from_signer(std::unique_ptr<IdentitySigner> signer,
+                std::int64_t                    expiry_unix_ts);
+
     [[nodiscard]] const KeyPair&            user()        const noexcept { return user_; }
     [[nodiscard]] const KeyPair&            device()      const noexcept { return device_; }
     [[nodiscard]] const Attestation&        attestation() const noexcept { return att_; }
     [[nodiscard]] const ::gn::PublicKey&    address()     const noexcept { return address_; }
+
+    /// Abstract signer over the user identity key. Every kernel call
+    /// site that previously signed with `user().sign(...)` migrated
+    /// to `signer()->sign(...)` in Phase 1; Phase 2 lets hosts swap
+    /// the in-process `LibsodiumSigner` for an HSM-backed
+    /// implementation without disturbing callers. Non-null whenever
+    /// the identity was constructed through `compose` / `generate` /
+    /// `load_from_file` — only a moved-from instance returns null.
+    [[nodiscard]] IdentitySigner*           signer()      const noexcept { return signer_.get(); }
 
     [[nodiscard]] SubKeyRegistry&           sub_keys()       noexcept { return sub_keys_; }
     [[nodiscard]] const SubKeyRegistry&     sub_keys() const noexcept { return sub_keys_; }
@@ -71,8 +95,8 @@ public:
     [[nodiscard]] const std::vector<RotationEntry>&
     rotation_history() const noexcept { return rotation_history_; }
 
-    /// Bump the rotation counter (Phase 5 calls this when announcing
-    /// or applying a rotation). Returns the new value.
+    /// Bump the rotation counter (called when announcing or applying
+    /// a rotation). Returns the new value.
     std::uint64_t bump_rotation_counter() noexcept {
         return ++rotation_counter_;
     }
@@ -110,13 +134,14 @@ public:
     [[nodiscard]] ::gn::Result<NodeIdentity> clone() const;
 
 private:
-    KeyPair                     user_;
-    KeyPair                     device_;
-    Attestation                 att_{};
-    ::gn::PublicKey             address_{};
-    SubKeyRegistry              sub_keys_;
-    std::uint64_t               rotation_counter_ = 0;
-    std::vector<RotationEntry>  rotation_history_;
+    KeyPair                                  user_;
+    KeyPair                                  device_;
+    Attestation                              att_{};
+    ::gn::PublicKey                          address_{};
+    SubKeyRegistry                           sub_keys_;
+    std::uint64_t                            rotation_counter_ = 0;
+    std::vector<RotationEntry>               rotation_history_;
+    std::unique_ptr<IdentitySigner>          signer_;
 };
 
 } // namespace gn::core::identity

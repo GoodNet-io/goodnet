@@ -18,6 +18,39 @@ target_include_directories(goodnet_sdk INTERFACE
 )
 
 target_compile_features(goodnet_sdk INTERFACE cxx_std_23)
+# GCC 16 defines __cpp_contracts in C++26 mode, making GN_EXPECTS expand
+# to pre() annotations that reference handle_contract_violation at link time.
+# libstdc++exp provides the weak default implementation.
+target_link_libraries(goodnet_sdk INTERFACE
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:stdc++exp>)
+
+# ── DX (developer-experience) layer ──────────────────────────────────────────
+# `sdk/cpp/core.hpp` + `sdk/cpp/errors.hpp` + `sdk/cpp/host_api_default.hpp`
+# need an implementation TU for the manifest JSON parser, the error-hint
+# table, and the singleton init guard. Compiled as a small static library
+# so downstream apps link the host_api_default + Core lifecycle code once.
+add_library(goodnet_sdk_dx STATIC cpp/core.cpp)
+add_library(GoodNet::sdk_dx ALIAS goodnet_sdk_dx)
+set_target_properties(goodnet_sdk_dx PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    EXPORT_NAME sdk_dx
+)
+target_include_directories(goodnet_sdk_dx PUBLIC
+    "$<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}>"
+    "$<INSTALL_INTERFACE:include/goodnet>"
+)
+target_link_libraries(goodnet_sdk_dx
+    PUBLIC
+        GoodNet::sdk
+    PRIVATE
+        nlohmann_json::nlohmann_json
+        PkgConfig::SODIUM
+)
+target_compile_features(goodnet_sdk_dx PUBLIC cxx_std_26)
+target_compile_options(goodnet_sdk_dx PRIVATE
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:-fcontracts>)
+target_link_libraries(goodnet_sdk_dx PUBLIC
+    $<$<AND:$<CXX_COMPILER_ID:GNU>,$<VERSION_GREATER_EQUAL:$<CXX_COMPILER_VERSION>,16>>:stdc++exp>)
 
 # ── Subprocess plugin worker stub ────────────────────────────────────────────
 # Static library a worker binary links to inherit the wire-protocol
@@ -46,7 +79,7 @@ if(NOT WIN32)
         "$<INSTALL_INTERFACE:include/goodnet>"
     )
     target_link_libraries(goodnet_remote_plugin_stub PUBLIC GoodNet::sdk)
-    target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_23)
+    target_compile_features(goodnet_remote_plugin_stub PUBLIC cxx_std_26)
 endif()
 
 # ── Install ──────────────────────────────────────────────────────────────────
@@ -54,7 +87,7 @@ endif()
 # `GoodNet::sdk` as the C ABI header-only target. Plugins outside this tree
 # link against it, never against the kernel — the kernel side stays GPL
 # with the linker exception per the top-level LICENSE.
-install(TARGETS goodnet_sdk EXPORT GoodNetTargets)
+install(TARGETS goodnet_sdk goodnet_sdk_dx EXPORT GoodNetTargets)
 
 install(
     DIRECTORY   "${CMAKE_CURRENT_SOURCE_DIR}/"

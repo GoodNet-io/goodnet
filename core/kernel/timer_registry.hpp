@@ -4,7 +4,7 @@
 ///         `docs/contracts/timer.en.md`. Fire-and-forget work uses
 ///         `set_timer(delay_ms = 0, …, out_id = NULL)`.
 ///
-/// The registry owns one `asio::io_context` and the worker thread
+/// The registry owns one `exec::timed_thread_context` and the worker thread
 /// that drives it. The thread serialises every task and timer
 /// callback so plugins observe the single-thread guarantee from
 /// `timer.en.md` §3 without depending on any transport's executor.
@@ -23,16 +23,19 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
 #include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <queue>
 #include <thread>
 #include <unordered_map>
+#include <vector>
 
-#include <asio/executor_work_guard.hpp>
-#include <asio/io_context.hpp>
-#include <asio/steady_timer.hpp>
+#ifndef __EMSCRIPTEN__
+#include <exec/timed_thread_scheduler.hpp>
+#endif
 
 #include <sdk/types.h>
 
@@ -110,15 +113,32 @@ public:
 
 private:
     struct TimerEntry {
-        std::shared_ptr<asio::steady_timer> timer;
         std::weak_ptr<PluginAnchor>         anchor;
         gn_task_fn_t                        fn          = nullptr;
         void*                               user_data   = nullptr;
+#ifdef __EMSCRIPTEN__
+        bool                                is_post     = false;
+#endif
     };
 
-    asio::io_context                                          ioc_;
-    asio::executor_work_guard<asio::io_context::executor_type> work_;
-    std::thread                                               worker_;
+#ifndef __EMSCRIPTEN__
+    exec::timed_thread_context                                ctx_;
+#else
+    // Emscripten: background-thread scheduler replacing stdexec.
+    struct WasmEntry {
+        std::chrono::steady_clock::time_point fire_at;
+        gn_timer_id_t                         id;
+        bool operator>(const WasmEntry& o) const noexcept { return fire_at > o.fire_at; }
+    };
+    std::mutex                                               wasm_mu_;
+    std::condition_variable                                  wasm_cv_;
+    std::priority_queue<WasmEntry,
+                        std::vector<WasmEntry>,
+                        std::greater<WasmEntry>>             wasm_queue_;
+    bool                                                     wasm_stop_{false};
+    std::thread                                              wasm_worker_;
+    void wasm_run() noexcept;
+#endif
     std::atomic<bool>                                         shutdown_{false};
 
     mutable std::mutex                                  mu_;

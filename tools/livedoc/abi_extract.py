@@ -1,5 +1,15 @@
 """libclang AST walker over sdk/*.h — emits diff-friendly fact YAML.
 
+Scope: only `sdk/*.h` (the C ABI) is extracted. `sdk/cpp/*.hpp`
+(Core, Error, host_api_default, identity, connect/listen_to/
+subscription/wire, …) is deliberately excluded because the C++
+surface is an in-process convenience layer, not a cross-language
+ABI; a machine-readable extraction of it would document
+implementation, not contract. If a future need arises, add a
+sibling `sdk_cpp_extract.py` rather than overloading this module
+— C++ AST traversal needs a different cursor walk (class /
+struct templates, public methods, default args, etc.).
+
 Each public vtable becomes a `docs/_facts/<name>.yaml` with the
 exact slot list, signatures, file:line back-references, doc-string
 prefixes, and reserved-slot counts. Renderers and diagram

@@ -27,13 +27,11 @@ typedef enum gn_conn_event_kind_e {
     GN_CONN_EVENT_BACKPRESSURE_SOFT  = 4, /**< pending_queue crossed *_high */
     GN_CONN_EVENT_BACKPRESSURE_CLEAR = 5, /**< pending_queue dropped below *_low */
     /** Peer announced a user_pk rotation (`identity.en.md` §7).
-     *  The pinned `user_pk` for `remote_pk` advanced to a new
-     *  value; subscribers update their connectivity-graph edges
-     *  without disconnecting the live transport. The new and old
-     *  user_pk values arrive through `_reserved[0]` and
-     *  `_reserved[1]` as `const uint8_t*` pointers valid for the
-     *  callback duration; `_reserved[2]` carries
-     *  `const uint64_t*` to the rotation counter. */
+     *  The pinned `user_pk` for `remote_pk` advanced to a new value;
+     *  subscribers update their connectivity-graph edges without
+     *  disconnecting the live transport.
+     *  See `gn_conn_event_t::user_pk_prev`, `user_pk_next`,
+     *  `rotation_seq` for the accompanying payload. */
     GN_CONN_EVENT_IDENTITY_ROTATED   = 6
 } gn_conn_event_kind_t;
 
@@ -50,7 +48,14 @@ typedef struct gn_conn_event_s {
     gn_trust_class_t      trust;          /**< current trust at the event */
     uint8_t               remote_pk[GN_PUBLIC_KEY_BYTES];
     uint64_t              pending_bytes;  /**< populated for BACKPRESSURE_*; 0 otherwise */
-    void*                 _reserved[4];
+    /** @name IDENTITY_ROTATED payload — borrowed for the callback duration;
+     *  NULL for all other event kinds. */
+    /**@{*/
+    const uint8_t*        user_pk_prev;  /**< previous user public key (GN_PUBLIC_KEY_BYTES) */
+    const uint8_t*        user_pk_next;  /**< new user public key (GN_PUBLIC_KEY_BYTES) */
+    const uint64_t*       rotation_seq;  /**< monotone rotation counter */
+    /**@}*/
+    void*                 _reserved[1];  /**< ABI evolution; MUST be zero */
 } gn_conn_event_t;
 
 /** Subscription handle returned from `host_api->subscribe`. */

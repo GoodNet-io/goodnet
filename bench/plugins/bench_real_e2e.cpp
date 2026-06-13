@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/plugins/bench_real_e2e.cpp
-/// @brief  Production-shape bench (A.2 from the master plan).
+/// @brief  Production-shape end-to-end bench.
 ///
 /// Every other bench under `bench/plugins/*` wires a link plugin to
 /// the `LinkStub` test fixture — no security provider, no protocol
@@ -17,12 +17,21 @@
 /// with the parody matrix.
 
 #include "../bench_harness.hpp"
+#include "../carrier_bridges.hpp"
 
 #include <bench/test_bench_helper.hpp>
 
+#include <plugins/links/quic/quic.hpp>
 #include <plugins/links/tcp/tcp.hpp>
 #include <plugins/links/udp/udp.hpp>
 #include <plugins/links/ipc/ipc.hpp>
+
+#include "../../plugins/links/tls/tests/support/test_self_signed_cert.hpp"
+
+
+#include <sdk/conn_events.h>
+#include <sdk/extensions/link.h>
+#include <sdk/trust.h>
 
 #include <benchmark/benchmark.h>
 
@@ -31,8 +40,10 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
+#include <mutex>
 #include <string>
 #include <unistd.h>
+#include <unordered_map>
 
 #ifndef GOODNET_NOISE_PLUGIN_PATH
 #error "GOODNET_NOISE_PLUGIN_PATH must be defined by the bench CMakeLists"
@@ -349,16 +360,413 @@ BENCHMARK_REGISTER_F(RealFixtureTcpEcho, TcpEchoRoundtrip)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
-// Real-QUIC echo round-trip is not wired here.
-// QuicLink::listen/connect return GN_ERR_NOT_IMPLEMENTED in
-// `plugins/links/quic/quic.cpp:148-156` — QUIC is composer-only
-// over a UDP carrier (see `plugins/links/quic/quic.hpp:58-62`).
-// A Real-mode QUIC fixture would need `BenchNode` extended with a
-// LinkCarrier + `set_server_credentials` + `composer_listen` /
-// `composer_connect` bring-up path. Adding the fixture means
-// registering `RealFixtureQuicEcho/QuicEchoRoundtrip` here with
-// the same Arg sweep so the aggregator's `## А.` section shows
-// the iroh-comparable row.
+// ── QUIC ────────────────────────────────────────────────────────────
+//
+// QUIC is composer-only: it layers over a UDP carrier instead of
+// calling notify_connect / notify_inbound_bytes directly. QuicBenchNode
+// bridges the composer surface back into the real kernel by maintaining
+// kern_id ↔ comp_id maps and forwarding in both directions.
+
+struct QuicBenchNode {
+    std::unique_ptr<gn::core::Kernel>                    kernel = std::make_unique<gn::core::Kernel>();
+    std::shared_ptr<gn::plugins::gnet::GnetProtocol>     proto  = std::make_shared<gn::plugins::gnet::GnetProtocol>();
+    gn::core::PluginContext                              ctx;
+    host_api_t                                           api{};
+    void*                                                noise_self = nullptr;
+    NoisePlugin*                                         np         = nullptr;
+    gn::PublicKey                                        local_pk{};
+
+    std::shared_ptr<gn::link::quic::QuicLink>            quic;
+    gn::bench::BenchKernel                               udp_bench_kernel;
+    gn::bench::CarrierBridge<gn::link::udp::UdpLink>    udp_bridge;
+    gn_link_id_t                                         link_id    = GN_INVALID_ID;
+    gn_subscription_id_t                                 accept_tok = GN_INVALID_SUBSCRIPTION_ID;
+
+    mutable std::mutex                                   bridge_mu;
+    std::unordered_map<gn_conn_id_t, gn_conn_id_t>       kern_to_comp;
+    std::unordered_map<gn_conn_id_t, gn_conn_id_t>       comp_to_kern;
+    gn_link_vtable_t                                     quic_vtable{};
+
+    QuicBenchNode(NoisePlugin& noise, std::string name, bool with_noise = true)
+        : np(&noise) {
+        ctx.plugin_name = std::move(name);
+        ctx.kernel      = kernel.get();
+
+        gn::core::protocol_layer_id_t proto_id = gn::core::kInvalidProtocolLayerId;
+        (void)kernel->protocol_layers().register_layer(proto, &proto_id);
+
+        if (with_noise) {
+            auto ident = gn::core::identity::NodeIdentity::generate(/*expiry*/0);
+            if (ident) {
+                local_pk = ident->device().public_key();
+                kernel->identities().add(local_pk);
+                kernel->set_node_identity(std::move(*ident));
+            }
+        }
+
+        api = gn::core::build_host_api(ctx);
+        api.limits = +[](void*) noexcept -> const gn_limits_t* {
+            static const gn_limits_t kBench{};
+            return &kBench;
+        };
+
+        if (with_noise && np->ok()) {
+            (void)np->plugin_init(&api, &noise_self);
+            if (noise_self) (void)np->plugin_reg(noise_self);
+        }
+
+        udp_bridge.plugin->set_host_api(&udp_bench_kernel.api);
+        udp_bridge.plugin->set_mtu(65000);
+        if (api.register_extension) {
+            (void)api.register_extension(api.host_ctx, "gn.link.udp",
+                                          GN_EXT_LINK_VERSION, &udp_bridge.vt);
+        }
+
+        quic = std::make_shared<gn::link::quic::QuicLink>();
+        quic->set_host_api(&api);
+        quic->set_verify_peer(false);
+
+        quic_vtable        = {};
+        quic_vtable.api_size = sizeof(quic_vtable);
+        static thread_local const char* s_scheme;
+        s_scheme           = "quic";
+        quic_vtable.scheme = +[](void*) noexcept -> const char* { return s_scheme; };
+        quic_vtable.send   = &s_send;
+        quic_vtable.send_batch = +[](void*, gn_conn_id_t,
+                                      const gn_byte_span_t*, std::size_t) {
+            return GN_ERR_NOT_IMPLEMENTED;
+        };
+        quic_vtable.disconnect       = &s_disconnect;
+        quic_vtable.listen           = +[](void*, const char*) { return GN_ERR_NOT_IMPLEMENTED; };
+        quic_vtable.connect          = +[](void*, const char*) { return GN_ERR_NOT_IMPLEMENTED; };
+        quic_vtable.extension_name   = +[](void*) noexcept -> const char*  { return nullptr; };
+        quic_vtable.extension_vtable = +[](void*) noexcept -> const void*  { return nullptr; };
+        quic_vtable.destroy          = +[](void*) noexcept                 {};
+
+        gn_register_meta_t mt{};
+        mt.api_size = sizeof(gn_register_meta_t);
+        mt.name     = "quic";
+        if (api.register_vtable) {
+            (void)api.register_vtable(api.host_ctx, GN_REGISTER_LINK, &mt,
+                                       &quic_vtable, this, &link_id);
+        }
+    }
+
+    QuicBenchNode(const QuicBenchNode&)            = delete;
+    QuicBenchNode& operator=(const QuicBenchNode&) = delete;
+
+    ~QuicBenchNode() {
+        if (accept_tok != GN_INVALID_SUBSCRIPTION_ID && quic) {
+            (void)quic->composer_unsubscribe_accept(accept_tok);
+        }
+        if (quic) quic->shutdown();
+        udp_bridge.plugin->shutdown();
+        if (noise_self && np && np->ok()) {
+            (void)np->plugin_unreg(noise_self);
+            np->plugin_shut(noise_self);
+            noise_self = nullptr;
+        }
+    }
+
+    gn_conn_id_t bridge_conn(gn_conn_id_t comp_id, std::string_view peer_uri,
+                              gn_handshake_role_t role,
+                              gn_trust_class_t trust = GN_TRUST_LOOPBACK) {
+        std::uint8_t zero_pk[GN_PUBLIC_KEY_BYTES] = {};
+        const std::string uri_str(peer_uri);
+        gn_conn_id_t kern_id = GN_INVALID_ID;
+        if (!api.notify_connect) {
+            std::fprintf(stderr, "[bridge_conn] notify_connect is null\n");
+            return GN_INVALID_ID;
+        }
+        const gn_result_t rc = api.notify_connect(
+            api.host_ctx, zero_pk, uri_str.c_str(),
+            trust, role, &kern_id);
+        if (rc != GN_OK || kern_id == GN_INVALID_ID) {
+            std::fprintf(stderr, "[bridge_conn] notify_connect failed rc=%d kern_id=%llu uri=%s\n",
+                rc, (unsigned long long)kern_id, uri_str.c_str());
+            return GN_INVALID_ID;
+        }
+        {
+            std::lock_guard lk(bridge_mu);
+            kern_to_comp[kern_id] = comp_id;
+            comp_to_kern[comp_id] = kern_id;
+        }
+        (void)quic->composer_subscribe_data(comp_id, &s_data, this);
+        if (api.kick_handshake) {
+            (void)api.kick_handshake(api.host_ctx, kern_id);
+        }
+        return kern_id;
+    }
+
+    static gn_result_t s_send(void* self, gn_conn_id_t kid,
+                               const std::uint8_t* b, std::size_t n) {
+        if (!self || (!b && n > 0)) return GN_ERR_NULL_ARG;
+        auto* node = static_cast<QuicBenchNode*>(self);
+        gn_conn_id_t comp_id = GN_INVALID_ID;
+        {
+            std::lock_guard lk(node->bridge_mu);
+            auto it = node->kern_to_comp.find(kid);
+            if (it == node->kern_to_comp.end()) return GN_ERR_NOT_FOUND;
+            comp_id = it->second;
+        }
+        return node->quic->send(comp_id, std::span<const std::uint8_t>(b, n));
+    }
+
+    static gn_result_t s_disconnect(void* self, gn_conn_id_t kid) {
+        if (!self) return GN_ERR_NULL_ARG;
+        auto* node = static_cast<QuicBenchNode*>(self);
+        gn_conn_id_t comp_id = GN_INVALID_ID;
+        {
+            std::lock_guard lk(node->bridge_mu);
+            auto it = node->kern_to_comp.find(kid);
+            if (it == node->kern_to_comp.end()) return GN_ERR_NOT_FOUND;
+            comp_id = it->second;
+        }
+        return node->quic->disconnect(comp_id);
+    }
+
+    static void s_data(void* user, gn_conn_id_t comp_id,
+                        const std::uint8_t* b, std::size_t n) {
+        auto* node = static_cast<QuicBenchNode*>(user);
+        if (!node || !node->api.notify_inbound_bytes) return;
+        gn_conn_id_t kern_id = GN_INVALID_ID;
+        {
+            std::lock_guard lk(node->bridge_mu);
+            auto it = node->comp_to_kern.find(comp_id);
+            if (it == node->comp_to_kern.end()) return;
+            kern_id = it->second;
+        }
+        (void)node->api.notify_inbound_bytes(node->api.host_ctx, kern_id, b, n);
+    }
+
+    [[nodiscard]] gn_conn_id_t transport_conn() const {
+        for (gn_conn_id_t id = 1; id <= 8; ++id) {
+            if (auto s = kernel->sessions().find(id);
+                s && s->phase() == ::gn::core::SecurityPhase::Transport) {
+                return id;
+            }
+        }
+        return GN_INVALID_ID;
+    }
+
+    static bool wait_both_transport(const QuicBenchNode& a, const QuicBenchNode& b,
+                                     std::chrono::milliseconds timeout) {
+        return ::gn::sdk::test::wait_for(
+            [&] {
+                return a.transport_conn() != GN_INVALID_ID
+                    && b.transport_conn() != GN_INVALID_ID;
+            }, timeout);
+    }
+
+    // For link-only (no Noise): any established connection record suffices.
+    [[nodiscard]] gn_conn_id_t any_conn() const {
+        std::lock_guard lk(bridge_mu);
+        if (kern_to_comp.empty()) return GN_INVALID_ID;
+        return kern_to_comp.begin()->first;
+    }
+
+    static bool wait_both_connected(const QuicBenchNode& a, const QuicBenchNode& b,
+                                     std::chrono::milliseconds timeout) {
+        return ::gn::sdk::test::wait_for(
+            [&] {
+                const bool a_ok = [&]{ std::lock_guard lk(a.bridge_mu); return !a.kern_to_comp.empty(); }();
+                const bool b_ok = [&]{ std::lock_guard lk(b.bridge_mu); return !b.kern_to_comp.empty(); }();
+                return a_ok && b_ok;
+            }, timeout);
+    }
+};
+
+struct RealFixtureQuicEcho : public ::benchmark::Fixture {
+    bool              setup_echo  = true;
+    RxCounter         pong;
+    RxEchoResponder   echo_resp;
+    std::unique_ptr<QuicBenchNode> alice;
+    std::unique_ptr<QuicBenchNode> bob;
+    gn_handler_id_t   pong_hid     = GN_INVALID_ID;
+    gn_handler_id_t   rx_echo_hid  = GN_INVALID_ID;
+    gn_conn_id_t      bob_conn     = GN_INVALID_ID;
+    bool              ready        = false;
+
+    void SetUp(::benchmark::State&) override {
+        if (ready) return;
+        NoisePlugin& noise_ref = process_noise();
+        if (!noise_ref.ok()) return;
+
+        alice = std::make_unique<QuicBenchNode>(noise_ref, "alice");
+        bob   = std::make_unique<QuicBenchNode>(noise_ref, "bob");
+
+        rx_echo_hid = register_echo_responder(*alice->kernel,
+            kPingMsgId, kPongMsgId, &alice->api, echo_resp);
+        pong_hid    = register_rx(*bob->kernel, kPongMsgId, pong);
+
+        std::string cert, key;
+        if (!gn::tests::support::generate_self_signed(cert, key)) {
+            std::fprintf(stderr, "[QuicBenchNode] generate_self_signed failed\n");
+            return;
+        }
+        alice->quic->set_server_credentials(cert, key);
+
+        const gn_result_t rc_sub = alice->quic->composer_subscribe_accept(
+            +[](void* user, gn_conn_id_t comp_id, const char* peer_uri) {
+                auto* node = static_cast<QuicBenchNode*>(user);
+                // QuicLink provides the UDP-layer peer address ("udp://…").
+                // Rewrite the scheme to "quic" so rec->scheme matches the
+                // vtable registered under that name in the link registry.
+                std::string uri = "quic://127.0.0.1:0";
+                if (peer_uri) {
+                    std::string_view raw(peer_uri);
+                    const auto sep = raw.find("://");
+                    if (sep != std::string_view::npos)
+                        uri = "quic://" + std::string(raw.substr(sep + 3));
+                }
+                node->bridge_conn(comp_id, uri, GN_ROLE_RESPONDER);
+            },
+            alice.get(), &alice->accept_tok);
+        if (rc_sub != GN_OK) {
+            std::fprintf(stderr, "[QuicBenchNode] composer_subscribe_accept failed rc=%d\n", rc_sub);
+            return;
+        }
+
+        gn_result_t rc_listen = alice->quic->composer_listen("quic://127.0.0.1:0");
+        if (rc_listen != GN_OK) {
+            std::fprintf(stderr, "[QuicBenchNode] composer_listen failed rc=%d\n", rc_listen);
+            return;
+        }
+        std::uint16_t port = 0;
+        if (alice->quic->composer_listen_port(&port) != GN_OK || port == 0) {
+            std::fprintf(stderr, "[QuicBenchNode] composer_listen_port failed port=%u\n", port);
+            return;
+        }
+
+        gn_conn_id_t bob_comp_id = GN_INVALID_ID;
+        const std::string dial_uri = "quic://127.0.0.1:" + std::to_string(port);
+        gn_result_t rc_connect = bob->quic->composer_connect(dial_uri, &bob_comp_id);
+        if (rc_connect != GN_OK) {
+            std::fprintf(stderr, "[QuicBenchNode] composer_connect failed rc=%d\n", rc_connect);
+            return;
+        }
+        bob->bridge_conn(bob_comp_id, dial_uri, GN_ROLE_INITIATOR);
+
+        if (!QuicBenchNode::wait_both_transport(*alice, *bob, 10s)) {
+            std::fprintf(stderr, "[QuicBenchNode] wait_both_transport timed out (alice=%llu bob=%llu)\n",
+                (unsigned long long)alice->transport_conn(),
+                (unsigned long long)bob->transport_conn());
+            return;
+        }
+        bob_conn = bob->transport_conn();
+        ready    = (bob_conn != GN_INVALID_ID);
+    }
+
+    void TearDown(::benchmark::State&) override {}
+};
+
+BENCHMARK_DEFINE_F(RealFixtureQuicEcho, QuicEchoRoundtrip)(::benchmark::State& state) {
+    run_echo_roundtrip(*this, state);
+}
+BENCHMARK_REGISTER_F(RealFixtureQuicEcho, QuicEchoRoundtrip)
+    ->Arg(64)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(32768)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+// ── QUIC TLS-only (no Noise) ─────────────────────────────────────────
+//
+// Same QUIC TLS 1.3 transport as RealFixtureQuicEcho but with the Noise
+// security session layer disabled.  Nodes exchange gnet frames directly
+// inside QUIC streams — no Noise XX handshake, no extra AEAD on top of
+// QUIC TLS.  Matches iroh's stack (QUIC TLS 1.3, no layer-5 AEAD), so
+// the round-trip numbers are 1:1 comparable.
+
+struct RealFixtureQuicTlsEcho : public ::benchmark::Fixture {
+    bool              setup_echo  = true;
+    RxCounter         pong;
+    RxEchoResponder   echo_resp;
+    std::unique_ptr<QuicBenchNode> alice;
+    std::unique_ptr<QuicBenchNode> bob;
+    gn_handler_id_t   pong_hid     = GN_INVALID_ID;
+    gn_handler_id_t   rx_echo_hid  = GN_INVALID_ID;
+    gn_conn_id_t      bob_conn     = GN_INVALID_ID;
+    bool              ready        = false;
+
+    void SetUp(::benchmark::State&) override {
+        if (ready) return;
+        NoisePlugin& noise_ref = process_noise();
+
+        alice = std::make_unique<QuicBenchNode>(noise_ref, "alice_tls", false);
+        bob   = std::make_unique<QuicBenchNode>(noise_ref, "bob_tls",   false);
+
+        rx_echo_hid = register_echo_responder(*alice->kernel,
+            kPingMsgId, kPongMsgId, &alice->api, echo_resp);
+        pong_hid    = register_rx(*bob->kernel, kPongMsgId, pong);
+
+        std::string cert, key;
+        if (!gn::tests::support::generate_self_signed(cert, key)) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] generate_self_signed failed\n");
+            return;
+        }
+        alice->quic->set_server_credentials(cert, key);
+
+        const gn_result_t rc_sub = alice->quic->composer_subscribe_accept(
+            +[](void* user, gn_conn_id_t comp_id, const char* peer_uri) {
+                auto* node = static_cast<QuicBenchNode*>(user);
+                std::string uri = "quic://127.0.0.1:0";
+                if (peer_uri) {
+                    std::string_view raw(peer_uri);
+                    const auto sep = raw.find("://");
+                    if (sep != std::string_view::npos)
+                        uri = "quic://" + std::string(raw.substr(sep + 3));
+                }
+                node->bridge_conn(comp_id, uri, GN_ROLE_RESPONDER);
+            },
+            alice.get(), &alice->accept_tok);
+        if (rc_sub != GN_OK) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] composer_subscribe_accept failed rc=%d\n", rc_sub);
+            return;
+        }
+
+        gn_result_t rc_listen = alice->quic->composer_listen("quic://127.0.0.1:0");
+        if (rc_listen != GN_OK) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] composer_listen failed rc=%d\n", rc_listen);
+            return;
+        }
+        std::uint16_t port = 0;
+        if (alice->quic->composer_listen_port(&port) != GN_OK || port == 0) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] composer_listen_port failed port=%u\n", port);
+            return;
+        }
+
+        gn_conn_id_t bob_comp_id = GN_INVALID_ID;
+        const std::string dial_uri = "quic://127.0.0.1:" + std::to_string(port);
+        gn_result_t rc_connect = bob->quic->composer_connect(dial_uri, &bob_comp_id);
+        if (rc_connect != GN_OK) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] composer_connect failed rc=%d\n", rc_connect);
+            return;
+        }
+        bob->bridge_conn(bob_comp_id, dial_uri, GN_ROLE_INITIATOR);
+
+        if (!QuicBenchNode::wait_both_connected(*alice, *bob, 10s)) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] wait_both_connected timed out\n");
+            return;
+        }
+        bob_conn = bob->any_conn();
+        ready    = (bob_conn != GN_INVALID_ID);
+    }
+
+    void TearDown(::benchmark::State&) override {}
+};
+
+BENCHMARK_DEFINE_F(RealFixtureQuicTlsEcho, QuicTlsEchoRoundtrip)(::benchmark::State& state) {
+    run_echo_roundtrip(*this, state);
+}
+BENCHMARK_REGISTER_F(RealFixtureQuicTlsEcho, QuicTlsEchoRoundtrip)
+    ->Arg(64)
+    ->Arg(1024)
+    ->Arg(8192)
+    ->Arg(32768)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
 
 // ── UDP ─────────────────────────────────────────────────────────────
 //

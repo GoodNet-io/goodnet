@@ -75,6 +75,14 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
         return;
     }
 
+    /// Snapshot stub state before connecting so delta-based checks
+    /// work correctly when google-benchmark re-enters SetUp across
+    /// multiple warmup passes (the stub accumulates across calls).
+    const int connects_before = client_kernel.stub.connects.load();
+    const std::size_t conns_before = [&] {
+        std::lock_guard lk(client_kernel.stub.mu);
+        return client_kernel.stub.conns.size();
+    }();
     /// Open N parallel connections. Each connect adds one entry to
     /// the client_kernel.stub.conns set; wait for all of them
     /// before driving the loop so the bench measures steady-state
@@ -84,7 +92,7 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
     }
     if (!::gn::sdk::test::wait_for(
             [&] {
-                return client_kernel.stub.connects.load()
+                return client_kernel.stub.connects.load() - connects_before
                        >= static_cast<int>(conn_count);
             }, 10s)) {
         state.SkipWithError("not all connects completed");
@@ -93,14 +101,17 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
     std::vector<gn_conn_id_t> conns;
     {
         std::lock_guard lk(client_kernel.stub.mu);
-        conns = client_kernel.stub.conns;
+        const auto& all = client_kernel.stub.conns;
+        conns.assign(all.begin() + static_cast<std::ptrdiff_t>(conns_before),
+                     all.end());
     }
 
     ResourceCounters res;
     res.snapshot_start();
     std::size_t cursor = 0;
-    std::size_t sent_ok = 0;
-    gn_result_t last_err = GN_OK;
+    std::size_t sent_ok    = 0;
+    std::size_t bp_hits    = 0;
+    std::size_t other_skip = 0;
     for ([[maybe_unused]] auto _ : state) {  // NOLINT(clang-analyzer-deadcode.DeadStores)
         const auto cid = conns[cursor++ % conns.size()];
         const auto rc = client->send(cid,
@@ -108,7 +119,8 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
         if (rc == GN_OK) {
             ++sent_ok;
         } else {
-            last_err = rc;
+            if (rc == GN_ERR_LIMIT_REACHED) ++bp_hits;
+            else                            ++other_skip;
             /// Round-robin across N conns at high payload rates
             /// outpaces the loopback drain. Yield rather than error
             /// out so the SetBytesProcessed window covers the full
@@ -122,11 +134,11 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConnectionCountScale)
     state.SetBytesProcessed(
         static_cast<std::int64_t>(state.iterations()) *
         static_cast<std::int64_t>(payload_size));
-    state.counters["conns"]    = static_cast<double>(conn_count);
-    state.counters["last_err"] = static_cast<double>(last_err);
-    state.counters["sent_ok"]  = static_cast<double>(sent_ok);
-    state.counters["sent_skip"] =
-        static_cast<double>(static_cast<std::size_t>(state.iterations()) - sent_ok);
+    state.counters["conns"]      = static_cast<double>(conn_count);
+    state.counters["sent_ok"]    = static_cast<double>(sent_ok);
+    state.counters["bp_hits"]    = static_cast<double>(bp_hits);
+    state.counters["other_skip"] = static_cast<double>(other_skip);
+    state.counters["sent_skip"]  = static_cast<double>(bp_hits + other_skip);
     /// Memory-scaling axis: per-conn RSS growth so the report can
     /// flag super-linear footprint as the conn count climbs. Divide
     /// by `conn_count` so the column reads as KiB / conn rather
@@ -163,6 +175,11 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
         state.SkipWithError("listen failed");
         return;
     }
+    const int csat_connects_before = client_kernel.stub.connects.load();
+    const std::size_t csat_conns_before = [&] {
+        std::lock_guard lk(client_kernel.stub.mu);
+        return client_kernel.stub.conns.size();
+    }();
     /// One conn per worker thread so concurrent send() calls don't
     /// race the same per-conn write strand.
     for (std::size_t i = 0; i < worker_count; ++i) {
@@ -170,7 +187,7 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
     }
     if (!::gn::sdk::test::wait_for(
             [&] {
-                return client_kernel.stub.connects.load()
+                return client_kernel.stub.connects.load() - csat_connects_before
                        >= static_cast<int>(worker_count);
             }, 10s)) {
         state.SkipWithError("not all connects completed");
@@ -179,20 +196,27 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
     std::vector<gn_conn_id_t> conns;
     {
         std::lock_guard lk(client_kernel.stub.mu);
-        conns = client_kernel.stub.conns;
+        const auto& all = client_kernel.stub.conns;
+        conns.assign(all.begin() + static_cast<std::ptrdiff_t>(csat_conns_before),
+                     all.end());
     }
 
     std::atomic<bool>        stop{false};
     std::atomic<std::size_t> total_bytes{0};
+    std::atomic<std::size_t> bp_hits{0};
     std::vector<std::thread> workers;
     workers.reserve(worker_count);
     for (std::size_t i = 0; i < worker_count; ++i) {
         workers.emplace_back([&, cid = conns[i]] {
             while (!stop.load(std::memory_order_acquire)) {
-                if (client->send(cid,
-                        std::span<const std::uint8_t>(payload)) == GN_OK) {
+                const auto rc = client->send(cid,
+                    std::span<const std::uint8_t>(payload));
+                if (rc == GN_OK) {
                     total_bytes.fetch_add(payload_size,
                                             std::memory_order_relaxed);
+                } else if (rc == GN_ERR_LIMIT_REACHED) {
+                    bp_hits.fetch_add(1, std::memory_order_relaxed);
+                    std::this_thread::sleep_for(10us);
                 }
             }
         });
@@ -212,8 +236,13 @@ BENCHMARK_DEFINE_F(TcpScaleFixture, ConcurrentSaturation)
     const auto elapsed_s =
         std::chrono::duration<double>(t1 - t0).count();
     const auto bytes = total_bytes.load(std::memory_order_relaxed);
-    state.counters["workers"]     = static_cast<double>(worker_count);
-    state.counters["total_bytes"] = static_cast<double>(bytes);
+    const auto bp    = bp_hits.load(std::memory_order_relaxed);
+    const auto sends = bytes / payload_size;
+    state.counters["workers"]       = static_cast<double>(worker_count);
+    state.counters["total_bytes"]   = static_cast<double>(bytes);
+    state.counters["bp_hits"]       = static_cast<double>(bp);
+    state.counters["bp_ratio"]      = sends > 0
+        ? static_cast<double>(bp) / static_cast<double>(sends + bp) : 0.0;
     state.counters["bytes_per_sec"] =
         elapsed_s > 0 ? static_cast<double>(bytes) / elapsed_s : 0;
 }

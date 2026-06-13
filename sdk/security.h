@@ -95,6 +95,15 @@ typedef struct gn_secure_buffer_s {
     void  (*free_fn)(void* user_data, uint8_t* bytes);
 } gn_secure_buffer_t;
 
+/** @name Security provider capability flags (provides_flags bitmask)
+ *  Declared by each security provider to advertise what it guarantees.
+ *  The kernel aggregates these at seal time into the topology.
+ *  @{ */
+#define GN_SEC_PROVIDES_E2E_ENCRYPTION   (1u << 0) /**< Per-frame AEAD (e.g. ChaCha20-Poly1305) */
+#define GN_SEC_PROVIDES_AUTHENTICATION   (1u << 1) /**< Peer identity verified (e.g. Noise XX/IK) */
+#define GN_SEC_PROVIDES_FORWARD_SECRECY  (1u << 2) /**< Ephemeral keys; past sessions unrecoverable */
+/** @} */
+
 /**
  * @brief Vtable for an `ISecurityProvider` implementation.
  *
@@ -233,6 +242,19 @@ typedef struct gn_security_provider_vtable_s {
      *   - NullProvider:  `1u<<LOOPBACK | 1u<<INTRA_NODE`
      */
     uint32_t (*allowed_trust_mask)(void* self);
+
+    /**
+     * @brief Bitmask of security guarantees this provider delivers to layers above.
+     *
+     * Bit definitions: `GN_SEC_PROVIDES_*` constants in this header.
+     * The kernel collects these at seal time to build the topology
+     * and verify the security contour is closed. May be NULL (treated as 0).
+     *
+     * Examples:
+     *   - NoiseProvider: E2E_ENCRYPTION | AUTHENTICATION | FORWARD_SECRECY
+     *   - NullProvider:  0  (no session-layer crypto; loopback/intra-node only)
+     */
+    uint32_t (*provides_flags)(void* self);
 
     void* _reserved[4];
 } gn_security_provider_vtable_t;

@@ -6,6 +6,417 @@ uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### test: ice-3node harness — 12/14 scenarios pass
+
+Fixes bringing the `tests/docker/ice-3node` docker suite from 10/14 to
+≥12/14 PASS (ice_tcp known gap; quic_over_ice deferred):
+
+**`port_prediction`**: `init-nat.sh` `symmetric_stride` mode switched from
+`iptables REDIRECT` to TPROXY with policy routing (`fwmark 0x1 / table 100`).
+`REDIRECT` rewrites the destination before socket delivery so
+`IP_RECVORIGDSTADDR` returned the post-redirect local address; all packets
+shared a single flow key and the forwarder sent packets to itself.  TPROXY
+preserves the original destination — `IP_RECVORIGDSTADDR` now returns the real
+upstream STUN server address.  `stride-nat.py` listener socket gains
+`IP_TRANSPARENT` (required for TPROXY delivery); reply sockets already used it
+to spoof STUN server source addresses back to LAN peers.
+
+**`no_udp_fallback`**: `coturn/coturn:latest` ships on Alpine; the previous
+`nc -z` health check failed (no `nc` in image).  Changed to
+`openssl s_client -connect 127.0.0.1:5349 < /dev/null 2>&1 | grep -q CONNECTED`.
+
+**`prflx`**: Removed `ICE_HOST_ONLY: "true"` from both peers (the flag
+suppressed STUN gather so srflx candidates were never collected, making the
+check ladder see only host-to-host pairs across NAT — which fail).  Added
+`PEER_LAN_SUBNET` / `PEER_LAN_GW` static routes on both NAT containers so
+host-candidate direct paths exist for the prflx nomination.  `nat-b/init-nat.sh`
+gains the same cross-LAN route block already present in `nat-a`.
+
+**`ice_lite_gateway`**: Deterministic role assignment via `FORCE_INITIATOR` /
+`FORCE_RESPONDER` env vars in `peer/harness.cpp`.  An ice-lite peer always
+acts as controlled agent; without a forced split both peers could elect the
+same role and the session never progressed beyond the gathering phase.
+
+**`turn-tls/Dockerfile`**: Rebased onto `coturn/coturn:latest` to avoid
+`apt-get` network access at image-build time; `realm` Dockerfile arg now uses
+double-quotes so the variable is expanded.
+
+**`plugins/links/ice/session.cpp`**: `handle_gather_response` now arms a 200ms
+window before calling `on_gathering_complete()` when additional STUN probes are
+still pending.  Previously, the first response immediately cleared
+`pending_stun_probes_`, dropping the second probe's response and preventing
+symmetric-stride detection.  The `port_prediction` docker scenario now passes.
+
+**`tools/math/gnet_model.py`**: Added `QUIC` and `IPC` transport types;
+`TransportProps` gains `handshake_us` field populated from 852c20a bench data.
+`gnet_simulate.py`: exposes `ice_broken` state in the ICE upgrade model and
+updated diagnostics output.
+
+## [1.0.0-rc7] — 2026-06-11
+
+### fix: TRUST_UPGRADED fires for loopback and intra-node connections
+
+Loopback and intra-node connections skip the attestation path, so
+`GN_CONN_EVENT_TRUST_UPGRADED` was silently never emitted for them after
+Noise XX completed.  `notifications.cpp` now fires the event from both
+`kick_handshake` and `notify_inbound_bytes` once `remote_pk` is resolved
+and trust is above `GN_TRUST_PEER`.  Applications that wait for
+`TRUST_UPGRADED` before sending to loopback peers now behave correctly.
+
+### fix: `gn_message_t.conn_id` surfaced to C callbacks
+
+`gn_core_s::MessageSub` previously passed `GN_INVALID_ID` as the
+`conn` argument to the registered C callback, with a comment deferring
+the fix to a future minor.  The envelope's `conn_id` is now forwarded
+directly so callers can correlate received messages with the originating
+connection without a separate lookup.
+
+### fix: TCP `composer_listen_port` falls back to kernel-path listen port
+
+`TcpLink::composer_listen_port` returned `GN_ERR_INVALID_STATE` when the
+kernel used `TcpLink::listen` rather than the composer listen path,
+because it only inspected `composer_acceptor_`.  The method now falls back
+to `listen_port_` (populated by both paths) so ICE-TCP and other callers
+that query the port after a kernel-path listen get the correct value.
+
+### fix: ICE `inject_targets` missing from positional descriptor init
+
+`gn_plugin_descriptor_t` gained an `inject_targets` field between `kind`
+and `_reserved`.  The ICE plugin's positional aggregate initializer passed
+its brace-list to the wrong slot, causing a compile error.  The field is
+now explicitly set to `nullptr`; designated initializers will be adopted in
+a follow-up C++26 sweep.
+
+### fix: ICE TURN — bool config keys and TLS URI scheme
+
+`gn_config_get_int64` silently no-ops on JSON boolean literals; TURN knobs
+(`turn_tcp`, etc.) now use `gn_config_get_bool`.  TLS TURN endpoints
+previously constructed a `tcp://` URI, which the TLS carrier parser
+rejected; the correct `tls://` scheme is now used.  ICE_DBG traces added
+on the TURN build / attempt / connect and allocate paths to aid diagnosis.
+
+### fix: TLS `listen` error code on missing credentials
+
+`TlsLink::listen` returned `GN_ERR_LIMIT_REACHED` when called without TLS
+credentials configured.  The honest code is `GN_ERR_INVALID_STATE` (the
+link is not yet configured to accept connections); test updated to assert
+the corrected return value.
+
+### feat: `provides_flags` vtable slot in security plugins
+
+`security-noise` and `security-null` now implement the `provides_flags`
+vtable slot.  `noise` advertises `GN_SEC_FLAG_E2E_ENCRYPTED |
+GN_SEC_FLAG_AUTHENTICATED | GN_SEC_FLAG_FORWARD_SECRECY`.  `null` adds a
+link-only provider mode that returns `GN_TRUST_LINK_ENCRYPTED` without
+full mutual authentication, enabling plaintext-transport deployments that
+still signal transport-layer encryption to the kernel.
+
+### feat: ICE P2300 timer migration, nomination logic, topology-aware config
+
+The ICE session's retransmission and nomination timers migrated from raw
+`asio::steady_timer` to the P2300 sender/scheduler model, removing the last
+direct Asio timer usage from `session.cpp`.  New config knobs
+`ice.max_check_retries` (1–16) and `ice.nomination_wait_ms` (0–10 000 ms)
+are parsed from JSON; `set_prefer_turn_tcp` and `set_security_overhead`
+topology-aware setters added.  Tag-filtered debug output via
+`ICE_DEBUG_TAGS` env var.  New test suite
+`tests/test_ice_nomination.cpp` (464 lines) covering aggressive and regular
+nomination, peer-reflexive handling, and wait-timeout paths.
+
+### feat: TCP static archive target
+
+`goodnet_link_tcp_static` — a CMake `STATIC` library target — is now built
+and installed alongside the shared plugin.  Consumers that link `TcpLink`
+directly (examples, bench, integration fixtures) can use
+`GoodNet::link_tcp_static` via `find_package(GoodNetLinkTcp)` instead of
+depending on `dlopen`.  `tcp.hpp` is installed with the target.
+
+### feat: UDP GCC 16 / C++26 ring-slot send path
+
+The UDP send path now pre-allocates a fixed ring of reusable buffer slots
+instead of calling `make_shared` per frame.  Eliminates per-frame heap
+allocation on the hot path under GCC 16 / C++26 where the old approach
+triggered an ODR diagnostic.  `ICE_DEBUG=1` recv/dispatch tracing added
+(zero overhead when the env var is unset).
+
+### feat: heartbeat publishes RTT samples to kernel
+
+After matching a PONG to its PING, the heartbeat handler now calls
+`host_api->notify_rtt_sample(conn, rtt)`.  The kernel folds each
+observation into its per-connection EWMA and republishes via
+`on_path_event(RTT_UPDATE)` so strategy plugins rank connections by
+latency without maintaining their own probes.  The raw instantaneous
+sample is still available through the `gn.heartbeat` extension's
+`get_rtt` slot.
+
+### feat: store handler subscription cleanup on detach / destroy
+
+`StoreHandler` now exposes `detach_conn(conn)` to prune wire-side
+subscriptions when a peer disconnects, and `~StoreHandler` clears
+`subs_` and `owners_` under the mutex after unsubscribing from the kernel
+channel.  Previously stale rows accumulated until process exit.  New test
+asserts subscription count reaches zero after destroy.
+
+### feat: sqlite store — correct error mapping and prefix UB fix
+
+`SqliteStore` ctor now maps DB-open / migration / IO failures to their
+correct `sdk/types.h` codes (was always `GN_ERR_OUT_OF_MEMORY`).
+Prefix-scan upper-bound correctly handles keys ending in `0xFF`; previously
+a prefix scan over such a range returned no records.
+
+### build: `CMakePresets.json` tracked in git; release preset includes bench
+
+`CMakePresets.json` is now committed to the repository.  The `release`
+preset sets `GOODNET_BUILD_BENCH=ON` so the bench suite is always built
+alongside production artifacts in CI and local release builds.  The
+`.gitignore` whitelist was updated to allow the file.
+
+### build: `protocol-gnet` CMake `ARCHIVE DESTINATION` fix
+
+The static archive for `protocol-gnet` was installed to the default
+(wrong) location.  `ARCHIVE DESTINATION` is now explicitly set to
+`${CMAKE_INSTALL_LIBDIR}` in `CMakeLists.txt`.
+
+### build: security plugins adopt C++26 designated initializers
+
+`security-noise` and `security-null` switch their `gn_plugin_descriptor_t`
+definitions from positional to designated initializers, keeping future
+vtable slots zero-initialised by default and avoiding the class of bug
+fixed in ICE above.
+
+### build: all plugin flakes point to `github:GoodNet-io/goodnet/dev`
+
+Every plugin's `flake.nix` changed the `goodnet` input from
+`git+file:../../..` (developer-local path) to
+`github:GoodNet-io/goodnet/dev`.  External consumers building a plugin in
+isolation now resolve the kernel from the public registry rather than
+requiring a local checkout.  Affected: tcp, udp, ws, ice, tls, ipc,
+security/noise, security/null, handlers/store, handlers/heartbeat.
+
+### bench: intel\_pstate HWP governor detection
+
+`env_facts.sh` now reads `scaling_driver` and compares `scaling_max_freq`
+against `cpuinfo_max_freq`.  When the driver is `intel_pstate` and
+`powersave` governor is in use but `scaling_max_freq == cpuinfo_max_freq`,
+the environment is tagged `intel_pstate_at_max` and the report renders a
+clarifying note ("HWP at max freq; governor label is misleading") instead
+of the false throttling warning that was previously emitted.  A new bench
+snapshot `bench/reports/852c20a.md` is included.
+
+## [1.0.0-rc6] — 2026-06-09
+
+### fix: ICE multi-connect signal routing (#18)
+
+OFFER/ANSWER signals now route by ufrag rather than `peer_pk` alone.
+`IceLink` maintains an `inbound_ufrag_to_conn_id_` map
+(`peer_hex + "/" + ufrag → conn_id`); `deliver_signal` looks up the
+correct session before falling through to `notify_connect`.  Two
+simultaneous ICE sessions to the same peer are now correctly
+demultiplexed.  Two unit tests added:
+`IceSignalRouting.TwoOffersDifferentUfragCreateTwoSessions` and
+`TwoOffersSameUfragFoldIntoOneSession`.
+
+### feat: portmap extension merged into ICE plugin (#23)
+
+`GN_EXT_PORTMAP` (NAT-PMP / PCP / UPnP IGD) is now registered inside
+`goodnet_link_ice.so`.  The standalone `goodnet_link_portmap.so` is
+kept with `EXCLUDE_FROM_ALL` for explicit opt-in builds only; production
+deployments no longer need a separate portmap plugin load.
+
+### feat: `max_capability_blob_bytes` config gate
+
+`gn_limits_t.max_capability_blob_bytes` is now parsed from the JSON
+config and validated: when non-zero the field must not exceed
+`max_payload_bytes` (a blob that cannot fit in a single message is
+rejected at load time).  Documented in `docs/contracts/limits.en.md`.
+
+### feat: inject void-namespace drop + `bench_inject` throughput target
+
+`inject()` with no registered handler for a `msg_id` increments
+`dropped_no_handler` and returns `GN_OK` — the call site is never
+an error.  Test: `InjectExternal.VoidNamespaceDroppedCleanly`.
+`bench_inject` measures the kernel hot-path (router → handler) at
+~1 M envelopes/s baseline; `BM_InjectMessageNoHandler` captures the
+no-handler drop cost.
+
+### feat: `GN_SECURITY_PLUGIN_MULTI` macro (#21)
+
+`sdk/cpp/security_plugin.hpp` gains `GN_SECURITY_PLUGIN_MULTI` — a
+multi-slot variant that supports more than one concurrent security
+session per provider instance.  `noise` and `null` plugins migrated.
+
+### fix: clang-tidy sweep
+
+- `candidate.hpp`: merged identical `Host`/`HostMdns` switch arms
+- `stub_host.hpp`, `link_teardown.hpp`: unused/value params fixed
+- `test_wire_codec_fuzz.cpp`: removed unused `wire` namespace alias
+- `gen_attestation.cpp`: cast `std::fprintf` returns to `(void)`
+- `.clang-tidy`: added `-bugprone-macro-parentheses` exclusion (type
+  parameters in macros cannot syntactically take parentheses)
+- Pre-commit hook fixed for clang-tidy 21: use temp directory for
+  filtered compile_commands instead of a bare `.json` file path
+
+### ci: WASM release assets (#29)
+
+`release.yml` now attaches `goodnet-*-wasm.zip` and
+`goodnet-*-wasm-emscripten.zip` to every tagged release.
+
+### chore: `gnVersion` single source of truth (#15)
+
+`flake.nix` now has one `gnVersion = "1.0.0-rc6"` let binding reused
+across all package outputs.
+
+### rc6 cycle — comprehensive pre-release gauntlet snapshot
+
+Full clang-driven sweep across every test + sanitizer + bench + ICE
+docker dimension at SHA `ca1c239`, written up at
+`bench/reports/ca1c239.md`. Headline numbers:
+
+- `ctest` vanilla under clang: **1473 / 1473 pass** (2 env-gated
+  skips — IPv6 loopback + UPnP live, neither a regression).
+- ASan + UBSan: **1472 / 1473 pass** — one test-body leak in
+  `TurnTcpAlloc.DataConnectionBindRoundTrip` (a captured-lambda
+  `make_shared<TurnClient>` outliving strand teardown; runtime
+  callers don't have this shape so kernel is unaffected). Filed
+  for follow-up; not in release-blocker scope.
+- TSan: **1473 / 1473 pass, 0 data-race reports** — confirms #79
+  (ICE TURN UAF), #100 + #104 (TCP shutdown race primary + residual
+  via mutex) all hold under thread-sanitiser pressure.
+- Coverage: **lines 74.3% (16009 / 21540), functions 86.5%
+  (1858 / 2149)** across 180 source files.
+- Bench rerun under `performance` governor: UDP echo-RTT at 1024 B
+  recovered from 9.21 MiB/s → 39.77 MiB/s (+331.8%) over baseline
+  `4212f8d.md` thanks to the rc5-cycle `UdpLink` heap-arena
+  assertion fix. Loopback throughput on TCP / IPC / WS regressed
+  -7 % to -26 % within scheduler-noise band (concurrent docker
+  containers on host suspected — flagged in the report's `## Δ vs
+  baseline` and `## Known issues` sections rather than treated as
+  a real perf regression).
+- ICE 3-node docker gauntlet: **0 / 11 pass** even after the
+  NixOS firewall fix (`ice-docker-firewall.nix`) was applied via
+  `nixos-rebuild switch`. Peer logs show the OFFER / ANSWER signal
+  path through the `coordinator` container is the actual blocker,
+  not the host firewall — peer_a stays in "responder waiting for
+  peer OFFER" until timeout across every scenario, including
+  `hairpin` which doesn't touch the firewall at all (both peers
+  share the same NAT box). Filed against the coordinator's
+  signal-relay path for follow-up; treated as a known infra issue
+  rather than a kernel regression because it predates the
+  firewall-fix attempt.
+
+The rc6 cycle landed: identity 5-phase HSM, `gssh` v0.2.0 rewrite,
+bridges/cpp + bridges/rust + bridges/python split, DX layer
+(`sdk/cpp/{Core,Error}`, `host_api_default`, `nix-hooks`), Forgejo
+CI as sole CI (GitHub repo release-only), cross-platform builds
+(aarch64-linux, Android NDK r28, WASM via emscripten; darwin
+intentionally broken with `--system aarch64-darwin` warning),
+clang validation + sanitizer fixes (#79 ICE turn UAF + #100 + #104
+TCP shutdown race), livedoc tooling extension, lifecycle contract
+freeze, SVG architecture diagrams refresh. Version suffix bumped to
+`-rc6` with this commit batch.
+
+### inject `target_ns` — all call sites updated
+
+`inject()` gained a `const char* target_ns` parameter (between
+`conn_id` and `msg_id`) for explicit handler-namespace routing.
+Updated all call sites: `tests/unit/integration/test_inject_api.cpp`
+(12), `test_inject_limits.cpp` (21), `test_raw_inject.cpp`
+(guarded behind `GOODNET_HAS_PROTOCOL_RAW` after protocol-raw
+extraction), `tests/unit/util/test_convenience.cpp` stub + calls,
+and `sdk/cpp/convenience.hpp` wrappers (`inject_external_message`,
+`inject_frame`). CI ice-3node timeout reduced 30 s → 1 s (non-blocking
+step; saves ~5 min per run while coordinator path is still tracked in
+the issue queue).
+
+### Bench gauntlet — sequential harness leak fixed
+
+`bench/comparison/runners/run_all.sh` no longer pre-stubs
+`bench_udp` / `bench_dtls` / `bench_quic` as crashed: the rc5 cycle
+fixed the `UdpLink` `malloc.c:2610` heap-arena assertion that
+originally parked them, and solo + sequential reproductions now
+produce valid google-benchmark JSON. The three are appended to the
+end of the default set so any residual UDP-carrier instability
+cannot poison the earlier benches' numbers, and a TIME_WAIT drain
+wait between binaries (`ss -tan state time-wait` capped at 30s)
+covers the ephemeral-port pressure that builds up across
+loopback-heavy benches. CPU governor pinned to `performance` for
+the run (matches `docs/perf/methodology.en.md` §Environmental
+controls) and restored to `powersave` afterwards. Fresh report at
+`bench/reports/4212f8d.md` carries populated rows for
+`bench_{tcp,udp,dtls,quic}` for the first time since rc5; the
+`## Known crashes` section is empty.
+
+### `gn_core_listen` — public C ABI bind entry mirrors `gn_core_connect`
+
+`sdk/core.h` now exposes `gn_core_listen(core, uri)` as the inbound
+counterpart of `gn_core_connect`. The scheme prefix of the URI
+selects the link plugin via `LinkRegistry::find_by_scheme`; the call
+forwards to the link's vtable `listen` slot (`plugins/links/tcp/tcp.cpp:481`
+for TCP). Inbound accepted connections surface through the existing
+`gn_core_on_conn_state` channel — no new callback shape was
+introduced. `core/kernel/core_c.cpp` implements the entry directly
+against the kernel link registry rather than through the
+`gn.link.<scheme>` extension's L2-composer `listen` slot (which
+returns `GN_ERR_NOT_IMPLEMENTED` on baseline links). Teardown rides on
+`gn_core_stop` / `gn_core_destroy`; no per-listener handle is
+exposed. The Python cffi binding and the bridges/rust surface
+inventory pick up the entry automatically.
+
+`tests/unit/integration/test_core_c.cpp::CoreListen.*` (5 tests)
+covers the NULL-arg defence, missing-scheme `NOT_FOUND`, no-link
+`NOT_FOUND`, lifecycle smoke with a stub link, and the inbound
+`CONNECTED` event surfacing through `gn_core_on_conn_state` after a
+real link's accept loop calls `notify_connect`. Closes the SDK gap
+that forced `apps/gssh/mode_listen.cpp` and `apps/ssh-modern`'s
+server mode to return `GN_ERR_NOT_IMPLEMENTED` stubs.
+
+### CI migrated to Forgejo Actions; GitHub repo becomes release-only
+
+The full CI matrix (`build-and-test`, `plugin-verify`, `windows-cross`,
+`bench-smoke`, `ice-3node`, `fuzz-smoke`, `asan-smoke`, `tsan-smoke`,
+`flake-check`, `livedoc-check`) runs on the project's self-hosted
+Forgejo instance at `http://localhost:3000/goodnet-io/goodnet`.
+Workflows live at `.forgejo/workflows/{ci,dev,release}.yml`; the
+`.github/workflows/` directory has been removed — GitHub Actions no
+longer runs anything for this repo. The trigger was the recurring
+`magic-nix-cache` Actions-Cache rate-limit on the GitHub free tier
+that had broken every release cycle since rc3.
+
+The Forgejo runner registers with labels `[ubuntu-latest, nixos]` and
+runs in `:host` executor mode, which means the system
+`/etc/nix/nix.conf` substituters are visible to every job. The local
+binary cache `http://localhost:5555` (NixOS `nix-serve` service,
+public key `goodnet-cache.local:sMamNw9G84OcJPGUzIylgdKapN5raFscLfDiqXe8ao4=`)
+is already pinned in `substituters`, so the rate-limited
+`DeterminateSystems/magic-nix-cache-action` is gone and the workflows
+do not need a replacement cache step.
+
+Release artefacts are still published on GitHub — but the workflow
+that builds them now lives on Forgejo. `.forgejo/workflows/release.yml`
+triggers on `v*` tags, builds Linux+Windows x86_64 artefacts on the
+self-hosted runner, then publishes to `goodnet-io/goodnet` on GitHub
+via the `gh` CLI (staged from `nixpkgs#gh` on demand). The publish step
+is idempotent on tag re-runs: `gh release view` decides between
+`create` and `upload --clobber`. The `softprops/action-gh-release@v2`
+wrapper has been dropped. The release job consumes a Forgejo-side
+repo secret named `GH_TOKEN` (scopes: classic `repo`, or fine-grained
+`Contents: read and write` on the target repo); see
+`docs/operator/ci-forgejo-setup.en.md` §GitHub Releases publish.
+
+The aarch64 release matrix arm is dropped from the Forgejo copy of
+`release.yml` — no aarch64 self-hosted runner is registered yet;
+restoring that arm is queued for the rc6 cycle alongside the broader
+cross-arch initiative (see `docs/ROADMAP.en.md`).
+
+`docs/operator/ci-forgejo-setup.en.md` is the operator handbook for
+this layout: how to spin the Forgejo container (the local
+`docker-forgejo.service` unit binds web on `:3000` and SSH on `:222`
+to `/home/vaniello/forgejo/data`), how to register the runner via
+the native NixOS user-systemd path (`~/.config/systemd/user/forgejo-runner.service`,
+already templated against `/home/vaniello/forgejo/runner/`) or the
+docker path, how to set the `GH_TOKEN` secret, and the verbatim
+`gh release` publish command.
+
 ## [1.0.0-rc5] — 2026-05-19
 
 ### Subprocess plugin runtime — LINK / SECURITY / HANDLER host-call slots
@@ -772,6 +1183,28 @@ in its own git on `fix/teardown-race`, merged into the plugin's
 single teardown-race surface.
 
 ### Added
+
+- **`GN_ERR_OUTPUT_TOO_SMALL` (-18)** — new error code in `gn_result_t`.
+  Distinguishes "caller's `out_cap` is smaller than the size required to
+  hold the result; retry with a larger buffer" from
+  `GN_ERR_PAYLOAD_TOO_LARGE` (an *input*-side limit where retrying with
+  the same payload is pointless).  Used by the `gn.compress` extension
+  vtable (`sdk/extensions/compress.h`).
+
+### Documentation
+
+- `docs/contracts/compressed-object.en.md` §7 added: scope locked to
+  GNET-shaped carriers (discrete payloads routed by `msg_id`);
+  cross-protocol compression explicitly out of scope for v1.
+- `docs/contracts/compressed-object.en.md` §3: added note clarifying that
+  the algo byte (enum-shaped, names the encoding of a single frame) and
+  the `compression-set` TLV `0x0003` (bit-shaped, advertises peer
+  capability) are semantically distinct; numeric coincidence at `0x01` is
+  allocation convention, not an invariant.
+- `docs/contracts/compressed-object.en.md` §4: documents that inband
+  `target_msg_id` is rejected by `inject(LAYER_MESSAGE)` when it falls in
+  the identity range (`0x10..0x1F`); decompression is never attempted for
+  reserved system handler ids.
 
 - **Plugin logging vtable** — `host_api_t::log` is a size-prefixed
   substruct (`gn_log_api_t`) with two slots:

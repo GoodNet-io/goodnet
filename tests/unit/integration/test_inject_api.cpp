@@ -104,6 +104,7 @@ TEST(InjectExternal, HappyPathDispatchesEnvelope) {
     const gn_conn_id_t src = h.make_source(peer_pk);
     const std::uint8_t payload[] = {1, 2, 3, 4};
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                                             "gnet-v1",
                                              /*msg_id*/ 0x77,
                                              payload, sizeof(payload)),
               GN_OK);
@@ -141,6 +142,7 @@ TEST(InjectExternal, ReservedSystemMsgIdRejected) {
     const gn_conn_id_t src = h.make_source(peer_pk);
     const std::uint8_t payload[] = {0};
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1",
                             /*msg_id*/ 0x11,
                             payload, sizeof(payload)),
               GN_ERR_INVALID_ENVELOPE);
@@ -150,7 +152,7 @@ TEST(InjectExternal, UnknownSourceRejected) {
     KernelHarness h;
     const std::uint8_t payload[] = {0};
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE,
-                            /*source*/ 9999, 0x42,
+                            /*source*/ 9999, "gnet-v1", 0x42,
                             payload, sizeof(payload)),
               GN_ERR_NOT_FOUND);
 }
@@ -161,6 +163,7 @@ TEST(InjectExternal, ZeroMsgIdRejected) {
     const gn_conn_id_t src = h.make_source(peer_pk);
     const std::uint8_t payload[] = {0};
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                                             "gnet-v1",
                                              /*msg_id*/ 0,
                                              payload, sizeof(payload)),
               GN_ERR_INVALID_ENVELOPE);
@@ -171,6 +174,7 @@ TEST(InjectExternal, NullPayloadWithSizeRejected) {
     PublicKey peer_pk; peer_pk.fill(0xDD);
     const gn_conn_id_t src = h.make_source(peer_pk);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                                             "gnet-v1",
                                              /*msg_id*/ 0x10,
                                              /*payload*/ nullptr,
                                              /*size*/ 8),
@@ -195,6 +199,7 @@ TEST(InjectExternal, EmptyPayloadAccepted) {
 
     const gn_conn_id_t src = h.make_source(peer_pk);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                                             "gnet-v1",
                                              /*msg_id*/ 0x55,
                                              /*payload*/ nullptr,
                                              /*size*/ 0),
@@ -219,6 +224,7 @@ TEST(InjectExternal, PayloadOverLimitRejected) {
     /// reservation (`0x10..0x1F`) so the payload-size gate fires
     /// instead of the inject-side identity-range reject.
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                                             "gnet-v1",
                                              /*msg_id*/ 0x20,
                                              big.data(), big.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
@@ -229,7 +235,8 @@ TEST(InjectExternal, PayloadOverLimitRejected) {
 TEST(InjectFrame, RejectsUnknownSource) {
     KernelHarness h;
     const std::uint8_t buf[] = {0};
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, /*source*/ 4242, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, /*source*/ 4242,
+                                  "gnet-v1", 0,
                                   buf, sizeof(buf)),
               GN_ERR_NOT_FOUND);
 }
@@ -242,7 +249,8 @@ TEST(InjectFrame, MalformedFrameReturnsDeframerError) {
     /// A handful of arbitrary bytes that will not parse as a valid
     /// gnet header — the protocol layer rejects with its own code.
     const std::uint8_t junk[] = {0xDE, 0xAD, 0xBE, 0xEF};
-    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src,
+                                  "gnet-v1", 0,
                                   junk, sizeof(junk)),
               GN_OK);
 }
@@ -254,7 +262,8 @@ TEST(InjectFrame, EmptyBufferTreatedAsIncomplete) {
 
     /// Zero-byte input through `inject(LAYER_FRAME)`: the deframer reports
     /// incomplete; the thunk surfaces that verbatim.
-    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+    EXPECT_NE(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src,
+                                  "gnet-v1", 0,
                                   /*frame*/ nullptr, /*size*/ 0),
               GN_OK);
 }
@@ -290,7 +299,8 @@ TEST(InjectFrame, ReservedSystemMsgIdSkippedInDispatchLoop) {
     auto framed = h.proto->frame(fctx, env);
     ASSERT_TRUE(framed.has_value());
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src,
+                            "gnet-v1", 0,
                             framed->data(), framed->size()),
               GN_OK);
 
@@ -336,7 +346,8 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     auto framed = h.proto->frame(fctx, env);
     ASSERT_TRUE(framed.has_value());
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, src,
+                            "gnet-v1", 0,
                             framed->data(), framed->size()),
               GN_OK);
     EXPECT_EQ(cap.calls.load(), 1);
@@ -348,4 +359,22 @@ TEST(InjectFrame, StampsConnIdOnDispatchedEnvelopes) {
     EXPECT_EQ(cap.last_api_size, sizeof(gn_message_t));
     EXPECT_EQ(cap.last_sender,   peer_pk);
     EXPECT_EQ(cap.last_receiver, local_pk);
+}
+
+// ── void-namespace isolation ─────────────────────────────────────────────
+
+TEST(InjectExternal, VoidNamespaceDroppedCleanly) {
+    /// Inject a message whose msg_id has no registered handler.
+    /// The kernel must accept the call (GN_OK), silently drop the
+    /// envelope, and increment `route.outcome.dropped_no_handler`.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0x77);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    const std::uint8_t payload[] = {0xAB};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x42,
+                            payload, sizeof(payload)),
+              GN_OK);
+    EXPECT_EQ(h.kernel->metrics().value("route.outcome.dropped_no_handler"), 1u);
 }

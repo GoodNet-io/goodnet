@@ -9,3 +9,11 @@ services:
   nat_b:
     environment:
       NAT_MODE: symmetric
+  peer_a:
+    environment:
+      ICE_CHECK_INTERVAL_MS: "20"
+      ICE_AGGRESSIVE_NOMINATION: "true"
+  peer_b:
+    environment:
+      ICE_CHECK_INTERVAL_MS: "20"
+      ICE_AGGRESSIVE_NOMINATION: "true"

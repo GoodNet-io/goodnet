@@ -4,7 +4,9 @@
 #include "handler.hpp"
 
 #include <algorithm>
+#include <map>
 #include <mutex>
+#include <vector>
 
 #include <core/kernel/system_handler_ids.hpp>
 
@@ -172,24 +174,16 @@ HandlerRegistry::LookupResult HandlerRegistry::lookup_with_generation(
 
 std::size_t HandlerRegistry::drain_by_namespace(std::string_view ns) noexcept {
     std::unique_lock lock(mu_);
-    std::size_t removed = 0;
 
-    /// Two-pass: collect the keys whose namespace matches, then
-    /// erase. erase_if on the map mid-iteration is fine but the
-    /// by_id_ map needs the same per-entry erasures, so doing the
-    /// match in one pass keeps the by_id_ updates aligned.
     std::vector<gn_handler_id_t> ids_to_drop;
-    for (auto chain_it = chains_.begin(); chain_it != chains_.end();) {
-        if (chain_it->first.namespace_id == ns) {
-            for (const auto& entry : chain_it->second) {
-                ids_to_drop.push_back(entry.id);
-            }
-            chain_it = chains_.erase(chain_it);
-        } else {
-            ++chain_it;
-        }
-    }
+    std::erase_if(chains_, [&](const auto& pair) {
+        if (pair.first.namespace_id != ns) return false;
+        for (const auto& entry : pair.second)
+            ids_to_drop.push_back(entry.id);
+        return true;
+    });
 
+    std::size_t removed = 0;
     for (auto id : ids_to_drop) {
         if (by_id_.erase(id) == 1) {
             ++removed;
@@ -228,6 +222,21 @@ std::uint64_t HandlerRegistry::generation() const noexcept {
 
 std::size_t HandlerRegistry::size() const noexcept {
     return by_id_.size();
+}
+
+std::vector<HandlerRegistry::HandlerPairInfo> HandlerRegistry::enumerate_pairs() const {
+    std::shared_lock lk{mu_};
+    // Aggregate chain lengths across namespaces for each (protocol_id, msg_id).
+    std::map<std::pair<std::string, std::uint32_t>, std::size_t> agg;
+    for (const auto& [key, chain] : chains_) {
+        agg[{key.protocol_id, key.msg_id}] += chain.size();
+    }
+    std::vector<HandlerPairInfo> result;
+    result.reserve(agg.size());
+    for (const auto& [k, len] : agg) {
+        result.push_back(HandlerPairInfo{k.first, k.second, len});
+    }
+    return result;
 }
 
 } // namespace gn::core

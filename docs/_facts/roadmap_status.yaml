@@ -14,7 +14,7 @@ features:
 - name: Multi-TURN fallback
   status: done
   evidence: 'token ''turn_servers'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers`
-    ...); token ''turn_backup_interval_s'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...)'
+    ...); token ''turn_backup_interval_s'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:395:    cfg.turn_backup_inter...)'
 - name: IPv6 mDNS dual-stack
   status: done
   evidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr
@@ -55,15 +55,15 @@ features:
     DynamicPluginSymbols {)
 - name: Required-plugin manifest pinning
   status: done
-  evidence: 'symbol ''ManifestEntry'' present (core/plugin/runtimes/remote.cpp:42:    const
-    ManifestEntry* manifest_entry = ...)'
+  evidence: symbol 'ManifestEntry' present (core/plugin/plugin_manifest.hpp:75:struct
+    ManifestEntry {)
 - name: gn_core_unload_plugin hot-reload
   status: done
-  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t
+  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:789:gn_result_t
     gn_core_unload_plugin(gn_core_t* core,...)
 - name: Subprocess HOST_CALL slot completion
   status: done
-  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:765:        case
+  evidence: 'symbol ''GN_WIRE_HOST_SLOT_NOTIFY_CONNECT'' present (core/plugin/remote_host.cpp:807:        case
     GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)'
 - name: Per-slot reply-timeout override
   status: done
@@ -77,27 +77,29 @@ features:
   status: done
   evidence: tests/fuzz/CMakeLists.txt present
 - name: Coverage gating
-  status: missing
-  evidence: token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent
+  status: done
+  evidence: token 'gcov' found (CMakeLists.txt:152:option(GOODNET_COVERAGE "Build
+    with gcov line+function cov...)
 - name: Plugin templates and scaffolder
   status: done
   evidence: nix/plugin.nix present
 - name: Test vectors
-  status: missing
-  evidence: tests/vectors/ absent; docs/test-vectors/ absent
+  status: done
+  evidence: tests/vectors/ present
 - name: Raw inject bridge
   status: done
   evidence: plugins/links/raw_inject/ present
 - name: Full WASM kernel build
-  status: missing
-  evidence: nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent
+  status: done
+  evidence: nix/goodnet-wasm.nix present
 - name: JS SDK + WebSocket bridge
-  status: missing
-  evidence: plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension
-    id 'gn.handler.web-api-proxy' not registered in plugins/
+  status: done
+  evidence: plugins/handlers/web_api_proxy/ present; bridges/js/package.json present;
+    extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define
+    GN_EXT_WEB_API_...)
 - name: C ABI version of `IPluginRuntime`
-  status: missing
-  evidence: sdk/plugin_runtime.h absent
+  status: done
+  evidence: sdk/plugin_runtime.h present
 - name: Subprocess sandbox
   status: missing
   evidence: token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent
@@ -109,11 +111,14 @@ features:
   status: missing
   evidence: token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent
 - name: aarch64 Linux
-  status: missing
-  evidence: token 'aarch64-linux-ci' absent
+  status: done
+  evidence: nix/goodnet-aarch64-linux.nix present
+- name: macOS x86_64 / aarch64 (cross from Linux)
+  status: done
+  evidence: nix/goodnet-darwin.nix present
 - name: Android build
-  status: missing
-  evidence: nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent
+  status: done
+  evidence: nix/goodnet-android.nix present
 - name: MCU port
   status: missing
   evidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent
@@ -121,21 +126,44 @@ features:
   status: missing
   evidence: sdk/c99/ absent
 - name: Rust
-  status: missing
-  evidence: bridges/goodnet-rs/Cargo.toml absent
+  status: done
+  evidence: bridges/rust/Cargo.toml present
 - name: Python
-  status: missing
-  evidence: bridges/goodnet-py/setup.py absent
+  status: done
+  evidence: bridges/python/pyproject.toml present
 - name: Go
   status: missing
   evidence: bridges/goodnet-go/go.mod absent
 - name: Zig
   status: missing
   evidence: bridges/goodnet-zig/build.zig absent
-- name: Hardware key store
+- name: Phase 1 — `IdentitySigner` abstraction (in flight)
   status: missing
-  evidence: plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered
-    in plugins/
+  evidence: no rule in roadmap_map.yaml
+- name: Phase 2 — C ABI for identity providers (pending)
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Phase 3 — PKCS#11 plugin dual-expose (pending)
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Phase 4 — `goodnetd` operator UX (pending)
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Hardware key store — PKCS#11
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Hardware key store — TPM 2.0
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Hardware key store — macOS Keychain
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Hardware key store — WebAuthn / passkey
+  status: missing
+  evidence: no rule in roadmap_map.yaml
 - name: Post-quantum security provider
   status: missing
   evidence: plugins/security/pq/ absent; token 'ML_KEM' absent

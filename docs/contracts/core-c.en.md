@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** `core/kernel/core_c.cpp`, every non-C++ host
 **Implements:** size-prefix evolution per `abi-evolution.en.md`
-**Last verified:** 2026-05-02
+**Last verified:** 2026-05-25
 **Stability:** stable for v1.x; new entries appended at the tail.
 
 ---
@@ -256,6 +256,17 @@ drops are a contract violation per `fsm-events.en.md` §4.
 | Returns | `GN_OK` on success; `GN_ERR_NULL_ARG` on `core`/`uri`/`out_conn` NULL; `GN_ERR_NOT_FOUND` when the URI has no `://` separator and no explicit scheme was given, or when no link is registered for the resolved scheme; `GN_ERR_INVALID_ENVELOPE` when the resolved scheme overflows the internal name buffer (64 bytes); the link plugin's own error code on transport-level failure. |
 | Concurrency | safe from any thread once `gn_core_init` has returned `GN_OK`. |
 | Ownership | the kernel owns the new connection record; the link plugin's `disconnect` slot is the teardown path. |
+
+#### `gn_core_listen`
+
+| Property | Specification |
+|---|---|
+| Producer | kernel |
+| Effect | Derives the scheme from the URI prefix, resolves the link plugin through `LinkRegistry::find_by_scheme`, and forwards to the link's vtable `listen` slot. The bind itself is synchronous; the accept loop runs on the link's IO worker. Inbound accepted connections surface through the existing connection-state subscription path (`gn_core_on_conn_state` callbacks see `GN_CONN_EVENT_CONNECTED` for every accepted peer). |
+| Parameters | `uri` — `@borrowed` NUL-terminated; copied internally before return. |
+| Returns | `GN_OK` on a successful bind; `GN_ERR_NULL_ARG` on NULL `core`/`uri`; `GN_ERR_NOT_FOUND` when the URI has no `://` separator or no link is registered for the resolved scheme; whatever the link plugin's `listen` returns on transport-level failure. |
+| Concurrency | safe from any thread once `gn_core_init` has returned `GN_OK`. |
+| Ownership | the kernel owns every listener bound through this entry; teardown happens during `gn_core_stop` / `gn_core_destroy` as the kernel walks `PreShutdown → Shutdown` and tears each link plugin's acceptor along with the rest of its state. |
 
 #### `gn_core_send_to`
 

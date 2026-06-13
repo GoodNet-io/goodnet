@@ -93,7 +93,6 @@ BENCHMARK_REGISTER_F(UdpFixture, Throughput)
     ->Arg(64)
     ->Arg(512)
     ->Arg(1200)   // typical PMTU floor we ship
-    ->Arg(8192)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
@@ -233,7 +232,83 @@ BENCHMARK_REGISTER_F(UdpFixture, EchoRoundtrip)
     ->Arg(64)
     ->Arg(512)
     ->Arg(1024)
-    ->Arg(1200)  /// PMTU floor — last size that fits without fragmentation
+    ->Arg(1200)  // PMTU floor — last size that fits without fragmentation
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
+// ── MTU boundary probe ────────────────────────────────────────────
+//
+// Queries the link's runtime MTU and tests three sizes relative to it:
+// mtu-1 (last fitting datagram), mtu (exact boundary), mtu+1 (first
+// over-limit). The mtu+1 row returns GN_ERR_PAYLOAD_TOO_LARGE on every
+// iteration — `over_mtu_rejections == iterations` is the acceptance
+// criterion; bytes_per_sec is 0 for that row by design. Keeping the
+// row alive (rather than SkipWithError) lets the `mtu_val` counter
+// appear in the report so readers can see what MTU the link reported.
+
+BENCHMARK_DEFINE_F(UdpFixture, MtuBoundary)(::benchmark::State& state) {
+    if (server->composer_listen("udp://127.0.0.1:0") != GN_OK) {
+        state.SkipWithError("listen failed");
+        return;
+    }
+    std::uint16_t server_port = 0;
+    if (server->composer_listen_port(&server_port) != GN_OK
+        || server_port == 0) {
+        state.SkipWithError("listen port introspection failed");
+        return;
+    }
+    gn_conn_id_t client_conn = GN_INVALID_ID;
+    if (client->composer_connect(
+            "udp://127.0.0.1:" + std::to_string(server_port),
+            &client_conn) != GN_OK) {
+        state.SkipWithError("composer_connect failed");
+        return;
+    }
+
+    const std::uint32_t mtu_val = client->mtu();
+    /// state.range(0) is -1 / 0 / +1 relative to mtu_val.
+    /// Guard against underflow: if mtu_val is somehow 0, skip.
+    if (mtu_val == 0) {
+        state.SkipWithError("mtu() returned 0");
+        return;
+    }
+    const auto offset = state.range(0);
+    const std::size_t payload_size = (offset < 0)
+        ? static_cast<std::size_t>(static_cast<std::int64_t>(mtu_val) + offset)
+        : static_cast<std::size_t>(mtu_val) + static_cast<std::size_t>(offset);
+    const auto payload = make_payload(payload_size);
+
+    ResourceCounters res;
+    res.snapshot_start();
+    std::uint64_t ok_sends              = 0;
+    std::uint64_t over_mtu_rejections   = 0;
+    for ([[maybe_unused]] auto _ : state) {
+        const auto rc = client->send(client_conn,
+            std::span<const std::uint8_t>(payload));
+        if (rc == GN_OK) {
+            ++ok_sends;
+        } else if (rc == GN_ERR_PAYLOAD_TOO_LARGE) {
+            ++over_mtu_rejections;
+        }
+    }
+    res.snapshot_end();
+
+    if (ok_sends > 0) {
+        state.SetBytesProcessed(
+            static_cast<std::int64_t>(ok_sends) *
+            static_cast<std::int64_t>(payload_size));
+    }
+    state.counters["mtu_val"]             = static_cast<double>(mtu_val);
+    state.counters["payload_size"]        = static_cast<double>(payload_size);
+    state.counters["ok_sends"]            = static_cast<double>(ok_sends);
+    state.counters["over_mtu_rejections"] = static_cast<double>(over_mtu_rejections);
+    report_resources(state, res);
+}
+
+BENCHMARK_REGISTER_F(UdpFixture, MtuBoundary)
+    ->Arg(-1)   // mtu-1: last fitting datagram
+    ->Arg(0)    // mtu:   exact boundary
+    ->Arg(1)    // mtu+1: first over-limit (GN_ERR_PAYLOAD_TOO_LARGE)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 

@@ -19,12 +19,12 @@
 
 #include <atomic>
 #include <cstdint>
+#include <flat_map>
 #include <memory>
 #include <optional>
 #include <shared_mutex>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 #include <sdk/cpp/protocol_layer.hpp>
 #include <sdk/types.h>
@@ -89,11 +89,15 @@ public:
 
     [[nodiscard]] std::size_t size() const noexcept;
 
+    /// Snapshot of all registered protocol layer entries in protocol_id order.
+    /// Used by the topology builder.
+    [[nodiscard]] std::vector<ProtocolLayerEntry> snapshot() const;
+
 private:
-    mutable std::shared_mutex                                  mu_;
-    std::unordered_map<std::string, ProtocolLayerEntry>        by_protocol_id_;
-    std::unordered_map<protocol_layer_id_t, std::string>       by_id_;
-    std::atomic<protocol_layer_id_t>                           next_id_{1};
+    mutable std::shared_mutex                                            mu_;
+    std::flat_map<std::string, ProtocolLayerEntry, std::less<>>          by_protocol_id_;
+    std::flat_map<protocol_layer_id_t, std::string>                      by_id_;
+    std::atomic<protocol_layer_id_t>                                     next_id_{1};
 };
 
 } // namespace gn::core

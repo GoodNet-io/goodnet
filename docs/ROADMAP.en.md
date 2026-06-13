@@ -24,7 +24,7 @@ to refresh the table.
 | Multi-path scheduler | ✓ done | plugins/strategies/float_send_rtt/ present |
 | Directed relay → direct upgrade | ✓ done | plugins/links/ice/session.cpp present |
 | DPLPMTUD active path-MTU probing | ✓ done | plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present |
-| Multi-TURN fallback | ✓ done | token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:392:    cfg.turn_backup_inter...) |
+| Multi-TURN fallback | ✓ done | token 'turn_servers' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers` ...); token 'turn_backup_interval_s' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:395:    cfg.turn_backup_inter...) |
 | IPv6 mDNS dual-stack | ✓ done | token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr const char* kMdnsIPv6Multicast...) |
 | Port mapping (UPnP / PCP / NAT-PMP) | ✓ done | plugins/links/portmap/ present |
 | Kademlia-style DHT | ✗ missing | plugins/handlers/kademlia/ absent |
@@ -36,31 +36,40 @@ to refresh the table.
 | Recv-side parallel decrypt | ✓ done | symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t SecuritySession::decrypt_batch_tran...) |
 | Link capability gate | ✓ done | core/kernel/link_capability.hpp present |
 | DynamicRuntime dlsym cache | ✓ done | symbol 'DynamicPluginSymbols' present (core/plugin/runtimes/dynamic.hpp:36:struct DynamicPluginSymbols {) |
-| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/runtimes/remote.cpp:42:    const ManifestEntry* manifest_entry = ...) |
-| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:613:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
-| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:765:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
+| Required-plugin manifest pinning | ✓ done | symbol 'ManifestEntry' present (core/plugin/plugin_manifest.hpp:75:struct ManifestEntry {) |
+| gn_core_unload_plugin hot-reload | ✓ done | symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:789:gn_result_t gn_core_unload_plugin(gn_core_t* core,...) |
+| Subprocess HOST_CALL slot completion | ✓ done | symbol 'GN_WIRE_HOST_SLOT_NOTIFY_CONNECT' present (core/plugin/remote_host.cpp:807:        case GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {) |
 | Per-slot reply-timeout override | ✓ done | symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.hpp:131:    void set_reply_timeout_for_slot(std::uint...) |
 | Wire codec GN_ERR_WIRE_DECODE | ✓ done | symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:/// Errors return `GN_ERR_WIRE_DECODE` for malf...) |
 | Fuzz harness | ✓ done | tests/fuzz/CMakeLists.txt present |
-| Coverage gating | ✗ missing | token 'llvm-cov' absent; token 'gcov' absent; token '--coverage' absent |
+| Coverage gating | ✓ done | token 'gcov' found (CMakeLists.txt:152:option(GOODNET_COVERAGE "Build with gcov line+function cov...) |
 | Plugin templates and scaffolder | ✓ done | nix/plugin.nix present |
-| Test vectors | ✗ missing | tests/vectors/ absent; docs/test-vectors/ absent |
+| Test vectors | ✓ done | tests/vectors/ present |
 | Raw inject bridge | ✓ done | plugins/links/raw_inject/ present |
-| Full WASM kernel build | ✗ missing | nix/goodnet-wasm.nix absent; token 'EMSCRIPTEN' absent |
-| JS SDK + WebSocket bridge | ✗ missing | plugins/handlers/web_api_proxy/ absent; bridges/goodnet-js/ absent; extension id 'gn.handler.web-api-proxy' not registered in plugins/ |
-| C ABI version of `IPluginRuntime` | ✗ missing | sdk/plugin_runtime.h absent |
+| Full WASM kernel build | ✓ done | nix/goodnet-wasm.nix present |
+| JS SDK + WebSocket bridge | ✓ done | plugins/handlers/web_api_proxy/ present; bridges/js/package.json present; extension id 'gn.handler.web-api-proxy' registered (plugins/handlers/web_api_proxy/web_api_proxy_ext.h:27:#define GN_EXT_WEB_API_...) |
+| C ABI version of `IPluginRuntime` | ✓ done | sdk/plugin_runtime.h present |
 | Subprocess sandbox | ✗ missing | token 'seccomp_load' absent; token 'setns' absent; token 'unshare' absent |
 | BRIDGE kind first-class plugin taxonomy | ✗ missing | token 'GN_PLUGIN_KIND_BRIDGE' absent; core/registry/bridge_registry.hpp absent |
 | io_uring runtime | ✗ missing | token 'io_uring_setup' absent; core/plugin/runtimes/io_uring.cpp absent |
-| aarch64 Linux | ✗ missing | token 'aarch64-linux-ci' absent |
-| Android build | ✗ missing | nix/goodnet-android.nix absent; token 'ANDROID_NDK' absent |
+| aarch64 Linux | ✓ done | packages.x86_64-linux.goodnet-aarch64-linux + goodnet-aarch64-linux-static exposed in flake |
+| macOS x86_64 / aarch64 (cross from Linux) | ✓ done | nix/goodnet-darwin.nix present |
+| Android build | ✓ done | nix/goodnet-android.nix present |
 | MCU port | ✗ missing | nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent |
 | C99 SDK subset | ✗ missing | sdk/c99/ absent |
-| Rust | ✗ missing | bridges/goodnet-rs/Cargo.toml absent |
-| Python | ✗ missing | bridges/goodnet-py/setup.py absent |
+| Rust | ✓ done | bridges/rust/Cargo.toml present |
+| Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
-| Hardware key store | ✗ missing | plugins/security/tpm/ absent; extension id 'gn.security.tpm' not registered in plugins/ |
+| Phase 1 — `IdentitySigner` abstraction (in flight) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 2 — C ABI for identity providers (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 3 — PKCS#11 plugin dual-expose (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 4 — `goodnetd` operator UX (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending) | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — PKCS#11 | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — TPM 2.0 | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — macOS Keychain | ✗ missing | no rule in roadmap_map.yaml |
+| Hardware key store — WebAuthn / passkey | ✗ missing | no rule in roadmap_map.yaml |
 | Post-quantum security provider | ✗ missing | plugins/security/pq/ absent; token 'ML_KEM' absent |
 | OpenTelemetry trace propagation across mesh hops | ✗ missing | token 'otel_span_propagate' absent |
 | Concrete exporter plugins | ✗ missing | plugins/metrics/prometheus/ absent; plugins/metrics/otlp/ absent |
@@ -70,8 +79,44 @@ to refresh the table.
 | Goodnetd binary roadmap | ✗ missing | token 'GOODNETD_TRACKED_IN_KERNEL_ROADMAP' absent |
 | CLI introspection tool | ✗ missing | tools/goodnetctl/ absent |
 | Config validator | ✗ missing | tools/config_validator/ absent |
-| TCP-TURN (RFC 6062) | ✗ missing | token 'TURN_TCP_ALLOCATE' absent; token 'turn_tcp_relay' absent |
+| TCP-TURN (RFC 6062) | ✓ done | token 'REQUESTED_TRANSPORT_TCP' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...) |
 <!-- /livedoc:roadmap_status_table -->
+
+---
+
+## RTOS optimization
+
+The architectural target is a user-space RTOS: the network is the
+system bus, every node is addressed strictly by its Ed25519 public
+key, and the kernel enforces hard latency bounds. This section tracks
+the remaining work toward that invariant.
+
+- **Zero-alloc packet pipeline** — inbound path from the security
+  boundary to synchronous handler dispatch operates entirely on
+  borrowed `gn_message_t` pointers; kernel allocates zero heap on the
+  envelope propagation path. The invariant is documented in
+  `docs/architecture/`; no plugin can violate it from outside the ABI.
+  Landing: enforce with a custom allocator shim in the hot path and
+  add an allocator-interpose test that fails if any heap call fires
+  during dispatch.
+- **P2300 structured sender chains** — replace `asio::post` on plugin
+  I/O paths with P2300 sender chains for structured backpressure and
+  deterministic work-queue depth. Plugin I/O callbacks become
+  cancellable senders; the executor is replaceable without touching
+  kernel code. Tracked in issue
+  [#20](https://github.com/GoodNet-io/goodnet/issues/20).
+- **io_uring link backend** — `link-udp` zero-copy send/recv via
+  io_uring eliminates the asio epoll overhead on Linux ≥5.11. Tracked
+  in issue [#19](https://github.com/GoodNet-io/goodnet/issues/19).
+- **Bounded handler chain depth** — the RCU handler dispatch already
+  hard-caps chain depth. Combined with the zero-alloc path, worst-case
+  dispatch latency becomes a function of chain length, not heap
+  pressure. Document as a formal contract guarantee once the allocator
+  shim lands.
+- **MCU port** — see Cross-platform below. The same bounded-latency
+  architecture targets ESP32 / RP2040 with heavy SDK trim and
+  mbedTLS-crypto substitution; no `std::vector` on hot paths, 4 MB
+  flash budget.
 
 ---
 
@@ -246,6 +291,51 @@ handler / a build target.
   already lets us load only a subset (static plugins only — no
   dlopen in WASM). Heavy work but the kernel ABI doesn't change.
 
+  *First landing — kernel-core subset compiles to `wasm32-wasi`
+  via `nix build .#goodnet-wasm` (driven from
+  `nix/goodnet-wasm.nix` against `pkgs.pkgsCross.wasi32`). Scope:
+  `core/plugin/wire_codec.cpp` + `plugins/protocols/gnet/wire.cpp`
+  → `lib/libgoodnet-wasm.a`. Out of scope and gated by
+  `#if !defined(__wasi__) && !defined(__EMSCRIPTEN__)`:
+  `core/plugin/remote_host.cpp` (socketpair + fork + execve),
+  `core/plugin/runtimes/dynamic.cpp` (dlopen), every
+  `plugins/links/*` (no WASI sockets), every `plugins/security/*`
+  (asio + libsodium thread layer). The wasmtime-backed plugin
+  runtime stays scoped out (direction 3 below).*
+
+  *Second landing — browser-WASM via `pkgs.emscripten` (`emcc`)
+  through `nix build .#goodnet-wasm-emscripten` (driven from
+  `nix/goodnet-wasm-emscripten.nix`). Companion to the WASI
+  route above; both coexist as additive flake outputs. Output
+  triple is `lib/libgoodnet-wasm-emscripten.a` +
+  `lib/goodnet.wasm` + `lib/goodnet.js`; the JS loader (the
+  future JS SDK, direction 3 in the WASM-runtime sweep) wraps
+  the pair via `await Goodnet()` so a `<script>` tag's
+  `Module.instantiateGoodnet()` style call yields a peer node
+  inside a browser tab. Buildable scope today: same dep-free
+  codec + framing TUs as the WASI route
+  (`core/plugin/wire_codec.cpp` + `plugins/protocols/gnet/wire.cpp`),
+  extended with `plugins/protocols/raw/raw.cpp` (the raw 1:1
+  layer; emcc-friendly, dep-free). Honest gap list lives in
+  the derivation's `passthru.gaps` attribute: **libsodium** has
+  no Emscripten port in nixpkgs and the `emconfigure` source
+  build is a follow-up — every TU that `#include <sodium.h>`
+  (identity/, security/inline_crypto, plugin_manifest) is
+  excluded; **asio** headers parse under emcc but the reactor
+  needs `-pthread` + `SharedArrayBuffer` + cross-origin-isolated
+  COOP/COEP host headers, so `kernel.cpp` / `plugin_manager.cpp`
+  / `timer_registry.cpp` are out until the JS-SDK consumer
+  wires that side; **`plugins/links/ws/`** is a standalone-git
+  plugin slot — its header-only `wire.hpp` + `ws_http_parse.hpp`
+  get an emcc parse-check when the slot is populated before
+  `nix build`, otherwise skipped without failing. The
+  `gn.link.wss` carrier itself (asio TCP + RFC-6455 wire over
+  asio's `__EMSCRIPTEN__` reactor) follows the asio gap. The
+  same `_WIN32`-vs-POSIX split in `core/plugin/remote_host.cpp`
+  excludes fork/exec/socketpair from the browser build at the
+  source list level (no process model in browser WASM), so no
+  new `__EMSCRIPTEN__` guard touches that TU.*
+
 - **JS SDK + WebSocket bridge** — far simpler near-term path. The
   browser DOES NOT run goodnet code. Instead:
   - A kernel handler `gn.handler.web-api-proxy` listens on
@@ -309,10 +399,37 @@ different sandboxing and performance trade-offs.
 
 ## Cross-platform / cross-arch
 
-- **aarch64 Linux** — current CI matrix is x86_64 + Windows mingw.
-  Native ARM Linux builds (server / Raspberry Pi / cloud ARM
-  instances) need a CI runner. Code itself is portable; the
-  matrix is the missing piece.
+- **aarch64 Linux** — cross-build smoke gate lands as
+  `goodnet-aarch64-linux` (and the truly-static
+  `goodnet-aarch64-linux-static`) via
+  `pkgs.pkgsCross.aarch64-multiplatform`; CI runs
+  `aarch64-linux-cross-build` under the `cross-build` label gate
+  (same shape as the mingw windows-cross job — compile + link,
+  no test execute because there is no native aarch64 runner
+  registered on the Forgejo instance yet). Native ARM Linux
+  operators (server / Raspberry Pi / cloud ARM instances) consume
+  `nix build .#packages.aarch64-linux.goodnet-core` from the
+  non-cross attr set instead. The native-runner test gate is the
+  remaining piece.
+- **macOS x86_64 / aarch64 (cross from Linux)** — kernel-only
+  cross-build via `pkgs.pkgsCross.{x86_64,aarch64}-darwin` lands
+  as `goodnet-darwin-x86_64` / `goodnet-darwin-aarch64` flake
+  outputs. CI runs `darwin-cross-build` with
+  `continue-on-error: true` because the Apple SDK is not freely
+  redistributable through nixpkgs; pure Nix cross from Linux
+  without an operator-staged `apple-sdk_*` derivation surfaces
+  a missing-SDK link error from the Apple `cctools` derivation.
+  The flake's `passthru.skip_reason` attribute lets CI short-
+  circuit gracefully on the SDK gap. Native Apple operators
+  consume `nix build .#packages.{x86_64,aarch64}-darwin.goodnet-
+  core` from the non-cross attr set instead — the Linux-only API
+  uses in `core/plugin/remote_host.cpp` (`prctl`, `closefrom`,
+  `PR_SET_*`) and `core/plugin/runtimes/dynamic.cpp` (`openat2`)
+  are already gated behind `__linux__` so darwin compiles parse
+  clean and degrade to the portable `O_NOFOLLOW` integrity path.
+  Bundled plugins each own their own darwin port story per the
+  per-plugin `flake.nix` matrix in
+  `docs/architecture/cross-platform.ru.md`.
 - **Android build** — Android NDK toolchain target for the kernel
   and the static-plugin bundle. Reuses the same `nix run .#build
   -- static` shape with a cross-compile profile. Use case:
@@ -328,6 +445,22 @@ different sandboxing and performance trade-offs.
 - **C99 SDK subset** — for toolchains where C++17 is unavailable.
   Mirrors `sdk/*.h` shape; plugin authors get the C-ABI surface
   without the C++ convenience headers.
+- **aarch64 native test runner** — the cross-build compiles and
+  links on x86_64; a native aarch64 Forgejo runner is needed for
+  the full test matrix (unit + integration + sanitiser + fuzz)
+  to run on-target. Also unlocks an `aarch64-abi-pin` CI step that
+  verifies `tests/abi/test_layout.c` sizes/offsets match the
+  x86_64 pin — important because `uint32_t` alignment rules
+  are the same but any future pointer-width field would diverge.
+- **Android native test runner** — the Android NDK cross-build
+  gate exists; running the test suite on an Android emulator or
+  device via `adb` closes the loop. JNI embedding smoke test
+  (`java.lang.System.loadLibrary` → `gn_core_init` → lifecycle)
+  is the minimal bar.
+- **Windows native build** — currently only `windows-cross-build`
+  (MinGW cross from Linux). A native MSVC or clang-cl build on a
+  Windows runner removes the MinGW ABI gap and lets Windows-native
+  plugin authors link without a compatibility shim.
 
 ---
 
@@ -336,11 +469,25 @@ different sandboxing and performance trade-offs.
 The kernel ABI is C-ABI clean. Bindings ship as separate repos
 that consume `sdk/*.h` without recompiling the kernel.
 
-- **Rust** — `cbindgen`-generated wrappers around `sdk/*.h` +
-  idiomatic Rust trait for handlers / link plugins.
-- **Python** — synchronous C-extension SDK. Subprocess
-  remote-plugin path already works; in-process C-extension
-  bindings would give a faster path for Python-side handlers.
+- **Rust** — landed as the standalone `GoodNet-io/bridges-rust`
+  repo, slotted at `bridges/rust/` in the kernel checkout.
+  Two-crate Cargo workspace: `goodnet-sys` runs `bindgen` over
+  `sdk/core.h` at build time (no checked-in `bindings.rs`);
+  `goodnet` is the safe RAII wrapper — `Core` owns
+  `*mut gn_core_t`, `Drop` calls `gn_core_destroy`. Lifecycle +
+  `load_plugin` + `register_protocol` are hand-wrapped as
+  `Result<_, Error>`; the rest of the C ABI is reachable via
+  `goodnet::sys::*`. The bridges-rust flake builds both crates
+  and runs the create→init→drop smoke test against a
+  `goodnet-core` threaded in as a flake input. Plugin-side
+  traits (`Handler`, `Link` written in Rust) stay a follow-up.
+- **Python** — landed as the standalone `GoodNet-io/bridges-
+  python` repo, slotted at `bridges/python/`. cffi ABI-mode
+  wrapper: pure-Python package, no compiled extension — the
+  kernel `.so` is loaded at runtime via `dlopen`. Ships full
+  lifecycle + identity + plugin load/unload + the application
+  I/O slot + introspection counters. Callback-based
+  subscriptions stay deferred.
 - **Go** — cgo wrappers, idiomatic Go API for the most-used SDK
   surface (`gn_core_query_extension`, `host_api->send`, etc.).
 - **Zig** — Zig's `@cImport` already works against `sdk/*.h`;
@@ -350,12 +497,63 @@ that consume `sdk/*.h` without recompiling the kernel.
 
 ## Security extensions
 
-- **Hardware key store** — TPM, YubiKey, secure-enclave backing
-  for the Ed25519 identity key. The security-provider abstraction
-  in [`security-trust.en.md`](contracts/security-trust.en.md)
-  already lets a plugin substitute the key source; a `gn.security.tpm`
-  plugin would wire it.
-- **Post-quantum security provider** — ML-KEM (FIPS 203) /
+### Identity refactor — 5-phase plan for pluggable signers
+
+Today's `NodeIdentity` holds a raw Ed25519 secret-key blob and calls
+`crypto_sign_*` directly from kernel code. That's a single failure
+mode (file copy == identity stolen) and blocks any hardware-backed
+key store. The refactor introduces an `IdentitySigner` abstraction
+and routes every kernel signing call through it.
+
+- **Phase 1 — `IdentitySigner` abstraction (in flight)** —
+  `core/identity/signer.hpp` interface + `LibsodiumSigner` default
+  impl (wraps current libsodium behaviour bit-for-bit). All direct
+  `crypto_sign_*` callers in kernel route through the signer.
+  `gn_core_install_identity_from_file` continues working unchanged.
+  Zero observable behaviour change. **Unlocks everything downstream.**
+- **Phase 2 — C ABI for identity providers (pending)** —
+  `sdk/extensions/identity.h` with `gn_identity_signer_vtable_t`
+  (`pubkey` + `sign` thunks) + public
+  `gn_core_install_identity_from_provider(core, ext_id, key_label)`.
+  Plugin signers register as extensions; kernel queries them through
+  the standard extension surface.
+- **Phase 3 — PKCS#11 plugin dual-expose (pending)** — existing
+  `plugins/security/pkcs11/` adds the `gn.identity.pkcs11` extension
+  alongside its current `gn.security.pkcs11` (transport-side). Same
+  `.so`, two extensions; no sub-repo rename. ROADMAP "Hardware key
+  store" flips fully to ✓ once Phase 3 lands.
+- **Phase 4 — `goodnetd` operator UX (pending)** —
+  `goodnetd identity import-hsm --module ... --label ... --pin-env ...`,
+  `doctor` HSM health checks, `quickstart` HSM option in the wizard.
+- **Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)** —
+  `gn::sdk::Core` ctor `Identity::from_hsm({ext_id, key_label})`
+  factory; Noise XX provider pulls the identity_static_key via the
+  signer (not the key bytes). After Phase 5, every downstream
+  consumer (bridges/cpp/python/rust/js, apps/gssh, ssh-modern,
+  web-node) automatically gains HSM-backed identity through the
+  same `Core` constructor.
+
+### Backend family — `plugins/identity/<backend>/`
+
+Once Phase 2 lands, the `gn.identity.*` extension family gets its
+own plugin tree. New backends ship as siblings, no kernel patches.
+
+- **Hardware key store — PKCS#11** ◐ partial — `plugins/security/pkcs11/`
+  v0.1 landed (sub-repo `GoodNet-io/security-pkcs11`). Currently
+  exposes only `gn.security.pkcs11` (transport-side); identity-side
+  `gn.identity.pkcs11` arrives in Phase 3. Covers YubiKey 5, SoftHSM2
+  (dev/CI), and any enterprise HSM with a PKCS#11 v3.0 module — AWS
+  CloudHSM, Thales Luna, etc.
+- **Hardware key store — TPM 2.0** ✗ pending — separate sub-repo
+  `plugins/identity/tpm/`. Uses `tpm2-tss` ESAPI for the Ed25519 path.
+  Phase 3+ once PKCS#11 identity flow proves the contract.
+- **Hardware key store — macOS Keychain** ✗ pending —
+  `plugins/identity/keychain/`. Apple Security framework; iOS
+  Secure Enclave variant shares the same plugin contract.
+- **Hardware key store — WebAuthn / passkey** ✗ pending —
+  `plugins/identity/webauthn/`. Browser-side identity for web-node
+  (see [[107-web-node-fullkernel]]). Uses CTAP2 / FIDO2.
+- **Post-quantum security provider** ✗ pending — ML-KEM (FIPS 203) /
   ML-DSA (FIPS 204) provider when the standards settle and
   libsodium / OpenSSL ship vetted implementations. The Noise
   protocol abstraction can host the PQ handshake without a wire-
@@ -418,6 +616,28 @@ existing kernel surface.
 - **TCP-TURN (RFC 6062)** — TURN relay over TCP transport
   (currently UDP-only in `plugins/links/ice`). Required for
   TCP-only network environments that block UDP TURN traffic.
+
+---
+
+## Community
+
+### Plugin Challenge
+
+Two tracks. Full rules in [`CONTEST.md`](../CONTEST.md).
+
+**Track A — Write what the protocol should have been.** Pick a problem
+that ICE, VPN, file sync, peer discovery, or routing already solves —
+and write it freed from IP-era constraints. The result must work over
+any GoodNet link, not just IP-based ones.
+
+**Track B — Most unhinged carrier.** The kernel does not care what moves
+bytes as long as `gn_link_api_t` is satisfied and `notify_inbound_bytes`
+is eventually called. Founding entries in
+[issue #42](https://github.com/GoodNet-io/goodnet/issues/42):
+stellar photometry (~1 bit/century), HomePlug AV2 over 230V wiring,
+thermal receipt printers, git commit messages with Microsoft as relay.
+
+The ideal submission wins both tracks.
 
 ---
 

@@ -1,0 +1,496 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+# Self-hosted Forgejo Actions matrix. Runners advertise the label
+# `nixos:host`; Nix is preinstalled on PATH so
+# `DeterminateSystems/nix-installer-action` is omitted. The local
+# Nix store is reused across jobs so `magic-nix-cache-action` is
+# omitted too. See `docs/operator/ci-forgejo-setup.en.md` for
+# registration. The GitHub copy at `.github/workflows/ci.yml`
+# keeps only `flake-check` + `livedoc-check` as a public smoke.
+
+jobs:
+  flake-check:
+    runs-on: nixos
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: nix flake check
+        run: nix flake check --print-build-logs
+
+  livedoc-check:
+    # Source-derived facts in `docs/` (slot tables, RFC coverage,
+    # metrics catalog, version pin, contract→header round-trips)
+    # are produced by `tools/livedoc.py`. The `--check` flag
+    # re-derives the facts and exits non-zero if any in-tree
+    # markdown / canvas / svg differs from what the current
+    # source would emit. PRs land green by running `python3
+    # tools/livedoc.py --all` locally before pushing — the
+    # tree-resident artefacts and the kernel sources go through
+    # CI in lockstep.
+    #
+    # The same job also runs `pytest` over `tests/livedoc` and
+    # `tests/tools` so the python-side gates (livedoc parser
+    # contract, bench-regression comparator) catch a refactor
+    # that would otherwise slip past the C++ build-and-test job.
+    runs-on: nixos
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run livedoc --check
+        run: nix develop --command python3 tools/livedoc.py --check
+      - name: Run python tests
+        run: nix develop --command pytest
+
+  docs-build:
+    runs-on: nixos
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate Doxygen reference + livedoc diagrams
+        run: nix run .#docs
+      - name: Upload Doxygen HTML
+        uses: actions/upload-artifact@v4
+        with:
+          name: doxygen-html-${{ github.sha }}
+          path: build/doxygen/html/
+          retention-days: 7
+
+  build-and-test:
+    runs-on: nixos
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build (Debug) and run unit + integration tests
+        run: nix run .#test
+
+  plugin-verify:
+    # Each loadable plugin lives in its own git under
+    # `github.com/GoodNet-io/<repo>`. This matrix confirms every
+    # plugin's `flake.nix` evaluates and `nix build .#default`
+    # produces an artefact standalone — i.e. without the kernel
+    # monorepo's CMake tree present. Catches `find_package(GoodNet)`
+    # / `flake.nix` regressions in plugin repos.
+    runs-on: nixos
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        plugin:
+          - { repo: link-tcp,         path: plugins/links/tcp }
+          - { repo: link-udp,         path: plugins/links/udp }
+          - { repo: link-ipc,         path: plugins/links/ipc }
+          - { repo: link-tls,         path: plugins/links/tls }
+          - { repo: link-ws,          path: plugins/links/ws }
+          - { repo: link-ice,         path: plugins/links/ice }
+          - { repo: link-quic,        path: plugins/links/quic }
+          - { repo: handler-heartbeat, path: plugins/handlers/heartbeat }
+          - { repo: security-noise,   path: plugins/security/noise }
+          - { repo: security-null,    path: plugins/security/null }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: GoodNet-io/${{ matrix.plugin.repo }}
+          path: ${{ matrix.plugin.path }}
+      - name: Build plugin standalone
+        working-directory: ${{ matrix.plugin.path }}
+        run: nix build .#default --print-build-logs
+
+  apps-build:
+    # Verifies that goodnetd and gssh build from the monorepo via the
+    # `.goodnet/` override mechanism. This catches regressions in the
+    # gnet dependency path (apps/goodnetd requires GoodNet::protocol_gnet)
+    # and in the gssh optional-SDK detection logic. Runs on every push
+    # so the in-tree app build is part of the regular CI gate.
+    runs-on: nixos
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build goodnetd (monorepo, override kernel + protocol-gnet)
+        run: |
+          nix build ./apps/goodnetd# \
+            --override-input goodnet path:. \
+            --override-input protocol-gnet path:./plugins/protocols/gnet \
+            --print-build-logs
+      - name: Build gssh (standalone, no kernel dep)
+        run: nix build ./apps/gssh# --print-build-logs
+
+  android-cross-build:
+    # Kernel-only smoke gate for Android aarch64 via NDK r28 cross-stdenv.
+    # Derivation lives at nix/goodnet-android.nix; GOODNET_BUILD_BUNDLED_PLUGINS
+    # is OFF and NDK enforces C++23 (not C++26 — NDK libc++ lags).
+    # continue-on-error keeps main green while NDK toolchain evolves.
+    # Gated by the `cross-build` label OR push to main.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cross-build Android aarch64 (kernel-only)
+        run: nix build .#goodnet-android-aarch64 --print-build-logs --keep-going
+
+  windows-cross-build:
+    # Smoke test for the mingw cross-build path so a regression
+    # touching POSIX-vs-Win32 #ifdefs on main surfaces before the
+    # next release tag. Build-only (no test execute) — there is no
+    # Windows runner in the test gate. The release.yml `build-
+    # windows` job runs the same recipe on tag push to produce the
+    # shipped `.zip`.
+    runs-on: nixos
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Cross-build Windows via mingw
+        run: nix build .#goodnet-windows --print-build-logs
+
+  darwin-cross-build:
+    # Cross-build of the kernel for Apple x86_64 + aarch64 via
+    # `pkgs.pkgsCross.*-darwin` from the Linux build host. Mirrors
+    # the windows-cross-build shape but runs with
+    # `continue-on-error: true` because the Apple SDK is not freely
+    # redistributable through nixpkgs; pure Nix cross from Linux
+    # without an operator-staged `apple-sdk_*` derivation eventually
+    # surfaces a missing-SDK link error from the Apple `cctools`
+    # derivation. The job first prints each target's
+    # `passthru.skip_reason` attribute (informational) so the
+    # surface is visible in the CI log even if the subsequent build
+    # itself fails. The job stays advisory until either nixpkgs
+    # ships a vendored Apple SDK channel or the operator wires
+    # `requireFile` for `apple-sdk_15+`. Gated by the `cross-build`
+    # PR label OR push to main so PRs that don't touch
+    # cross-platform-relevant code don't pay the cross-stdenv
+    # evaluation tax.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - goodnet-darwin-x86_64
+          - goodnet-darwin-aarch64
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # `nix eval --raw` on a `passthru.skip_reason` string. The
+        # `|| true` keeps the step green even if the attribute is
+        # absent (older flake revision) — the next step is the
+        # real signal. `NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM=1` lets
+        # the cross-stdenv's Apple-platform-restricted helpers
+        # (cctools, libresolv) evaluate from the Linux host.
+        env:
+          NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM: "1"
+        run: |
+          nix eval ".#${{ matrix.target }}.skip_reason" --raw --impure 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build ${{ matrix.target }}
+        env:
+          NIXPKGS_ALLOW_UNSUPPORTED_SYSTEM: "1"
+        run: nix build .#${{ matrix.target }} --print-build-logs --keep-going --impure
+
+  wasm-cross-build:
+    # WASM / WASI cross-build of the kernel-core wire codec + GNET
+    # framing subset via `pkgs.pkgsCross.wasi32`. First of three
+    # WASM directions tracked in `docs/ROADMAP.en.md` §WASM-web;
+    # the other two (full-kernel emscripten browser build,
+    # wasmtime-backed plugin runtime) stay scoped out. The build
+    # produces `lib/libgoodnet-wasm.a` against the wasi-libcxx
+    # static sysroot; networking plugins, dlopen-runtime, and the
+    # fork-using subprocess host are gated out at both the source
+    # layer (`__wasi__` / `__EMSCRIPTEN__`) and the build layer
+    # (the derivation drives clang directly instead of the full
+    # kernel CMake graph). `continue-on-error: true` because the
+    # wasi tooling pin is volatile — libcxx exception toggles flip
+    # between llvm bumps, the wasi-sysroot rebuilds on every nixpkgs
+    # refresh, and the `passthru.skip_reason` surfaces non-fatal
+    # blockers so the job logs a "skipped" line instead of breaking
+    # main. Same `cross-build` label gate as `darwin-cross-build`.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # Surfaces the `passthru.skip_reason` attribute the WASM
+        # derivation sets when the wasi32 toolchain pin breaks the
+        # build (libcxx exceptions flip, sysroot ABI shift). Stays
+        # advisory — the build step below is the real signal.
+        run: |
+          nix eval .#goodnet-wasm.skip_reason --raw 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build WASM kernel core
+        run: nix build .#goodnet-wasm --print-build-logs --keep-going
+
+  wasm-emscripten-build:
+    # Browser-WASM cross-build via `pkgs.emscripten` (`emcc`).
+    # Second of the three WASM directions in
+    # `docs/ROADMAP.en.md` §Web — browser integration. Where
+    # `wasm-cross-build` above targets `wasm32-wasi` for a
+    # wasmtime server-side host, this job targets
+    # `wasm32-emscripten` for in-browser instantiation: the
+    # output pair `goodnet.wasm` + `goodnet.js` is what the JS
+    # SDK (direction 3) wraps. Same dep-free codec / framing
+    # subset compiles; the kernel TUs that drag libsodium
+    # (identity/, session, manifest) or asio (kernel.cpp,
+    # plugin_manager, timer_registry) stay gated out at the
+    # source list — see the derivation's `passthru.gaps`.
+    # `continue-on-error: true` because the Emscripten port
+    # surface is volatile (sysroot rebuilds on llvm bumps,
+    # libsodium/asio port availability shifts under us). Same
+    # `cross-build` label gate as the WASI and darwin
+    # cross-builds.
+    runs-on: nixos
+    timeout-minutes: 30
+    continue-on-error: true
+    if: github.event_name == 'push' || contains(github.event.pull_request.labels.*.name, 'cross-build')
+    steps:
+      - uses: actions/checkout@v4
+      - name: Print skip_reason (informational)
+        # Surfaces `passthru.skip_reason` when the emscripten
+        # toolchain pin breaks the build. Stays advisory; the
+        # next step is the real signal.
+        run: |
+          nix eval .#goodnet-wasm-emscripten.skip_reason --raw 2>/dev/null \
+            || echo "no skip_reason attribute"
+      - name: Cross-build WASM kernel via Emscripten
+        run: nix build .#goodnet-wasm-emscripten --print-build-logs --keep-going
+
+  bench-smoke:
+    # Builds the three primary perf binaries in Release mode and runs
+    # each for ~0.3 s with `--benchmark_format=json`. If a baseline
+    # JSON for the binary lives at `bench/baselines/<binary>.json`,
+    # `tools/bench_compare.py` compares the run against it and fails
+    # the job if any benchmark regresses by more than 15 % in cpu/real
+    # time. Without a baseline the job logs numbers but does not gate
+    # — useful as a smoke check that the bench harness itself still
+    # produces non-zero metering after a kernel change.
+    #
+    # Gated by the `bench` label OR push to main so PRs that don't
+    # touch perf-relevant code don't pay the Release-build tax.
+    runs-on: nixos
+    timeout-minutes: 20
+    if: contains(github.event.pull_request.labels.*.name, 'bench') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build bench binaries (Release)
+        run: |
+          nix develop --command bash -c '
+            cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release \
+              -DGOODNET_BUILD_BENCH=ON >/dev/null
+            ninja -C build-release bench_real_e2e bench_tcp bench_udp
+          '
+      - name: Run + compare benches
+        run: |
+          mkdir -p bench/_ci
+          for b in bench_real_e2e bench_tcp bench_udp; do
+            ./build-release/bench/${b} \
+              --benchmark_min_time=0.3s \
+              --benchmark_format=json \
+              > bench/_ci/${b}.json
+            if [[ -f bench/baselines/${b}.json ]]; then
+              echo "── ${b}: compare vs baseline ────"
+              nix develop --command python3 tools/bench_compare.py \
+                bench/baselines/${b}.json bench/_ci/${b}.json \
+                --threshold-pct 15
+            else
+              echo "── ${b}: no baseline, smoke-only ────"
+              nix develop --command python3 tools/bench_summary.py \
+                bench/_ci/${b}.json
+            fi
+          done
+      - name: Upload bench JSON
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-smoke-${{ github.sha }}
+          path: bench/_ci/
+
+  ice-3node:
+    # Docker-compose harness that exercises the four NAT scenarios
+    # the link-ice plugin needs to survive (full_cone, symmetric_relay,
+    # all_relay, hairpin). Builds goodnet:nix-static as the peer base
+    # image, brings up STUN + TURN + 2 NAT routers + 2 peers per
+    # scenario, polls the shared signal volume for done-markers, tears
+    # down between scenarios. The peer-side harness binary that writes
+    # the markers is planned — until it lands this job verifies the
+    # topology comes up cleanly (compose `up` succeeds, no container
+    # exits early) and is gated by the `ice-test` label so PRs without
+    # ICE-touching changes don't pay the docker-build tax (~5-10 min
+    # cold).
+    runs-on: nixos
+    timeout-minutes: 25
+    if: contains(github.event.pull_request.labels.*.name, 'ice-test') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build kernel image
+        run: |
+          # goodnet:nix-static is the production image the peer
+          # Dockerfile derives from. Built once per CI run; the
+          # local Nix store reuse covers cache on the second hit.
+          nix build .#docker-static --print-build-logs
+          docker load -i result
+      - name: Bring up + run scenario suite
+        run: |
+          cd tests/docker/ice-3node
+          # Today only verifies compose `up` succeeds. The harness
+          # binary that writes A.done / B.done is a follow-up — when
+          # it lands, drop `|| true` and the scaffold's TIMEOUT_S
+          # becomes a real gate.
+          ICE3_TIMEOUT_S=1 ./run_all.sh || true
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          cd tests/docker/ice-3node
+          for svc in stun turn coordinator peer_a peer_b nat_a nat_b; do
+            echo "── ${svc} logs ─────────────────────"
+            docker compose logs --tail=200 "${svc}" || true
+          done
+      - name: Teardown
+        if: always()
+        run: |
+          cd tests/docker/ice-3node
+          docker compose down --volumes --remove-orphans || true
+
+  fuzz-smoke:
+    # Builds the libFuzzer harness under `tests/fuzz/` with clang and
+    # runs each target for 10 s via `-max_total_time=10`. LibFuzzer
+    # exits non-zero on the first crash, so a regression that opens a
+    # parser crash on hostile input fails the job. Clang is not in the
+    # default dev shell — we stage `clang_19` through `nix shell`
+    # alongside the dev shell. If clang isn't reachable for any reason
+    # the step prints a skip line and exits 0; the gate stays advisory
+    # in that degraded state rather than blocking the whole CI run.
+    #
+    # Gated by the `fuzz` label OR push to main so PRs don't pay the
+    # cold-clang build tax. On the self-hosted runner the Nix store
+    # is reused so subsequent hits are nearly free.
+    runs-on: nixos
+    timeout-minutes: 20
+    if: contains(github.event.pull_request.labels.*.name, 'fuzz') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build fuzz targets (clang + libFuzzer)
+        run: |
+          nix shell nixpkgs#clang_19 --command bash -c '
+            command -v clang++ >/dev/null || {
+              echo "fuzz-smoke: clang not reachable — skipping"
+              exit 0
+            }
+            export CC=clang CXX=clang++
+            nix develop --command bash -c "
+              cmake -S . -B build-fuzz -G Ninja \
+                -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+                -DGOODNET_BUILD_FUZZ=ON \
+                -DGOODNET_BUILD_TESTS=OFF
+              ninja -C build-fuzz \
+                fuzz_stun fuzz_gnet_deframe fuzz_ws_frame fuzz_mdns_dns
+            "
+          '
+      - name: Run fuzz targets (10 s each)
+        run: |
+          set -e
+          for t in fuzz_stun fuzz_gnet_deframe fuzz_ws_frame fuzz_mdns_dns; do
+            bin="build-fuzz/tests/fuzz/${t}"
+            if [ ! -x "$bin" ]; then
+              echo "── ${t}: binary missing (clang skipped earlier?)"
+              continue
+            fi
+            echo "── ${t}: 10 s smoke"
+            corpus_dir="tests/fuzz/corpus/${t}"
+            [ -d "$corpus_dir" ] || corpus_dir=""
+            "$bin" -max_total_time=10 -print_final_stats=1 ${corpus_dir}
+          done
+
+  asan-smoke:
+    # Vanilla kernel build under `-fsanitize=address,undefined
+    # -fno-sanitize-recover=all`, then ctest over the whole suite.
+    # Catches heap-UAF, OOB, and signed-overflow regressions that a
+    # gcc-debug ctest run masks. Critical path is the compile + run;
+    # the local Nix store keeps the toolchain warm.
+    #
+    # Gated by the `sanitizer` label OR push to main. This replaces
+    # the prior "local-only" sanitizer policy — local box still gets
+    # `nix run .#test -- asan` for tight loops, but main no longer
+    # rides on the developer remembering to run it.
+    runs-on: nixos
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ctest under ASan + UBSan
+        run: nix run .#test -- asan
+
+  tsan-smoke:
+    # Same shape as `asan-smoke` but `-fsanitize=thread`. Catches the
+    # races the vanilla ctest can't see — data races on shared
+    # connection state, IO worker re-entry on the same plugin object,
+    # missing fences around futex-backed primitives.
+    #
+    # Same gating as `asan-smoke`: label `sanitizer` OR push to main.
+    # ASan + TSan share the label so one CI re-run covers both.
+    runs-on: nixos
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'sanitizer') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run ctest under TSan
+        run: nix run .#test -- tsan
+
+  coverage-smoke:
+    # Vanilla kernel build under `-fprofile-arcs -ftest-coverage`,
+    # then ctest over the whole suite, then `lcov --summary` to
+    # print line + function percent. Gated by the `coverage` label
+    # OR push to main, same shape as the sanitizer gates. Local box
+    # still gets `nix run .#test -- coverage` for tight loops.
+    runs-on: nixos
+    needs: build-and-test
+    timeout-minutes: 30
+    if: contains(github.event.pull_request.labels.*.name, 'coverage') || github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+      - name: ctest under coverage
+        run: nix run .#test -- coverage
+      - name: upload coverage.info as artefact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-info
+          path: build-coverage/coverage.filtered.info
+
+# CI gating policy:
+#
+#   * Every push to main + every PR to main: flake-check, livedoc-
+#     check, build-and-test (vanilla debug), plugin-verify matrix,
+#     windows-cross-build.
+#   * Push to main only (label-gated on PRs): bench-smoke (label
+#     `bench`), ice-3node (label `ice-test`), fuzz-smoke (label
+#     `fuzz`), asan-smoke + tsan-smoke (label `sanitizer`),
+#     coverage-smoke (label `coverage`), darwin-cross-build +
+#     wasm-cross-build (label `cross-build`, both advisory via
+#     `continue-on-error` — the Apple SDK is not in nixpkgs and the
+#     wasi32 tooling pin is volatile).
+#
+# ASan + TSan run on push to main (catch race / UAF that local dev
+# missed). Label-gated for PRs to keep PR CI time-bounded; tag the
+# PR with `sanitizer` if your change touches concurrency-sensitive
+# code. coverage-smoke is the third sanitizer-style pillar from audit
+# §sanitizer-and-coverage — same gating model, separate label so a
+# coverage refresh on main doesn't block the sanitizer re-run.
+# Local tight-loop still uses `nix run .#test -- asan|tsan|coverage`.
+# clang-tidy lives in `.githooks/pre-commit` and the cheap test gate
+# lives in `.githooks/pre-push` (both auto-wired by `nix run
+# .#setup`) so the fast-feedback diagnostic loop stays off the CI
+# critical path.

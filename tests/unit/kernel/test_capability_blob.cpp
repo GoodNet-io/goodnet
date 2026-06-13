@@ -62,8 +62,13 @@ std::vector<std::uint8_t> wire(std::int64_t expires,
 // ── Subscribe / fan-out roundtrip ────────────────────────────────────────
 
 TEST(CapabilityBlobBus, FanOutToOneSubscriberDecodesPrefix) {
-    CapabilityBlobBus bus;
+    /// `Capture` MUST outlive `CapabilityBlobBus` — the bus dtor invokes
+    /// `on_destroy` against every still-registered subscriber, and the
+    /// destroyer writes through `user_data` (== `&cap`). Reverse-order
+    /// scope destruction would otherwise leave the destroyer reading
+    /// freed stack (clang ASan stack-use-after-scope).
     Capture cap;
+    CapabilityBlobBus bus;
     const auto id = bus.subscribe(&on_blob, &cap, &on_destroy);
     ASSERT_NE(id, GN_INVALID_SUBSCRIPTION_ID);
 
@@ -86,9 +91,11 @@ TEST(CapabilityBlobBus, FanOutToOneSubscriberDecodesPrefix) {
 }
 
 TEST(CapabilityBlobBus, FanOutToMultipleSubscribersAllReceive) {
-    CapabilityBlobBus bus;
+    /// Subscribers' `user_data` storage MUST outlive the bus — see
+    /// the note in `FanOutToOneSubscriberDecodesPrefix`.
     Capture a;
     Capture b;
+    CapabilityBlobBus bus;
     const auto id_a = bus.subscribe(&on_blob, &a, &on_destroy);
     const auto id_b = bus.subscribe(&on_blob, &b, &on_destroy);
     ASSERT_NE(id_a, GN_INVALID_SUBSCRIPTION_ID);
@@ -106,8 +113,10 @@ TEST(CapabilityBlobBus, FanOutToMultipleSubscribersAllReceive) {
 }
 
 TEST(CapabilityBlobBus, ShortPayloadDropped) {
-    CapabilityBlobBus bus;
+    /// Subscriber `user_data` MUST outlive the bus dtor — same rule
+    /// as the multi-subscriber test above.
     Capture cap;
+    CapabilityBlobBus bus;
     [[maybe_unused]] const auto id =
         bus.subscribe(&on_blob, &cap, &on_destroy);
 

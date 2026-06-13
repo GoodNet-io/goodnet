@@ -80,6 +80,10 @@ struct ConnectionRecord {
     std::uint64_t frames_out          = 0;
     std::uint64_t pending_queue_bytes = 0;
     std::uint64_t last_rtt_us         = 0;
+
+    /// Set to true once the peer's topology fingerprint (TLV 0x0004)
+    /// has been received and matches the local fingerprint.
+    bool peer_caps_verified = false;
 };
 
 /// Connection registry with three indexes kept in lockstep.
@@ -217,6 +221,9 @@ public:
     /// `AtomicCounters` block created on `insert_with_index` and
     /// erased with the record. Calls on a missing id are silent
     /// no-ops.
+    /// Mark a connection as having a verified peer topology fingerprint.
+    void set_peer_caps_verified(gn_conn_id_t id, bool verified) noexcept;
+
     void add_inbound(gn_conn_id_t id, std::uint64_t bytes,
                      std::uint64_t frames) noexcept;
     void add_outbound(gn_conn_id_t id, std::uint64_t bytes,

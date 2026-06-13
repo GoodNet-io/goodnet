@@ -128,20 +128,20 @@ TEST(InjectLimits, MessageInjectionHitsRateLimiter) {
     constexpr std::uint32_t kMsgId = 0x77;
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                                             kMsgId,
+                                             "gnet-v1", kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                                             kMsgId,
+                                             "gnet-v1", kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                                             kMsgId,
+                                             "gnet-v1", kMsgId,
                                              payload, sizeof(payload)),
               GN_OK);
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                                             kMsgId,
+                                             "gnet-v1", kMsgId,
                                              payload, sizeof(payload)),
               GN_ERR_LIMIT_REACHED);
 }
@@ -166,17 +166,21 @@ TEST(InjectLimits, FrameInjectionHitsRateLimiter) {
         make_broadcast_frame(*h.proto, peer_pk, /*msg_id*/ 0x42);
     ASSERT_FALSE(frame_bytes.empty());
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                                  "gnet-v1", 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                                  "gnet-v1", 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                                  "gnet-v1", 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_OK);
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                                  "gnet-v1", 0,
                                   frame_bytes.data(), frame_bytes.size()),
               GN_ERR_LIMIT_REACHED);
 }
@@ -200,13 +204,16 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
     constexpr std::uint32_t kMsgId = 0x55;
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
-                                             kMsgId, payload, sizeof(payload)),
+                                             "gnet-v1", kMsgId,
+                                             payload, sizeof(payload)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
-                                             kMsgId, payload, sizeof(payload)),
+                                             "gnet-v1", kMsgId,
+                                             payload, sizeof(payload)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, first_source,
-                                             kMsgId, payload, sizeof(payload)),
+                                             "gnet-v1", kMsgId,
+                                             payload, sizeof(payload)),
               GN_OK);
 
     /// Simulate disconnect: erase the registry record. The peer's pk
@@ -223,7 +230,8 @@ TEST(InjectLimits, PerPkBucketSurvivesConnReopen) {
         << "alloc_id is monotonic; reopened conn must not reuse the id";
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, second_source,
-                                             kMsgId, payload, sizeof(payload)),
+                                             "gnet-v1", kMsgId,
+                                             payload, sizeof(payload)),
               GN_ERR_LIMIT_REACHED)
         << "bucket keyed on remote_pk must persist across conn_id reuse";
 }
@@ -260,18 +268,22 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
     /// the kernel consumed a token before the validation branch.
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            /*msg_id=*/0, small, sizeof(small)),
+                            "gnet-v1", /*msg_id=*/0,
+                            small, sizeof(small)),
               GN_ERR_INVALID_ENVELOPE);
 
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, oversized.data(), oversized.size()),
+                            "gnet-v1", kMsgId,
+                            oversized.data(), oversized.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                            "gnet-v1", 0,
                             /*bytes=*/nullptr, 0),
               GN_ERR_NULL_ARG);
 
-    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source, 0,
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
+                            "gnet-v1", 0,
                             oversized.data(), oversized.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
 
@@ -283,7 +295,8 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
     // NOLINTNEXTLINE(clang-analyzer-optin.core.EnumCastOutOfRange)
     EXPECT_EQ(h.api.inject(h.api.host_ctx,
                             static_cast<gn_inject_layer_t>(99),
-                            source, kMsgId, small, sizeof(small)),
+                            source, "gnet-v1", kMsgId,
+                            small, sizeof(small)),
               GN_ERR_INVALID_ENVELOPE);
 #pragma GCC diagnostic pop
 
@@ -297,16 +310,20 @@ TEST(InjectLimits, ValidationFailureDoesNotConsumeToken) {
     /// Bucket must still hold three tokens. Three accepted calls
     /// drain it; the fourth surfaces GN_ERR_LIMIT_REACHED.
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, small, sizeof(small)),
+                            "gnet-v1", kMsgId,
+                            small, sizeof(small)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, small, sizeof(small)),
+                            "gnet-v1", kMsgId,
+                            small, sizeof(small)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, small, sizeof(small)),
+                            "gnet-v1", kMsgId,
+                            small, sizeof(small)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, small, sizeof(small)),
+                            "gnet-v1", kMsgId,
+                            small, sizeof(small)),
               GN_ERR_LIMIT_REACHED);
 }
 
@@ -350,7 +367,8 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
     /// Exhaust nothing: the protocol layer is null, the kernel has to
     /// surface NOT_IMPLEMENTED before the bucket sees the call.
     EXPECT_EQ(api.inject(api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                          kMsgId, payload, sizeof(payload)),
+                          "gnet-v1", kMsgId,
+                          payload, sizeof(payload)),
               GN_ERR_NOT_IMPLEMENTED);
 
     /// Re-attach a protocol layer; the bucket must still hold its one
@@ -359,7 +377,8 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
     auto proto = std::make_shared<GnetProtocol>();
     gn::test::util::register_default_protocol(kernel, proto);
     EXPECT_EQ(api.inject(api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                          kMsgId, payload, sizeof(payload)),
+                          "gnet-v1", kMsgId,
+                          payload, sizeof(payload)),
               GN_OK);
 }
 
@@ -384,7 +403,7 @@ TEST(InjectLimits, MessagePayloadAboveCapBumpsDropCounter) {
 
     const std::vector<std::uint8_t> over_cap(64, 0xAA);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            /*msg_id*/ 0x42,
+                            "gnet-v1", /*msg_id*/ 0x42,
                             over_cap.data(), over_cap.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
     EXPECT_EQ(h.kernel->metrics().value("drop.payload_too_large"), 1u);
@@ -403,7 +422,7 @@ TEST(InjectLimits, FrameAboveCapBumpsFrameTooLargeCounter) {
 
     const std::vector<std::uint8_t> over_cap(64, 0xBB);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_FRAME, source,
-                            /*msg_id*/ 0,
+                            "gnet-v1", /*msg_id*/ 0,
                             over_cap.data(), over_cap.size()),
               GN_ERR_PAYLOAD_TOO_LARGE);
     EXPECT_EQ(h.kernel->metrics().value("drop.frame_too_large"), 1u);
@@ -424,10 +443,12 @@ TEST(InjectLimits, RateLimitDropBumpsRateLimitedCounter) {
     constexpr std::uint32_t kMsgId = 0x99;
 
     ASSERT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, payload, sizeof(payload)),
+                            "gnet-v1", kMsgId,
+                            payload, sizeof(payload)),
               GN_OK);
     EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, source,
-                            kMsgId, payload, sizeof(payload)),
+                            "gnet-v1", kMsgId,
+                            payload, sizeof(payload)),
               GN_ERR_LIMIT_REACHED);
     EXPECT_EQ(h.kernel->metrics().value("drop.rate_limited"), 1u);
 }

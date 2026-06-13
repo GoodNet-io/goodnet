@@ -172,12 +172,8 @@ gn_result_t notify_inbound_bytes(void* host_ctx, gn_conn_id_t conn,
                                   const uint8_t* bytes, size_t size);
 gn_result_t notify_disconnect(void* host_ctx, gn_conn_id_t conn,
                                gn_result_t reason);
-gn_result_t inject(void* host_ctx,
-                    gn_inject_layer_t layer_kind,
-                    gn_conn_id_t source,
-                    std::uint32_t msg_id,
-                    const std::uint8_t* bytes,
-                    std::size_t size);
+gn_result_t inject(void* ctx, gn_inject_layer_t layer, gn_conn_id_t conn_id, 
+                   const char* proto, uint32_t msg_id, const uint8_t* bytes, std::size_t size);
 
 // ── Identity + capability blobs (host_api/identity.cpp) ────────────
 gn_result_t register_local_key(void* host_ctx,

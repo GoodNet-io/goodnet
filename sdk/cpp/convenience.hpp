@@ -236,18 +236,20 @@ template <class T>
 [[nodiscard]] inline gn_result_t inject_external_message(
     const host_api_t* api,
     gn_conn_id_t source,
+    const char* target_ns,
     std::uint32_t msg_id,
     std::span<const std::uint8_t> payload) noexcept {
     return api->inject(api->host_ctx, GN_INJECT_LAYER_MESSAGE,
-                       source, msg_id, payload.data(), payload.size());
+                       source, target_ns, msg_id, payload.data(), payload.size());
 }
 
 [[nodiscard]] inline gn_result_t inject_frame(
     const host_api_t* api,
     gn_conn_id_t source,
+    const char* target_ns,
     std::span<const std::uint8_t> frame) noexcept {
     return api->inject(api->host_ctx, GN_INJECT_LAYER_FRAME,
-                       source, 0, frame.data(), frame.size());
+                       source, target_ns, 0, frame.data(), frame.size());
 }
 
 } // namespace gn
