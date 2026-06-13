@@ -91,6 +91,7 @@ if [ "${SKIP_HARNESS_BUILD:-0}" != "1" ]; then
                   libgoodnet_link_udp.so \
                   libgoodnet_link_tcp.so \
                   libgoodnet_link_portmap.so \
+                  libgoodnet_discovery_mdns.so \
                   libgoodnet_link_ice.so \
                   libgoodnet_link_quic.so \
                   libgoodnet_handler_heartbeat.so ; do

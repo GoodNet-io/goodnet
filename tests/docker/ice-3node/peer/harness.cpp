@@ -349,9 +349,11 @@ void on_inbound_msg(void*               /*user_data*/,
 void on_conn_state(void* /*user_data*/, const gn_conn_event_t* ev) {
     if (ev == nullptr) return;
     if (ev->kind == GN_CONN_EVENT_CONNECTED) {
-        if (g_active_conn.load() == GN_INVALID_ID) {
-            g_active_conn.store(ev->conn);
-        }
+        // Always update — when QUIC rides ICE the ICE layer fires an
+        // early CONNECTED at session allocation; the QUIC layer fires a
+        // second one after TLS completes. We want the latter so pings
+        // travel through QUIC, not raw ICE.
+        g_active_conn.store(ev->conn);
         g_conn_ready.store(true);
         timed_log("conn CONNECTED");
     } else if (ev->kind == GN_CONN_EVENT_DISCONNECTED) {
@@ -839,6 +841,7 @@ int main() {
     std::set<SeenKey> seen_inbound;
 
     bool ping_sent = false;
+    gn_conn_id_t last_ping_conn = GN_INVALID_ID;
     std::vector<uint8_t> poll_buf(32 * 1024);
     while (clk::now() < deadline) {
         // ── Outbound pump ──────────────────────────────────────────
@@ -915,6 +918,16 @@ int main() {
         // session may not exist yet; without retries the ping is
         // silently dropped and the test times out.
         if (g_conn_ready.load() && !g_inbound_seen.load()) {
+            // Reset ping state when g_active_conn changes (e.g. QUIC fires
+            // a second CONNECTED after TLS handshake, superseding ICE's
+            // early CONNECTED).
+            {
+                const gn_conn_id_t cur = g_active_conn.load();
+                if (cur != last_ping_conn) {
+                    ping_sent     = false;
+                    last_ping_conn = cur;
+                }
+            }
             static int ping_ticks = 0;
             ++ping_ticks;
             if (!ping_sent || (ping_ticks % 20 == 0)) {

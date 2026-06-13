@@ -141,6 +141,14 @@ if(NOT _GOODNET_WINDOWS_SKIP
     add_subdirectory(links/portmap)
 endif()
 
+# mDNS discovery plugin — object library added before ICE so that
+# goodnet_mdns_objects is available when links/ice processes its
+# CMakeLists.txt (ICE tests link it for direct MdnsManager access).
+if(NOT _GOODNET_WINDOWS_SKIP
+   AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/discovery/mdns/CMakeLists.txt")
+    add_subdirectory(discovery/mdns)
+endif()
+
 # ICE before QUIC so that QUIC's `test_quic` fixture (which now
 # integrates an `IceCarrierBridge` for the `quic://<peer-pk-hex>`
 # route per Q.1) sees `goodnet_ice_objects` at conditional time.
