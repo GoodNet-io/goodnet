@@ -111,6 +111,7 @@
           stdenv = pkgs.gcc15Stdenv;
           coreBuildInputs = with pkgs; [
             asio spdlog fmt nlohmann_json libsodium openssl
+            (import ../stdexec.nix { inherit pkgs; })
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
