@@ -147,8 +147,8 @@ _Static_assert(offsetof(gn_handler_vtable_t, _reserved) == 56,
 
 /* ── sdk/host_api.h ────────────────────────────────────────────────────────── */
 
-_Static_assert(sizeof(host_api_t) == 496,
-               "host_api_t size pinned at 496");
+_Static_assert(sizeof(host_api_t) == 504,
+               "host_api_t size pinned at 504");
 _Static_assert(offsetof(host_api_t, api_size) == 0,
                "host_api_t::api_size offset pinned at 0");
 _Static_assert(offsetof(host_api_t, host_ctx) == 8,
@@ -237,8 +237,10 @@ _Static_assert(offsetof(host_api_t, send_to) == 416,
                "host_api_t::send_to offset pinned at 416");
 _Static_assert(offsetof(host_api_t, notify_rtt_sample) == 424,
                "host_api_t::notify_rtt_sample offset pinned at 424");
-_Static_assert(offsetof(host_api_t, _reserved) == 432,
-               "host_api_t::_reserved offset pinned at 432");
+_Static_assert(offsetof(host_api_t, subscribe_topology_reload) == 432,
+               "host_api_t::subscribe_topology_reload offset pinned at 432");
+_Static_assert(offsetof(host_api_t, _reserved) == 440,
+               "host_api_t::_reserved offset pinned at 440");
 
 /* ── sdk/limits.h ──────────────────────────────────────────────────────────── */
 
