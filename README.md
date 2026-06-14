@@ -2,15 +2,15 @@
 
 **Linux for networks.**
 
-A networking integrator kernel with pluggable transports, security
-providers, protocol layers, and handlers. Applications embed it
-as a library or run the standalone daemon. The C ABI between
-kernel and plugins is the only stable boundary; everything else
-is composition.
+A domain-specific kernel for the network layer. The address is the key — a 32-byte Ed25519 public key is the peer, not the machine. Every transport, every cipher, every protocol handler lives in a plugin over a stable C ABI. The kernel holds four registries and a dispatch loop. Everything else is yours to compose.
 
-The framing is Linux: the kernel does not know what TCP is, what
-Noise is, what an application is. It tracks logical connections,
-typed messages, public-key addresses, and registered handlers.
+Runs as a Linux daemon, a `.so` loaded via FFI, a WebAssembly module in a browser, or bare-metal on a microcontroller. Same binary. Same ABI. Same guarantees.
+
+→ [The Network Layer We Always Deserved](https://goodnet-io.github.io/the-network-layer.html) — on thirty years of the right idea in the wrong place, and what the fix looks like.
+
+The kernel does not know what TCP is, what Noise is, what an
+application is. It tracks logical connections, typed messages,
+public-key addresses, and registered handlers.
 Every transport, every cipher, every wire format lives in a
 plugin loaded through one of three built-in runtimes — `dynamic`
 (dlopen the .so), `static` (link the plugin into the kernel
