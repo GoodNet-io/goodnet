@@ -153,7 +153,7 @@ for debugging.
 
 ## Status
 
-13/14 scenarios pass. `quic_over_ice` requires `QUIC_ENABLED=1`.
+13/14 verified. `quic_over_ice` now runs unconditionally (gate removed).
 
 | Scenario | Status | Notes |
 |---|---|---|
@@ -168,6 +168,6 @@ for debugging.
 | `no_udp_fallback` | PASS | coturn TLS on 5349/tcp; UDP blocked end-to-end |
 | `port_prediction` | PASS | stride detection + STUN/TURN CID routing fix |
 | `prflx` | PASS | |
-| `quic_over_ice` | SKIP | set `QUIC_ENABLED=1` to run |
+| `quic_over_ice` | — | QUIC handshake over ICE-nominated UDP pair |
 | `restricted_mtu` | PASS | |
 | `symmetric_relay` | PASS | |

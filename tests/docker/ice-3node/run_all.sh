@@ -149,10 +149,6 @@ teardown() {
 for override in "${SCENARIOS[@]}"; do
     name="$(basename "${override}" .yml)"
     echo "── scenario: ${name} ─────────────────────────────────────────"
-    if [ "${name}" = "quic_over_ice" ] && [ "${QUIC_ENABLED:-0}" != "1" ]; then
-        echo "  ${name}: SKIP (QUIC_ENABLED not set; set QUIC_ENABLED=1 to run)"
-        continue
-    fi
     teardown
     if ! docker compose -f docker-compose.yml -f "${override}" \
             up -d --build 2>&1 | sed 's/^/  /'; then
