@@ -171,6 +171,10 @@
             # without a second devShell, standalone plugin builds
             # inherit it through propagatedBuildInputs.
             c-ares
+          ] ++ lib.optionals stdenv.isLinux [
+            # io_uring batched recv/send for link-udp (GN_UDP_IO_URING).
+            # Linux-only — io_uring is not available on Darwin/WASM.
+            liburing
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
 
@@ -870,6 +874,9 @@
             # pkg_check_modules(LIBSSH REQUIRED) in gssh/CMakeLists.txt
             # aborts the configure step.
             libssh
+          ] ++ lib.optionals stdenv.isLinux [
+            # io_uring batched recv/send for link-udp (GN_UDP_IO_URING).
+            liburing
           ];
           coreNative = with pkgs; [ cmake ninja pkg-config ];
           testInputs = with pkgs; [ gtest rapidcheck ];
