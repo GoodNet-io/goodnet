@@ -31,7 +31,8 @@
         "GOODNET_BUILD_APPS":            "ON",
         "GOODNET_BUILD_EXAMPLES":        "OFF",
         "GOODNET_BUILD_BENCH":           "ON",
-        "GOODNET_USE_LTO":               "ON"
+        "GOODNET_USE_LTO":               "ON",
+        "GN_UDP_IO_URING":               "ON"
       }
     },
     {

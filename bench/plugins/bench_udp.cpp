@@ -312,4 +312,64 @@ BENCHMARK_REGISTER_F(UdpFixture, MtuBoundary)
     ->Unit(::benchmark::kMicrosecond)
     ->UseRealTime();
 
+// ── Batch send throughput (io_uring path) ─────────────────────────
+//
+// Calls send_batch() with a full kUdpBatchCap-frame burst each
+// iteration. When GN_UDP_IO_URING is compiled in, send_batch hits
+// uring_send_batch(); otherwise falls back to sendmmsg. The
+// bytes_per_second counter measures burst-send rate so the two
+// compile-time paths are directly comparable.
+
+BENCHMARK_DEFINE_F(UdpFixture, BatchThroughput)(::benchmark::State& state) {
+    const std::size_t payload_size = static_cast<std::size_t>(state.range(0));
+    const auto payload = make_payload(payload_size);
+
+    if (server->composer_listen("udp://127.0.0.1:0") != GN_OK) {
+        state.SkipWithError("listen failed");
+        return;
+    }
+    std::uint16_t server_port = 0;
+    if (server->composer_listen_port(&server_port) != GN_OK
+        || server_port == 0) {
+        state.SkipWithError("listen port failed");
+        return;
+    }
+    gn_conn_id_t conn = GN_INVALID_ID;
+    if (client->composer_connect(
+            "udp://127.0.0.1:" + std::to_string(server_port),
+            &conn) != GN_OK) {
+        state.SkipWithError("connect failed");
+        return;
+    }
+
+    constexpr int kBatch = gn::link::udp::kUdpBatchCap;
+    std::array<std::span<const std::uint8_t>, kBatch> spans;
+    for (auto& s : spans)
+        s = std::span<const std::uint8_t>(payload);
+    auto batch = std::span<const std::span<const std::uint8_t>>(spans);
+
+    ResourceCounters res;
+    res.snapshot_start();
+    for ([[maybe_unused]] auto _ : state) {
+        const auto rc = client->send_batch(conn, batch);
+        if (rc != GN_OK) {
+            state.SkipWithError("send_batch failed");
+            break;
+        }
+    }
+    res.snapshot_end();
+
+    state.SetBytesProcessed(
+        static_cast<std::int64_t>(state.iterations()) *
+        static_cast<std::int64_t>(kBatch) *
+        static_cast<std::int64_t>(payload_size));
+    report_resources(state, res);
+}
+
+BENCHMARK_REGISTER_F(UdpFixture, BatchThroughput)
+    ->Arg(512)
+    ->Arg(1200)
+    ->Unit(::benchmark::kMicrosecond)
+    ->UseRealTime();
+
 }  // namespace
