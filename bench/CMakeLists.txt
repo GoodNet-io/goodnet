@@ -337,9 +337,10 @@ if(NOT GOODNET_STATIC_PLUGINS
     if(TARGET GoodNet::protocol_gnet)
         target_link_libraries(bench_real_e2e PRIVATE GoodNet::protocol_gnet)
     endif()
-    add_dependencies(bench_real_e2e goodnet_security_noise)
+    add_dependencies(bench_real_e2e goodnet_security_noise goodnet_security_null)
     target_compile_definitions(bench_real_e2e PRIVATE
         "GOODNET_NOISE_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_noise>\""
+        "GOODNET_NULL_PLUGIN_PATH=\"$<TARGET_FILE:goodnet_security_null>\""
     )
     set_target_properties(bench_real_e2e PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bench"

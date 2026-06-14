@@ -63,6 +63,26 @@ using gn::core::test::register_echo_responder;
 constexpr std::uint32_t kPingMsgId = 0xBE11E700u;
 constexpr std::uint32_t kPongMsgId = 0xBE11E701u;
 
+/// One-time: log UDP socket buffer defaults so QUIC latency results
+/// can be interpreted against the kernel's SO_RCVBUF / SO_SNDBUF
+/// baseline.  Reads from /proc rather than getsockopt to avoid
+/// needing a socket fd from the bench node.
+void log_udp_socket_defaults_once() {
+    static std::once_flag flag;
+    std::call_once(flag, [] {
+        auto read_proc = [](const char* path) -> unsigned long {
+            std::FILE* fp = std::fopen(path, "r");
+            unsigned long v = 0;
+            if (fp) { const int r = std::fscanf(fp, "%lu", &v); (void)r; std::fclose(fp); }
+            return v;
+        };
+        std::fprintf(stderr,
+            "[bench-quic] SO_RCVBUF default=%lu SO_SNDBUF default=%lu (bytes)\n",
+            read_proc("/proc/sys/net/core/rmem_default"),
+            read_proc("/proc/sys/net/core/wmem_default"));
+    });
+}
+
 /// Process-scoped noise plugin handle. Leaked intentionally —
 /// google-benchmark registers fixture instances with `atexit`,
 /// and a function-local static `NoisePlugin` would destruct
@@ -74,6 +94,15 @@ constexpr std::uint32_t kPongMsgId = 0xBE11E701u;
 NoisePlugin& process_noise() {
     static NoisePlugin* const instance =
         new NoisePlugin{GOODNET_NOISE_PLUGIN_PATH};
+    return *instance;
+}
+
+/// Same dlopen lifecycle as process_noise(). Loaded once for the TLS-only
+/// QUIC fixture: null provider transitions sessions to Transport immediately
+/// so framing via decrypt_batch_transport_stream works without Noise crypto.
+NoisePlugin& process_null_security() {
+    static NoisePlugin* const instance =
+        new NoisePlugin{GOODNET_NULL_PLUGIN_PATH};
     return *instance;
 }
 
@@ -182,6 +211,10 @@ void run_send_recv(Fixture& f, ::benchmark::State& state) {
     std::uint64_t prev_rx = f.rx.rx_count.load(std::memory_order_acquire);
     gn_result_t   last_err = GN_OK;
 
+    std::uint64_t enc_start = 0;
+    if (auto s = f.bob->kernel->sessions().find(f.bob_conn))
+        enc_start = s->encrypt_call_count();
+
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         const auto t0 = std::chrono::steady_clock::now();
         const gn_result_t rc = f.bob->api.send(
@@ -239,6 +272,13 @@ void run_send_recv(Fixture& f, ::benchmark::State& state) {
         static_cast<std::int64_t>(payload_size));
     report_latency(state, meter);
     report_resources(state, res);
+    if (auto s = f.bob->kernel->sessions().find(f.bob_conn)) {
+        const auto enc_calls = s->encrypt_call_count() - enc_start;
+        const auto iters = static_cast<std::uint64_t>(state.iterations());
+        if (iters > 0)
+            state.counters["enc_per_iter"] =
+                static_cast<double>(enc_calls) / static_cast<double>(iters);
+    }
 }
 
 /// Echo round-trip body — matches the shape libp2p / iroh echo
@@ -269,6 +309,12 @@ void run_echo_roundtrip(Fixture& f, ::benchmark::State& state) {
 
     std::uint64_t prev_pong = f.pong.rx_count.load(std::memory_order_acquire);
     gn_result_t   last_err  = GN_OK;
+
+    std::uint64_t enc_start = 0, dec_start = 0;
+    if (auto s = f.bob->kernel->sessions().find(f.bob_conn)) {
+        enc_start = s->encrypt_call_count();
+        dec_start = s->decrypt_call_count();
+    }
 
     for ([[maybe_unused]] auto _ : state) {  // NOLINT
         const auto t0 = std::chrono::steady_clock::now();
@@ -314,6 +360,17 @@ void run_echo_roundtrip(Fixture& f, ::benchmark::State& state) {
         static_cast<std::int64_t>(payload_size) * 2);
     report_latency(state, meter);
     report_resources(state, res);
+    if (auto s = f.bob->kernel->sessions().find(f.bob_conn)) {
+        const auto enc_calls = s->encrypt_call_count() - enc_start;
+        const auto dec_calls = s->decrypt_call_count() - dec_start;
+        const auto iters = static_cast<std::uint64_t>(state.iterations());
+        if (iters > 0) {
+            state.counters["enc_per_iter"] =
+                static_cast<double>(enc_calls) / static_cast<double>(iters);
+            state.counters["dec_per_iter"] =
+                static_cast<double>(dec_calls) / static_cast<double>(iters);
+        }
+    }
 }
 
 // ── TCP ─────────────────────────────────────────────────────────────
@@ -588,6 +645,7 @@ struct RealFixtureQuicEcho : public ::benchmark::Fixture {
     bool              ready        = false;
 
     void SetUp(::benchmark::State&) override {
+        log_udp_socket_defaults_once();
         if (ready) return;
         NoisePlugin& noise_ref = process_noise();
         if (!noise_ref.ok()) return;
@@ -692,10 +750,14 @@ struct RealFixtureQuicTlsEcho : public ::benchmark::Fixture {
 
     void SetUp(::benchmark::State&) override {
         if (ready) return;
-        NoisePlugin& noise_ref = process_noise();
+        NoisePlugin& null_ref = process_null_security();
+        if (!null_ref.ok()) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] null security plugin failed to load\n");
+            return;
+        }
 
-        alice = std::make_unique<QuicBenchNode>(noise_ref, "alice_tls", false);
-        bob   = std::make_unique<QuicBenchNode>(noise_ref, "bob_tls",   false);
+        alice = std::make_unique<QuicBenchNode>(null_ref, "alice_tls", true);
+        bob   = std::make_unique<QuicBenchNode>(null_ref, "bob_tls",   true);
 
         rx_echo_hid = register_echo_responder(*alice->kernel,
             kPingMsgId, kPongMsgId, &alice->api, echo_resp);
@@ -746,11 +808,11 @@ struct RealFixtureQuicTlsEcho : public ::benchmark::Fixture {
         }
         bob->bridge_conn(bob_comp_id, dial_uri, GN_ROLE_INITIATOR);
 
-        if (!QuicBenchNode::wait_both_connected(*alice, *bob, 10s)) {
-            std::fprintf(stderr, "[QuicTlsBenchNode] wait_both_connected timed out\n");
+        if (!QuicBenchNode::wait_both_transport(*alice, *bob, 10s)) {
+            std::fprintf(stderr, "[QuicTlsBenchNode] wait_both_transport timed out\n");
             return;
         }
-        bob_conn = bob->any_conn();
+        bob_conn = bob->transport_conn();
         ready    = (bob_conn != GN_INVALID_ID);
     }
 

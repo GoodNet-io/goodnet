@@ -151,6 +151,15 @@ public:
     /// through the provider's per-call API.
     [[nodiscard]] bool fast_crypto_active() const noexcept;
 
+    /// Cumulative InlineCrypto encrypt / decrypt call counts (= send/recv nonces).
+    /// Returns 0 when inline crypto is not seeded (null security, vtable fallback).
+    [[nodiscard]] std::uint64_t encrypt_call_count() const noexcept {
+        return inline_crypto_.send_nonce();
+    }
+    [[nodiscard]] std::uint64_t decrypt_call_count() const noexcept {
+        return inline_crypto_.recv_nonce();
+    }
+
     /// Encrypt a batch of N plaintext frames in parallel through
     /// @p pool. Each output buffer carries the wire framing
     /// `[u16 BE cipher_len][cipher+tag]` — same shape as
