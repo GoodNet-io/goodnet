@@ -190,6 +190,19 @@ template <class T>
     return GN_ERR_NOT_IMPLEMENTED;
 }
 
+/// Allow a link class to advertise additional extensions beyond the
+/// automatically generated `gn.link.<scheme>` entry by defining a
+/// `static const char* const* plugin_provides() noexcept` method.
+/// When absent, the macro uses the default single-entry list.
+template <class T>
+const char* const* link_provides_of(
+    const char* const* default_provides) noexcept {
+    if constexpr (requires { T::plugin_provides(); })
+        return T::plugin_provides();
+    else
+        return default_provides;
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
@@ -438,7 +451,8 @@ template <class T>
         /* version           */ "0.1.0",                                       \
         /* hot_reload_safe   */ 0,                                             \
         /* ext_requires      */ nullptr,                                       \
-        /* ext_provides      */ _gn_link_kProvides,                              \
+        /* ext_provides      */ ::gn::sdk::detail::link_provides_of<Class>(         \
+                               _gn_link_kProvides),                          \
         /* kind              */ GN_PLUGIN_KIND_LINK,                      \
         /* inject_targets    */ nullptr,                                       \
         /* _reserved         */ {},                                              \
