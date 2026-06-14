@@ -226,6 +226,16 @@ public:
     /// state. Idempotent. Always called by `SessionRegistry::destroy`.
     void close() noexcept;
 
+    /// Mark this session as datagram-mode. MUST be called before the
+    /// handshake completes (before `seed` runs). In datagram mode:
+    ///  - `encrypt_transport` outputs `[u64 LE nonce][cipher+tag]`
+    ///    with no u16 length prefix.
+    ///  - `decrypt_batch_transport_stream` treats each call as exactly
+    ///    one complete datagram frame `[u64 LE nonce][cipher+tag]`
+    ///    and decrypts via the `ReplayWindow` path.
+    void set_datagram_mode() noexcept;
+    [[nodiscard]] bool datagram_mode() const noexcept { return datagram_mode_; }
+
     [[nodiscard]] SecurityPhase phase() const noexcept {
         return phase_.load(std::memory_order_acquire);
     }
@@ -333,6 +343,7 @@ private:
     /// stays unseeded and the session falls back to the vtable
     /// encrypt/decrypt slots.
     InlineCrypto                             inline_crypto_;
+    bool                                     datagram_mode_{false};
 
 public:
     /// Free-list cap on `recycled_plaintext_pool_`. Sized to absorb

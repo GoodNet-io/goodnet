@@ -23,15 +23,31 @@
 
 namespace gn::core {
 
+/// 64-entry sliding replay window for datagram mode.
+/// Tracks the highest nonce seen (`base`) and a 64-bit bitmap of
+/// the last 64 nonces relative to it. Used only when
+/// `InlineCrypto::enable_datagram_mode()` has been called.
+struct ReplayWindow {
+    static constexpr std::uint64_t kSize = 64;
+    std::uint64_t base = 0;
+    std::uint64_t bits = 0;
+    /// Record nonce @p n. Returns true and marks it seen if the nonce
+    /// is within the live window and has not been seen before.
+    /// Returns false (reject) when the nonce is too old or replayed.
+    [[nodiscard]] bool check_and_record(std::uint64_t n) noexcept;
+};
+
 /// Per-connection symmetric AEAD state. One direction is keyed for
 /// send, the other for receive; the counterpart on the peer mirrors
 /// the assignment so frames flow under the same `(key, nonce)`
 /// schedule both ways.
 class InlineCrypto {
 public:
-    static constexpr std::size_t  kKeyBytes   = GN_CIPHER_KEY_BYTES;
-    static constexpr std::size_t  kNonceBytes = GN_CIPHER_NONCE_BYTES;
-    static constexpr std::size_t  kTagBytes   = GN_AEAD_TAG_BYTES;
+    static constexpr std::size_t  kKeyBytes      = GN_CIPHER_KEY_BYTES;
+    static constexpr std::size_t  kNonceBytes    = GN_CIPHER_NONCE_BYTES;
+    static constexpr std::size_t  kTagBytes       = GN_AEAD_TAG_BYTES;
+    /// Wire nonce size prepended in datagram mode: 8-byte LE uint64.
+    static constexpr std::size_t  kNonceWireBytes = 8;
 
     /// Hard rekey threshold per `plugins/security/noise/docs/handshake.md` §4
     /// (matches WireGuard's interval). InlineCrypto refuses encrypt /
@@ -46,6 +62,14 @@ public:
 
     InlineCrypto(const InlineCrypto&)            = delete;
     InlineCrypto& operator=(const InlineCrypto&) = delete;
+
+    /// Enable datagram mode. In this mode `encrypt` prepends an 8-byte
+    /// LE nonce to the output; `decrypt` reads the nonce from the first
+    /// 8 bytes and validates it through a `ReplayWindow` instead of the
+    /// monotonic counter. MUST be called before `seed` so the window is
+    /// initialised from `initial_recv_nonce` at seed time.
+    void enable_datagram_mode() noexcept;
+    [[nodiscard]] bool datagram_mode() const noexcept { return datagram_mode_; }
 
     /// Seed both directions from a handshake-result keys struct.
     /// Returns false when the keys are zeroed — the provider declined
@@ -133,11 +157,13 @@ public:
     void clear_for_test() noexcept;
 
 private:
-    std::uint8_t              send_key_[kKeyBytes]{};
-    std::uint8_t              recv_key_[kKeyBytes]{};
+    std::uint8_t               send_key_[kKeyBytes]{};
+    std::uint8_t               recv_key_[kKeyBytes]{};
     std::atomic<std::uint64_t> send_nonce_{0};
     std::atomic<std::uint64_t> recv_nonce_{0};
-    bool                      seeded_{false};
+    bool                       seeded_{false};
+    bool                       datagram_mode_{false};
+    ReplayWindow               recv_window_;
 };
 
 } // namespace gn::core

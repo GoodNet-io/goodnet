@@ -254,7 +254,7 @@ gn_result_t notify_connect(void* host_ctx,
                 * static_cast<std::size_t>(limits.max_frame_bytes)
                 + ::gn::core::kFramePrefixBytes
             : 0;
-        (void)pc->kernel->sessions().create(
+        auto new_session = pc->kernel->sessions().create(
             new_id,
             entry,
             trust,
@@ -271,6 +271,22 @@ gn_result_t notify_connect(void* host_ctx,
             (void)pc->kernel->connections().erase_with_index(new_id);
             pc->kernel->send_queues().erase(new_id);
             return session_rc;
+        }
+
+        if (new_session) {
+            if (auto le = pc->kernel->links().find_by_scheme(scheme)) {
+                const auto* lapi = le->vtable && le->vtable->extension_vtable
+                    ? static_cast<const gn_link_api_t*>(
+                          le->vtable->extension_vtable(le->self))
+                    : nullptr;
+                if (lapi && GN_API_HAS(gn_link_api_t, lapi, get_capabilities)) {
+                    gn_link_caps_t caps{};
+                    if (lapi->get_capabilities(lapi->ctx, &caps) == GN_OK &&
+                        (caps.flags & GN_LINK_CAP_DATAGRAM)) {
+                        new_session->set_datagram_mode();
+                    }
+                }
+            }
         }
     }
 

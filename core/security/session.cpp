@@ -154,16 +154,27 @@ gn_result_t SecuritySession::advance_handshake(
     return GN_OK;
 }
 
+void SecuritySession::set_datagram_mode() noexcept {
+    datagram_mode_ = true;
+    inline_crypto_.enable_datagram_mode();
+}
+
 gn_result_t SecuritySession::encrypt_transport(
     std::span<const std::uint8_t> plaintext,
     std::vector<std::uint8_t>& out_cipher) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
 
-    /// Encrypt into a scratch buffer first; the wire bytes get the
-    /// 2-byte big-endian length prefix prepended afterwards so the
-    /// frame on the wire is `[u16 BE len][cipher+tag]` per
-    /// `plugins/security/noise/docs/handshake.md` §7.
+    /// Datagram mode: InlineCrypto produces `[u64 LE nonce][cipher+tag]`;
+    /// no stream length prefix. Vtable fallback is unsupported for datagram
+    /// (null security runs only on ordered loopback links).
+    if (datagram_mode_ && inline_crypto_.seeded()) {
+        return inline_crypto_.encrypt(plaintext, out_cipher);
+    }
+
+    /// Stream mode: encrypt into a scratch buffer, then prepend the
+    /// 2-byte big-endian length prefix so the frame on the wire is
+    /// `[u16 BE len][cipher+tag]` per `plugins/security/noise/docs/handshake.md` §7.
     std::vector<std::uint8_t> cipher;
 
     if (inline_crypto_.seeded()) {
@@ -426,6 +437,19 @@ gn_result_t SecuritySession::decrypt_batch_transport_stream(
     std::vector<std::vector<std::uint8_t>>& out_plaintexts) {
     if (phase_.load(std::memory_order_acquire) != SecurityPhase::Transport)
         return GN_ERR_INVALID_ENVELOPE;
+
+    /// Datagram mode: each notify_inbound_bytes call delivers exactly one
+    /// self-framing datagram `[u64 LE nonce][cipher+tag]`. Bypass the
+    /// stream accumulation buffer and window-based length-prefix parsing;
+    /// InlineCrypto::decrypt handles nonce extraction and replay rejection.
+    if (datagram_mode_ && inline_crypto_.seeded()) {
+        std::vector<std::uint8_t> plaintext = take_plaintext_buffer();
+        const gn_result_t rc = inline_crypto_.decrypt(wire_bytes, plaintext);
+        if (rc != GN_OK) return rc;
+        out_plaintexts.push_back(std::move(plaintext));
+        return GN_OK;
+    }
+
     if (!inline_crypto_.seeded()) {
         /// Vtable fallback path is per-call only; batch dispatch
         /// gains nothing without the inline fast path. Defer to the

@@ -78,9 +78,30 @@ void chacha20poly1305_decrypt_job(CryptoWorkerPool::Job& job) noexcept {
 
 } // namespace
 
+bool ReplayWindow::check_and_record(std::uint64_t n) noexcept {
+    if (n > base) {
+        const std::uint64_t diff = n - base;
+        bits = (diff >= kSize)
+            ? std::uint64_t(1)
+            : ((bits << diff) | std::uint64_t(1));
+        base = n;
+        return true;
+    }
+    const std::uint64_t back = base - n;
+    if (back >= kSize) return false;
+    const std::uint64_t bit = std::uint64_t(1) << back;
+    if (bits & bit) return false;
+    bits |= bit;
+    return true;
+}
+
 InlineCrypto::~InlineCrypto() {
     sodium_memzero(send_key_, sizeof(send_key_));
     sodium_memzero(recv_key_, sizeof(recv_key_));
+}
+
+void InlineCrypto::enable_datagram_mode() noexcept {
+    datagram_mode_ = true;
 }
 
 void InlineCrypto::clear_for_test() noexcept {
@@ -102,6 +123,10 @@ bool InlineCrypto::seed(const gn_handshake_keys_t& keys) noexcept {
     std::memcpy(recv_key_, keys.recv_cipher_key, kKeyBytes);
     send_nonce_.store(keys.initial_send_nonce, std::memory_order_release);
     recv_nonce_.store(keys.initial_recv_nonce, std::memory_order_release);
+    if (datagram_mode_) {
+        recv_window_.base = keys.initial_recv_nonce;
+        recv_window_.bits = 0;
+    }
     seeded_ = true;
     return true;
 }
@@ -111,17 +136,25 @@ gn_result_t InlineCrypto::encrypt(
     std::vector<std::uint8_t>& out_cipher) {
     if (!seeded_) return GN_ERR_INVALID_STATE;
 
-    /// `fetch_add` serialises concurrent encrypts on the same
-    /// connection so two callers never share a nonce — even when
-    /// `host_api->send` is invoked from multiple plugin threads at
-    /// once before TCP's strand serialises the byte enqueue. Once
-    /// any caller crosses the rekey limit the counter stays past
-    /// the limit forever, so every subsequent call refuses too.
     const auto nonce = send_nonce_.fetch_add(1, std::memory_order_relaxed);
     if (nonce >= kRekeyNonceLimit) return GN_ERR_INVALID_STATE;
 
     std::uint8_t nonce_buf[kNonceBytes];
     build_nonce(nonce, nonce_buf);
+
+    if (datagram_mode_) {
+        out_cipher.resize(kNonceWireBytes + plaintext.size() + kTagBytes);
+        std::memcpy(out_cipher.data(), &nonce, sizeof(nonce));
+        unsigned long long clen = 0;
+        crypto_aead_chacha20poly1305_ietf_encrypt(
+            out_cipher.data() + kNonceWireBytes, &clen,
+            plaintext.data(), plaintext.size(),
+            /*ad*/   nullptr, 0,
+            /*nsec*/ nullptr,
+            nonce_buf, send_key_);
+        out_cipher.resize(kNonceWireBytes + static_cast<std::size_t>(clen));
+        return GN_OK;
+    }
 
     out_cipher.resize(plaintext.size() + kTagBytes);
     unsigned long long clen = 0;
@@ -183,6 +216,36 @@ gn_result_t InlineCrypto::decrypt(
     std::span<const std::uint8_t> ciphertext,
     std::vector<std::uint8_t>& out_plaintext) {
     if (!seeded_) return GN_ERR_INVALID_STATE;
+
+    if (datagram_mode_) {
+        if (ciphertext.size() < kNonceWireBytes + kTagBytes)
+            return GN_ERR_INVALID_ENVELOPE;
+
+        std::uint64_t nonce = 0;
+        std::memcpy(&nonce, ciphertext.data(), sizeof(nonce));
+
+        if (!recv_window_.check_and_record(nonce))
+            return GN_ERR_INVALID_ENVELOPE;
+
+        std::uint8_t nonce_buf[kNonceBytes];
+        build_nonce(nonce, nonce_buf);
+
+        const auto cipher_span = ciphertext.subspan(kNonceWireBytes);
+        out_plaintext.resize(cipher_span.size() - kTagBytes);
+        unsigned long long mlen = 0;
+        if (crypto_aead_chacha20poly1305_ietf_decrypt(
+                out_plaintext.data(), &mlen,
+                /*nsec*/ nullptr,
+                cipher_span.data(), cipher_span.size(),
+                /*ad*/   nullptr, 0,
+                nonce_buf, recv_key_) != 0) {
+            out_plaintext.clear();
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        out_plaintext.resize(static_cast<std::size_t>(mlen));
+        return GN_OK;
+    }
+
     if (ciphertext.size() < kTagBytes) return GN_ERR_INVALID_ENVELOPE;
 
     const auto nonce = recv_nonce_.fetch_add(1, std::memory_order_relaxed);
