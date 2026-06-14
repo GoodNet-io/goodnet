@@ -257,6 +257,22 @@ target_compile_definitions(asio::asio INTERFACE ASIO_STANDALONE)
 find_package(stdexec REQUIRED)
 add_compile_definitions(GN_CXX26_EXEC=1)
 
+# exec/asio/asio_config.hpp — stdexec ships only the .in template; generate
+# the configured header for standalone-ASIO consumers (not WASM builds).
+if(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    get_target_property(_stdexec_inc STDEXEC::stdexec INTERFACE_INCLUDE_DIRECTORIES)
+    set(STDEXEC_ASIO_USES_STANDALONE 1)
+    set(STDEXEC_ASIO_USES_BOOST 0)
+    configure_file(
+        "${_stdexec_inc}/exec/asio/asio_config.hpp.in"
+        "${CMAKE_BINARY_DIR}/generated/exec/asio/asio_config.hpp"
+    )
+    target_include_directories(STDEXEC::stdexec INTERFACE
+        "${CMAKE_BINARY_DIR}/generated"
+    )
+    unset(_stdexec_inc)
+endif()
+
 # ── Test framework discovery ─────────────────────────────────────────────────
 # Hoisted before plugin/test subdirectories so per-plugin
 # `tests/CMakeLists.txt` files (added under each plugin's umbrella when
