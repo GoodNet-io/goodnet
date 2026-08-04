@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-only WITH GoodNet-linking-exception
 #include "log_config.hpp"
 
 #include <core/config/config.hpp>

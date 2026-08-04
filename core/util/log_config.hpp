@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: GPL-2.0-only WITH GoodNet-linking-exception
 /// @file   core/util/log_config.hpp
 /// @brief  Free function that materialises `gn::log::LogConfig`
 ///         from the kernel's runtime config.
