@@ -7,6 +7,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <sodium.h>
@@ -89,6 +90,46 @@ void compute_fingerprint(TopologySnapshot* snap) noexcept {
 
     crypto_hash_sha256_final(&st,
         reinterpret_cast<unsigned char*>(snap->topo.fingerprint));
+}
+
+void compute_contour_fingerprint(TopologySnapshot* snap) noexcept {
+    // SHA-256 over sorted contour entries: trust × security_provider_id × provides_flags
+    // Sort by (trust_class, security_provider_id) for determinism.
+    struct ContourKey {
+        unsigned    trust;
+        const char* provider_id;
+        uint32_t    provides_flags;
+    };
+    std::vector<ContourKey> keys;
+    keys.reserve(snap->contour_entries.size());
+    for (const auto& c : snap->contour_entries) {
+        bool dup = false;
+        for (const auto& k : keys) {
+            if (k.trust == static_cast<unsigned>(c.trust) &&
+                std::string_view(k.provider_id) == std::string_view(c.security_provider_id)) {
+                dup = true; break;
+            }
+        }
+        if (!dup)
+            keys.push_back({static_cast<unsigned>(c.trust),
+                            c.security_provider_id, c.security_provides_flags});
+    }
+    std::sort(keys.begin(), keys.end(), [](const ContourKey& a, const ContourKey& b) {
+        if (a.trust != b.trust) return a.trust < b.trust;
+        return std::string_view(a.provider_id) < std::string_view(b.provider_id);
+    });
+
+    crypto_hash_sha256_state st;
+    crypto_hash_sha256_init(&st);
+    const uint8_t tag = 0x05;
+    crypto_hash_sha256_update(&st, &tag, 1);
+    for (const auto& k : keys) {
+        sha_u32(st, k.trust);
+        sha_str(st, k.provider_id);
+        sha_u32(st, k.provides_flags);
+    }
+    crypto_hash_sha256_final(&st,
+        reinterpret_cast<unsigned char*>(snap->contour_fingerprint));
 }
 
 } // namespace
@@ -208,6 +249,78 @@ std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel) {
     topo.protocols      = snap->proto_entries.empty()   ? nullptr : snap->proto_entries.data();
     topo.handlers       = snap->handler_entries.empty() ? nullptr : snap->handler_entries.data();
 
+    // ── 5b. Contour array (#33) ───────────────────────────────────────
+    // One contour per (trust_class × protocol_id) where find_for_trust
+    // returns a provider. link_scheme = nullptr in v1: each contour applies
+    // to all links for that trust class. Per-link override reserved for
+    // future per-link security selection.
+    {
+        // Group handler msg_ids by protocol_id using the already-sorted pairs.
+        struct ProtoHList {
+            const char*           protocol_id; // c_str() from proto_id_storage
+            std::vector<uint32_t> msg_ids;
+        };
+        std::vector<ProtoHList> proto_hlists;
+        proto_hlists.reserve(protos.size());
+        for (std::size_t pi = 0; pi < protos.size(); ++pi) {
+            ProtoHList phl{snap->proto_id_storage[pi].c_str(), {}};
+            for (const auto& hp : pairs) {
+                if (hp.protocol_id == protos[pi].protocol_id)
+                    phl.msg_ids.push_back(hp.msg_id);
+            }
+            proto_hlists.push_back(std::move(phl));
+        }
+
+        constexpr unsigned kMaxTrust =
+            static_cast<unsigned>(GN_TRUST_LINK_ENCRYPTED);
+        snap->contour_handler_ids_storage.reserve((kMaxTrust + 1) * proto_hlists.size());
+        snap->contour_entries.reserve((kMaxTrust + 1) * proto_hlists.size());
+
+        for (unsigned t = 0; t <= kMaxTrust; ++t) {
+            const auto tc    = static_cast<gn_trust_class_t>(t);
+            const auto found = kernel.security().find_for_trust(tc);
+            if (found.provider_id.empty()) continue;
+
+            // Resolve c_str() + provides_flags from the already-built sec_entries.
+            const char*   sec_id = nullptr;
+            std::uint32_t pf     = 0;
+            for (const auto& se : snap->sec_entries) {
+                if (std::string_view(se.provider_id) == found.provider_id) {
+                    sec_id = se.provider_id;
+                    pf     = se.provides_flags;
+                    break;
+                }
+            }
+            if (!sec_id) continue;
+
+            for (const auto& phl : proto_hlists) {
+                // Store handler msg_ids; inner vector's .data() stays valid
+                // even if the outer vector reallocates (inner data is heap-owned).
+                snap->contour_handler_ids_storage.push_back(phl.msg_ids);
+                const std::uint32_t* ids_ptr =
+                    snap->contour_handler_ids_storage.back().empty()
+                        ? nullptr
+                        : snap->contour_handler_ids_storage.back().data();
+
+                gn_topo_contour_t c{};
+                c.link_scheme             = nullptr;
+                c.security_provider_id    = sec_id;
+                c.protocol_id             = phl.protocol_id;
+                c.handler_msg_ids         = ids_ptr;
+                c.trust                   = tc;
+                c.security_provides_flags = pf;
+                c.handler_count           = static_cast<std::uint32_t>(phl.msg_ids.size());
+                c._pad                    = 0;
+                snap->contour_entries.push_back(c);
+            }
+        }
+
+        topo.contour_count = static_cast<std::uint32_t>(snap->contour_entries.size());
+        topo.contours      = snap->contour_entries.empty()
+                                 ? nullptr
+                                 : snap->contour_entries.data();
+    }
+
     // ── 6. Contour gaps ────────────────────────────────────────────────
     // LINK_ENCRYPTED trust class is covered when any link advertises
     // ENCRYPTED_PATH AND a security provider allows that trust class
@@ -249,6 +362,7 @@ std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel) {
 
     // ── 7. Fingerprint ─────────────────────────────────────────────────
     compute_fingerprint(snap.get());
+    compute_contour_fingerprint(snap.get());
 
     // ── 8. Notify link plugins ─────────────────────────────────────────
     for (const auto& le : links) {
@@ -262,23 +376,27 @@ std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel) {
     return snap;
 }
 
-std::vector<std::uint8_t> encode_topology_wire_blob(const gn_topology_t& topo) {
-    // [8-byte BE expiry = INT64_MAX] [TLV: type=0x0004 len=32 value=fingerprint]
+std::vector<std::uint8_t> encode_topology_wire_blob(const TopologySnapshot& snap) {
+    // [8-byte BE expiry = INT64_MAX] [TLV 0x0004: fingerprint[32]] [TLV 0x0005: contour_fingerprint[32]]
     constexpr std::size_t kFpLen = 32;
     std::vector<std::uint8_t> out;
-    out.reserve(8 + 4 + kFpLen);
+    out.reserve(8 + (4 + kFpLen) + (4 + kFpLen));
 
     // expiry = INT64_MAX (valid for kernel lifetime)
     constexpr std::uint64_t kExpiry = static_cast<std::uint64_t>(INT64_MAX);
     for (int i = 7; i >= 0; --i)
         out.push_back(static_cast<std::uint8_t>((kExpiry >> (i * 8)) & 0xFFu));
 
-    // TLV header: type=0x0004, length=32
+    // TLV 0x0004: structural topology fingerprint
     out.push_back(0x00); out.push_back(0x04); // type BE
     out.push_back(0x00); out.push_back(0x20); // length = 32 BE
+    out.insert(out.end(), snap.topo.fingerprint, snap.topo.fingerprint + kFpLen);
 
-    // fingerprint value
-    out.insert(out.end(), topo.fingerprint, topo.fingerprint + kFpLen);
+    // TLV 0x0005: contour fingerprint (W2)
+    out.push_back(0x00); out.push_back(0x05); // type BE
+    out.push_back(0x00); out.push_back(0x20); // length = 32 BE
+    out.insert(out.end(), snap.contour_fingerprint, snap.contour_fingerprint + kFpLen);
+
     return out;
 }
 

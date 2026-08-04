@@ -43,6 +43,7 @@ services:
     environment:
       TURN_URI: turns://goodnet:bench-only-credentials@10.10.0.22:5349
       ICE_TCP_TLS_ONLY: "true"
+      ICE_TLS_VERIFY_PEER: "false"
     depends_on:
       stun:        { condition: service_healthy }
       coturn_tls:  { condition: service_healthy }
@@ -52,6 +53,7 @@ services:
     environment:
       TURN_URI: turns://goodnet:bench-only-credentials@10.10.0.22:5349
       ICE_TCP_TLS_ONLY: "true"
+      ICE_TLS_VERIFY_PEER: "false"
     depends_on:
       stun:        { condition: service_healthy }
       coturn_tls:  { condition: service_healthy }

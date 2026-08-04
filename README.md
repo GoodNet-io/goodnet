@@ -147,26 +147,18 @@ when your change touches concurrency-sensitive code.
 
 ## Performance
 
-**TL;DR on this machine** (i5-1235U, 6-core / 12-thread,
-loopback, CPU `performance` governor): single-conn with full crypto
-(Noise XX + gnet framing) sits at **~3 Gb/s** dynamic build /
-**~5 Gb/s** static+LTO (TCP, 64 KiB payload); 4-conn static+LTO
-reaches **~10 Gb/s** — already 2× the single WireGuard tunnel
-ceiling (**~4.9 Gb/s**, one softirq CPU). GoodNet's no-crypto
-aggregate scales further — **~60 Gb/s** static-LTO parody,
-12× WireGuard's single-tunnel ceiling.
+The authoritative numbers live in [`bench/reports/`](bench/reports/) — each file is a full run with environment, exact reproduce commands, and a regression delta against the baseline. The tables below are a snapshot; check the latest report for current figures.
 
-The no-crypto parody numbers (e.g. ~60 Gb/s aggregate) are an upper bound on
-the transport path, not a like-for-like with WireGuard. The like-for-like is the
-crypto row: ~5 Gb/s single-conn static+LTO with Noise. WireGuard is a kernel
-zero-copy datapath; a userspace plugin model is not trying to beat it on raw
-throughput, it is trading some of that for the plugin boundary.
+**A note on CPU governor:** bench reports may show `powersave` as the scaling governor. On `intel_pstate` with HWP this label is misleading — the CPU still boosts to rated max frequency under load regardless of the governor name. The `governor_note` field in each report (`intel_pstate_at_max` vs `intel_pstate_limited`) is the reliable signal. If you reproduce and see different numbers, check that field first.
 
-Reference machine: i5-1235U, loopback, ChaCha20-Poly1305 via
-libsodium. Release build, median of 3 runs. Two measurement
-shapes are reported separately on purpose — see
+Two measurement shapes are reported separately on purpose — see
 [`docs/perf/analysis.en.md`](docs/perf/analysis.en.md) §
-"Measurement shape" for the full discussion.
+"Measurement shape" for the full discussion. Compare same-shape
+rows only: `real` (production stack) vs `parody` (link layer only,
+no security, no protocol) delta IS the cost of the plugin model,
+not a stack quality signal.
+
+Reference machine: i5-1235U, 12-thread, loopback, ChaCha20-Poly1305 via libsodium, static+LTO build.
 
 **Real-mode** through the production stack (kernel + Noise XX
 + gnet protocol + transport plugin). What an operator-facing

@@ -511,6 +511,44 @@ gn_result_t Config::merge_json(std::string_view overlay,
     return GN_OK;
 }
 
+gn_result_t Config::merge_section(std::string_view prefix,
+                                    std::string_view section_json,
+                                    std::string* out_reason) {
+    nlohmann::json section;
+    if (auto rc = parse_json_with_diagnostic(section_json, section, out_reason);
+        rc != GN_OK) {
+        return rc;
+    }
+    if (!section.is_object()) {
+        if (out_reason != nullptr) {
+            *out_reason = "config section root must be a JSON object";
+        }
+        return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    /// Build a synthetic overlay `{"<prefix>": section}` and delegate
+    /// to merge_json. Dotted prefix segments are resolved left-to-right;
+    /// `"links.tls"` becomes `{"links": {"tls": section}}`.
+    nlohmann::json overlay = nlohmann::json::object();
+    nlohmann::json* node   = &overlay;
+    std::string_view remaining = prefix;
+    while (true) {
+        auto dot = remaining.find('.');
+        std::string_view seg = (dot == std::string_view::npos)
+                                    ? remaining
+                                    : remaining.substr(0, dot);
+        if (dot == std::string_view::npos) {
+            (*node)[std::string(seg)] = std::move(section);
+            break;
+        }
+        (*node)[std::string(seg)] = nlohmann::json::object();
+        node      = &((*node)[std::string(seg)]);
+        remaining = remaining.substr(dot + 1);
+    }
+
+    return merge_json(overlay.dump(), out_reason);
+}
+
 gn_result_t Config::load_file(const std::string& path,
                                 std::string* out_reason) {
     /// Stream the file in once, hand the buffer to `load_json`.

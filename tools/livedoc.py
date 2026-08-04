@@ -4,14 +4,12 @@
 Usage:
     python3 tools/livedoc.py --all         # full refresh
     python3 tools/livedoc.py --abi         # ABI facts only
-    python3 tools/livedoc.py --roadmap     # roadmap status only
     python3 tools/livedoc.py --catalogs    # metrics + config keys + RFC coverage
     python3 tools/livedoc.py --diagrams    # SVG + canvas only
     python3 tools/livedoc.py --inject      # markdown rewrites only
     python3 tools/livedoc.py --check       # exit non-zero if drift
 
-Reads:  sdk/*.h, plugins/**, docs/ROADMAP.en.md,
-        tools/livedoc/roadmap_map.yaml
+Reads:  sdk/*.h, plugins/**
 Writes: docs/_facts/*.yaml, docs/img/*.svg, docs/architecture.canvas,
         injects content between livedoc markers in docs/**/*.md
 
@@ -42,7 +40,6 @@ from livedoc import (  # noqa: E402
     metrics_catalog,
     renderers,
     rfc_coverage,
-    roadmap_status,
     test_inventory,
 )
 
@@ -54,10 +51,6 @@ FACTS_ROOT = DOCS_ROOT / "_facts"
 
 def step_abi() -> None:
     abi_extract.write_all()
-
-
-def step_roadmap() -> None:
-    roadmap_status.write()
 
 
 def step_catalogs() -> None:
@@ -95,8 +88,6 @@ def _build_regions(facts: dict) -> dict[str, str]:
                                        title="Security provider vtable"),
         "extension_surface":      renderers.extension_surface(
                                        facts["extension_link"]),
-        "roadmap_status_table":   renderers.roadmap_status_table(
-                                       facts["roadmap_status"]),
         "link_carriers_list":     renderers.link_carriers_list(
                                        plugins["links"]),
         "plugin_inventory":       renderers.plugin_inventory(plugins),
@@ -183,7 +174,6 @@ def step_diagrams() -> None:
 
 def run_all() -> list[Path]:
     step_abi()
-    step_roadmap()
     step_catalogs()
     step_diagrams()
     return step_inject()
@@ -225,8 +215,6 @@ def run_check() -> int:
 def _retarget(docs: Path) -> None:
     """Point every module's DOCS-derived path at `docs`."""
     abi_extract.FACTS_ROOT = docs / "_facts"
-    roadmap_status.FACTS_PATH = docs / "_facts" / "roadmap_status.yaml"
-    roadmap_status.ROADMAP_PATH = docs / "ROADMAP.en.md"
     # Catalog modules each keep their own FACTS_PATH module global; if
     # we forget to retarget one, run_check() writes that fact file
     # straight to the real docs tree during a check-mode invocation
@@ -247,7 +235,6 @@ def main(argv: list[str]) -> int:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--all", action="store_true")
     p.add_argument("--abi", action="store_true")
-    p.add_argument("--roadmap", action="store_true")
     p.add_argument("--catalogs", action="store_true",
                    help="metrics + config keys + RFC coverage")
     p.add_argument("--diagrams", action="store_true")
@@ -258,14 +245,12 @@ def main(argv: list[str]) -> int:
     if a.check:
         return run_check()
 
-    if not any([a.all, a.abi, a.roadmap, a.catalogs,
+    if not any([a.all, a.abi, a.catalogs,
                 a.diagrams, a.inject]):
         a.all = True
 
     if a.all or a.abi:
         step_abi()
-    if a.all or a.roadmap:
-        step_roadmap()
     if a.all or a.catalogs:
         step_catalogs()
     if a.all or a.diagrams:

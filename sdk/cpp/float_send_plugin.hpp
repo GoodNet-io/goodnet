@@ -177,7 +177,7 @@ constexpr std::uint8_t float_send_hot_reload_safe_v = []() {
         ::gn::sdk::detail::float_send_hot_reload_safe_v<                       \
             _gn_float_send_class_t>,                                           \
         nullptr, &_gn_float_send_provides[0],                                  \
-        GN_PLUGIN_KIND_STRATEGY, nullptr, {},                                   \
+        GN_PLUGIN_KIND_STRATEGY, nullptr, nullptr, 0, 0, {},                    \
     };                                                                         \
     }  /* anonymous namespace */                                               \
                                                                                \

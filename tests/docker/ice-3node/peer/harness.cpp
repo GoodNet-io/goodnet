@@ -788,22 +788,40 @@ int main() {
     const bool is_initiator = force_initiator || (!force_responder && (pk_hex < peer_pk_hex));
     gn_conn_id_t conn = GN_INVALID_ID;
     if (is_initiator) {
-        if (gn_result_t rc = gn_core_connect(core, uri.c_str(),
-                                              scheme.c_str(), &conn);
-            rc != GN_OK) {
-            std::string m = "gn_core_connect rc=";
-            m += std::to_string(rc);
-            m += " uri=" + uri;
-            timed_log(m);
-            write_fail("connect failed");
-            gn_core_off_conn_state(core, sub_state);
-            gn_core_unsubscribe(core, sub_msg);
-            gn_core_destroy(core);
-            return 1;
+        if (quic_over_ice) {
+            // QUIC-over-ICE: compositor path returns the conn id synchronously.
+            if (gn_result_t rc = gn_core_connect(core, uri.c_str(),
+                                                  scheme.c_str(), &conn);
+                rc != GN_OK) {
+                std::string m = "gn_core_connect rc=";
+                m += std::to_string(rc);
+                m += " uri=" + uri;
+                timed_log(m);
+                write_fail("connect failed");
+                gn_core_off_conn_state(core, sub_state);
+                gn_core_unsubscribe(core, sub_msg);
+                gn_core_destroy(core);
+                return 1;
+            }
+            g_active_conn.store(conn);
+            timed_log(std::string("connect issued (initiator) conn=") +
+                       std::to_string(conn));
+        } else {
+            // Raw ICE: kernel-path dial — fires notify_connect → CONNECTED event.
+            // The conn id arrives via on_conn_state (g_active_conn) once CONNECTED fires.
+            if (gn_result_t rc = gn_core_dial(core, uri.c_str()); rc != GN_OK) {
+                std::string m = "gn_core_dial rc=";
+                m += std::to_string(rc);
+                m += " uri=" + uri;
+                timed_log(m);
+                write_fail("dial failed");
+                gn_core_off_conn_state(core, sub_state);
+                gn_core_unsubscribe(core, sub_msg);
+                gn_core_destroy(core);
+                return 1;
+            }
+            timed_log("dial issued (initiator)");
         }
-        g_active_conn.store(conn);
-        timed_log(std::string("connect issued (initiator) conn=") +
-                   std::to_string(conn));
     } else {
         timed_log("responder role — waiting for peer OFFER");
     }

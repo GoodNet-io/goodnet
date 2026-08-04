@@ -64,6 +64,12 @@ namespace host_api_internal {
            pc->kind == GN_PLUGIN_KIND_UNKNOWN;
 }
 
+/// `inject()` bridges foreign-system bytes into the mesh under the
+/// caller's identity. Only transport (LINK) plugins may call it;
+/// handler / security / protocol / strategy plugins are rejected
+/// with GN_ERR_NOT_IMPLEMENTED. Mirrors the `link_role()` guard
+/// on `notify_connect`.
+
 /// Build a `gn_message_t` from the four pieces every assembly site
 /// always has. `payload` is `@borrowed` for the kernel call; the
 /// helper does not copy.
@@ -244,6 +250,17 @@ gn_result_t subscribe_config_reload(void* host_ctx,
                                      void* user_data,
                                      void (*ud_destroy)(void*),
                                      gn_subscription_id_t* out_id);
+gn_result_t subscribe_config_reload_section(void* host_ctx,
+                                             const char* prefix,
+                                             gn_config_reload_cb_t cb,
+                                             void* user_data,
+                                             void (*ud_destroy)(void*),
+                                             gn_subscription_id_t* out_id);
+gn_result_t subscribe_topology_reload(void* host_ctx,
+                                       gn_topology_reload_cb_t cb,
+                                       void* user_data,
+                                       void (*ud_destroy)(void*),
+                                       gn_subscription_id_t* out_id);
 gn_result_t unsubscribe(void* host_ctx, gn_subscription_id_t id);
 int32_t     is_shutdown_requested(void* host_ctx);
 void        emit_counter(void* host_ctx, const char* name);

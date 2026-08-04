@@ -105,6 +105,14 @@ ServiceDescriptor descriptor_from_symbol(const DynamicPluginSymbols& syms,
             if (d->ext_provides)
                 for (auto s : cstr_array_range(d->ext_provides))
                     sd.ext_provides.emplace_back(s);
+            if (d->inject_targets)
+                for (const auto* t = d->inject_targets; t->protocol_id != nullptr; ++t)
+                    sd.inject_targets.emplace_back(t->protocol_id, t->msg_id);
+            if (d->reads_config)
+                for (const char* const* r = d->reads_config; *r != nullptr; ++r)
+                    sd.reads_config.emplace_back(*r);
+            sd.may_rotate    = (d->may_rotate != 0);
+            sd.sign_purposes = d->sign_purposes;
             return sd;
         }
     }
@@ -284,11 +292,45 @@ gn_result_t DynamicRuntime::load(const std::string& path,
 
     out.descriptor = descriptor_from_symbol(out.symbols, path);
 
+    // W12: kind gate — manifest entry may pin which plugin kinds are
+    // allowed. Empty manifest → developer mode (any kind). An entry
+    // with allowed_kinds==0 is a legacy entry (any kind). When the
+    // bitmask is non-zero, the plugin's claimed kind must have its bit
+    // set; GN_PLUGIN_KIND_UNKNOWN (0) is never in a valid bitmask
+    // (bit 0 would need to be set explicitly, which parse() rejects).
+    if (!ctx.manifest->empty()) {
+        const auto* me = ctx.manifest->find(path);
+        if (me && me->allowed_kinds != 0) {
+            const auto bit =
+                1u << static_cast<unsigned>(out.descriptor.kind);
+            if (!(me->allowed_kinds & bit)) {
+                diag = "plugin kind not permitted by manifest "
+                       "allowed_kinds: ";
+                diag += path;
+                dlclose(out.so_handle);
+                out.so_handle = nullptr;
+                out.symbols = {};
+#ifdef __linux__
+                if (out.integrity_fd >= 0) {
+                    ::close(out.integrity_fd);
+                    out.integrity_fd = -1;
+                }
+#endif
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+        }
+    }
+
     out.ctx = std::make_unique<PluginContext>();
     out.ctx->plugin_name = out.descriptor.plugin_name;
     out.ctx->kind        = out.descriptor.kind;
     out.ctx->kernel      = ctx.kernel;
     out.ctx->plugin_anchor = std::make_shared<PluginAnchor>();
+    out.ctx->inject_targets = out.descriptor.inject_targets;
+    out.ctx->reads_config   = out.descriptor.reads_config;
+    out.ctx->ext_provides   = out.descriptor.ext_provides;
+    out.ctx->may_rotate     = out.descriptor.may_rotate;
+    out.ctx->sign_purposes  = out.descriptor.sign_purposes;
     out.api  = build_host_api(*out.ctx);
 
     out.runtime    = this;

@@ -3,7 +3,7 @@
 **Status:** active · v1
 **Owner:** every plugin that exchanges capability state with a peer
             (heartbeat, discovery plugins, future companion handlers)
-**Last verified:** 2026-05-25
+**Last verified:** 2026-06-15
 **Stability:** v1.x; type registry grows append-only.
 
 ---
@@ -55,10 +55,14 @@ disables). A blob exceeding the cap returns
 `GN_ERR_PAYLOAD_TOO_LARGE` and bumps
 `drop.capability_blob_too_large`.
 
-Receiver-side: the kernel intercepts msg_id `0x13` in
-`notify_inbound_bytes`, parses the expiry prefix, and fans the
-remaining bytes out to every subscriber via
-`CapabilityBlobBus`. `ud_destroy(user_data)` runs once on
+Receiver-side: the kernel intercepts msg_id `0x13` via its
+priority=255 `KernelCapabilityBlobHandler` (registered through the
+handler chain in `core/kernel/system_handlers.cpp`), parses the
+expiry prefix, and fans the remaining bytes out to every subscriber
+via `CapabilityBlobBus` (returning `CONTINUE` so plugin handlers also
+see the message). The kernel's internal `topology_caps_cb` subscriber
+then dispatches TLV records through `TlvHandlerChain` — see §2
+"Handler chain model". `ud_destroy(user_data)` runs once on
 `unsubscribe(id)` or kernel teardown so plugins do not leak
 their callback state.
 
@@ -83,7 +87,8 @@ record sits inside one GNET frame.
 
 | Range | Owner |
 |---|---|
-| `0x0000 – 0x00ff` | reserved for kernel-emitted records |
+| `0x0000 – 0x000f` | kernel topology — structural fingerprint, contour fingerprint; kernel registers at priority 255 |
+| `0x0010 – 0x00ff` | kernel other — reserved for future kernel families |
 | `0x0100 – 0x01ff` | _reserved_; the allocation table below holds it for future cross-cutting families |
 | `0x0200 – 0x0fff` | core plugins (heartbeat, discovery, future companion handlers) |
 | `0x1000 – 0x7fff` | application records |
@@ -91,6 +96,14 @@ record sits inside one GNET frame.
 
 Allocations within the kernel and core ranges land in this
 contract, alphabetised by name to make merge conflicts loud.
+
+### Handler chain model
+
+TLV dispatch follows the same priority-chain model as msg_id dispatch: each TLV type has an ordered chain of handlers. A handler returns `GN_PROPAGATION_CONSUMED` to stop the chain for that record, or `GN_PROPAGATION_CONTINUE` to pass to the next handler.
+
+The SDK ships `gn::sdk::TlvHandlerChain` (in `sdk/cpp/capability_tlv.hpp`) as a header-only utility for both kernel and plugins. The kernel registers at priority 255 for topology types (0x0004, 0x0005). Plugins register for capability types (0x0200+) at lower priorities.
+
+One mental model: two-level dispatch — `(msg_id=0x13) → blob → TLV type → handler chain`.
 
 ### Initial allocations
 
@@ -101,6 +114,7 @@ contract, alphabetised by name to make merge conflicts loud.
 | `0x0002` | `protocol-list` | UTF-8 newline-separated list of protocol names; the index into the list is the bit position in `protocol-set` |
 | `0x0003` | `compression-set` | `u8` bitmask: bit 0 = ZSTD (`0x01`) |
 | `0x0004` | `topology-fingerprint` | exactly 32 bytes — SHA-256 over sorted structural layers (link / security / protocol / handler sections); see `layer-capability.en.md §6` for the hash algorithm. Sent automatically by the kernel after Noise XX reaches Transport phase. Receiver compares against local fingerprint and sets `ConnectionRecord::peer_caps_verified`. |
+| `0x0005` | `contour-fingerprint` | exactly 32 bytes — SHA-256 over the sealed security-contour set (sorted by trust_class × provider_id). Sent by the kernel alongside TLV 0x0004 after topology seal. Receiver fires `GN_CONN_EVENT_CONTOUR_MISMATCH` on fingerprint mismatch. Handler implemented in W2. |
 | `0x0100 – 0x01ff` | _reserved_ | do not allocate; the range is held for future cross-cutting families |
 | `0x0200` | `heartbeat-interval-ms` | u32 big-endian; the peer's preferred PING cadence |
 
@@ -179,3 +193,4 @@ to implement; the contract here scopes only the one-frame case.
   (`max_payload_bytes`).
 - Topology fingerprint algorithm and `ConnectionRecord::peer_caps_verified`:
   `layer-capability.en.md §6`.
+- TLV handler chain: `sdk/cpp/capability_tlv.hpp` (`gn::sdk::TlvHandlerChain`).

@@ -46,6 +46,10 @@ struct ExtensionEntry {
     /// field so the iteration is deterministic regardless of the
     /// underlying hash-map order.
     std::uint64_t         seq = 0;
+
+    /// Plugin name that registered this extension. Only that plugin
+    /// may unregister it (empty = unrestricted, used in-process).
+    std::string           creator;
 };
 
 class ExtensionRegistry {
@@ -62,15 +66,19 @@ public:
     [[nodiscard]] gn_result_t register_extension(std::string_view name,
                                                  std::uint32_t version,
                                                  const void* vtable,
-                                                 std::shared_ptr<void> lifetime_anchor = {}) noexcept;
+                                                 std::shared_ptr<void> lifetime_anchor = {},
+                                                 std::string_view creator = {}) noexcept;
 
     /// Set the live-entry cap (`gn_limits_t::max_extensions`). A cap
     /// of zero disables the check; non-zero values reject registrations
     /// whose acceptance would push the live count above @p cap.
     void set_max_extensions(std::uint32_t cap) noexcept;
 
-    /// Remove an extension by name.
-    [[nodiscard]] gn_result_t unregister_extension(std::string_view name) noexcept;
+    /// Remove an extension by name. If @p caller is non-empty and the
+    /// entry has a non-empty creator that differs, returns
+    /// `GN_ERR_NOT_FOUND` (opaque — indistinguishable from absent).
+    [[nodiscard]] gn_result_t unregister_extension(std::string_view name,
+                                                   std::string_view caller = {}) noexcept;
 
     /// Look up @p name and verify the registered version is compatible
     /// with @p requested_version. Compatibility rule from

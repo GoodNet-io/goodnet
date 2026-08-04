@@ -271,6 +271,29 @@ GN_EXPORT int gn_core_is_running(gn_core_t* core);
 GN_EXPORT gn_result_t gn_core_reload_config_json(gn_core_t* core,
                                                  const char* json_str);
 
+/**
+ * @brief Reload only the @p prefix subtree, leaving every other config key
+ *        unchanged.
+ *
+ * Equivalent to `gn_core_reload_config_json` with an overlay document of
+ * `{"<prefix>": section_json}`, but more surgical: only subscribers that
+ * registered under @p prefix via `host_api->subscribe_config_reload_section`
+ * are notified (v1: all `subscribe_config_reload` subscribers are also
+ * notified as a backward-compatible fallback).
+ *
+ * @p prefix  dotted path (`"ice"`, `"links.tls"`); @borrowed.
+ * @p section_json  JSON object string for the section; @borrowed.
+ *
+ * Returns `GN_ERR_INVALID_ENVELOPE` when @p section_json is not a JSON
+ * object. Otherwise the same atomicity / rollback semantics as
+ * `gn_core_reload_config_json`.
+ *
+ * See `docs/contracts/config.en.md` §3b.
+ */
+GN_EXPORT gn_result_t gn_core_reload_config_section(gn_core_t*  core,
+                                                     const char* prefix,
+                                                     const char* section_json);
+
 /* ── Configuration & limits ──────────────────────────────────────────────── */
 
 /**

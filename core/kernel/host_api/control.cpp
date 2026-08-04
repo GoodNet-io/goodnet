@@ -22,6 +22,7 @@
 #include <sdk/extensions/float_send.h>
 #include <sdk/extensions/strategy.h>
 
+#include "../conn_event.hpp"
 #include "../connection_context.hpp"
 #include "../safe_invoke.hpp"
 
@@ -173,7 +174,7 @@ gn_result_t register_security(void* host_ctx,
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
     /// Capability gate per `security-trust.en.md`: only plugins that
     /// declared themselves SECURITY-kind at load time may install
-    /// a security provider. HANDLER, LINK, STRATEGY, BRIDGE, UI,
+    /// a security provider. HANDLER, LINK, STRATEGY, UI,
     /// PROTOCOL plugins calling this slot have no business minting
     /// a provider entry — refuse with `NOT_AUTHORISED`-style code
     /// (`INVALID_STATE`, since we have no dedicated capability
@@ -192,7 +193,36 @@ gn_result_t unregister_security(void* host_ctx, const char* provider_id) {
     if (!host_ctx || !provider_id) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->security().unregister_provider(provider_id);
+
+    // W2: snapshot trust_mask before unregistering so we can build the contour event.
+    std::uint32_t trust_mask = 0;
+    {
+        auto sec_snap = pc->kernel->security().snapshot();
+        for (const auto& e : sec_snap) {
+            if (std::string_view(e.provider_id) == std::string_view(provider_id)) {
+                trust_mask = e.trust_mask();
+                break;
+            }
+        }
+    }
+
+    const gn_result_t rc = pc->kernel->security().unregister_provider(provider_id);
+    if (rc != GN_OK) return rc;
+
+    // W2: fire CONTOUR_BROKEN for all contours keyed to this provider.
+    if (trust_mask != 0) {
+        ConnEvent ev{};
+        ev.kind                  = GN_CONN_EVENT_CONTOUR_BROKEN;
+        ev.conn                  = GN_INVALID_ID;
+        ev.trust                 = GN_TRUST_UNTRUSTED; // not meaningful for contour events
+        ev.contour_provider_id   = provider_id;        // borrowed — caller owns; stays valid
+        ev.contour_trust_mask    = trust_mask;
+        ev.contour_state         = GN_CONTOUR_BROKEN;
+        pc->kernel->on_conn_event().fire(ev);
+        pc->kernel->mark_provider_broken(provider_id);
+    }
+
+    return GN_OK;
 }
 
 // ── Extension registry ─────────────────────────────────────────────
@@ -212,18 +242,28 @@ gn_result_t register_extension(void* host_ctx,
                                 const char* name,
                                 uint32_t version,
                                 const void* vtable) {
-    if (!host_ctx) return GN_ERR_NULL_ARG;
+    if (!host_ctx || !name) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    if (pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        if (pc->ext_provides.empty()) return GN_ERR_INVALID_ENVELOPE;
+        const std::string_view name_view{name};
+        bool allowed = false;
+        for (const auto& decl : pc->ext_provides)
+            if (name_view.starts_with(decl)) { allowed = true; break; }
+        if (!allowed) return GN_ERR_INVALID_ENVELOPE;
+    }
+
     return pc->kernel->extensions().register_extension(
-        name, version, vtable, pc->plugin_anchor);
+        name, version, vtable, pc->plugin_anchor, pc->plugin_name);
 }
 
 gn_result_t unregister_extension(void* host_ctx, const char* name) {
     if (!host_ctx || !name) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
-    return pc->kernel->extensions().unregister_extension(name);
+    return pc->kernel->extensions().unregister_extension(name, pc->plugin_name);
 }
 
 // ── Timers ─────────────────────────────────────────────────────────
@@ -271,13 +311,21 @@ gn_result_t subscribe_conn_state(void* host_ctx,
                 if (!guard) return;
             }
             gn_conn_event_t e{};
-            e.api_size      = sizeof(gn_conn_event_t);
-            e.kind          = ev.kind;
-            e.conn          = ev.conn;
-            e.trust         = ev.trust;
-            e.pending_bytes = ev.pending_bytes;
+            e.api_size              = sizeof(gn_conn_event_t);
+            e.kind                  = ev.kind;
+            e.conn                  = ev.conn;
+            e.trust                 = ev.trust;
+            e.pending_bytes         = ev.pending_bytes;
             std::memcpy(e.remote_pk, ev.remote_pk.data(),
                         GN_PUBLIC_KEY_BYTES);
+            e.user_pk_prev          = ev.user_pk_prev;
+            e.user_pk_next          = ev.user_pk_next;
+            e.rotation_seq          = ev.rotation_seq;
+            e.peer_fingerprint      = ev.peer_fingerprint;
+            e.contour_provider_id   = ev.contour_provider_id;
+            e.contour_trust_mask    = ev.contour_trust_mask;
+            e.contour_state         = ev.contour_state;
+            e._pad_contour          = 0;
             safe_call_void("subscriber.conn_state",
                 cb, ud_guard->user_data, &e);
         });
@@ -320,6 +368,73 @@ gn_result_t subscribe_config_reload(void* host_ctx,
     return GN_OK;
 }
 
+gn_result_t subscribe_config_reload_section(void*                 host_ctx,
+                                              const char*           prefix,
+                                              gn_config_reload_cb_t cb,
+                                              void*                 user_data,
+                                              void (*ud_destroy)(void*),
+                                              gn_subscription_id_t* out_id) {
+    if (!host_ctx || !prefix || !cb || !out_id) return GN_ERR_NULL_ARG;
+
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+    auto ud_guard = std::make_shared<UserDataGuard>(user_data, ud_destroy);
+
+    // v1: fires on every reload regardless of prefix; prefix stored for v2 filtering.
+    std::string prefix_str{prefix};
+    auto token = pc->kernel->on_config_reload().subscribe(
+        [cb, ud_guard, anchor_weak, anchor_set,
+         prefix_str = std::move(prefix_str)](const signal::Empty&) {
+            (void)prefix_str;
+            if (anchor_set) {
+                auto guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+            }
+            safe_call_void("subscriber.config_reload_section",
+                cb, ud_guard->user_data);
+        });
+    if (token == signal::SignalChannel<signal::Empty>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    *out_id = pack_subscription_id(GN_SUBSCRIBE_CONFIG_RELOAD,
+                                    static_cast<std::uint64_t>(token));
+    return GN_OK;
+}
+
+gn_result_t subscribe_topology_reload(void* host_ctx,
+                                       gn_topology_reload_cb_t cb,
+                                       void* user_data,
+                                       void (*ud_destroy)(void*),
+                                       gn_subscription_id_t* out_id) {
+    if (!host_ctx || !cb || !out_id) return GN_ERR_NULL_ARG;
+
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    auto anchor_weak = std::weak_ptr<PluginAnchor>(pc->plugin_anchor);
+    const bool anchor_set = static_cast<bool>(pc->plugin_anchor);
+    auto ud_guard = std::make_shared<UserDataGuard>(user_data, ud_destroy);
+
+    auto token = pc->kernel->on_topology_reload().subscribe(
+        [cb, ud_guard, anchor_weak, anchor_set](const TopologyReloadEvent& ev) {
+            if (anchor_set) {
+                auto guard = GateGuard::acquire(anchor_weak);
+                if (!guard) return;
+            }
+            safe_call_void("subscriber.topology_reload",
+                cb, ud_guard->user_data, ev.prev, ev.next);
+        });
+    if (token == signal::SignalChannel<TopologyReloadEvent>::kInvalidToken) {
+        return GN_ERR_LIMIT_REACHED;
+    }
+    *out_id = pack_subscription_id(GN_SUBSCRIBE_TOPOLOGY_RELOAD,
+                                    static_cast<std::uint64_t>(token));
+    return GN_OK;
+}
+
 gn_result_t unsubscribe(void* host_ctx,
                          gn_subscription_id_t id) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
@@ -339,6 +454,10 @@ gn_result_t unsubscribe(void* host_ctx,
     case GN_SUBSCRIBE_CONFIG_RELOAD:
         pc->kernel->on_config_reload().unsubscribe(
             static_cast<signal::SignalChannel<signal::Empty>::Token>(token));
+        return GN_OK;
+    case GN_SUBSCRIBE_TOPOLOGY_RELOAD:
+        pc->kernel->on_topology_reload().unsubscribe(
+            static_cast<signal::SignalChannel<TopologyReloadEvent>::Token>(token));
         return GN_OK;
     case kCapabilityBlobChannel:
         return pc->kernel->capability_blob_bus().unsubscribe(token)
@@ -523,8 +642,8 @@ gn_result_t register_vtable(void* host_ctx,
     /// Capability gate per `security-trust.en.md`: plugin-kind must
     /// match the register-kind being requested. HANDLER-kind
     /// plugins register handler vtables, LINK-kind plugins
-    /// register link vtables, anything else (STRATEGY, BRIDGE,
-    /// UI, SECURITY, PROTOCOL) is refused at the slot. The
+    /// register link vtables, anything else (STRATEGY, UI,
+    /// SECURITY, PROTOCOL) is refused at the slot. The
     /// embedding host (UNKNOWN) keeps full access — same
     /// rationale as `register_security`: operator authority,
     /// not plugin-author.
@@ -623,6 +742,15 @@ gn_result_t config_get(void* host_ctx,
         break;
     default:
         return GN_ERR_INVALID_ENVELOPE;
+    }
+
+    if (pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        if (pc->reads_config.empty()) return GN_ERR_NOT_FOUND;
+        const std::string_view key_view{key};
+        bool allowed = false;
+        for (const auto& prefix : pc->reads_config)
+            if (key_view.starts_with(prefix)) { allowed = true; break; }
+        if (!allowed) return GN_ERR_NOT_FOUND;
     }
 
     const bool is_string =

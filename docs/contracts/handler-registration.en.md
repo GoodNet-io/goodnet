@@ -2,7 +2,7 @@
 
 **Status:** active · v1
 **Owner:** `core/registry/handler.hpp`, `core/kernel/router.cpp`
-**Last verified:** 2026-05-19
+**Last verified:** 2026-06-15
 **Stability:** RC tags do not freeze the public surface; the
 plain `v1.0.0` tag closes the reshape window per
 `abi-evolution.en.md` §3b.
@@ -153,39 +153,40 @@ at the tail and bumps `sizeof(gn_handler_vtable_t)`; the existing
 ## 2a. Reserved msg_id values
 
 The range `0x10..0x1F` is reserved for identity-bearing transport.
-Two classes of reservation, both enforced through
+Three classes, all enforced through
 `core/kernel/system_handler_ids.hpp`:
 
-**Hard-reserved** — `register_vtable(GN_REGISTER_HANDLER)` rejects
-registrations with `GN_ERR_INVALID_ENVELOPE`; the kernel
-intercepts inbound envelopes ahead of the registry chain and
-routes them directly to the owning subsystem.
+**Registration-blocked** — `register_vtable(GN_REGISTER_HANDLER)`
+rejects these ids with `GN_ERR_INVALID_ENVELOPE` when called by a
+plugin. The kernel holds priority=255 handlers for them registered
+at `gn_core_start()`.
 
 | msg_id | Reserved for | Specification |
 |---|---|---|
 | `0x00` | unset sentinel | this section |
 | `0x11` | attestation dispatcher | `attestation.en.md` §3 |
-| `0x12` | identity rotation announce | `identity.en.md` §10 |
-| `0x13` | capability TLV transport | `identity.en.md` §9, `capability-tlv.en.md` |
 
-`0x12` and `0x13` ride alongside `0x11` because the kernel
-intercepts them in `notify_inbound_bytes`: the rotation handler
-verifies the proof against the pinned `user_pk` and advances the
-pin atomically; the capability blob handler fans the bytes to
-every subscriber registered via
-`host_api->subscribe_capability_blob`. Plugins that want to
-emit identity events use the typed slots
-(`announce_rotation`, `present_capability_blob`); they cannot
-bypass through the regular handler surface.
+**Kernel-first, plugin-observable** — plugins may register
+handlers at priority 0–253. Priority=255 in the identity range is
+kernel-reserved (§4); a plugin registration at priority=255 on any
+`0x10..0x1F` id is rejected with `GN_ERR_INVALID_ENVELOPE`. The
+kernel's priority=255 handler processes the payload first (verify +
+apply state + fire event, or fan to bus), then returns CONTINUE so
+lower-priority plugin handlers receive the envelope.
 
-**Plugin-reserved** — plugins may register handlers on these
-ids, but the inject boundary (`host_api->inject(LAYER_MESSAGE)`)
-rejects them with `GN_ERR_INVALID_ENVELOPE`. The asymmetry
-prevents a bridge-style inject from spoofing identity events on
-a connection the calling plugin does not own.
+| msg_id | Reserved for | Kernel outcome | Specification |
+|---|---|---|---|
+| `0x12` | identity rotation announce | CONTINUE (success) or CONSUMED (invalid/replay) | `identity.en.md` §10 |
+| `0x13` | capability TLV transport | CONTINUE | `identity.en.md` §9, `capability-tlv.en.md` |
+
+**Inject-blocked only** — plugins register handlers normally; the
+inject boundary (`host_api->inject(LAYER_MESSAGE)`) rejects all
+ids in `0x10..0x1F` with `GN_ERR_INVALID_ENVELOPE` so a bridge
+plugin cannot spoof an identity event on a foreign connection.
 
 | msg_id | Reserved for | Specification |
 |---|---|---|
+| `0x10` | heartbeat (PING/PONG) | `sdk/extensions/heartbeat.h` |
 | `0x14` | user-level 2FA challenge | `identity.en.md` §6/§9 |
 | `0x15` | user-level 2FA response | `identity.en.md` §6/§9 |
 
@@ -269,7 +270,7 @@ no-op, not a fault.
 
 ## 4. Priority semantics
 
-Three rules:
+Four rules:
 
 1. **Higher priority sees the envelope first.** A `priority=255` handler
    that returns `Consumed` denies lower-priority handlers any view of the
@@ -279,6 +280,13 @@ Three rules:
 3. **Priority is advisory, not enforcement.** An application can register
    a `priority=0` handler that watches every message for metrics without
    risking that it intercepts traffic.
+4. **Priority=255 within the identity range (`0x10..0x1F`) is kernel-reserved.**
+   Plugin registrations on any `msg_id` in `0x10..0x1F` with `priority=255`
+   are rejected with `GN_ERR_INVALID_ENVELOPE`. The kernel registers its
+   own priority=255 handlers for `0x11`, `0x12`, `0x13` at every
+   `build_topology()` call (initial start and every `gn_core_reload_topology()`).
+   Outside the identity range, `priority=255` is unrestricted — available to
+   applications for latency-critical handlers (real-time RPC, gaming).
 
 ---
 

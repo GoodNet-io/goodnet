@@ -50,6 +50,7 @@ PluginContext make_ctx(Kernel& k) {
     ctx.kernel        = &k;
     ctx.kind          = GN_PLUGIN_KIND_STRATEGY;
     ctx.plugin_name   = "test-strategy";
+    ctx.ext_provides  = {"gn.strategy."};
     ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;
 }

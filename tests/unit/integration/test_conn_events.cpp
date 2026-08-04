@@ -302,10 +302,11 @@ TEST(ConnEvents, UnsubscribeRejectsTamperedChannelTag) {
                              &record_event, &bag,
                              /*ud_destroy*/ nullptr, &sub),
               GN_OK);
-    /// Flip channel-tag bits 60..63 to an unused channel value (3).
+    /// Flip channel-tag bits 60..63 to an unused channel value (4).
+    /// (0=conn_state, 1=config_reload, 2=capability_blob, 3=topology_reload; 4 is unused.)
     constexpr std::uint64_t kChannelMask = std::uint64_t{0xF} << 60;
     const std::uint64_t tampered =
-        (sub & ~kChannelMask) | (std::uint64_t{3} << 60);
+        (sub & ~kChannelMask) | (std::uint64_t{4} << 60);
     EXPECT_EQ(api.unsubscribe(&ctx, tampered), GN_ERR_NOT_FOUND);
 
     /// The original subscription is still live: a real unsubscribe

@@ -10,6 +10,8 @@
 
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include <sdk/plugin.h>
 
@@ -54,6 +56,12 @@ struct PluginContext {
     /// from this context" — used by in-tree tests that exercise
     /// registries without a plugin manager.
     std::shared_ptr<PluginAnchor> plugin_anchor;
+
+    std::vector<std::pair<std::string, std::uint32_t>> inject_targets;
+    std::vector<std::string>                           reads_config;
+    std::vector<std::string>                           ext_provides;
+    bool                                               may_rotate{false};
+    std::uint32_t                                      sign_purposes{0};
 
     PluginContext() = default;
     /// Stamp the canary on destruction so a thunk that arrives

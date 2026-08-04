@@ -12,8 +12,12 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <sdk/topology.h>
 #include <sdk/trust.h>
 #include <sdk/types.h>
+
+/* Forward declaration — full definition in sdk/topology.h (already included above). */
+struct gn_topology_s;
 
 #ifdef __cplusplus
 extern "C" {
@@ -32,7 +36,27 @@ typedef enum gn_conn_event_kind_e {
      *  disconnecting the live transport.
      *  See `gn_conn_event_t::user_pk_prev`, `user_pk_next`,
      *  `rotation_seq` for the accompanying payload. */
-    GN_CONN_EVENT_IDENTITY_ROTATED   = 6
+    GN_CONN_EVENT_IDENTITY_ROTATED   = 6,
+    /** Peer's topology fingerprint (TLV 0x0004) does not match the
+     *  local fingerprint after a topology reload or on first
+     *  capability-blob exchange. The connection remains open; the
+     *  kernel sets `peer_caps_verified = false` and fires this event
+     *  so the embedding application can decide to disconnect or
+     *  tolerate the mismatch. `gn_conn_event_t::peer_fingerprint`
+     *  carries the 32-byte peer fingerprint (@borrowed for the
+     *  callback duration).
+     *  See `docs/contracts/topology-reload.en.md` §3. */
+    GN_CONN_EVENT_TOPOLOGY_MISMATCH  = 7,
+    /** Security provider unregistered — all contours keyed to it are now BROKEN.
+     *  `contour_provider_id` names the provider; `contour_trust_mask` is the bitmask
+     *  of affected GN_TRUST_* classes. `conn` is GN_INVALID_ID (contour-level event). */
+    GN_CONN_EVENT_CONTOUR_BROKEN   = 8,
+    /** Provider re-registered or topology reloaded — affected contours are LIVE or PARTIAL.
+     *  Same payload shape as CONTOUR_BROKEN. `contour_state` carries the new state. */
+    GN_CONN_EVENT_CONTOUR_LIVE     = 9,
+    /** Peer's contour fingerprint (TLV 0x0005) does not match the local contour fingerprint.
+     *  `peer_fingerprint` carries the 32-byte peer value (borrowed). `conn` is the connection. */
+    GN_CONN_EVENT_CONTOUR_MISMATCH = 10
 } gn_conn_event_kind_t;
 
 /**
@@ -51,11 +75,24 @@ typedef struct gn_conn_event_s {
     /** @name IDENTITY_ROTATED payload — borrowed for the callback duration;
      *  NULL for all other event kinds. */
     /**@{*/
-    const uint8_t*        user_pk_prev;  /**< previous user public key (GN_PUBLIC_KEY_BYTES) */
-    const uint8_t*        user_pk_next;  /**< new user public key (GN_PUBLIC_KEY_BYTES) */
-    const uint64_t*       rotation_seq;  /**< monotone rotation counter */
+    const uint8_t*        user_pk_prev;     /**< previous user public key (GN_PUBLIC_KEY_BYTES) */
+    const uint8_t*        user_pk_next;     /**< new user public key (GN_PUBLIC_KEY_BYTES) */
+    const uint64_t*       rotation_seq;     /**< monotone rotation counter */
     /**@}*/
-    void*                 _reserved[1];  /**< ABI evolution; MUST be zero */
+    /** @name TOPOLOGY_MISMATCH payload — borrowed for the callback duration;
+     *  NULL for all other event kinds. */
+    /**@{*/
+    const uint8_t*        peer_fingerprint; /**< 32-byte peer topology SHA-256; NULL otherwise */
+    /**@}*/
+    /** @name CONTOUR_BROKEN / CONTOUR_LIVE payload — borrowed for callback duration;
+     *  NULL / 0 for all other event kinds. */
+    /**@{*/
+    const char*        contour_provider_id; /**< provider_id string */
+    uint32_t           contour_trust_mask;  /**< bitmask of affected GN_TRUST_* */
+    gn_contour_state_t contour_state;       /**< new runtime state */
+    uint32_t           _pad_contour;        /**< alignment; MUST be zero */
+    /**@}*/
+    void*                 _reserved[4];     /**< ABI evolution; MUST be zero */
 } gn_conn_event_t;
 
 /** Subscription handle returned from `host_api->subscribe`. */
@@ -72,8 +109,10 @@ typedef uint64_t gn_subscription_id_t;
  * with a NULL payload.
  */
 typedef enum gn_subscribe_channel_e {
-    GN_SUBSCRIBE_CONN_STATE     = 0,
-    GN_SUBSCRIBE_CONFIG_RELOAD  = 1
+    GN_SUBSCRIBE_CONN_STATE       = 0,
+    GN_SUBSCRIBE_CONFIG_RELOAD    = 1,
+    /* 2 is reserved for the internal capability-blob channel. */
+    GN_SUBSCRIBE_TOPOLOGY_RELOAD  = 3
 } gn_subscribe_channel_t;
 
 /**
@@ -93,6 +132,17 @@ typedef void (*gn_conn_state_cb_t)(void* user_data,
                                     const gn_conn_event_t* ev);
 
 typedef void (*gn_config_reload_cb_t)(void* user_data);
+
+/**
+ * @brief Callback fired after every `gn_core_reload_topology()`.
+ *
+ * @param prev  Previous topology snapshot; NULL on the first reload.
+ *              Borrowed for the callback duration — MUST NOT be stored.
+ * @param next  Freshly built snapshot. Never NULL. Same lifetime rule.
+ */
+typedef void (*gn_topology_reload_cb_t)(void* user_data,
+                                         const struct gn_topology_s* prev,
+                                         const struct gn_topology_s* next);
 
 /**
  * @brief Iteration visitor for `for_each_connection`. Returns 0 to

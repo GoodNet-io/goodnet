@@ -138,7 +138,7 @@ manual edits.
 | ipc | `ipc` | [`plugins/links/ipc`](../../plugins/links/ipc) | no | AF_UNIX SOCK_STREAM transport for GoodNet. `ipc:///run/goodnet.sock` |
 | portmap | `portmap` | [`plugins/links/portmap`](../../plugins/links/portmap) | no | Explicit NAT port-mapping plugin. Surfaces the `gn.link.portmap` |
 | quic | `quic` | [`plugins/links/quic`](../../plugins/links/quic) | yes | QUIC transport for GoodNet. OpenSSL-3.6-native QUIC layered on a |
-| raw_inject | `raw_inject` | [`plugins/links/raw_inject`](../../plugins/links/raw_inject) | yes | Transparent bridge that exposes goodnetd to plain TCP clients which |
+| raw_inject | `raw_inject` | [`plugins/links/raw_inject`](../../plugins/links/raw_inject) | no |  |
 | tcp | `tcp` | [`plugins/links/tcp`](../../plugins/links/tcp) | yes | TCP transport for GoodNet. Listens on an `tcp://host:port` URI, |
 | tls | `tls` | [`plugins/links/tls`](../../plugins/links/tls) | yes | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | `udp` | [`plugins/links/udp`](../../plugins/links/udp) | yes | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |
@@ -169,7 +169,7 @@ manual edits.
 | ipc | [`plugins/links/ipc`](../../plugins/links/ipc) | AF_UNIX SOCK_STREAM transport for GoodNet. `ipc:///run/goodnet.sock` |
 | portmap | [`plugins/links/portmap`](../../plugins/links/portmap) | Explicit NAT port-mapping plugin. Surfaces the `gn.link.portmap` |
 | quic | [`plugins/links/quic`](../../plugins/links/quic) | QUIC transport for GoodNet. OpenSSL-3.6-native QUIC layered on a |
-| raw_inject | [`plugins/links/raw_inject`](../../plugins/links/raw_inject) | Transparent bridge that exposes goodnetd to plain TCP clients which |
+| raw_inject | [`plugins/links/raw_inject`](../../plugins/links/raw_inject) |  |
 | tcp | [`plugins/links/tcp`](../../plugins/links/tcp) | TCP transport for GoodNet. Listens on an `tcp://host:port` URI, |
 | tls | [`plugins/links/tls`](../../plugins/links/tls) | TLS-over-TCP transport for GoodNet. Pins TLS 1.3 minimum, uses the |
 | udp | [`plugins/links/udp`](../../plugins/links/udp) | UDP datagram transport for GoodNet. Maps `udp://host:port` URIs to |

@@ -11,7 +11,8 @@ namespace gn::core::identity {
 gn_key_id_t SubKeyRegistry::insert(gn_key_purpose_t purpose,
                                     KeyPair&&        kp,
                                     std::string_view label,
-                                    std::int64_t     created_unix_ts) {
+                                    std::int64_t     created_unix_ts,
+                                    std::string_view creator) {
     const auto id = encode_key_id(purpose, next_counter_++);
     SubKeyEntry e;
     e.id              = id;
@@ -19,6 +20,7 @@ gn_key_id_t SubKeyRegistry::insert(gn_key_purpose_t purpose,
     e.kp              = std::move(kp);
     e.label.assign(label);
     e.created_unix_ts = created_unix_ts;
+    e.creator.assign(creator);
     entries_.push_back(std::move(e));
     return id;
 }
@@ -70,6 +72,13 @@ const KeyPair* SubKeyRegistry::find_first_of_purpose(
 const KeyPair* SubKeyRegistry::find_by_id(gn_key_id_t id) const noexcept {
     for (const auto& e : entries_) {
         if (e.id == id) return &e.kp;
+    }
+    return nullptr;
+}
+
+const SubKeyEntry* SubKeyRegistry::find_entry_by_id(gn_key_id_t id) const noexcept {
+    for (const auto& e : entries_) {
+        if (e.id == id) return &e;
     }
     return nullptr;
 }

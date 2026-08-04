@@ -20,6 +20,7 @@
 #include <stddef.h>
 
 #include <sdk/abi.h>
+#include <sdk/trust.h>
 #include <sdk/types.h>
 
 #ifdef __cplusplus
@@ -77,6 +78,47 @@ typedef struct gn_topo_handler_entry_s {
 } gn_topo_handler_entry_t;
 
 /**
+ * @brief Runtime state of a named security contour.
+ *
+ * LIVE    — provider registered, E2E encryption present (contour_gaps bit clear)
+ * PARTIAL — provider registered but no E2E (contour_gaps bit set; e.g. null provider)
+ * BROKEN  — security provider unregistered; connections using this contour are in limbo
+ */
+typedef enum gn_contour_state_e {
+    GN_CONTOUR_LIVE    = 0,
+    GN_CONTOUR_PARTIAL = 1,
+    GN_CONTOUR_BROKEN  = 2
+} gn_contour_state_t;
+
+/**
+ * @brief One resolved named packet path in the topology snapshot (#33).
+ *
+ * A contour is the cross-join (trust_class × link_scheme) resolved through
+ * the SecurityRegistry to a specific provider, protocol, and handler chain.
+ * It answers: "for trust class T coming in over link L, what is the full
+ * cryptographic and dispatch path?"
+ *
+ * `security_provides_flags` carries the per-path crypto profile (same value
+ * as `gn_topo_security_entry_t::provides_flags` for the resolved provider).
+ * When multiple providers admit the same trust class, `contours[]` carries the
+ * winner (first-registration order); ambiguity in the flat security array is
+ * resolved here.
+ *
+ * All pointer fields are @borrowed from kernel-owned storage.
+ * sizeof = 48.
+ */
+typedef struct gn_topo_contour_s {
+    const char*       link_scheme;             /**< @borrowed — "tcp", "quic", "ice", … */
+    const char*       security_provider_id;    /**< @borrowed — "gn.security.noise", … */
+    const char*       protocol_id;             /**< @borrowed — "gnet-v1", "raw", … */
+    const uint32_t*   handler_msg_ids;         /**< @borrowed — handler_count msg_ids on this protocol */
+    gn_trust_class_t  trust;                   /**< GN_TRUST_* value this path serves. */
+    uint32_t          security_provides_flags; /**< GN_SEC_PROVIDES_* bitmask for this path. */
+    uint32_t          handler_count;
+    uint32_t          _pad;                    /**< Explicit alignment padding; MUST be zero. */
+} gn_topo_contour_t;
+
+/**
  * @brief Immutable kernel topology snapshot.
  *
  * All pointer fields are @borrowed from kernel-owned storage and are valid
@@ -95,6 +137,10 @@ typedef struct gn_topo_handler_entry_s {
  * a null provider covers those classes — this is correct behaviour, not a gap.
  * The external classes (GN_TRUST_UNTRUSTED=0, GN_TRUST_PEER=1) must not be set
  * for a closed contour.
+ *
+ * `contours` is the named-path array (#33): one entry per resolved
+ * (trust_class × link_scheme) pair. `contour_count` is its length.
+ * sizeof = 128.
  */
 typedef struct gn_topology_s {
     uint8_t  fingerprint[32];  /**< SHA-256 over sorted structural layers. */
@@ -106,8 +152,10 @@ typedef struct gn_topology_s {
     const gn_topo_security_entry_t* security;
     const gn_topo_protocol_entry_t* protocols;
     const gn_topo_handler_entry_t*  handlers;
-    uint32_t contour_gaps;    /**< Bitmask: bit N = trust class N lacks E2E coverage. */
-    void*    _reserved[4];    /**< MUST be zero; see abi-evolution.en.md §4. */
+    uint32_t contour_gaps;     /**< Bitmask: bit N = trust class N lacks E2E coverage. */
+    uint32_t contour_count;    /**< Length of the contours array. */
+    const gn_topo_contour_t* contours; /**< @borrowed; named packet paths, see layer-capability.en.md §3a. */
+    void*    _reserved[4];     /**< MUST be zero; count frozen at 4, see abi-evolution.en.md §4. */
 } gn_topology_t;
 
 #ifdef __cplusplus

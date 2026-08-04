@@ -142,7 +142,7 @@ typedef enum gn_plugin_kind_e {
     GN_PLUGIN_KIND_HANDLER   = 2,
     GN_PLUGIN_KIND_SECURITY  = 3,
     GN_PLUGIN_KIND_PROTOCOL  = 4,
-    GN_PLUGIN_KIND_BRIDGE    = 5,
+    /* 5 intentionally vacant — BRIDGE removed (merged into HANDLER) */
     /**
      * Multi-path strategy plugins. Register a `gn.strategy.<name>`
      * extension exposing `pick_conn` / `on_path_event` slots.
@@ -202,10 +202,39 @@ typedef struct gn_plugin_descriptor_s {
 
     /** Null-pointer-terminated array of inject targets — (protocol_id, msg_id)
      *  pairs this plugin may pass to `host_api->inject()`. NULL means the
-     *  plugin never calls inject. Used for load-time inject-cycle detection
-     *  in `ServiceResolver`. The pointed-to array must be statically allocated
+     *  plugin never calls inject. Enforced at two points: (1) load time —
+     *  `ServiceResolver` builds an inject-dependency graph and rejects cycles;
+     *  (2) call time — the kernel rejects any `inject()` call whose
+     *  `(target_ns, msg_id)` is not declared here (`GN_ERR_INVALID_ENVELOPE`).
+     *  A `msg_id` of 0 in a declaration is a wildcard for that namespace.
+     *  The pointed-to array must be statically allocated
      *  (lifetime ≥ plugin shared object). See `gn_inject_dep_t`. */
     const gn_inject_dep_t* inject_targets;
+
+    /** NULL-terminated list of config key prefixes this plugin may read via
+     *  `host_api->config_get()`. NULL means unrestricted access to the
+     *  config store. If non-NULL, `config_get` rejects any key that does
+     *  not start with one of the declared prefixes with `GN_ERR_NOT_FOUND`.
+     *  Use the narrowest prefix that covers the plugin's actual needs
+     *  (e.g. `"ice."` not `""`). The pointed-to array and every string
+     *  in it must be statically allocated (lifetime ≥ plugin shared object). */
+    const char* const* reads_config;
+
+    /** Non-zero if this plugin is authorised to call
+     *  `host_api->announce_rotation()`. A plugin that does not set this
+     *  flag receives `GN_ERR_NOT_IMPLEMENTED` from `announce_rotation`.
+     *  An additional per-kernel cooldown (default 3 600 s) prevents
+     *  rotation storms even from authorised plugins: a second call within
+     *  the cooldown window returns `GN_ERR_LIMIT_REACHED`. */
+    int may_rotate;
+
+    /** Bitmask of `gn_key_purpose_t` values this plugin is authorised to
+     *  pass to `host_api->sign_local()`. Bit `(1u << purpose)` must be
+     *  set for the call to proceed; absent bit → `GN_ERR_NOT_IMPLEMENTED`.
+     *  Zero (default for zero-initialised descriptors) means unrestricted —
+     *  the gate is not active. Use the narrowest set that covers the
+     *  plugin's actual signing needs. */
+    uint32_t sign_purposes;
 
     void* _reserved[4];  /**< ABI evolution slots; MUST be zero-initialised; frozen after rc. */
 } gn_plugin_descriptor_t;

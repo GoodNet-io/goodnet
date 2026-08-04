@@ -345,6 +345,39 @@ gn_result_t PluginManifest::parse(std::string_view  json,
             me.quiescence_timeout_s = static_cast<std::uint32_t>(raw);
         }
 
+        // Optional `allowed_kinds`: array of kind name strings that
+        // this plugin is permitted to claim. Zero (absent) = any kind
+        // (developer mode / legacy manifests). Valid names:
+        //   "link", "handler", "security", "protocol", "strategy", "ui"
+        // "unknown" is explicitly rejected — it would bypass all gates.
+        if (entry.contains("allowed_kinds")) {
+            const auto& kv = entry["allowed_kinds"];
+            if (!kv.is_array()) {
+                diagnostic = "manifest entry `allowed_kinds` must be an array";
+                return GN_ERR_INTEGRITY_FAILED;
+            }
+            for (const auto& k : kv) {
+                if (!k.is_string()) {
+                    diagnostic = "manifest `allowed_kinds` entry must be a string";
+                    return GN_ERR_INTEGRITY_FAILED;
+                }
+                const std::string ks = k.get<std::string>();
+                std::uint32_t bit = 0;
+                if      (ks == "link")     bit = 1u << 1;
+                else if (ks == "handler")  bit = 1u << 2;
+                else if (ks == "security") bit = 1u << 3;
+                else if (ks == "protocol") bit = 1u << 4;
+                else if (ks == "strategy") bit = 1u << 6;
+                else if (ks == "ui")       bit = 1u << 7;
+                else {
+                    diagnostic = "manifest `allowed_kinds` unknown kind: ";
+                    diagnostic += ks;
+                    return GN_ERR_INTEGRITY_FAILED;
+                }
+                me.allowed_kinds |= bit;
+            }
+        }
+
         out.entries_.push_back(std::move(me));
     }
     out.rebuild_index_();

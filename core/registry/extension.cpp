@@ -30,7 +30,8 @@ gn_result_t ExtensionRegistry::register_extension(
     std::string_view name,
     std::uint32_t version,
     const void* vtable,
-    std::shared_ptr<void> lifetime_anchor) noexcept {
+    std::shared_ptr<void> lifetime_anchor,
+    std::string_view creator) noexcept {
 
     if (name.empty() || vtable == nullptr) return GN_ERR_NULL_ARG;
 
@@ -47,6 +48,7 @@ gn_result_t ExtensionRegistry::register_extension(
     entry.vtable          = vtable;
     entry.lifetime_anchor = std::move(lifetime_anchor);
     entry.seq             = ++next_seq_;
+    entry.creator.assign(creator);
 
     entries_.emplace(std::move(key), std::move(entry));
     return GN_OK;
@@ -57,11 +59,16 @@ void ExtensionRegistry::set_max_extensions(std::uint32_t cap) noexcept {
     max_entries_ = cap;
 }
 
-gn_result_t ExtensionRegistry::unregister_extension(std::string_view name) noexcept {
+gn_result_t ExtensionRegistry::unregister_extension(std::string_view name,
+                                                    std::string_view caller) noexcept {
     if (name.empty()) return GN_ERR_NULL_ARG;
     std::unique_lock lock(mu_);
     auto it = entries_.find(std::string{name});
     if (it == entries_.end()) return GN_ERR_NOT_FOUND;
+    if (!caller.empty() && !it->second.creator.empty()
+        && it->second.creator != caller) {
+        return GN_ERR_NOT_FOUND;
+    }
     entries_.erase(it);
     return GN_OK;
 }

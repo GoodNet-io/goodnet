@@ -43,6 +43,17 @@ struct ServiceDescriptor {
     /// into that protocol. Populated from gn_plugin_descriptor_t::inject_targets.
     std::vector<std::pair<std::string, std::uint32_t>> inject_targets = {};
 
+    /// Config key prefixes this plugin is allowed to read via config_get().
+    /// Empty means unrestricted. Populated from gn_plugin_descriptor_t::reads_config.
+    std::vector<std::string> reads_config = {};
+
+    /// Whether the plugin may call announce_rotation().
+    bool may_rotate = false;
+
+    /// Bitmask of gn_key_purpose_t values this plugin may pass to sign_local().
+    /// Zero means unrestricted. Populated from gn_plugin_descriptor_t::sign_purposes.
+    std::uint32_t sign_purposes = 0;
+
     /// (protocol_id, msg_id) pairs this plugin handles via register_vtable.
     /// msg_id == 0 is wildcard. Populated by the plugin manager from the
     /// vtable registration calls or the handler descriptor's protocol_id/msg_id.

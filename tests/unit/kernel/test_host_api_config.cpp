@@ -23,9 +23,10 @@ struct ConfigHarness {
     PluginContext plugin_ctx;
     host_api_t    api{};
 
-    explicit ConfigHarness(std::string_view json) {
+    explicit ConfigHarness(std::string_view json,
+                           gn_plugin_kind_t kind = GN_PLUGIN_KIND_UNKNOWN) {
         plugin_ctx.plugin_name = "config-get-test";
-        plugin_ctx.kind        = GN_PLUGIN_KIND_HANDLER;
+        plugin_ctx.kind        = kind;
         plugin_ctx.kernel      = &kernel;
         api = build_host_api(plugin_ctx);
         EXPECT_EQ(kernel.config().load_json(std::string(json)), GN_OK);
@@ -209,6 +210,63 @@ TEST(HostApiConfigGet, ArraySizeOnNonArrayRejected) {
                                 GN_CONFIG_VALUE_ARRAY_SIZE, GN_CONFIG_NO_INDEX,
                                 &n, nullptr, nullptr),
               GN_ERR_INVALID_ENVELOPE);
+}
+
+// ── reads_config prefix gate ────────────────────────────────────────────────
+
+TEST(HostApiConfigGet, ReadsConfigAllowsDeclaredPrefix) {
+    ConfigHarness h{kSampleJson, GN_PLUGIN_KIND_HANDLER};
+    h.plugin_ctx.reads_config = {"scalar_"};
+    h.api = gn::core::build_host_api(h.plugin_ctx);
+    int64_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "scalar_int",
+                                GN_CONFIG_VALUE_INT64, GN_CONFIG_NO_INDEX,
+                                &v, nullptr, nullptr),
+              GN_OK);
+    EXPECT_EQ(v, 42);
+}
+
+TEST(HostApiConfigGet, ReadsConfigRejectsUndeclaredPrefix) {
+    ConfigHarness h{kSampleJson, GN_PLUGIN_KIND_HANDLER};
+    h.plugin_ctx.reads_config = {"scalar_"};
+    h.api = gn::core::build_host_api(h.plugin_ctx);
+    int64_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
+                                GN_CONFIG_VALUE_INT64, 0,
+                                &v, nullptr, nullptr),
+              GN_ERR_NOT_FOUND);
+}
+
+TEST(HostApiConfigGet, ReadsConfigMultiplePrefixesAllowsMatch) {
+    ConfigHarness h{kSampleJson, GN_PLUGIN_KIND_HANDLER};
+    h.plugin_ctx.reads_config = {"arr_", "scalar_"};
+    h.api = gn::core::build_host_api(h.plugin_ctx);
+    std::size_t n = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
+                                GN_CONFIG_VALUE_ARRAY_SIZE, GN_CONFIG_NO_INDEX,
+                                &n, nullptr, nullptr),
+              GN_OK);
+    EXPECT_EQ(n, 3u);
+}
+
+TEST(HostApiConfigGet, EmptyReadsConfigBlocksNonUnknownKind) {
+    ConfigHarness h{kSampleJson, GN_PLUGIN_KIND_HANDLER};
+    // reads_config empty + kind != UNKNOWN → blocked (grant-by-declaration)
+    int64_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
+                                GN_CONFIG_VALUE_INT64, 0,
+                                &v, nullptr, nullptr),
+              GN_ERR_NOT_FOUND);
+}
+
+TEST(HostApiConfigGet, UnknownKindBypassesReadsConfigGate) {
+    ConfigHarness h{kSampleJson, GN_PLUGIN_KIND_UNKNOWN};
+    // kind=UNKNOWN (operator) bypasses the gate regardless of reads_config
+    int64_t v = 0;
+    EXPECT_EQ(h.api.config_get(h.api.host_ctx, "arr_int",
+                                GN_CONFIG_VALUE_INT64, 0,
+                                &v, nullptr, nullptr),
+              GN_OK);
 }
 
 TEST(HostApiConfigGet, IndexPastEndRejected) {

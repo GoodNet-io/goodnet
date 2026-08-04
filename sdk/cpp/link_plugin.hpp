@@ -203,6 +203,17 @@ const char* const* link_provides_of(
         return default_provides;
 }
 
+/// Allow a link class to declare which config-key prefixes it reads
+/// by defining `static const char* const* plugin_reads_config() noexcept`.
+/// When absent, returns nullptr (no config access — kernel default).
+template <class T>
+const char* const* link_reads_config_of() noexcept {
+    if constexpr (requires { T::plugin_reads_config(); })
+        return T::plugin_reads_config();
+    else
+        return nullptr;
+}
+
 } // namespace gn::sdk::detail
 
 /// `GN_LINK_PLUGIN(Class, "scheme")`. See file header for the class
@@ -455,6 +466,9 @@ const char* const* link_provides_of(
                                _gn_link_kProvides),                          \
         /* kind              */ GN_PLUGIN_KIND_LINK,                      \
         /* inject_targets    */ nullptr,                                       \
+        /* reads_config      */ ::gn::sdk::detail::link_reads_config_of<Class>(), \
+        /* may_rotate        */ 0,                                             \
+        /* sign_purposes     */ 0,                                             \
         /* _reserved         */ {},                                              \
     };                                                                         \
     } /* anonymous namespace */                                                \

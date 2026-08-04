@@ -49,7 +49,7 @@ gn_result_t register_local_key(void* host_ctx,
     const std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
     const std::string_view label_sv = (label != nullptr) ? label : "";
     const auto id = cloned->sub_keys().insert(purpose, std::move(*kp),
-                                               label_sv, now);
+                                               label_sv, now, pc->plugin_name);
     *out_id = id;
 
     pc->kernel->set_node_identity(std::move(*cloned));
@@ -65,10 +65,14 @@ gn_result_t delete_local_key(void* host_ctx, gn_key_id_t id) {
     auto current = pc->kernel->node_identity();
     if (!current) return GN_ERR_INVALID_STATE;
 
+    const auto* entry = current->sub_keys().find_entry_by_id(id);
+    if (!entry) return GN_ERR_NOT_FOUND;
+    if (!entry->creator.empty() && entry->creator != pc->plugin_name)
+        return GN_ERR_NOT_FOUND;
+
     auto cloned = current->clone();
     if (!cloned) return cloned.error().code;
-
-    if (!cloned->sub_keys().erase(id)) return GN_ERR_NOT_FOUND;
+    cloned->sub_keys().erase(id);
     pc->kernel->set_node_identity(std::move(*cloned));
     return GN_OK;
 }
@@ -102,6 +106,11 @@ gn_result_t sign_local(void* host_ctx,
 
     auto current = pc->kernel->node_identity();
     if (!current) return GN_ERR_INVALID_STATE;
+
+    if (pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        const auto bit = 1u << static_cast<unsigned>(purpose);
+        if (!(pc->sign_purposes & bit)) return GN_ERR_NOT_IMPLEMENTED;
+    }
 
     /// Identity-key purposes (assert / rotation sign) route through
     /// the abstract IdentitySigner so HSM-backed identities in
@@ -214,6 +223,11 @@ gn_result_t announce_rotation(void* host_ctx,
     if (!host_ctx) return GN_ERR_NULL_ARG;
     auto* pc = static_cast<PluginContext*>(host_ctx);
     if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
+    if (!pc->may_rotate) return GN_ERR_NOT_IMPLEMENTED;
+
+    const std::int64_t now = static_cast<std::int64_t>(std::time(nullptr));
+    if (!pc->kernel->try_claim_rotation(now)) return GN_ERR_LIMIT_REACHED;
 
     auto current = pc->kernel->node_identity();
     if (!current) return GN_ERR_INVALID_STATE;

@@ -62,6 +62,23 @@ public:
     [[nodiscard]] gn_result_t load_file(const std::string& path,
                                         std::string* out_reason = nullptr);
 
+    /// Reload only the @p prefix subtree with @p section_json, leaving
+    /// every other key in the live document unchanged. Semantically
+    /// equivalent to `merge_json({"<prefix>": parse(section_json)})`.
+    ///
+    /// @p prefix is a single top-level key or a dotted path
+    /// (`"ice"`, `"links.tls"`). @p section_json is parsed as an
+    /// object; passing a non-object (array, scalar) is rejected with
+    /// `GN_ERR_INVALID_ENVELOPE`. The same atomicity rule as
+    /// `merge_json` applies: a parse or invariant failure rolls back.
+    ///
+    /// Intended for per-plugin config ownership: the operator reloads
+    /// `"gn.link.ice"` with updated TURN credentials without touching
+    /// TLS or heartbeat knobs. See `docs/contracts/config.en.md` §3b.
+    [[nodiscard]] gn_result_t merge_section(std::string_view prefix,
+                                             std::string_view section_json,
+                                             std::string* out_reason = nullptr);
+
     /// Deep-merge @p overlay JSON on top of the current state.
     /// Nested objects merge field-by-field per RFC 7396 JSON Merge
     /// Patch — `{"limits": {"max_connections": 100}}` overlaid on

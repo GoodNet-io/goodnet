@@ -1,23 +1,22 @@
 /// @file   core/kernel/system_handler_ids.hpp
-/// @brief  Reserved msg_id values for kernel-internal and identity
-///         transport dispatch.
+/// @brief  Reserved msg_id values for identity-bearing transport dispatch.
 ///
-/// Two classes of reservations:
+/// Three classes — see `docs/contracts/handler-registration.en.md` §2a:
 ///
-/// 1. **Hard-reserved** (`kAttestationMsgId`). The kernel intercepts
-///    these ids in `notify_inbound_bytes` before the regular handler
-///    chain runs; plugins cannot register a handler on them and
-///    cannot inject them through the inject-boundary path.
-///    `HandlerRegistry` rejects with `GN_ERR_INVALID_ENVELOPE` per
-///    `docs/contracts/handler-registration.en.md` §2a.
+/// 1. **Registration-blocked** (`kAttestationMsgId`). Plugins cannot
+///    register a handler. The kernel holds a priority=255 handler
+///    registered at `gn_core_start()`. `HandlerRegistry` rejects
+///    plugin attempts with `GN_ERR_INVALID_ENVELOPE`.
 ///
-/// 2. **Identity-range** (`0x10..0x1F`). Carved out for kernel
-///    transport of identity-bearing payloads (rotation announces,
-///    capability blobs, user-level challenge / response). `0x11`
-///    is the hard-reserved attestation slot inside the range; the
-///    rest carry plugin-driven payloads but stay off the
-///    inject-boundary path so a misbehaving plugin cannot spoof an
-///    identity event onto another plugin's connection.
+/// 2. **Kernel-first, plugin-observable** (`0x12`, `0x13`). Plugins
+///    may register at priority 0–253. The kernel's priority=255
+///    handler runs first; priority=255 within the identity range is
+///    kernel-reserved (`is_identity_range_msg_id()` + priority=255
+///    gate in `HandlerRegistry`).
+///
+/// 3. **Identity-range** (`0x10..0x1F`). All ids in this range block
+///    the inject-boundary path so a bridge plugin cannot spoof
+///    identity events onto foreign connections.
 
 #pragma once
 
@@ -55,18 +54,24 @@ inline constexpr std::uint32_t kCapabilityBlobMsgId   = 0x13;
 inline constexpr std::uint32_t kIdentityChallengeMsgId = 0x14;
 inline constexpr std::uint32_t kIdentityResponseMsgId  = 0x15;
 
-/// Returns true when @p msg_id is **hard-reserved** — kernel
-/// intercepts it directly and plugins cannot register a handler.
-/// Currently `0x11` (attestation). Other ids in the identity
-/// range are plugin-registerable; see `is_identity_range_msg_id`.
+/// Priority used by all kernel system handlers. Plugin registrations
+/// at this priority within the identity range are rejected; outside
+/// the identity range the value is unrestricted.
+/// See `handler-registration.en.md` §4.
+inline constexpr std::uint8_t kKernelHandlerPriority = 255u;
+
+/// Returns true when @p msg_id is registration-blocked for plugins
+/// (currently only `0x11` attestation). The kernel holds a
+/// priority=255 handler for this id; plugins get
+/// `GN_ERR_INVALID_ENVELOPE` on any registration attempt.
 [[nodiscard]] constexpr bool is_reserved_system_msg_id(std::uint32_t msg_id) noexcept {
     return msg_id == kAttestationMsgId;
 }
 
 /// Returns true when @p msg_id falls in the identity range. The
 /// kernel treats these ids as identity-bearing for the purpose of
-/// blocking inject-boundary calls — a plugin must not synthesise
-/// an identity event on a connection it does not own.
+/// blocking inject-boundary calls and enforcing the priority=255
+/// kernel-reservation gate.
 [[nodiscard]] constexpr bool is_identity_range_msg_id(std::uint32_t msg_id) noexcept {
     return msg_id >= kIdentityRangeStart && msg_id <= kIdentityRangeEnd;
 }

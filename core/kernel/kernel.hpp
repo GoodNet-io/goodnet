@@ -19,11 +19,14 @@
 #include <cstddef>
 #include <memory>
 #include <mutex>
+#include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
 
 #include <sdk/cpp/protocol_layer.hpp>
 #include <sdk/limits.h>
+#include <sdk/topology.h>
 
 #include "attestation_dispatcher.hpp"
 #include "capability_blob.hpp"
@@ -50,6 +53,12 @@
 #include <core/signal/signal_channel.hpp>
 
 namespace gn::core {
+
+/// Payload for the topology-reload signal channel.
+struct TopologyReloadEvent {
+    const gn_topology_t* prev;  ///< previous snapshot; null on first reload
+    const gn_topology_t* next;  ///< freshly built snapshot; never null
+};
 
 /// Subscriber to phase transitions. Implementations should be cheap;
 /// the callback runs synchronously on the transitioning thread.
@@ -139,6 +148,20 @@ public:
         topology_wire_blob_ = std::move(blob);
     }
     [[nodiscard]] MetricsRegistry& metrics() noexcept { return metrics_; }
+
+    // W2: contour lifecycle — track providers whose contours are BROKEN.
+    void mark_provider_broken(std::string_view id) {
+        std::lock_guard lk(broken_providers_mu_);
+        broken_providers_.insert(std::string(id));
+    }
+    [[nodiscard]] bool is_provider_broken(std::string_view id) const {
+        std::lock_guard lk(broken_providers_mu_);
+        return broken_providers_.count(std::string(id)) > 0;
+    }
+    void clear_broken_provider(std::string_view id) {
+        std::lock_guard lk(broken_providers_mu_);
+        broken_providers_.erase(std::string(id));
+    }
     [[nodiscard]] const MetricsRegistry& metrics() const noexcept {
         return metrics_;
     }
@@ -176,6 +199,12 @@ public:
         return on_config_reload_;
     }
 
+    /// Pub/sub channel that fires after every `gn_core_reload_topology()`.
+    /// Any plugin type subscribes through `host_api->subscribe_topology_reload`.
+    [[nodiscard]] signal::SignalChannel<TopologyReloadEvent>& on_topology_reload() noexcept {
+        return on_topology_reload_;
+    }
+
     /// Apply @p text as the new config document, replacing the
     /// current state. On success fires `on_config_reload` so
     /// subscribed plugins re-read their knobs and runs
@@ -190,6 +219,12 @@ public:
     /// operator pushes a per-deploy override on top of the running
     /// state without re-stating every base field.
     [[nodiscard]] gn_result_t reload_config_merge(std::string_view overlay);
+
+    /// Reload only the subtree under @p prefix (dotted path) with
+    /// @p section_json, leaving every other key unchanged. Delegates
+    /// to `Config::merge_section`; on success fires `on_config_reload`.
+    [[nodiscard]] gn_result_t reload_config_section(std::string_view prefix,
+                                                     std::string_view section_json);
 
     /// Install the kernel's `NodeIdentity` for the security pipeline.
     /// Must be called before reaching `Wire` phase so the security
@@ -213,6 +248,20 @@ public:
     /// out from under an in-flight handshake.
     [[nodiscard]] std::shared_ptr<const identity::NodeIdentity>
         node_identity() const noexcept;
+
+    /// Minimum seconds between announce_rotation calls, kernel-wide.
+    static constexpr std::int64_t kRotationCooldownSecs = 3600;
+
+    /// Check and claim the rotation slot atomically. Returns true if
+    /// @p now_ts is at least kRotationCooldownSecs after the last
+    /// successful rotation (or if no rotation has occurred yet), and
+    /// updates the stored timestamp. Returns false otherwise.
+    [[nodiscard]] bool try_claim_rotation(std::int64_t now_ts) noexcept;
+
+    /// Reset the last-rotation timestamp (used in tests and on reload).
+    void reset_rotation_timestamp() noexcept {
+        last_rotation_unix_ts_.store(0, std::memory_order_relaxed);
+    }
 
 private:
     void                      fire(Phase prev, Phase next);
@@ -253,8 +302,9 @@ private:
     gn_limits_t                           limits_{};
     Config                                config_;
 
-    signal::SignalChannel<signal::Empty>  on_config_reload_;
-    signal::SignalChannel<ConnEvent>      on_conn_event_;
+    signal::SignalChannel<signal::Empty>         on_config_reload_;
+    signal::SignalChannel<ConnEvent>             on_conn_event_;
+    signal::SignalChannel<TopologyReloadEvent>   on_topology_reload_;
 
     /// Atomic-shared like `protocol_layer_`: secrets stay alive for
     /// the caller's snapshot scope across concurrent identity install.
@@ -282,6 +332,15 @@ private:
     /// `host_api->emit_counter`; an exporter plugin reads through
     /// `iterate_counters`. Per `metrics.en.md`.
     MetricsRegistry                       metrics_;
+
+    /// W2: provider ids whose contours are currently BROKEN (unregistered mid-session).
+    mutable std::mutex                     broken_providers_mu_;
+    std::unordered_set<std::string>        broken_providers_;
+
+    /// W9: unix timestamp (seconds) of the last successful announce_rotation.
+    /// Zero means "never rotated". Enforces a per-kernel cooldown
+    /// (kRotationCooldownSecs) between rotations regardless of caller.
+    std::atomic<std::int64_t>              last_rotation_unix_ts_{0};
 };
 
 } // namespace gn::core

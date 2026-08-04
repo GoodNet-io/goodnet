@@ -9,13 +9,13 @@ counters:
   - file: plugins/links/ipc/ipc.cpp
     line: 688
   - file: plugins/links/tcp/tcp.cpp
-    line: 730
+    line: 724
   - file: plugins/links/tcp/tcp.cpp
-    line: 770
+    line: 759
   - file: plugins/links/tls/tls.cpp
-    line: 868
+    line: 875
   - file: plugins/links/tls/tls.cpp
-    line: 906
+    line: 908
 - name: gn.multipath-bond.degraded_peers
   family: gn
   kinds:
@@ -23,26 +23,6 @@ counters:
   sources:
   - file: plugins/strategies/multipath_bond/multipath_bond.cpp
     line: 236
-- name: raw_inject.drop.zstd_error
-  family: raw_inject
-  kinds:
-  - emit_counter
-  sources:
-  - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 336
-  - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 345
-  - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 353
-  - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 373
-- name: raw_inject.inject.error
-  family: raw_inject
-  kinds:
-  - emit_counter
-  sources:
-  - file: plugins/links/raw_inject/raw_inject.cpp
-    line: 390
 - name: ws_inject.drop.short_stream
   family: ws_inject
   kinds:

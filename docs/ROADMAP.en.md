@@ -61,12 +61,10 @@ to refresh the table.
 | Python | ✓ done | bridges/python/pyproject.toml present |
 | Go | ✗ missing | bridges/goodnet-go/go.mod absent |
 | Zig | ✗ missing | bridges/goodnet-zig/build.zig absent |
-| Phase 1 — `IdentitySigner` abstraction (in flight) | ✗ missing | no rule in roadmap_map.yaml |
-| Phase 2 — C ABI for identity providers (pending) | ✗ missing | no rule in roadmap_map.yaml |
-| Phase 3 — PKCS#11 plugin dual-expose (pending) | ✗ missing | no rule in roadmap_map.yaml |
-| Phase 4 — `goodnetd` operator UX (pending) | ✗ missing | no rule in roadmap_map.yaml |
-| Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending) | ✗ missing | no rule in roadmap_map.yaml |
-| Hardware key store — PKCS#11 | ✗ missing | no rule in roadmap_map.yaml |
+| Pluggable identity signers (phases 1–3) | ✓ done | IdentitySigner + LibsodiumSigner + gn_core_install_identity_from_provider + gn.identity.pkcs11 all present |
+| Pluggable identity signers (operator UX + Core DX) | ✗ missing | gn_core_export_device_keypair absent; gn_core_get_pinned_user_pk absent |
+| Iris typed remote workers | ✗ missing | IrisBackendHandle C ABI not shipped; subprocess sandbox absent |
+| Hardware key store — PKCS#11 | ✓ done | plugins/security/pkcs11/ present; extension id 'gn.identity.pkcs11' registered |
 | Hardware key store — TPM 2.0 | ✗ missing | no rule in roadmap_map.yaml |
 | Hardware key store — macOS Keychain | ✗ missing | no rule in roadmap_map.yaml |
 | Hardware key store — WebAuthn / passkey | ✗ missing | no rule in roadmap_map.yaml |
@@ -389,6 +387,19 @@ different sandboxing and performance trade-offs.
   (no listen/connect/send slots, inject-only) + `BridgeRegistry`
   cleans the taxonomy. Justified when bridges become massive
   (Slack, MQTT, CGI, etc.) and the LINK-shape workarounds repeat.
+- **Iris typed remote workers** — `HOST_CALL` / `PLUGIN_CALL`
+  payloads in the remote plugin wire protocol are CBOR blobs today:
+  the kernel has no type information about what a subprocess worker
+  is sending. Replacing the payload with `IrisValue` gives the host
+  a `TypeDescriptor` for every cross-process message — inspect,
+  route, or forward without deserializing, call Java or WASM backends
+  from a sandboxed worker without hand-written FFI. The wire codec
+  (`gn_wire_frame_t` + CBOR) stays; only the payload shape changes.
+  Iris `IpcBackend` makes this symmetric: any language process
+  connects over a socket, speaks the typed wire, becomes a plugin —
+  no dlopen, no per-language native binding, cross-platform by default.
+  Most useful once the subprocess sandbox lands. Blocked on Iris
+  `IrisBackendHandle` C ABI and `IpcBackend`.
 - **io_uring runtime** — Linux async-io framework, faster than
   epoll on high-fanout (many small connections) deployments.
   Could ship as an `IPluginRuntime` flavor consumed by io_uring-
@@ -497,41 +508,13 @@ that consume `sdk/*.h` without recompiling the kernel.
 
 ## Security extensions
 
-### Identity refactor — 5-phase plan for pluggable signers
-
-Today's `NodeIdentity` holds a raw Ed25519 secret-key blob and calls
-`crypto_sign_*` directly from kernel code. That's a single failure
-mode (file copy == identity stolen) and blocks any hardware-backed
-key store. The refactor introduces an `IdentitySigner` abstraction
-and routes every kernel signing call through it.
-
-- **Phase 1 — `IdentitySigner` abstraction (in flight)** —
-  `core/identity/signer.hpp` interface + `LibsodiumSigner` default
-  impl (wraps current libsodium behaviour bit-for-bit). All direct
-  `crypto_sign_*` callers in kernel route through the signer.
-  `gn_core_install_identity_from_file` continues working unchanged.
-  Zero observable behaviour change. **Unlocks everything downstream.**
-- **Phase 2 — C ABI for identity providers (pending)** —
-  `sdk/extensions/identity.h` with `gn_identity_signer_vtable_t`
-  (`pubkey` + `sign` thunks) + public
-  `gn_core_install_identity_from_provider(core, ext_id, key_label)`.
-  Plugin signers register as extensions; kernel queries them through
-  the standard extension surface.
-- **Phase 3 — PKCS#11 plugin dual-expose (pending)** — existing
-  `plugins/security/pkcs11/` adds the `gn.identity.pkcs11` extension
-  alongside its current `gn.security.pkcs11` (transport-side). Same
-  `.so`, two extensions; no sub-repo rename. ROADMAP "Hardware key
-  store" flips fully to ✓ once Phase 3 lands.
-- **Phase 4 — `goodnetd` operator UX (pending)** —
-  `goodnetd identity import-hsm --module ... --label ... --pin-env ...`,
-  `doctor` HSM health checks, `quickstart` HSM option in the wizard.
-- **Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)** —
-  `gn::sdk::Core` ctor `Identity::from_hsm({ext_id, key_label})`
-  factory; Noise XX provider pulls the identity_static_key via the
-  signer (not the key bytes). After Phase 5, every downstream
-  consumer (bridges/cpp/python/rust/js, apps/gssh, ssh-modern,
-  web-node) automatically gains HSM-backed identity through the
-  same `Core` constructor.
+- **Pluggable identity signers** ✓ phases 1–3 done — `IdentitySigner`
+  abstraction, `LibsodiumSigner` default, C ABI
+  (`gn_core_install_identity_from_provider`), and PKCS#11 dual-expose
+  (`gn.identity.pkcs11`) all landed. Remaining: `goodnetd` operator UX
+  (`import-hsm`, `doctor`) and `sdk/cpp/Core` factory
+  (`Identity::from_hsm`) so every downstream consumer (bridges, gssh,
+  web-node) gets HSM-backed identity through one constructor.
 
 ### Backend family — `plugins/identity/<backend>/`
 

@@ -212,6 +212,9 @@ constexpr std::uint8_t strategy_hot_reload_safe_v = []() {
         /* ext_provides      */ &_gn_strategy_provides[0],                     \
         /* kind              */ GN_PLUGIN_KIND_STRATEGY,                       \
         /* inject_targets    */ nullptr,                                       \
+        /* reads_config      */ nullptr,                                       \
+        /* may_rotate        */ 0,                                             \
+        /* sign_purposes     */ 0,                                             \
         /* _reserved         */ {},                                              \
     };                                                                         \
     }  /* anonymous namespace */                                               \

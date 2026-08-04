@@ -30,11 +30,18 @@
 #include <core/util/log.hpp>
 
 #include <core/identity/identity_plugin_signer.hpp>
+#include <core/registry/protocol_layer.hpp>
+#include <core/security/session.hpp>
 #include <sdk/cpp/capability_tlv.hpp>
 
 #include <sdk/extensions/identity.h>
 #include <sdk/extensions/link.h>
 #include <sdk/plugin_runtime.h>
+
+#include "connection_context.hpp"
+#include "safe_invoke.hpp"
+#include "system_handler_ids.hpp"
+#include "system_handlers.hpp"
 
 namespace {
 
@@ -48,6 +55,30 @@ constexpr std::uint32_t kPackedVersion =
                     static_cast<std::uint32_t>(GN_SDK_VERSION_PATCH));
 
 inline constexpr const char kVersionString[] = "1.0.0-dev";
+
+/// Collect all protocol_ids from a topology snapshot as string_views
+/// borrowed from the snapshot's storage (valid while the snapshot lives).
+std::vector<std::string_view> collect_protocol_ids(
+    const gn::core::topology::TopologySnapshot& snap)
+{
+    std::vector<std::string_view> ids;
+    ids.reserve(snap.proto_id_storage.size());
+    for (const auto& s : snap.proto_id_storage) {
+        ids.push_back(s);
+    }
+    return ids;
+}
+
+/// Unregister previous kernel system handlers and re-register for
+/// the protocols in @p snap. Handles both initial registration and
+/// subsequent reloads.
+void reinstall_system_handlers(gn_core_t* core,
+    const gn::core::topology::TopologySnapshot& snap)
+{
+    gn::core::unregister_kernel_system_handlers(core->kernel, core->system_handler_ids_);
+    const auto proto_ids = collect_protocol_ids(snap);
+    gn::core::register_kernel_system_handlers(core->kernel, proto_ids, core->system_handler_ids_);
+}
 
 /// Walk the kernel through `Load → Wire → Resolve → Ready`. Every
 /// transition is best-effort: an FSM that already sits past the
@@ -316,8 +347,51 @@ gn_result_t gn_core_init(gn_core_t* core) {
     return GN_OK;
 }
 
-/// Kernel-internal capability blob subscriber: checks incoming blobs
-/// for TLV type 0x0004 (topology fingerprint) and marks the connection.
+/// Send the current topology wire blob to a single connection that is
+/// already in Transport phase. Used by `gn_core_reload_topology()` to
+/// propagate fingerprint changes to existing peers without waiting for
+/// the next handshake.
+static void send_topology_blob_to_conn(gn::core::Kernel& kernel,
+                                        gn_conn_id_t conn_id,
+                                        const gn::core::ConnectionRecord& rec) noexcept {
+    const auto& blob = kernel.topology_wire_blob();
+    if (blob.empty()) return;
+
+    auto session = kernel.sessions().find(conn_id);
+    if (!session || session->phase() != gn::core::SecurityPhase::Transport) return;
+
+    auto layer = kernel.protocol_layers().find_by_protocol_id(rec.protocol_id);
+    if (!layer) return;
+
+    gn_message_t env{};
+    env.msg_id       = gn::core::kCapabilityBlobMsgId;
+    env.payload      = blob.data();
+    env.payload_size = blob.size();
+
+    gn_connection_context_t ctx{};
+    ctx.conn_id   = conn_id;
+    ctx.trust     = rec.trust;
+    ctx.remote_pk = rec.remote_pk;
+
+    auto framed = layer->frame(ctx, env);
+    if (!framed.has_value()) return;
+
+    std::vector<std::uint8_t> cipher;
+    if (session->encrypt_transport(*framed, cipher) != GN_OK) return;
+
+    auto trans = kernel.links().find_by_scheme(rec.scheme);
+    if (!trans || !trans->vtable || !trans->vtable->send) return;
+
+    try {
+        const gn_result_t rc = trans->vtable->send(
+            trans->self, conn_id, cipher.data(), cipher.size());
+        if (rc == GN_OK)
+            kernel.connections().add_outbound(conn_id, cipher.size(), 1);
+    } catch (...) {}
+}
+
+/// Kernel-internal capability blob subscriber: dispatches incoming blobs
+/// through the per-type TLV handler chain (tlv_chain_).
 static void topology_caps_cb(void* user_data,
                               gn_conn_id_t from_conn,
                               const std::uint8_t* blob,
@@ -328,30 +402,7 @@ static void topology_caps_cb(void* user_data,
 
     auto records = gn::sdk::parse_tlv(std::span<const std::uint8_t>{blob, size});
     if (!records.has_value()) return;
-
-    for (const auto& rec : *records) {
-        if (rec.type != gn::sdk::kTlvTypeTopologyFingerprint) continue;
-        if (rec.value.size() != 32) {
-            ::gn::log::warn("topology_caps: malformed fingerprint record "
-                            "from conn={} size={}",
-                            static_cast<std::uint64_t>(from_conn),
-                            rec.value.size());
-            return;
-        }
-        const bool match = std::memcmp(
-            rec.value.data(),
-            core->topology_->topo.fingerprint,
-            32) == 0;
-
-        core->kernel.connections().set_peer_caps_verified(from_conn, match);
-
-        if (!match) {
-            ::gn::log::warn("topology_caps: fingerprint mismatch from "
-                            "conn={} — peer stack differs",
-                            static_cast<std::uint64_t>(from_conn));
-        }
-        return;
-    }
+    core->tlv_chain_.dispatch(from_conn, *records);
 }
 
 gn_result_t gn_core_start(gn_core_t* core) {
@@ -360,10 +411,65 @@ gn_result_t gn_core_start(gn_core_t* core) {
     (void)core->kernel.advance_to(gn::core::Phase::Running);
     core->topology_           = gn::core::topology::build_topology(core->kernel);
     core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
-                                    core->topology_->topo);
+                                    *core->topology_);
     core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
     core->topology_caps_sub_ = core->kernel.capability_blob_bus().subscribe(
         &topology_caps_cb, core, nullptr);
+    core->tlv_chain_.clear();
+    core->tlv_chain_.register_handler(
+        gn::sdk::kTlvTypeTopologyFingerprint, 255,
+        [core](gn_conn_id_t conn, const gn::sdk::TlvRecord& rec) -> gn_propagation_t {
+            if (!core->topology_) return GN_PROPAGATION_CONTINUE;
+            if (rec.value.size() != 32) {
+                ::gn::log::warn("tlv_chain: malformed fingerprint record from conn={} size={}",
+                                static_cast<std::uint64_t>(conn), rec.value.size());
+                return GN_PROPAGATION_CONTINUE;
+            }
+            const bool match = std::memcmp(
+                rec.value.data(), core->topology_->topo.fingerprint, 32) == 0;
+            core->kernel.connections().set_peer_caps_verified(conn, match);
+            if (!match) {
+                ::gn::log::warn("tlv_chain: fingerprint mismatch from conn={} — peer stack differs",
+                                static_cast<std::uint64_t>(conn));
+                if (auto conn_rec = core->kernel.connections().find_by_id(conn)) {
+                    gn::core::ConnEvent ev{};
+                    ev.kind             = GN_CONN_EVENT_TOPOLOGY_MISMATCH;
+                    ev.conn             = conn;
+                    ev.trust            = conn_rec->trust;
+                    ev.remote_pk        = conn_rec->remote_pk;
+                    ev.peer_fingerprint = rec.value.data();
+                    core->kernel.on_conn_event().fire(ev);
+                }
+            }
+            return GN_PROPAGATION_CONSUMED;
+        });
+    core->tlv_chain_.register_handler(
+        gn::sdk::kTlvTypeContourFingerprint, 255,
+        [core](gn_conn_id_t conn, const gn::sdk::TlvRecord& rec) -> gn_propagation_t {
+            if (!core->topology_) return GN_PROPAGATION_CONTINUE;
+            if (rec.value.size() != 32) {
+                ::gn::log::warn("tlv_chain: malformed contour fingerprint from conn={} size={}",
+                                static_cast<std::uint64_t>(conn), rec.value.size());
+                return GN_PROPAGATION_CONTINUE;
+            }
+            const bool match = std::memcmp(
+                rec.value.data(), core->topology_->contour_fingerprint, 32) == 0;
+            if (!match) {
+                ::gn::log::warn("tlv_chain: contour fingerprint mismatch from conn={}",
+                                static_cast<std::uint64_t>(conn));
+                if (auto conn_rec = core->kernel.connections().find_by_id(conn)) {
+                    gn::core::ConnEvent ev{};
+                    ev.kind             = GN_CONN_EVENT_CONTOUR_MISMATCH;
+                    ev.conn             = conn;
+                    ev.trust            = conn_rec->trust;
+                    ev.remote_pk        = conn_rec->remote_pk;
+                    ev.peer_fingerprint = rec.value.data();
+                    core->kernel.on_conn_event().fire(ev);
+                }
+            }
+            return GN_PROPAGATION_CONSUMED;
+        });
+    reinstall_system_handlers(core, *core->topology_);
     return GN_OK;
 }
 
@@ -394,6 +500,15 @@ int gn_core_is_running(gn_core_t* core) {
 gn_result_t gn_core_reload_config_json(gn_core_t* core, const char* json_str) {
     if (core == nullptr || json_str == nullptr) return GN_ERR_NULL_ARG;
     return core->kernel.reload_config(std::string_view{json_str});
+}
+
+gn_result_t gn_core_reload_config_section(gn_core_t*  core,
+                                            const char* prefix,
+                                            const char* section_json) {
+    if (core == nullptr || prefix == nullptr || section_json == nullptr)
+        return GN_ERR_NULL_ARG;
+    return core->kernel.reload_config_section(
+        std::string_view{prefix}, std::string_view{section_json});
 }
 
 /* ── Configuration & limits ──────────────────────────────────────────────── */
@@ -696,11 +811,20 @@ uint64_t gn_core_on_conn_state(gn_core_t* core,
             /// public `gn_conn_event_t` shape. Field names align by
             /// design (mirror struct).
             gn_conn_event_t out{};
-            out.kind         = ev.kind;
-            out.conn         = ev.conn;
-            out.trust        = ev.trust;
+            out.api_size             = sizeof(gn_conn_event_t);
+            out.kind                 = ev.kind;
+            out.conn                 = ev.conn;
+            out.trust                = ev.trust;
             std::memcpy(out.remote_pk, ev.remote_pk.data(), GN_PUBLIC_KEY_BYTES);
-            out.pending_bytes = ev.pending_bytes;
+            out.pending_bytes        = ev.pending_bytes;
+            out.user_pk_prev         = ev.user_pk_prev;
+            out.user_pk_next         = ev.user_pk_next;
+            out.rotation_seq         = ev.rotation_seq;
+            out.peer_fingerprint     = ev.peer_fingerprint;
+            out.contour_provider_id  = ev.contour_provider_id;
+            out.contour_trust_mask   = ev.contour_trust_mask;
+            out.contour_state        = ev.contour_state;
+            out._pad_contour         = 0;
             cb(user_data, &out);
         });
 
@@ -942,6 +1066,11 @@ public:
         out.ctx->plugin_name   = out.descriptor.plugin_name;
         out.ctx->kernel        = ctx.kernel;
         out.ctx->plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
+        out.ctx->inject_targets = out.descriptor.inject_targets;
+        out.ctx->reads_config   = out.descriptor.reads_config;
+        out.ctx->ext_provides   = out.descriptor.ext_provides;
+        out.ctx->may_rotate     = out.descriptor.may_rotate;
+        out.ctx->sign_purposes  = out.descriptor.sign_purposes;
         out.api      = gn::core::build_host_api(*out.ctx);
         out.runtime  = this;
         /// Smuggle the foreign instance handle through `PluginInstance::self`
@@ -1302,10 +1431,66 @@ const gn_topology_t* gn_core_get_topology(gn_core_t* core) {
 
 gn_result_t gn_core_reload_topology(gn_core_t* core) {
     if (core == nullptr) return GN_ERR_NULL_ARG;
-    core->topology_           = gn::core::topology::build_topology(core->kernel);
-    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(
-                                    core->topology_->topo);
+    const gn_topology_t* prev = core->topology_ ? &core->topology_->topo : nullptr;
+    auto new_snap = gn::core::topology::build_topology(core->kernel);
+    const gn_topology_t* next = &new_snap->topo;
+    core->topology_wire_blob_ = gn::core::topology::encode_topology_wire_blob(*new_snap);
     core->kernel.set_topology_wire_blob(core->topology_wire_blob_);
+    reinstall_system_handlers(core, *new_snap);
+
+    // Propagate new fingerprint to every peer already in Transport phase.
+    // New connections receive the blob automatically on handshake completion;
+    // existing connections would otherwise only learn about the change at the
+    // next reconnect — closing the gap documented in topology-reload.en.md §2.
+    core->kernel.connections().for_each(
+        [&](const gn::core::ConnectionRecord& rec, const auto&) {
+            send_topology_blob_to_conn(core->kernel, rec.id, rec);
+            return true;
+        });
+
+    // W2: fire CONTOUR_LIVE for any provider that was BROKEN and is now back.
+    // Group by provider_id; fire one event per unique provider_id.
+    {
+        // Collect unique provider_ids present in the new topology.
+        std::vector<std::string> recovered_providers;
+        for (const auto& c : new_snap->contour_entries) {
+            if (!c.security_provider_id) continue;
+            if (!core->kernel.is_provider_broken(c.security_provider_id)) continue;
+            const std::string_view pid{c.security_provider_id};
+            bool already = false;
+            for (const auto& r : recovered_providers) {
+                if (std::string_view(r) == pid) { already = true; break; }
+            }
+            if (!already) recovered_providers.emplace_back(pid);
+        }
+
+        for (const auto& pid : recovered_providers) {
+            // Build trust_mask for all contours with this provider_id.
+            std::uint32_t mask = 0;
+            gn_contour_state_t state = GN_CONTOUR_LIVE;
+            for (const auto& c : new_snap->contour_entries) {
+                if (!c.security_provider_id) continue;
+                if (std::string_view(c.security_provider_id) != std::string_view(pid)) continue;
+                mask |= (1u << static_cast<unsigned>(c.trust));
+                // PARTIAL if this trust class has a contour gap
+                const std::uint32_t class_bit = 1u << static_cast<unsigned>(c.trust);
+                if (next->contour_gaps & class_bit) state = GN_CONTOUR_PARTIAL;
+            }
+
+            gn::core::ConnEvent ev{};
+            ev.kind                  = GN_CONN_EVENT_CONTOUR_LIVE;
+            ev.conn                  = GN_INVALID_ID;
+            ev.contour_provider_id   = pid.c_str();
+            ev.contour_trust_mask    = mask;
+            ev.contour_state         = state;
+            core->kernel.on_conn_event().fire(ev);
+            core->kernel.clear_broken_provider(pid);
+        }
+    }
+
+    // fire while both snapshots are still alive (prev not yet released)
+    core->kernel.on_topology_reload().fire({prev, next});
+    core->topology_ = std::move(new_snap);
     return GN_OK;
 }
 

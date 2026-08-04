@@ -83,6 +83,17 @@ struct ManifestEntry {
     /// Default `false` preserves existing behaviour for entries that
     /// omit the field. Parsed from the JSON `required` key.
     bool         required{false};
+    /// Bitmask of `gn_plugin_kind_t` values this entry is allowed to
+    /// claim at load time. `0` (the default) means "any kind" — developer
+    /// mode or manifests that predate this field. When non-zero, the
+    /// kernel checks `(1u << descriptor->kind) & allowed_kinds` after
+    /// reading the plugin's `gn_plugin_register` symbol; a mismatch
+    /// fails the load with `GN_ERR_INTEGRITY_FAILED`.
+    ///
+    /// Motivation (W12): without this guard any manifest-approved plugin
+    /// can declare `kind=UNKNOWN` and bypass all capability gates. This
+    /// field lets the operator pin the kind the plugin is allowed to be.
+    std::uint32_t allowed_kinds{0};
 };
 
 /// Operator-supplied integrity allowlist.

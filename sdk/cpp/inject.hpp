@@ -31,6 +31,15 @@
 /// `static constexpr gn_inject_dep_t inject_targets[]` in your handler
 /// class so the load-time cycle detector can catch loops before any
 /// handler is invoked.
+///
+/// ## inject_targets enforcement
+///
+/// If the plugin's descriptor declares a non-empty `inject_targets`, the
+/// kernel enforces the list at call time: any `inject()` call whose
+/// `(target_ns, msg_id)` pair is not declared returns
+/// `GN_ERR_INVALID_ENVELOPE`. `msg_id == 0` in a declaration is a wildcard
+/// — it permits any msg_id in that namespace. An empty or absent
+/// `inject_targets` (NULL in the C descriptor) imposes no restriction.
 
 #pragma once
 

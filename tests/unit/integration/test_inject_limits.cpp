@@ -45,7 +45,7 @@ struct InjectHarness {
     InjectHarness() {
         gn::test::util::register_default_protocol(*kernel, proto);
         plugin_ctx.plugin_name = "inject-limits-test";
-        plugin_ctx.kind        = GN_PLUGIN_KIND_HANDLER;
+        plugin_ctx.kind        = GN_PLUGIN_KIND_UNKNOWN;
         plugin_ctx.kernel      = kernel.get();
         api = build_host_api(plugin_ctx);
     }
@@ -340,7 +340,7 @@ TEST(InjectLimits, MissingProtocolLayerDoesNotConsumeToken) {
     Kernel kernel;
     PluginContext plugin_ctx;
     plugin_ctx.plugin_name = "inject-noproto-test";
-    plugin_ctx.kind        = GN_PLUGIN_KIND_HANDLER;
+    plugin_ctx.kind        = GN_PLUGIN_KIND_UNKNOWN;
     plugin_ctx.kernel      = &kernel;
     host_api_t api = build_host_api(plugin_ctx);
 

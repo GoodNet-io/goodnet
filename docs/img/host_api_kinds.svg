@@ -253,7 +253,7 @@
 <text text-anchor="middle" x="1388" y="-73.71" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· single ABI slot per primitive shape</text>
 <text text-anchor="middle" x="1388" y="-60.96" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· KIND enum (or channel id, or type tag) selects routing</text>
 <text text-anchor="middle" x="1388" y="-48.21" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· adding a new kind = enum value + kernel side; ABI stable</text>
-<text text-anchor="middle" x="1388" y="-35.46" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· 41 functional slots on host_api_t today + 8 reserved</text>
+<text text-anchor="middle" x="1388" y="-35.46" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· 43 functional slots on host_api_t today + 8 reserved</text>
 <text text-anchor="middle" x="1388" y="-22.71" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;· KIND&#45;tagged primitives + notify_*, key/sign, cap&#45;blob,</text>
 <text text-anchor="middle" x="1388" y="-9.96" font-family="JetBrains Mono,Fira Code,monospace" font-size="9.00" fill="#585b70"> &#160;&#160;&#160;send_to families</text>
 </g>

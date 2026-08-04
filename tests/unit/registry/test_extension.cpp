@@ -381,5 +381,41 @@ TEST(ExtensionRegistry_MaxExtensions, RejectsBeyondCap) {
     EXPECT_EQ(r.size(), 3u);
 }
 
+// ── ownership (W8) ───────────────────────────────────────────────────────────
+
+TEST(ExtensionRegistry_Ownership, OwnerCanUnregister) {
+    ExtensionRegistry r;
+    EXPECT_EQ(r.register_extension("gn.heartbeat", 0x010000, &kDummyVtable,
+                                    {}, "plugin-a"),
+              GN_OK);
+    EXPECT_EQ(r.unregister_extension("gn.heartbeat", "plugin-a"), GN_OK);
+    EXPECT_EQ(r.size(), 0u);
+}
+
+TEST(ExtensionRegistry_Ownership, NonOwnerCannotUnregister) {
+    ExtensionRegistry r;
+    EXPECT_EQ(r.register_extension("gn.heartbeat", 0x010000, &kDummyVtable,
+                                    {}, "plugin-a"),
+              GN_OK);
+    EXPECT_EQ(r.unregister_extension("gn.heartbeat", "plugin-b"),
+              GN_ERR_NOT_FOUND);
+    EXPECT_EQ(r.size(), 1u);
+}
+
+TEST(ExtensionRegistry_Ownership, EmptyCallerBypassesOwnerCheck) {
+    ExtensionRegistry r;
+    EXPECT_EQ(r.register_extension("gn.heartbeat", 0x010000, &kDummyVtable,
+                                    {}, "plugin-a"),
+              GN_OK);
+    EXPECT_EQ(r.unregister_extension("gn.heartbeat"), GN_OK);
+}
+
+TEST(ExtensionRegistry_Ownership, EmptyCreatorAllowsAnyCallerToUnregister) {
+    ExtensionRegistry r;
+    EXPECT_EQ(r.register_extension("gn.heartbeat", 0x010000, &kDummyVtable),
+              GN_OK);
+    EXPECT_EQ(r.unregister_extension("gn.heartbeat", "anyone"), GN_OK);
+}
+
 }  // namespace
 }  // namespace gn::core

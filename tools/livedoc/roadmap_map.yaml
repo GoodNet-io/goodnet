@@ -300,3 +300,76 @@ features:
         - kernel_feature: TURN_CONNECTION_ATTEMPT_INDICATION
         - kernel_feature: TURN_TCP_ALLOCATE
         - kernel_feature: turn_tcp_relay
+
+  "Topology reload subscription API":
+    rule:
+      all:
+        - symbol_in_kernel: subscribe_topology_reload
+        - symbol_in_kernel: GN_SUBSCRIBE_TOPOLOGY_RELOAD
+
+  "Datagram replay protection (sliding window)":
+    rule:
+      all:
+        - symbol_in_kernel: ReplayWindow
+        - symbol_in_kernel: enable_datagram_mode
+
+  "Named topology contours (gn_topo_contour_t)":
+    rule:
+      any:
+        - symbol_in_kernel: gn_topo_contour_t
+        - symbol_in_kernel: gn_contour_state_t
+
+  "Phase 1 — `IdentitySigner` abstraction (in flight)":
+    rule:
+      any:
+        - symbol_in_kernel: IdentitySigner
+        - symbol_in_kernel: LibsodiumSigner
+
+  "Phase 2 — C ABI for identity providers (pending)":
+    rule:
+      any:
+        - symbol_in_kernel: gn_core_install_identity_from_provider
+        - file_exists: sdk/extensions/identity.h
+
+  "Phase 3 — PKCS#11 plugin dual-expose (pending)":
+    rule:
+      extension_registered: gn.identity.pkcs11
+
+  "Phase 4 — `goodnetd` operator UX (pending)":
+    rule:
+      symbol_in_kernel: gn_core_export_device_keypair
+
+  "Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)":
+    rule:
+      symbol_in_kernel: gn_core_get_pinned_user_pk
+
+  "Hardware key store — PKCS#11":
+    rule:
+      any:
+        - extension_registered: gn.identity.pkcs11
+        - plugin_exists: plugins/security/pkcs11
+
+  "Hardware key store — TPM 2.0":
+    rule:
+      any:
+        - extension_registered: gn.identity.tpm
+        - plugin_exists: plugins/security/tpm
+
+  "Hardware key store — macOS Keychain":
+    rule:
+      any:
+        - extension_registered: gn.identity.keychain
+        - kernel_feature: SecKeychainFind
+
+  "Hardware key store — WebAuthn / passkey":
+    rule:
+      any:
+        - extension_registered: gn.identity.webauthn
+        - kernel_feature: webauthn_get_assertion
+
+  "RTOS / bare-metal kernel trim":
+    rule:
+      any:
+        - file_exists: nix/goodnet-rtos.nix
+        - kernel_feature: GOODNET_RTOS
+        - file_exists: sdk/c99/

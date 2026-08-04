@@ -99,6 +99,9 @@ else
     ICE_SYMMETRIC_PRED_ENABLED=false
 fi
 : "${ICE_TCP_TLS_ONLY:=false}"
+# TLS transport peer-cert verification. Set to false when the TURN TLS
+# endpoint uses a self-signed certificate (e.g. no_udp_fallback scenario).
+: "${ICE_TLS_VERIFY_PEER:=true}"
 : "${ICE_SESSION_TIMEOUT_S:=10}"
 : "${TURN_USER:=goodnet}"
 : "${TURN_PASS:=bench-only-credentials}"
@@ -194,6 +197,7 @@ cat > /etc/goodnet/peer.json <<EOF
     { "name": "goodnet_security_noise",    "path": "/plugins/libgoodnet_security_noise.so"    },
     { "name": "goodnet_link_udp",          "path": "/plugins/libgoodnet_link_udp.so"          },
     { "name": "goodnet_link_tcp",          "path": "/plugins/libgoodnet_link_tcp.so"          },
+    { "name": "goodnet_link_tls",          "path": "/plugins/libgoodnet_link_tls.so"          },
     { "name": "goodnet_link_portmap",      "path": "/plugins/libgoodnet_link_portmap.so"      },
     { "name": "goodnet_discovery_mdns",   "path": "/plugins/libgoodnet_discovery_mdns.so"    },
     { "name": "goodnet_link_ice",          "path": "/plugins/libgoodnet_link_ice.so"          }${QUIC_PLUGIN_ENTRY},
@@ -221,6 +225,11 @@ cat > /etc/goodnet/peer.json <<EOF
     "tcp_tls_only": ${ICE_TCP_TLS_ONLY},
     "turn_tcp": ${ICE_TURN_TCP},
     "turn_requested_transport": "${ICE_TURN_REQUESTED_TRANSPORT}"
+  },
+  "links": {
+    "tls": {
+      "verify_peer": ${ICE_TLS_VERIFY_PEER}
+    }
   },
   "signal": {
     "shared_dir": "${SIGNAL_DIR}",

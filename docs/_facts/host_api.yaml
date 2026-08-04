@@ -1,6 +1,6 @@
 struct: host_api_s
 header: sdk/host_api.h
-named_slots: 41
+named_slots: 43
 reserved_slots: 8
 families:
   Capability TLV transport (capability-tlv.en.md):
@@ -52,6 +52,8 @@ families:
   - get_handshake_hash
   Peer-addressed messaging (host-api.en.md):
   - send_to
+  Per-section config-reload subscription:
+  - subscribe_config_reload_section
   Registry queries:
   - find_conn_by_pk
   - get_endpoint
@@ -61,6 +63,8 @@ families:
   Service executor (timer.en.md is the authoritative spec):
   - set_timer
   - cancel_timer
+  Topology-reload subscription:
+  - subscribe_topology_reload
   Universal handler / link registration:
   - register_vtable
   - unregister_vtable
@@ -321,3 +325,17 @@ slots:
   line: 772
   family: Path observability (host-api.en.md)
   doc: a per-connection RTT sample observed by the
+- name: subscribe_topology_reload
+  signature: gn_result_t (*)(void *, gn_topology_reload_cb_t, void *, void (*)(void
+    *), gn_subscription_id_t *)
+  file: sdk/host_api.h
+  line: 787
+  family: Topology-reload subscription
+  doc: ''
+- name: subscribe_config_reload_section
+  signature: gn_result_t (*)(void *, const char *, gn_config_reload_cb_t, void *,
+    void (*)(void *), gn_subscription_id_t *)
+  file: sdk/host_api.h
+  line: 808
+  family: Per-section config-reload subscription
+  doc: ''

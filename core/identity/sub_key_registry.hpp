@@ -39,6 +39,10 @@ struct SubKeyEntry {
     KeyPair           kp;
     std::string       label;
     std::int64_t      created_unix_ts;
+    /// Plugin name that called register_local_key. Empty for entries
+    /// loaded from disk (pre-W6 or deserialized) — those may be
+    /// deleted by any plugin.
+    std::string       creator;
 };
 
 /// Plain-data backing of the sub-key registry. Lives inside
@@ -53,13 +57,13 @@ public:
     SubKeyRegistry& operator=(SubKeyRegistry&&)         = default;
 
     /// Register a new keypair under @p purpose with optional
-    /// free-text label. Returns the kernel-allocated id; the
-    /// id encodes the purpose in its top 4 bits so iteration
-    /// callers can filter without re-touching the registry.
+    /// free-text label. @p creator is the plugin_name that owns the
+    /// key — only that plugin may delete it (empty = unrestricted).
     [[nodiscard]] gn_key_id_t insert(gn_key_purpose_t purpose,
                                       KeyPair&&        kp,
                                       std::string_view label,
-                                      std::int64_t     created_unix_ts);
+                                      std::int64_t     created_unix_ts,
+                                      std::string_view creator = {});
 
     /// Remove the entry with the given id, zeroising the
     /// private bytes through `KeyPair`'s destructor. Returns
@@ -83,6 +87,10 @@ public:
     /// Find the entry by id and return a const pointer to its
     /// keypair. Returns `nullptr` if no entry matches.
     [[nodiscard]] const KeyPair* find_by_id(
+        gn_key_id_t id) const noexcept;
+
+    /// Find the full entry by id. Returns `nullptr` if not present.
+    [[nodiscard]] const SubKeyEntry* find_entry_by_id(
         gn_key_id_t id) const noexcept;
 
     /// Direct entry access — registry is plain-data, no

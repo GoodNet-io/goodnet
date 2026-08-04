@@ -19,6 +19,8 @@
 #include <vector>
 
 #include <core/topology/topology_builder.hpp>
+#include <core/kernel/system_handlers.hpp>
+#include <sdk/cpp/capability_tlv.hpp>
 
 #include <sdk/core.h>
 
@@ -92,6 +94,15 @@ struct gn_core_s {
     /// subscriber that matches incoming fingerprints against the local
     /// topology. Unsubscribed on destroy.
     gn_subscription_id_t                                               topology_caps_sub_{0};
+
+    /// Per-type TLV handler chain. Kernel registers at priority 255 for
+    /// topology types (0x0004, 0x0005) in gn_core_start.
+    gn::sdk::TlvHandlerChain                                           tlv_chain_;
+
+    /// Handler ids for kernel system handlers (0x11/0x12/0x13).
+    /// Re-registered on every `build_topology` call so new protocols
+    /// added at runtime are covered. Unregistered on destroy.
+    std::vector<gn_handler_id_t>                                       system_handler_ids_;
 
     gn_core_s() : plugins(kernel) {
         host_ctx.plugin_name = "host-embedding";

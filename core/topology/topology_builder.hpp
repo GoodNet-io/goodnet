@@ -38,6 +38,14 @@ struct TopologySnapshot {
     std::vector<gn_topo_protocol_entry_t>  proto_entries;
     std::vector<gn_topo_handler_entry_t>   handler_entries;
 
+    // Contour array (#33) — one entry per resolved (trust_class × protocol).
+    // handler_msg_ids in each gn_topo_contour_t borrows from contour_handler_ids_storage.
+    std::vector<std::vector<std::uint32_t>> contour_handler_ids_storage;
+    std::vector<gn_topo_contour_t>          contour_entries;
+
+    // Contour fingerprint — SHA-256 over sorted contour entries (W2).
+    uint8_t contour_fingerprint[32]{};
+
     // View struct with borrowed pointers into the vectors above.
     gn_topology_t topo{};
 };
@@ -53,13 +61,13 @@ struct TopologySnapshot {
 /// `gn_core_reload_topology`.
 [[nodiscard]] std::unique_ptr<TopologySnapshot> build_topology(gn::core::Kernel& kernel);
 
-/// Encode the topology fingerprint as a capability wire blob:
-///   [8-byte BE expiry = INT64_MAX] [TLV 0x0004: fingerprint[32]]
+/// Encode the topology fingerprints as a capability wire blob:
+///   [8-byte BE expiry = INT64_MAX] [TLV 0x0004: fingerprint[32]] [TLV 0x0005: contour_fingerprint[32]]
 ///
 /// The result is ready to pass to the send path (frame + encrypt + send)
 /// with msg_id = kCapabilityBlobMsgId (0x13). expiry = INT64_MAX signals
 /// that the fingerprint is valid for the kernel's lifetime.
 [[nodiscard]] std::vector<std::uint8_t>
-encode_topology_wire_blob(const gn_topology_t& topo);
+encode_topology_wire_blob(const TopologySnapshot& snap);
 
 } // namespace gn::core::topology

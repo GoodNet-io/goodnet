@@ -438,4 +438,63 @@ TEST(PluginManifest_Verify, PathCanonicalisationMatchesEquivalentSpellings) {
     fs::remove(path);
 }
 
+// ── W12: allowed_kinds ────────────────────────────────────────────
+
+TEST(PluginManifest_Parse, AllowedKindsAcceptsAllValidNames) {
+    constexpr const char* kJson = R"({
+        "plugins": [{
+            "path": "libfoo.so",
+            "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "allowed_kinds": ["link", "handler", "security", "protocol", "strategy", "ui"]
+        }]
+    })";
+    PluginManifest m;
+    std::string diag;
+    ASSERT_EQ(PluginManifest::parse(kJson, m, diag), GN_OK) << diag;
+    ASSERT_EQ(m.entries().size(), 1u);
+    const std::uint32_t expected =
+        (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 6) | (1u << 7);
+    EXPECT_EQ(m.entries()[0].allowed_kinds, expected);
+}
+
+TEST(PluginManifest_Parse, AllowedKindsMissingDefaultsToZero) {
+    constexpr const char* kJson = R"({
+        "plugins": [{
+            "path": "libfoo.so",
+            "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        }]
+    })";
+    PluginManifest m;
+    std::string diag;
+    ASSERT_EQ(PluginManifest::parse(kJson, m, diag), GN_OK) << diag;
+    EXPECT_EQ(m.entries()[0].allowed_kinds, 0u);
+}
+
+TEST(PluginManifest_Parse, AllowedKindsRejectsUnknownKindName) {
+    constexpr const char* kJson = R"({
+        "plugins": [{
+            "path": "libfoo.so",
+            "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "allowed_kinds": ["unknown"]
+        }]
+    })";
+    PluginManifest m;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(kJson, m, diag), GN_ERR_INTEGRITY_FAILED);
+    EXPECT_NE(diag.find("unknown"), std::string::npos);
+}
+
+TEST(PluginManifest_Parse, AllowedKindsRejectsNonArray) {
+    constexpr const char* kJson = R"({
+        "plugins": [{
+            "path": "libfoo.so",
+            "sha256": "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            "allowed_kinds": "handler"
+        }]
+    })";
+    PluginManifest m;
+    std::string diag;
+    EXPECT_EQ(PluginManifest::parse(kJson, m, diag), GN_ERR_INTEGRITY_FAILED);
+}
+
 }  // namespace gn::core

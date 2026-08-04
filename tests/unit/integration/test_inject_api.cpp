@@ -378,3 +378,88 @@ TEST(InjectExternal, VoidNamespaceDroppedCleanly) {
               GN_OK);
     EXPECT_EQ(h.kernel->metrics().value("route.outcome.dropped_no_handler"), 1u);
 }
+
+// ── inject_targets enforcement ───────────────────────────────────────────────
+
+TEST(InjectTargets, AllowsDeclaredTarget) {
+    /// Plugin declares inject_targets = {{"gnet-v1", 0x0042}}; injecting
+    /// exactly that (protocol, msg_id) pair must succeed.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0xA1);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    // Engage the gate after notify_connect (which requires LINK/UNKNOWN kind).
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_HANDLER;
+    h.plugin_ctx.inject_targets = {{"gnet-v1", 0x0042u}};
+
+    const std::uint8_t payload[] = {0x01};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x0042u,
+                            payload, sizeof(payload)),
+              GN_OK);
+}
+
+TEST(InjectTargets, RejectsUndeclaredTarget) {
+    /// Plugin declares inject_targets = {{"gnet-v1", 0x0042}}; injecting
+    /// to "gnet-v1" with a different msg_id must be rejected.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0xA2);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_HANDLER;
+    h.plugin_ctx.inject_targets = {{"gnet-v1", 0x0042u}};
+
+    const std::uint8_t payload[] = {0x01};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x0200u,
+                            payload, sizeof(payload)),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(InjectTargets, WildcardMsgIdMatchesAll) {
+    /// Plugin declares inject_targets = {{"gnet-v1", 0}} (wildcard).
+    /// Any non-reserved msg_id injected into "gnet-v1" must be allowed.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0xA3);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_HANDLER;
+    h.plugin_ctx.inject_targets = {{"gnet-v1", 0u}};
+
+    const std::uint8_t payload[] = {0x01};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x0200u,
+                            payload, sizeof(payload)),
+              GN_OK);
+}
+
+TEST(InjectTargets, EmptyTargetsBlocksNonUnknownKind) {
+    /// Plugin declares no inject_targets (empty vector) + non-UNKNOWN kind
+    /// → grant-by-declaration model blocks any injection.
+    KernelHarness h;
+    PublicKey peer_pk; peer_pk.fill(0xA4);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    h.plugin_ctx.kind = GN_PLUGIN_KIND_HANDLER;
+
+    const std::uint8_t payload[] = {0x01};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x0042u,
+                            payload, sizeof(payload)),
+              GN_ERR_INVALID_ENVELOPE);
+}
+
+TEST(InjectTargets, UnknownKindBypassesInjectTargetsGate) {
+    /// kind=UNKNOWN (operator authority) bypasses inject_targets gate
+    /// even with empty declarations.
+    KernelHarness h;
+    // kind defaults to GN_PLUGIN_KIND_UNKNOWN — gate bypassed.
+    PublicKey peer_pk; peer_pk.fill(0xA5);
+    const gn_conn_id_t src = h.make_source(peer_pk);
+
+    const std::uint8_t payload[] = {0x01};
+    EXPECT_EQ(h.api.inject(h.api.host_ctx, GN_INJECT_LAYER_MESSAGE, src,
+                            "gnet-v1", /*msg_id*/ 0x0042u,
+                            payload, sizeof(payload)),
+              GN_OK);
+}

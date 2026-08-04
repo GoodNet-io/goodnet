@@ -74,6 +74,25 @@ gn_result_t RemoteRuntime::load(const std::string& path,
             out.ctx->plugin_name       = d->name;
         }
         out.ctx->kind = d->kind;
+        if (d->inject_targets)
+            for (const auto* t = d->inject_targets; t->protocol_id != nullptr; ++t) {
+                out.descriptor.inject_targets.emplace_back(t->protocol_id, t->msg_id);
+                out.ctx->inject_targets.emplace_back(t->protocol_id, t->msg_id);
+            }
+        if (d->reads_config)
+            for (const char* const* r = d->reads_config; *r != nullptr; ++r) {
+                out.descriptor.reads_config.emplace_back(*r);
+                out.ctx->reads_config.emplace_back(*r);
+            }
+        if (d->ext_provides)
+            for (const char* const* p = d->ext_provides; *p != nullptr; ++p) {
+                out.descriptor.ext_provides.emplace_back(*p);
+                out.ctx->ext_provides.emplace_back(*p);
+            }
+        out.descriptor.may_rotate    = (d->may_rotate != 0);
+        out.ctx->may_rotate          = out.descriptor.may_rotate;
+        out.descriptor.sign_purposes = d->sign_purposes;
+        out.ctx->sign_purposes       = d->sign_purposes;
     }
     if (out.descriptor.plugin_name.empty()) {
         out.descriptor.plugin_name = path;

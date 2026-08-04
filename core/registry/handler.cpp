@@ -20,7 +20,8 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
                                               void*                      self,
                                               gn_handler_id_t*           out_id,
                                               std::shared_ptr<void>      lifetime_anchor,
-                                              std::string_view           plugin_name) noexcept {
+                                              std::string_view           plugin_name,
+                                              bool                       allow_kernel_reserved) noexcept {
     if (vtable == nullptr || out_id == nullptr || protocol_id.empty()) {
         return GN_ERR_NULL_ARG;
     }
@@ -37,10 +38,18 @@ gn_result_t HandlerRegistry::register_handler(std::string_view           namespa
         /// it would shadow legitimate dispatches.
         return GN_ERR_INVALID_ENVELOPE;
     }
-    if (is_reserved_system_msg_id(msg_id)) {
-        /// Per `handler-registration.en.md` §2a — kernel-internal
-        /// dispatch ids are not exposed to plugin registrations.
-        return GN_ERR_INVALID_ENVELOPE;
+    if (!allow_kernel_reserved) {
+        if (is_reserved_system_msg_id(msg_id)) {
+            /// Per `handler-registration.en.md` §2a — registration-blocked
+            /// ids are not exposed to plugin registrations.
+            return GN_ERR_INVALID_ENVELOPE;
+        }
+        if (priority == kKernelHandlerPriority && is_identity_range_msg_id(msg_id)) {
+            /// Per `handler-registration.en.md` §4 — priority=255 within
+            /// the identity range (0x10..0x1F) is kernel-reserved. Outside
+            /// the identity range, priority=255 is available to plugins.
+            return GN_ERR_INVALID_ENVELOPE;
+        }
     }
 
     /// Empty / NULL namespace_id resolves to the kernel default.

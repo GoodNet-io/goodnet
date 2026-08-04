@@ -36,9 +36,11 @@ host_api_t build_host_api(PluginContext& ctx) {
     a.cancel_timer            = &host_api_thunks::cancel_timer;
 
     // ── Subscriptions (host_api/control.cpp) ───────────────────────
-    a.subscribe_conn_state    = &host_api_thunks::subscribe_conn_state;
-    a.subscribe_config_reload = &host_api_thunks::subscribe_config_reload;
-    a.unsubscribe             = &host_api_thunks::unsubscribe;
+    a.subscribe_conn_state      = &host_api_thunks::subscribe_conn_state;
+    a.subscribe_config_reload         = &host_api_thunks::subscribe_config_reload;
+    a.subscribe_config_reload_section = &host_api_thunks::subscribe_config_reload_section;
+    a.subscribe_topology_reload       = &host_api_thunks::subscribe_topology_reload;
+    a.unsubscribe               = &host_api_thunks::unsubscribe;
     a.for_each_connection     = &host_api_thunks::for_each_connection;
     a.notify_backpressure     = &host_api_thunks::notify_backpressure;
     a.notify_rtt_sample       = &host_api_thunks::notify_rtt_sample;

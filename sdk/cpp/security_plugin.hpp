@@ -348,7 +348,7 @@ struct SecurityPluginInstance {
             0, nullptr,                                                        \
             Class::security_ext_provides(),                                   \
             GN_PLUGIN_KIND_SECURITY,                                          \
-            nullptr, {},                                                       \
+            nullptr, nullptr, 0, 0, {},                                        \
         };                                                                     \
         return &desc;                                                          \
     }                                                                          \

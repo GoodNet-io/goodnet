@@ -773,6 +773,45 @@ typedef struct host_api_s {
                                       gn_conn_id_t conn,
                                       uint64_t rtt_us);
 
+    /* ── Topology-reload subscription ────────────────────────────────────
+     *
+     * Fires after every `gn_core_reload_topology()`. Any plugin kind
+     * subscribes here in `gn_plugin_register` to react to structural
+     * changes (new link scheme, security provider removed, etc.) without
+     * requiring a vtable field on each plugin family. Same anchor /
+     * destructor semantics as `subscribe_conn_state`.
+     *
+     * `prev` is NULL on the first reload when no prior snapshot existed.
+     * Both pointers are valid only for the callback duration.
+     */
+    gn_result_t (*subscribe_topology_reload)(void* host_ctx,
+                                              gn_topology_reload_cb_t cb,
+                                              void* user_data,
+                                              void (*ud_destroy)(void*),
+                                              gn_subscription_id_t* out_id);
+
+    /* ── Per-section config-reload subscription ──────────────────────────
+     *
+     * Subscribe to config-reload events scoped to a key prefix.
+     * @p prefix is a dotted path (e.g. `"ice"`, `"links.tls"`).
+     * The callback fires whenever a reload touches a subtree that
+     * includes @p prefix — in v1 this is any reload (fine-grained
+     * change tracking is a v2 concern).
+     *
+     * Same lifetime / destructor semantics as `subscribe_config_reload`.
+     * Plugins that own a named config namespace use this instead of
+     * the global `subscribe_config_reload` so future kernels can
+     * deliver targeted-only notifications without callback changes.
+     *
+     * @param prefix  Dotted-path key prefix, NUL-terminated.
+     */
+    gn_result_t (*subscribe_config_reload_section)(void*                  host_ctx,
+                                                    const char*            prefix,
+                                                    gn_config_reload_cb_t  cb,
+                                                    void*                  user_data,
+                                                    void (*ud_destroy)(void*),
+                                                    gn_subscription_id_t*  out_id);
+
     /* ── Reserved for future extension ───────────────────────────────────
      *
      * The kernel zero-initialises `_reserved` before exposing

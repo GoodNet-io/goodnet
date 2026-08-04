@@ -10,14 +10,19 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <functional>
 #include <span>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <sdk/cpp/endian.hpp>
+#include <sdk/handler.h>
+#include <sdk/types.h>
 
 namespace gn::sdk {
 
@@ -118,5 +123,40 @@ inline constexpr std::uint8_t  kCompressionSetZstd    = 0x01u;
 /// Sent automatically after Noise XX reaches Transport phase.
 /// Peer fingerprint mismatch logs the diff and sets peer_caps_verified=false.
 inline constexpr std::uint16_t kTlvTypeTopologyFingerprint = 0x0004u;
+
+/// TLV type for contour fingerprint exchange (layer-capability.en.md §7).
+/// Value: exactly 32 bytes. Sent by the kernel after contour seal. W2 placeholder.
+inline constexpr std::uint16_t kTlvTypeContourFingerprint = 0x0005u;
+
+/// Per-type priority-ordered TLV dispatch — second level below msg_id dispatch.
+/// Kernel registers at priority 255 for topology types (0x0004, 0x0005).
+/// Plugins register for capability types (0x0200+).
+class TlvHandlerChain {
+public:
+    using HandlerFn = std::function<gn_propagation_t(gn_conn_id_t, const TlvRecord&)>;
+
+    void register_handler(std::uint16_t type, std::uint8_t priority, HandlerFn fn) {
+        auto& v = handlers_[type];
+        v.push_back({priority, std::move(fn)});
+        std::stable_sort(v.begin(), v.end(),
+            [](const Entry& a, const Entry& b) noexcept { return a.priority > b.priority; });
+    }
+
+    void dispatch(gn_conn_id_t conn, std::span<const TlvRecord> records) const {
+        for (const auto& rec : records) {
+            const auto it = handlers_.find(rec.type);
+            if (it == handlers_.end()) continue;
+            for (const auto& e : it->second) {
+                if (e.fn(conn, rec) == GN_PROPAGATION_CONSUMED) break;
+            }
+        }
+    }
+
+    void clear() noexcept { handlers_.clear(); }
+
+private:
+    struct Entry { std::uint8_t priority; HandlerFn fn; };
+    std::unordered_map<std::uint16_t, std::vector<Entry>> handlers_;
+};
 
 }  // namespace gn::sdk

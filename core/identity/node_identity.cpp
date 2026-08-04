@@ -401,6 +401,7 @@ NodeIdentity::save_to_file(const NodeIdentity& self, const std::string& path) {
         e.kp              = std::move(*kp);
         e.label           = src.label;
         e.created_unix_ts = src.created_unix_ts;
+        e.creator         = src.creator;
         dst.push_back(std::move(e));
     }
     out->rotation_counter_ = rotation_counter_;

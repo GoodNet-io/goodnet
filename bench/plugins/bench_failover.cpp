@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 /// @file   bench/plugins/bench_failover.cpp
-/// @brief  ICE failover policies — consent-loss recovery, interface
-///         change re-gather, multi-TURN handoff.
+/// @brief  ICE failover policies — restart dispatch cost.
 ///
 /// Failover is fundamentally a wire-level / network-state-driven
 /// behaviour: a real TURN allocation has to time out, a netlink
@@ -12,15 +11,13 @@
 /// dispatch cost on the API surfaces operators touch when wiring
 /// up the failover policies:
 ///
-///   * `IceConsentLossRecoveryDispatch` — `IceSession::notify_consent
-///     _loss_for_test` rolled over many iterations. Each call exits
-///     through `restart()`; the bench pins the dispatch cost so a
-///     regression in the strand-side restart bookkeeping (mutex
-///     contention, vector-grow on the local_candidates rebuild)
-///     surfaces here as a row movement.
-///   * `RestartDispatchCost` — direct `restart()` calls. Bypasses
-///     the consent-loss decision tree so it's the lower-bound
-///     `restart()` cost.
+///   * `RestartDispatchCost` — direct `restart()` calls. Pins the
+///     strand-side restart bookkeeping (mutex contention,
+///     vector-grow on the local_candidates rebuild).
+///
+/// NOTE: `IceConsentLossRecoveryDispatch` (auto_restart_on_consent_loss
+/// policy + notify_consent_loss_for_test) is excluded — those
+/// features are post-RC and not yet in the current ICE `main`.
 
 #include "../bench_harness.hpp"
 
@@ -53,11 +50,9 @@ using gn::link::ice::IceConfig;
 using gn::link::ice::IceSession;
 using gn::link::ice::IceSessionCallbacks;
 
-/// Minimal UDP carrier stub — mirrors the one in
-/// `plugins/links/ice/tests/test_ice_auto_restart.cpp`. The
-/// failover bench doesn't drive STUN traffic; the carrier is wired
-/// only so the session FSM has a non-null `gn.link.udp` resolution
-/// during construction.
+/// Minimal UDP carrier stub. The failover bench doesn't drive STUN
+/// traffic; the carrier is wired only so the session FSM has a
+/// non-null `gn.link.udp` resolution during construction.
 struct FakeUdpCarrier {
     struct Endpoint {
         std::string         host;
@@ -193,11 +188,6 @@ struct UdpHarness {
     }
 };
 
-/// Per-fixture FSM bring-up. Spawns an io_context worker thread,
-/// resolves the fake UDP carrier, and constructs one IceSession in
-/// controller role. The fixture owns the session through the bench
-/// so iterations can call `notify_consent_loss_for_test()` against
-/// a known-good state.
 struct FailoverFixture : public ::benchmark::Fixture {
     void SetUp(::benchmark::State&) override {
         if (session) return;
@@ -206,20 +196,11 @@ struct FailoverFixture : public ::benchmark::Fixture {
         auto* carrier_ptr = carrier.has_value() ? &*carrier : nullptr;
         IceConfig cfg;
         cfg.stun_servers.clear();
-        cfg.auto_restart_on_consent_loss = true;
-        cfg.auto_restart_max_attempts    = 100;
-        cfg.auto_restart_backoff_ms      = 0;
-        IceSessionCallbacks cbs;
-        cbs.on_auto_restart =
-            [this](const std::string&, std::string_view,
-                   std::uint32_t, std::uint32_t) {
-                restarts.fetch_add(1, std::memory_order_acq_rel);
-            };
         session = std::make_shared<IceSession>(
             ioc, carrier_ptr, nullptr, nullptr, cfg,
             /*peer_id=*/"abcdef0123456789",
             /*controlling=*/true,
-            std::move(cbs), /*mdns=*/nullptr);
+            IceSessionCallbacks{});
         session->gather();
     }
     void TearDown(::benchmark::State&) override {
@@ -239,29 +220,7 @@ struct FailoverFixture : public ::benchmark::Fixture {
     UdpHarness                                    harness;
     std::optional<gn::sdk::LinkCarrier>           carrier;
     std::shared_ptr<IceSession>                   session;
-    std::atomic<std::uint64_t>                    restarts{0};
 };
-
-BENCHMARK_DEFINE_F(FailoverFixture, IceConsentLossRecoveryDispatch)
-    (::benchmark::State& state) {
-    ResourceCounters res;
-    res.snapshot_start();
-    std::size_t recovered = 0;
-    for ([[maybe_unused]] auto _ : state) {
-        const bool decided = session->notify_consent_loss_for_test();
-        if (decided) ++recovered;
-    }
-    res.snapshot_end();
-    state.counters["recovered_decisions"] =
-        static_cast<double>(recovered);
-    state.counters["observed_restarts"] =
-        static_cast<double>(restarts.load());
-    report_resources(state, res);
-}
-
-BENCHMARK_REGISTER_F(FailoverFixture, IceConsentLossRecoveryDispatch)
-    ->Iterations(1000)
-    ->Unit(::benchmark::kMicrosecond);
 
 BENCHMARK_DEFINE_F(FailoverFixture, RestartDispatchCost)
     (::benchmark::State& state) {

@@ -304,6 +304,9 @@ consteval bool validate_inject_targets(const gn_inject_dep_t* arr) noexcept {
         /* kind              */ GN_PLUGIN_KIND_HANDLER,                        \
         /* inject_targets    */ ::gn::sdk::detail::get_inject_targets<          \
                                     _gn_handler_class_t>(),                    \
+        /* reads_config      */ nullptr,                                       \
+        /* may_rotate        */ 0,                                             \
+        /* sign_purposes     */ 0,                                             \
         /* _reserved         */ {},                                              \
     };                                                                         \
     static_assert(                                                             \

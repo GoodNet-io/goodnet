@@ -49,9 +49,11 @@ public:
         std::int64_t                 expires_unix_ts;
     };
 
-    using ConnStateFn      = std::move_only_function<void(const gn_conn_event_t&)>;
-    using ConfigReloadFn   = std::move_only_function<void()>;
-    using CapabilityBlobFn = std::move_only_function<void(const CapabilityBlob&)>;
+    using ConnStateFn        = std::move_only_function<void(const gn_conn_event_t&)>;
+    using ConfigReloadFn     = std::move_only_function<void()>;
+    using TopologyReloadFn   = std::move_only_function<void(const gn_topology_s* prev,
+                                                             const gn_topology_s* next)>;
+    using CapabilityBlobFn   = std::move_only_function<void(const CapabilityBlob&)>;
 
     Subscription() noexcept = default;
 
@@ -94,6 +96,20 @@ public:
         return subscribe_impl<ConfigReloadFn>(api, std::move(fn),
                                               api->subscribe_config_reload,
                                               &config_reload_thunk);
+    }
+
+    /// Subscribe to `GN_SUBSCRIBE_TOPOLOGY_RELOAD`. `prev` is null on
+    /// the first reload. Both pointers are borrowed for the callback
+    /// duration. Same null-handle semantics as `on_conn_state`.
+    [[nodiscard]] static Subscription
+    on_topology_reload(const host_api_t* api, TopologyReloadFn fn)
+    {
+        if (!api) return {};
+        if (!GN_API_HAS(host_api_t, api, subscribe_topology_reload) ||
+            !api->subscribe_topology_reload) return {};
+        return subscribe_impl<TopologyReloadFn>(api, std::move(fn),
+                                                api->subscribe_topology_reload,
+                                                &topology_reload_thunk);
     }
 
     /// Event-typed conn-state subscribers — sugar over
@@ -226,6 +242,13 @@ private:
     static void config_reload_thunk(void* user) noexcept {
         if (!user) return;
         try { (*static_cast<ConfigReloadFn*>(user))(); } catch (...) {}  // NOLINT(bugprone-empty-catch)
+    }
+
+    static void topology_reload_thunk(void* user,
+                                       const struct gn_topology_s* prev,
+                                       const struct gn_topology_s* next) noexcept {
+        if (!user) return;
+        try { (*static_cast<TopologyReloadFn*>(user))(prev, next); } catch (...) {}  // NOLINT(bugprone-empty-catch)
     }
 
     static void capability_blob_thunk(void* user,

@@ -40,6 +40,7 @@ set(_goodnet_kernel_sources
     kernel/service_resolver.cpp
     kernel/timer_registry.cpp
     kernel/attestation_dispatcher.cpp
+    kernel/system_handlers.cpp
     kernel/metrics_registry.cpp
     topology/topology_builder.cpp
     plugin/plugin_manager.cpp

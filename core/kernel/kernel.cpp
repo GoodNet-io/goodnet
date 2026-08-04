@@ -180,6 +180,7 @@ void Kernel::set_limits(const gn_limits_t& limits) noexcept {
         const std::size_t cap = limits_.max_subscriptions;
         on_conn_event_.set_max_subscribers(cap);
         on_config_reload_.set_max_subscribers(cap);
+        on_topology_reload_.set_max_subscribers(cap);
     }
 }
 
@@ -206,6 +207,20 @@ gn_result_t Kernel::reload_config_merge(std::string_view overlay) {
     if (auto rc = config_.merge_json(overlay, &diagnostic); rc != GN_OK) {
         SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
             "kernel.reload_config_merge: rejected overlay — {}", diagnostic);
+        return rc;
+    }
+    set_limits(config_.limits());
+    apply_log_config();
+    on_config_reload_.fire(signal::Empty{});
+    return GN_OK;
+}
+
+gn_result_t Kernel::reload_config_section(std::string_view prefix,
+                                            std::string_view section_json) {
+    std::string diagnostic;
+    if (auto rc = config_.merge_section(prefix, section_json, &diagnostic); rc != GN_OK) {
+        SPDLOG_LOGGER_WARN(::gn::log::kernel().get(),
+            "kernel.reload_config_section: rejected section '{}' — {}", prefix, diagnostic);
         return rc;
     }
     set_limits(config_.limits());
@@ -308,6 +323,13 @@ void Kernel::fire(Phase prev, Phase next) {
             obs->on_phase_change(prev, next);
         }
     }
+}
+
+bool Kernel::try_claim_rotation(std::int64_t now_ts) noexcept {
+    std::int64_t last = last_rotation_unix_ts_.load(std::memory_order_acquire);
+    if (last != 0 && now_ts - last < kRotationCooldownSecs) return false;
+    return last_rotation_unix_ts_.compare_exchange_strong(
+        last, now_ts, std::memory_order_acq_rel, std::memory_order_acquire);
 }
 
 } // namespace gn::core

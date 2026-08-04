@@ -88,6 +88,12 @@ public:
     /// `weak_ptr` between unregister and `dlclose`. Callers that do
     /// not load through PluginManager (in-tree tests, kernel-built
     /// fixtures) pass an empty anchor.
+    ///
+    /// @p allow_kernel_reserved — when true, bypasses both the
+    /// `is_reserved_system_msg_id` check (allows 0x11 attestation)
+    /// and the priority=255 identity-range gate. Use ONLY for kernel
+    /// system handler registration at `gn_core_start()`. Plugin
+    /// host-api paths always pass false.
     [[nodiscard]] gn_result_t register_handler(std::string_view           namespace_id,
                                                std::string_view           protocol_id,
                                                std::uint32_t              msg_id,
@@ -96,7 +102,8 @@ public:
                                                void*                      self,
                                                gn_handler_id_t*           out_id,
                                                std::shared_ptr<void>      lifetime_anchor = {},
-                                               std::string_view           plugin_name = {}) noexcept;
+                                               std::string_view           plugin_name = {},
+                                               bool                       allow_kernel_reserved = false) noexcept;
 
     /// Backward-compat overload — registers in the default namespace.
     /// Pre-namespace call sites continue to compile unchanged; the
@@ -114,7 +121,8 @@ public:
                                 protocol_id, msg_id, priority,
                                 vtable, self, out_id,
                                 std::move(lifetime_anchor),
-                                plugin_name);
+                                plugin_name,
+                                /*allow_kernel_reserved*/ false);
     }
 
     /// Remove the handler with id @p id from whichever chain holds it.

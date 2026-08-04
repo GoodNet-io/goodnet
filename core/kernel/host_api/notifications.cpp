@@ -36,7 +36,6 @@ private:
 #include <sdk/trust.h>
 
 #include <core/identity/node_identity.hpp>
-#include <core/identity/rotation.hpp>
 #include <core/registry/protocol_layer.hpp>
 #include <core/util/log.hpp>
 #include <sdk/cpp/uri.hpp>
@@ -511,55 +510,6 @@ gn_result_t notify_inbound_bytes(void* host_ctx,
             gn_message_t stamped = env;
             stamped.api_size     = sizeof(gn_message_t);
             stamped.conn_id      = conn;
-
-            if (stamped.msg_id == kAttestationMsgId) {
-                std::shared_ptr<SecuritySession> session_for_inbound =
-                    pc->kernel->sessions().find(conn);
-                if (session_for_inbound != nullptr) {
-                    std::span<const std::uint8_t> payload_span{
-                        stamped.payload, stamped.payload_size};
-                    (void)pc->kernel->attestation_dispatcher().on_inbound(
-                        *pc->kernel, conn, *session_for_inbound,
-                        payload_span);
-                }
-                continue;
-            }
-            if (stamped.msg_id == kIdentityRotationMsgId) {
-                auto pin = pc->kernel->connections().get_pinned_peer(
-                    rec->remote_pk);
-                if (!pin) continue;
-                auto verified = identity::verify_rotation(
-                    std::span<const std::uint8_t>(
-                        stamped.payload, stamped.payload_size),
-                    pin->user_pk);
-                if (!verified) {
-                    pc->kernel->metrics().increment(
-                        "drop.rotation_bad_proof");
-                    continue;
-                }
-                if (pc->kernel->connections().apply_rotation(
-                        rec->remote_pk, verified->new_user_pk,
-                        verified->counter) != GN_OK) {
-                    pc->kernel->metrics().increment(
-                        "drop.rotation_replay");
-                    continue;
-                }
-                ConnEvent ev{};
-                ev.kind      = GN_CONN_EVENT_IDENTITY_ROTATED;
-                ev.conn      = conn;
-                ev.trust     = rec->trust;
-                ev.remote_pk = rec->remote_pk;
-                ev.user_pk_prev = verified->prev_user_pk.data();
-                ev.user_pk_next = verified->new_user_pk.data();
-                ev.rotation_seq = &verified->counter;
-                pc->kernel->on_conn_event().fire(ev);
-                continue;
-            }
-            if (stamped.msg_id == kCapabilityBlobMsgId) {
-                pc->kernel->capability_blob_bus().on_inbound(
-                    conn, stamped.payload, stamped.payload_size);
-                continue;
-            }
             route_one_envelope(*pc->kernel, layer->protocol_id(), stamped);
         }
     }
@@ -578,13 +528,13 @@ gn_result_t inject(void* host_ctx,
                     std::size_t size) {
     if (!host_ctx) return GN_ERR_NULL_ARG;
 
+    auto* pc = static_cast<PluginContext*>(host_ctx);
+    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
+
     // Limit synchronous inject-chain depth. Each inject fires a full
     // handler-dispatch pass on the same thread; cost scales linearly.
     // Configurable via limits.max_inject_depth (0 → GN_INJECT_MAX_DEPTH).
     thread_local std::uint8_t inject_depth{0};
-
-    auto* pc = static_cast<PluginContext*>(host_ctx);
-    if (!ctx_live(pc)) [[unlikely]] return GN_ERR_INVALID_STATE;
 
     auto rec = pc->kernel->connections().find_by_id(source);
     if (!rec) return GN_ERR_NOT_FOUND;
@@ -607,6 +557,19 @@ gn_result_t inject(void* host_ctx,
     std::experimental::scope_exit _guard([&]() noexcept { --inject_depth; });
 
     if (!target_ns || !*target_ns) return GN_ERR_INVALID_ENVELOPE;
+
+    if (pc->kind != GN_PLUGIN_KIND_UNKNOWN) {
+        if (pc->inject_targets.empty()) return GN_ERR_INVALID_ENVELOPE;
+        const std::string_view ns_view{target_ns};
+        bool allowed = false;
+        for (const auto& [proto, msg] : pc->inject_targets) {
+            if (proto == ns_view && (msg == 0 || msg == msg_id)) {
+                allowed = true;
+                break;
+            }
+        }
+        if (!allowed) return GN_ERR_INVALID_ENVELOPE;
+    }
 
     switch (layer_kind) {
     case GN_INJECT_LAYER_MESSAGE:

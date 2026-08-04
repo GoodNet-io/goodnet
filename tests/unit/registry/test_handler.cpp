@@ -151,6 +151,42 @@ TEST(HandlerRegistry_Args, RejectsReservedAttestationMsgId) {
     EXPECT_EQ(reg.size(), 0u);
 }
 
+TEST(HandlerRegistry_Args, RejectsPriority255InIdentityRange) {
+    /// Per `handler-registration.en.md` §4 — priority=255 within
+    /// the identity range (0x10..0x1F) is kernel-reserved. Plugins
+    /// must not claim it so the kernel's priority=255 system handlers
+    /// always run first in the chain.
+    HandlerRegistry reg;
+    gn_handler_id_t id = GN_INVALID_ID;
+
+    // All identity-range ids (including plugin-observable 0x12/0x13/0x14/0x15)
+    // must reject priority=255 from plugins.
+    for (std::uint32_t msg = 0x10; msg <= 0x1F; ++msg) {
+        if (msg == 0x11) continue; // already registration-blocked, tested above
+        id = GN_INVALID_ID;
+        EXPECT_EQ(reg.register_handler("gnet-v1", msg, /*priority*/ 255,
+                                       dummy_vtable(), nullptr, &id),
+                  GN_ERR_INVALID_ENVELOPE) << "msg_id=" << msg;
+        EXPECT_EQ(id, GN_INVALID_ID);
+    }
+
+    // Outside the identity range: priority=255 is allowed.
+    id = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler("gnet-v1", 0x20, /*priority*/ 255,
+                                   dummy_vtable(), nullptr, &id),
+              GN_OK) << "non-identity-range msg_id=0x20 should allow priority=255";
+    EXPECT_NE(id, GN_INVALID_ID);
+
+    // allow_kernel_reserved=true bypasses the gate (kernel registration path).
+    id = GN_INVALID_ID;
+    EXPECT_EQ(reg.register_handler(kDefaultHandlerNamespace,
+                                   "gnet-v1", 0x12, /*priority*/ 255,
+                                   dummy_vtable(), nullptr, &id,
+                                   {}, {}, /*allow_kernel_reserved*/ true),
+              GN_OK) << "kernel registration with allow_kernel_reserved should succeed";
+    EXPECT_NE(id, GN_INVALID_ID);
+}
+
 // ── register / lookup ────────────────────────────────────────────────────
 
 TEST(HandlerRegistry_Lookup, RegistersAndLooksUp) {

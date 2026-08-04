@@ -12,22 +12,28 @@
 add_executable(goodnet_bench main.cpp)
 
 if(TARGET goodnet_kernel)
-    # in-tree build — use OBJECT library so the bench does not pay for
-    # the plugin entry point (plugin_entry.cpp) that the .so variant carries.
+    # in-tree build — use OBJECT libraries so the bench does not pay for
+    # the plugin entry points (plugin_entry.cpp) that .so variants carry.
     target_link_libraries(goodnet_bench
         PRIVATE
             goodnet_kernel
             goodnet_tcp_objects
+            goodnet_udp_objects
             ${CMAKE_DL_LIBS}
     )
 else()
-    # standalone build — use the installed static archive.
+    # standalone build — use the installed static archives.
     target_link_libraries(goodnet_bench
         PRIVATE
             GoodNet::kernel
             GoodNet::link_tcp_static
+            GoodNet::link_udp_static
             ${CMAKE_DL_LIBS}
     )
+endif()
+
+if(TARGET STDEXEC::stdexec)
+    target_link_libraries(goodnet_bench PRIVATE STDEXEC::stdexec)
 endif()
 
 if(TARGET GoodNet::protocol_gnet)

@@ -32,7 +32,7 @@ namespace {
 PluginContext make_ctx(Kernel& k) {
     PluginContext ctx;
     ctx.kernel        = &k;
-    ctx.kind          = GN_PLUGIN_KIND_LINK;
+    ctx.kind          = GN_PLUGIN_KIND_UNKNOWN;
     ctx.plugin_name   = "test-connection";
     ctx.plugin_anchor = std::make_shared<gn::core::PluginAnchor>();
     return ctx;

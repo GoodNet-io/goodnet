@@ -1,9 +1,9 @@
 # Contract: Layer Capability and Topology
 
 **Status:** active · v1
-**Owner:** `core/topology/`, `sdk/topology.h`, `sdk/link.h` (`on_topology_sealed`), `sdk/security.h` (`provides_flags`)
-**Last verified:** 2026-06-02
-**Stability:** v1.x — `gn_topology_t` layout is locked; new fields land in `_reserved[4]` until a MAJOR bump.
+**Owner:** `core/topology/`, `sdk/topology.h`, `sdk/link.h` (`on_topology_sealed`), `sdk/security.h` (`provides_flags`), `sdk/host_api.h` (`subscribe_topology_reload`), `sdk/conn_events.h`
+**Last verified:** 2026-06-14
+**Stability:** v1.x (RC reshape window open until `v1.0.0`). `gn_topology_t` grew from 120 → 128 bytes in #33 (named contours); `_reserved[4]` count is frozen at 4 for the duration of RC. Post-`v1.0.0`: append-only per `abi-evolution.en.md §3`.
 
 ---
 
@@ -34,6 +34,8 @@ transitions to `Phase::Running`. It gives:
 
 ## 2. Topology lifecycle
 
+### 2.1 Cold start
+
 ```
 gn_core_start()
   └─ advance_to(Phase::Running)
@@ -45,13 +47,42 @@ gn_core_start()
         ├─ compute SHA-256 fingerprint over sorted sections
         ├─ compute contour_gaps bitmask
         └─ call on_topology_sealed(self, &topo) on every link plugin
+  └─ encode_topology_wire_blob(topo)  → TLV 0x0004 blob
+  └─ kernel.set_topology_wire_blob(blob)
+  └─ capability_blob_bus.subscribe(topology_caps_cb)
+       topology_caps_cb → tlv_chain_.dispatch()  [W4: TlvHandlerChain, see capability-tlv.en.md §2]
+         ├─ type 0x0004 handler (priority=255): topology fingerprint compare → peer_caps_verified
+         └─ type 0x0005 handler (priority=255): contour fingerprint placeholder (W2)
 ```
 
-The snapshot is **immutable** for the kernel's lifetime. The registered
-plugin set does not change after seal — plugins load before `gn_core_start`
-and unload after `gn_core_stop`. `gn_core_reload_topology()` is an
-escape hatch for hosts that register in-process plugins dynamically;
-in normal operation it is not called.
+`on_topology_sealed` is synchronous and fires before the kernel begins
+accepting connections. The topology pointer remains valid until the next
+`gn_core_reload_topology()` or `gn_core_destroy()`.
+
+### 2.2 Reload
+
+Hosts that register plugins dynamically (e.g. in-process plugin hot-swap)
+call `gn_core_reload_topology()` after the plugin set changes. This is an
+operational path, not an escape hatch.
+
+```
+gn_core_reload_topology(core)
+  ├─ prev = &core->topology_->topo   (nullptr if none yet)
+  ├─ new_snap = build_topology(kernel)
+  ├─ encode_topology_wire_blob(*next) → new blob
+  ├─ kernel.set_topology_wire_blob(blob)
+  ├─ kernel.on_topology_reload().fire({prev, next})
+  └─ core->topology_ = move(new_snap)
+```
+
+Subscribers registered via `host_api->subscribe_topology_reload` receive
+`{prev, next}` while both snapshots are alive. After the call returns,
+`prev` is destroyed. See §10 for the subscription API.
+
+**Known gap:** the updated `topology_wire_blob_` is not pushed to existing
+Transport-phase connections. They continue operating with the old fingerprint
+until the next reconnect or until the caller iterates `connections().for_each()`
+and sends the blob manually.
 
 ---
 
@@ -68,29 +99,69 @@ The structs below are **data structs**, not vtables. They carry no
 | `gn_topo_security_entry_t` | 16 B | One security provider: provider_id + `allowed_trust_mask` + `provides_flags` |
 | `gn_topo_protocol_entry_t` | 8 B | One protocol layer: protocol_id |
 | `gn_topo_handler_entry_t` | 16 B | One (protocol_id, msg_id) pair: aggregated chain_length across all namespaces |
+| `gn_topo_contour_t` | 48 B | One named packet path — full axis: trust × link × security × protocol × handler chain (see §3a) |
 
-### `gn_topology_t` (120 bytes)
+### `gn_topology_t` (128 bytes, reshaped in #33)
 
 ```c
 typedef struct gn_topology_s {
-    uint8_t  fingerprint[32];             /* SHA-256 over sorted structural layers */
-    uint32_t link_count;                  /* offset 32 */
-    uint32_t security_count;             /* offset 36 */
-    uint32_t protocol_count;             /* offset 40 */
-    uint32_t handler_count;              /* offset 44 */
-    const gn_topo_link_entry_t*     links;     /* offset 48 */
-    const gn_topo_security_entry_t* security;  /* offset 56 */
-    const gn_topo_protocol_entry_t* protocols; /* offset 64 */
-    const gn_topo_handler_entry_t*  handlers;  /* offset 72 */
-    uint32_t contour_gaps;               /* offset 80 — bitmask, see §5 */
-    /* 4 bytes implicit padding */
-    void*    _reserved[4];               /* offset 88 — MUST be zero */
-    /* sizeof = 120 */
+    uint8_t  fingerprint[32];                   /* SHA-256 over sorted structural layers */
+    uint32_t link_count;                        /* offset 32 */
+    uint32_t security_count;                    /* offset 36 */
+    uint32_t protocol_count;                    /* offset 40 */
+    uint32_t handler_count;                     /* offset 44 */
+    const gn_topo_link_entry_t*     links;      /* offset 48 */
+    const gn_topo_security_entry_t* security;   /* offset 56 */
+    const gn_topo_protocol_entry_t* protocols;  /* offset 64 */
+    const gn_topo_handler_entry_t*  handlers;   /* offset 72 */
+    uint32_t contour_gaps;                      /* offset 80 — bitmask, see §5 */
+    uint32_t contour_count;                     /* offset 84 — promoted from implicit padding */
+    const gn_topo_contour_t*        contours;   /* offset 88 — named paths, see §3a */
+    void*    _reserved[4];                      /* offset 96 — MUST be zero, count frozen */
+    /* sizeof = 128 */
 } gn_topology_t;
 ```
 
 All pointer fields are `@borrowed` from kernel-owned storage. Valid
 until `gn_core_destroy()` or `gn_core_reload_topology()`.
+
+### §3a. `gn_topo_contour_t` — named packet path
+
+A contour is the resolved, named path that a packet travels for a specific
+trust class. It is computed at `build_topology` time by resolving the cross-join:
+
+```
+(trust_class, link_scheme) → security_provider (via find_for_trust) → protocol → handler_chain
+```
+
+`find_for_trust` returns the **first** registered provider whose `allowed_trust_mask`
+admits the trust class. The contour array makes the resolved winner explicit — the
+entry that appears in `contours[]` IS the provider the kernel will use for that
+(trust_class, link_scheme) pair. When two providers both admit the same class,
+registration order determines the winner; the topology snapshot removes ambiguity.
+
+```c
+typedef struct gn_topo_contour_s {
+    const char*       link_scheme;             /* offset  0 — @borrowed */
+    const char*       security_provider_id;    /* offset  8 — @borrowed */
+    const char*       protocol_id;             /* offset 16 — @borrowed */
+    const uint32_t*   handler_msg_ids;         /* offset 24 — @borrowed; handler_count entries */
+    gn_trust_class_t  trust;                   /* offset 32 — GN_TRUST_* value */
+    uint32_t          security_provides_flags; /* offset 36 — GN_SEC_PROVIDES_* bitmask */
+    uint32_t          handler_count;           /* offset 40 */
+    uint32_t          _pad;                    /* offset 44 — explicit padding; MUST be zero */
+    /* sizeof = 48 */
+} gn_topo_contour_t;
+```
+
+`security_provides_flags` carries the per-path crypto profile: the same provider
+may serve multiple trust classes, and both contour entries carry the same flags.
+Future PQ provider: flags gain `GN_SEC_PROVIDES_PQ_SAFE` — immediately visible
+per trust class in the contour array without reading the flat security entry.
+
+`contour_gaps` (§5) is the summary: bit N set means no contour exists for
+`GN_TRUST_N` with `GN_SEC_PROVIDES_E2E_ENCRYPTION`. The contour array is the
+detail behind the summary.
 
 ---
 
@@ -262,10 +333,34 @@ end-to-end).
 
 ---
 
-## 10. Cross-references
+## 10. Topology reload subscription
+
+Declared in `sdk/conn_events.h` (`GN_SUBSCRIBE_TOPOLOGY_RELOAD = 3`,
+`gn_topology_reload_cb_t`) and `sdk/host_api.h` (`subscribe_topology_reload`
+slot, before `_reserved[8]`).
+
+Any plugin type MAY subscribe to topology reload events through
+`host_api_t`. The slot is optional; plugins MUST check with `GN_API_HAS`
+before calling.
+
+The kernel MUST invoke every registered callback synchronously during
+`gn_core_reload_topology()`, with both `prev` and `next` valid for
+the duration of each call. `prev` is `NULL` on the first reload.
+After the call returns, `prev` is destroyed; plugins MUST NOT retain
+either pointer.
+
+The kernel delivers the event only. Recovery policy — closing connections,
+marking contours degraded, re-exchanging capabilities — is the
+plugin's responsibility.
+
+---
+
+## 11. Cross-references
 
 - `abi-evolution.en.md` — RC reshape window, size-prefix rules, `_reserved` promotion.
 - `security-trust.en.md` — trust class definitions, `allowed_trust_mask` gate, `provides_flags` table.
 - `link.en.md §8` — link extension surface (`gn_link_api_t`, `get_capabilities`).
 - `security.en.md` — Noise XX handshake, `InlineCrypto` key seeding.
 - `fsm-events.en.md` — `Phase::Running` transition that triggers topology build.
+- `conn-events.en.md` — `GN_SUBSCRIBE_TOPOLOGY_RELOAD`, subscription channel constants.
+- `host-api.en.md` — `subscribe_topology_reload` slot, unsubscribe semantics.

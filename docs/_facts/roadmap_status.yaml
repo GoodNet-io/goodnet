@@ -1,4 +1,22 @@
 features:
+- name: Zero-alloc packet pipeline
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: P2300 structured sender chains
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: io_uring link backend
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Bounded handler chain depth
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: MCU port
+  status: missing
+  evidence: nix/goodnet-mcu.nix absent; token 'GOODNET_MCU_TRIM' absent
+- name: RTOS / bare-metal kernel trim
+  status: missing
+  evidence: nix/goodnet-rtos.nix absent; token 'GOODNET_RTOS' absent; sdk/c99/ absent
 - name: NAT-traversal pipeline
   status: done
   evidence: plugins/links/ice/ present
@@ -9,16 +27,17 @@ features:
   status: done
   evidence: plugins/links/ice/session.cpp present
 - name: DPLPMTUD active path-MTU probing
-  status: done
-  evidence: plugins/links/ice/ present; plugins/links/ice/path_mtu.hpp present
+  status: missing
+  evidence: 'missing: plugins/links/ice/path_mtu.hpp absent'
 - name: Multi-TURN fallback
   status: done
-  evidence: 'token ''turn_servers'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:4:///         `turn_servers`
-    ...); token ''turn_backup_interval_s'' found (plugins/links/ice/tests/test_ice_multi_turn.cpp:395:    cfg.turn_backup_inter...)'
+  evidence: 'token ''turn_servers'' found (plugins/links/ice/link_ice.cpp:95:        if
+    (gn_config_get_string(api_, "ice...); token ''turn_backup_interval_s'' found (tests/docker/ice-3node/scenarios/multi_turn_failover.yml:8:#
+    `turn_backup_int...)'
 - name: IPv6 mDNS dual-stack
   status: done
-  evidence: token 'ff02::fb' found (plugins/links/ice/mdns.hpp:47:inline constexpr
-    const char* kMdnsIPv6Multicast...)
+  evidence: token 'ff02::fb' found (plugins/discovery/mdns/mdns.hpp:45:inline constexpr
+    const char* kMdnsIPv6Mult...)
 - name: Port mapping (UPnP / PCP / NAT-PMP)
   status: done
   evidence: plugins/links/portmap/ present
@@ -40,12 +59,12 @@ features:
   evidence: token 'outbound_queue' absent; token 'offline_queue' absent
 - name: Subprocess SECURITY/HANDLER worker proxy
   status: done
-  evidence: 'symbol ''security_vtable_proxy'' present (core/plugin/remote_host.hpp:112:    [[nodiscard]]
-    const gn_security_provider_...)'
+  evidence: symbol 'security_vtable_proxy' present (core/plugin/remote_host.cpp:51:const
+    gn_security_provider_vtable_t* RemoteHos...)
 - name: Recv-side parallel decrypt
   status: done
-  evidence: symbol 'decrypt_batch_transport' present (core/security/session.cpp:354:gn_result_t
-    SecuritySession::decrypt_batch_tran...)
+  evidence: 'symbol ''decrypt_batch_transport'' present (core/security/session.hpp:211:    [[nodiscard]]
+    gn_result_t decrypt_batch_tra...)'
 - name: Link capability gate
   status: done
   evidence: core/kernel/link_capability.hpp present
@@ -59,7 +78,7 @@ features:
     ManifestEntry {)
 - name: gn_core_unload_plugin hot-reload
   status: done
-  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:789:gn_result_t
+  evidence: symbol 'gn_core_unload_plugin' present (core/kernel/core_c.cpp:805:gn_result_t
     gn_core_unload_plugin(gn_core_t* core,...)
 - name: Subprocess HOST_CALL slot completion
   status: done
@@ -67,12 +86,26 @@ features:
     GN_WIRE_HOST_SLOT_NOTIFY_CONNECT: {)'
 - name: Per-slot reply-timeout override
   status: done
-  evidence: 'symbol ''set_reply_timeout_for_slot'' present (core/plugin/remote_host.hpp:131:    void
-    set_reply_timeout_for_slot(std::uint...)'
+  evidence: symbol 'set_reply_timeout_for_slot' present (core/plugin/remote_host.cpp:65:void
+    RemoteHost::set_reply_timeout_for_slot(st...)
 - name: Wire codec GN_ERR_WIRE_DECODE
   status: done
   evidence: symbol 'GN_ERR_WIRE_DECODE' present (core/plugin/wire_codec.hpp:20:///
     Errors return `GN_ERR_WIRE_DECODE` for malf...)
+- name: Topology reload subscription API
+  status: done
+  evidence: 'symbol ''subscribe_topology_reload'' present (core/kernel/host_api/control.cpp:323:gn_result_t
+    subscribe_topology_reload(vo...); symbol ''GN_SUBSCRIBE_TOPOLOGY_RELOAD'' present
+    (core/kernel/host_api/control.cpp:349:    *out_id = pack_subscription_id(GN_SU...)'
+- name: Datagram replay protection (sliding window)
+  status: done
+  evidence: symbol 'ReplayWindow' present (core/security/inline_crypto.hpp:30:struct
+    ReplayWindow {); symbol 'enable_datagram_mode' present (core/security/inline_crypto.hpp:29:///
+    `InlineCrypto::enable_datagram_mode()`...)
+- name: Named topology contours (gn_topo_contour_t)
+  status: missing
+  evidence: symbol 'gn_topo_contour_t' not found in core/ + sdk/; symbol 'gn_contour_state_t'
+    not found in core/ + sdk/
 - name: Fuzz harness
   status: done
   evidence: tests/fuzz/CMakeLists.txt present
@@ -89,6 +122,10 @@ features:
 - name: Raw inject bridge
   status: done
   evidence: plugins/links/raw_inject/ present
+- name: WASM plugin runtime (sandbox for untrusted plugins)
+  status: missing
+  evidence: core/plugin/runtimes/wasm.cpp absent; token 'wasmtime' absent; token 'wasmer'
+    absent
 - name: Full WASM kernel build
   status: done
   evidence: nix/goodnet-wasm.nix present
@@ -125,6 +162,15 @@ features:
 - name: C99 SDK subset
   status: missing
   evidence: sdk/c99/ absent
+- name: aarch64 native test runner
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Android native test runner
+  status: missing
+  evidence: no rule in roadmap_map.yaml
+- name: Windows native build
+  status: missing
+  evidence: no rule in roadmap_map.yaml
 - name: Rust
   status: done
   evidence: bridges/rust/Cargo.toml present
@@ -138,32 +184,39 @@ features:
   status: missing
   evidence: bridges/goodnet-zig/build.zig absent
 - name: Phase 1 — `IdentitySigner` abstraction (in flight)
-  status: missing
-  evidence: no rule in roadmap_map.yaml
+  status: done
+  evidence: 'symbol ''IdentitySigner'' present (core/identity/attestation.cpp:44:    ///
+    this overload; the kernel itself rea...)'
 - name: Phase 2 — C ABI for identity providers (pending)
-  status: missing
-  evidence: no rule in roadmap_map.yaml
+  status: done
+  evidence: 'symbol ''gn_core_install_identity_from_provider'' present (core/identity/identity_plugin_signer.cpp:27:    ///
+    goes through a fresh `gn_...)'
 - name: Phase 3 — PKCS#11 plugin dual-expose (pending)
-  status: missing
-  evidence: no rule in roadmap_map.yaml
+  status: done
+  evidence: extension id 'gn.identity.pkcs11' registered (plugins/security/pkcs11/pkcs11_identity_ext.cpp:18:///
+    "gn.identity.pkcs11", ...)
 - name: Phase 4 — `goodnetd` operator UX (pending)
   status: missing
-  evidence: no rule in roadmap_map.yaml
+  evidence: symbol 'gn_core_export_device_keypair' not found in core/ + sdk/
 - name: Phase 5 — `sdk/cpp/Core` DX + Noise XX integration (pending)
   status: missing
-  evidence: no rule in roadmap_map.yaml
+  evidence: symbol 'gn_core_get_pinned_user_pk' not found in core/ + sdk/
 - name: Hardware key store — PKCS#11
-  status: missing
-  evidence: no rule in roadmap_map.yaml
+  status: done
+  evidence: extension id 'gn.identity.pkcs11' registered (plugins/security/pkcs11/pkcs11_identity_ext.cpp:18:///
+    "gn.identity.pkcs11", ...)
 - name: Hardware key store — TPM 2.0
   status: missing
-  evidence: no rule in roadmap_map.yaml
+  evidence: extension id 'gn.identity.tpm' not registered in plugins/; plugins/security/tpm/
+    absent
 - name: Hardware key store — macOS Keychain
   status: missing
-  evidence: no rule in roadmap_map.yaml
+  evidence: extension id 'gn.identity.keychain' not registered in plugins/; token
+    'SecKeychainFind' absent
 - name: Hardware key store — WebAuthn / passkey
   status: missing
-  evidence: no rule in roadmap_map.yaml
+  evidence: extension id 'gn.identity.webauthn' not registered in plugins/; token
+    'webauthn_get_assertion' absent
 - name: Post-quantum security provider
   status: missing
   evidence: plugins/security/pq/ absent; token 'ML_KEM' absent
@@ -195,5 +248,6 @@ features:
   status: missing
   evidence: tools/config_validator/ absent
 - name: TCP-TURN (RFC 6062)
-  status: done
-  evidence: 'token ''REQUESTED_TRANSPORT_TCP'' found (plugins/links/ice/tests/test_ice_turn_tcp_alloc.cpp:243:    cfg.requested_tra...)'
+  status: missing
+  evidence: token 'TURN_CONNECTION_ATTEMPT_INDICATION' absent; token 'TURN_TCP_ALLOCATE'
+    absent; token 'turn_tcp_relay' absent
